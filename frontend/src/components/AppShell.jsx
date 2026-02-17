@@ -15,7 +15,68 @@ const navItems = [
 
 export default function AppShell() {
   const { user, signOut } = useAuth()
-  const { orgName, branding, role } = useOrg()
+  const { orgName, orgId, branding, role, loading, error } = useOrg()
+
+  // Show "No membership" error screen if user has no org
+  if (!loading && user && !orgId && !error) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-6">
+        <div className="max-w-2xl w-full bg-white rounded-lg border border-slate-200 p-8">
+          <div className="text-center mb-6">
+            <div className="inline-flex h-16 w-16 rounded-full bg-yellow-100 items-center justify-center mb-4">
+              <span className="text-3xl">⚠️</span>
+            </div>
+            <h1 className="text-2xl font-bold text-ink mb-2">No tienes organización asignada</h1>
+            <p className="text-slate-600">
+              Tu usuario no está asociado a ninguna organización. Sigue estos pasos para continuar:
+            </p>
+          </div>
+
+          <div className="space-y-4 mb-6">
+            <div className="bg-slate-50 rounded-md p-4">
+              <p className="font-semibold text-ink mb-2">1. Abre Supabase SQL Editor</p>
+              <p className="text-sm text-slate-600">
+                Ve a tu proyecto en Supabase Dashboard → SQL Editor → New Query
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-md p-4">
+              <p className="font-semibold text-ink mb-2">2. Ejecuta este query para crear tu membership:</p>
+              <pre className="bg-slate-900 text-slate-100 p-3 rounded text-xs overflow-x-auto mt-2">
+                {`-- Obtener tu user_id
+select id from auth.users where email = '${user?.email}';
+
+-- Crear membership (reemplaza <USER_ID> con el ID de arriba)
+insert into public.memberships (org_id, user_id, role)
+values (
+  (select id from public.organizations where slug = 'flowsuitecrm-default'),
+  '<USER_ID>'::uuid,
+  'owner'
+);`}
+              </pre>
+            </div>
+
+            <div className="bg-slate-50 rounded-md p-4">
+              <p className="font-semibold text-ink mb-2">3. Refresca esta página</p>
+              <p className="text-sm text-slate-600">
+                Después de ejecutar el query, recarga la página para continuar.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button onClick={() => window.location.reload()} className="flex-1">
+              Refrescar página
+            </Button>
+            <Button variant="outline" onClick={signOut}>
+              Cerrar sesión
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -35,8 +96,7 @@ export default function AppShell() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
-                    isActive ? 'bg-ink text-white' : 'text-ink hover:bg-slate-100'
+                  `rounded-md px-3 py-2 text-sm font-semibold transition-colors ${isActive ? 'bg-ink text-white' : 'text-ink hover:bg-slate-100'
                   }`
                 }
               >

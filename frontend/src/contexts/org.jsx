@@ -81,6 +81,7 @@ export function OrgProvider({ children }) {
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useOrg() {
   return useContext(OrgContext)
 }

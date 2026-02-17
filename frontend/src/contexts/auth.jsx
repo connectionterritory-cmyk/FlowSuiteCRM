@@ -6,18 +6,18 @@ const AuthContext = createContext({
   user: null,
   loading: true,
   error: null,
-  signIn: async () => {},
-  signOut: async () => {},
+  signIn: async () => { },
+  signOut: async () => { },
 })
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const error = !supabase ? 'Faltan variables VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY' : null
 
   useEffect(() => {
     if (!supabase) {
-      setError('Faltan variables VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY')
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false)
       return
     }
@@ -58,6 +58,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   return useContext(AuthContext)
 }
