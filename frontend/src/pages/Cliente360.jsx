@@ -1,177 +1,183 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useOrg } from '../contexts/org'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
-import { Badge } from '../components/ui/badge'
-
-const getClientName = (client) =>
-  client?.nombre || client?.name || client?.razon_social || client?.empresa || 'Cliente'
 
 export default function Cliente360() {
   const { orgId } = useOrg()
-  const [clients, setClients] = useState([])
-  const [selectedId, setSelectedId] = useState(null)
+  const [searchParams] = useSearchParams()
+  const clienteId = searchParams.get('id')
+
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [cliente, setCliente] = useState(null)
+  const [oportunidades, setOportunidades] = useState([])
+  const [ordenes, setOrdenes] = useState([])
+  const [servicios, setServicios] = useState([])
+  const [aguaSistemas, setAguaSistemas] = useState([])
+  const [cartera, setCartera] = useState([])
+  const [notas, setNotas] = useState([])
 
   useEffect(() => {
     const load = async () => {
-      if (!supabase || !orgId) {
+      if (!supabase || !orgId || !clienteId) {
         setLoading(false)
         return
       }
+
       setLoading(true)
-      const { data, error: fetchError } = await supabase
-        .from('clientes')
+
+      // Load cliente from contactos_canonical
+      const { data: clienteData } = await supabase
+        .from('contactos_canonical')
         .select('*')
         .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(50)
+        .eq('id', clienteId)
+        .maybeSingle()
 
-      if (fetchError) {
-        setError(fetchError.message)
-        setClients([])
-      } else {
-        setError(null)
-        setClients(data ?? [])
-        setSelectedId(data?.[0]?.id ?? null)
-      }
+      setCliente(clienteData)
+
+      // Load related data in parallel
+      const [oppRes, ordRes, svcRes, aguaRes, cartRes, notasRes] = await Promise.all([
+        supabase.from('oportunidades').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
+        supabase.from('ordenesrp').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
+        supabase.from('servicios').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
+        supabase.from('cliente_sistemas').select('*, cliente_componentes(*)').eq('org_id', orgId).eq('cliente_id', clienteId),
+        supabase.from('transaccionesrp').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
+        supabase.from('notasrp').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
+      ])
+
+      setOportunidades(oppRes.data ?? [])
+      setOrdenes(ordRes.data ?? [])
+      setServicios(svcRes.data ?? [])
+      setAguaSistemas(aguaRes.data ?? [])
+      setCartera(cartRes.data ?? [])
+      setNotas(notasRes.data ?? [])
+
       setLoading(false)
     }
 
     load()
-  }, [orgId])
+  }, [orgId, clienteId])
 
-  const selectedClient = useMemo(() => {
-    return clients.find((client) => client.id === selectedId) ?? null
-  }, [clients, selectedId])
+  if (loading) {
+    return <div className="p-6">Cargando...</div>
+  }
+
+  if (!cliente) {
+    return <div className="p-6">Cliente no encontrado</div>
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold font-display">Cliente / Contacto 360</h1>
-        <p className="text-sm text-slate-600">
-          Vista integral con tabs por oportunidades, ordenes, servicio, agua, cartera y notas.
-        </p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>{cliente.nombre || 'Cliente'}</CardTitle>
+          <p className="text-sm text-slate-600">
+            {cliente.email} • {cliente.telefono}
+          </p>
+        </CardHeader>
+      </Card>
 
-      {error ? (
-        <div className="rounded-md border border-warning bg-white p-4 text-sm font-semibold text-warning">
-          {error}
-        </div>
-      ) : null}
+      <Tabs defaultValue="oportunidades">
+        <TabsList>
+          <TabsTrigger value="oportunidades">Oportunidades ({oportunidades.length})</TabsTrigger>
+          <TabsTrigger value="ordenes">Órdenes ({ordenes.length})</TabsTrigger>
+          <TabsTrigger value="servicio">Servicio ({servicios.length})</TabsTrigger>
+          <TabsTrigger value="agua">Agua ({aguaSistemas.length})</TabsTrigger>
+          <TabsTrigger value="cartera">Cartera ({cartera.length})</TabsTrigger>
+          <TabsTrigger value="notas">Notas ({notas.length})</TabsTrigger>
+        </TabsList>
 
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        <Card className="h-full">
-          <CardHeader>
-            <CardTitle className="text-base">Clientes</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {loading ? <p className="text-sm text-slate-600">Cargando...</p> : null}
-            {!loading && clients.length === 0 ? (
-              <p className="text-sm text-slate-600">Sin clientes</p>
-            ) : null}
-            {clients.map((client) => (
-              <button
-                key={client.id}
-                onClick={() => setSelectedId(client.id)}
-                className={`w-full rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                  selectedId === client.id
-                    ? 'border-ink bg-ink text-white'
-                    : 'border-slate-200 bg-white text-ink hover:bg-slate-100'
-                }`}
-              >
-                {getClientName(client)}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+        <TabsContent value="oportunidades" className="space-y-3">
+          {oportunidades.map((opp) => (
+            <Card key={opp.id}>
+              <CardHeader>
+                <CardTitle className="text-base">{opp.titulo}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">Producto: {opp.producto_objetivo}</p>
+                <p className="text-sm">Estado: {opp.estado}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {oportunidades.length === 0 && <p className="text-sm text-slate-600">Sin oportunidades</p>}
+        </TabsContent>
 
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{getClientName(selectedClient)}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <Badge>Org filtrada</Badge>
-              <Badge variant="accent">Producto objetivo visible</Badge>
-              <Badge>Contacto 360</Badge>
-            </CardContent>
-          </Card>
+        <TabsContent value="ordenes" className="space-y-3">
+          {ordenes.map((ord) => (
+            <Card key={ord.id}>
+              <CardHeader>
+                <CardTitle className="text-base">Orden #{ord.numero_orden}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">Total: ${ord.total}</p>
+                <p className="text-sm">Estado: {ord.estado}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {ordenes.length === 0 && <p className="text-sm text-slate-600">Sin órdenes</p>}
+        </TabsContent>
 
-          <Tabs defaultValue="oportunidades">
-            <TabsList>
-              <TabsTrigger value="oportunidades">Oportunidades</TabsTrigger>
-              <TabsTrigger value="ordenes">Ordenes</TabsTrigger>
-              <TabsTrigger value="servicio">Servicio</TabsTrigger>
-              <TabsTrigger value="agua">Agua</TabsTrigger>
-              <TabsTrigger value="cartera">Cartera</TabsTrigger>
-              <TabsTrigger value="notas">Notas/Mensajes</TabsTrigger>
-            </TabsList>
+        <TabsContent value="servicio" className="space-y-3">
+          {servicios.map((svc) => (
+            <Card key={svc.id}>
+              <CardHeader>
+                <CardTitle className="text-base">{svc.titulo}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">Ticket: {svc.ticket_number}</p>
+                <p className="text-sm">Estado: {svc.estado}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {servicios.length === 0 && <p className="text-sm text-slate-600">Sin tickets de servicio</p>}
+        </TabsContent>
 
-            <TabsContent value="oportunidades">
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-slate-600">
-                    Sin datos cargados. Conectar tabla `oportunidades` por cliente cuando el schema este listo.
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
+        <TabsContent value="agua" className="space-y-3">
+          {aguaSistemas.map((sistema) => (
+            <Card key={sistema.id}>
+              <CardHeader>
+                <CardTitle className="text-base">{sistema.sistema}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm">Instalación: {sistema.fecha_instalacion}</p>
+                {sistema.cliente_componentes?.map((comp) => (
+                  <div key={comp.id} className="text-sm">
+                    <strong>{comp.componente}</strong>: Próximo cambio {comp.next_change_at}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+          {aguaSistemas.length === 0 && <p className="text-sm text-slate-600">Sin sistemas de agua</p>}
+        </TabsContent>
 
-            <TabsContent value="ordenes">
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-slate-600">
-                    Sin datos cargados. Conectar tabla `ordenesrp` al cliente seleccionado.
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
+        <TabsContent value="cartera" className="space-y-3">
+          {cartera.map((trans) => (
+            <Card key={trans.id}>
+              <CardContent>
+                <p className="text-sm">Monto: ${trans.monto}</p>
+                <p className="text-sm">Fecha: {trans.fecha}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {cartera.length === 0 && <p className="text-sm text-slate-600">Sin transacciones</p>}
+        </TabsContent>
 
-            <TabsContent value="servicio">
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-slate-600">
-                    Sin tickets. Se habilitara con `servicios` y `servicio_items`.
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="agua">
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-slate-600">
-                    Sin sistemas registrados. Se habilitara con `cliente_sistemas` y `cliente_componentes`.
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="cartera">
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-slate-600">
-                    Sin gestiones. Se habilitara con `cob_gestiones` y `cargo_vuelta_cases`.
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="notas">
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-slate-600">
-                    Sin notas o mensajes. Conectar `notasrp` y `mensajescrm` por cliente.
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
+        <TabsContent value="notas" className="space-y-3">
+          {notas.map((nota) => (
+            <Card key={nota.id}>
+              <CardContent>
+                <p className="text-sm">{nota.contenido}</p>
+                <p className="text-xs text-slate-600">{nota.created_at}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {notas.length === 0 && <p className="text-sm text-slate-600">Sin notas</p>}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

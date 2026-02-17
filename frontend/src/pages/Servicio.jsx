@@ -4,17 +4,11 @@ import { useOrg } from '../contexts/org'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 
-const getTicketTitle = (ticket) =>
-  ticket?.titulo || ticket?.asunto || ticket?.subject || 'Ticket de servicio'
-
-const getTicketStatus = (ticket) =>
-  ticket?.estado || ticket?.status || 'Abierto'
-
 export default function Servicio() {
   const { orgId } = useOrg()
-  const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [servicios, setServicios] = useState([])
+  const [showNewTicket, setShowNewTicket] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -22,65 +16,100 @@ export default function Servicio() {
         setLoading(false)
         return
       }
+
       setLoading(true)
-      const { data, error: fetchError } = await supabase
+      const { data } = await supabase
         .from('servicios')
-        .select('*')
+        .select('*, servicio_items(*)')
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
-        .limit(30)
 
-      if (fetchError) {
-        setError('Tabla servicios no disponible o sin permisos')
-        setTickets([])
-      } else {
-        setError(null)
-        setTickets(data ?? [])
-      }
+      setServicios(data ?? [])
       setLoading(false)
     }
 
     load()
   }, [orgId])
 
+  const handleCreateTicket = async (e) => {
+    e.preventDefault()
+    const formData = new FormData(e.target)
+
+    const { data: newTicket, error } = await supabase
+      .from('servicios')
+      .insert({
+        org_id: orgId,
+        cliente_id: formData.get('cliente_id'),
+        titulo: formData.get('titulo'),
+        descripcion: formData.get('descripcion'),
+        estado: 'Abierto',
+        prioridad: formData.get('prioridad'),
+      })
+      .select()
+      .single()
+
+    if (!error) {
+      setServicios([newTicket, ...servicios])
+      setShowNewTicket(false)
+      e.target.reset()
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold font-display">Servicio / Postventa</h1>
-        <p className="text-sm text-slate-600">
-          Tickets multi-producto con items de filtros, ollas, electrodomesticos y otros.
-        </p>
+        <button
+          onClick={() => setShowNewTicket(true)}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+        >
+          + Nuevo Ticket
+        </button>
       </div>
 
-      {error ? (
-        <div className="rounded-md border border-warning bg-white p-4 text-sm font-semibold text-warning">
-          {error}
-        </div>
-      ) : null}
+      {showNewTicket && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Nuevo Ticket de Servicio</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateTicket} className="space-y-4">
+              <input name="cliente_id" placeholder="ID Cliente" className="w-full rounded border p-2" required />
+              <input name="titulo" placeholder="Título" className="w-full rounded border p-2" required />
+              <textarea name="descripcion" placeholder="Descripción" className="w-full rounded border p-2" rows={3} />
+              <select name="prioridad" className="w-full rounded border p-2">
+                <option value="Baja">Baja</option>
+                <option value="Media">Media</option>
+                <option value="Alta">Alta</option>
+                <option value="Urgente">Urgente</option>
+              </select>
+              <div className="flex gap-2">
+                <button type="submit" className="rounded bg-primary px-4 py-2 text-white">Crear</button>
+                <button type="button" onClick={() => setShowNewTicket(false)} className="rounded border px-4 py-2">Cancelar</button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {loading ? (
-          <Card>
-            <CardContent className="text-sm text-slate-600">Cargando...</CardContent>
-          </Card>
-        ) : null}
-        {!loading && tickets.length === 0 ? (
-          <Card>
-            <CardContent className="text-sm text-slate-600">Sin tickets activos</CardContent>
-          </Card>
-        ) : null}
-        {tickets.map((ticket, index) => (
-          <Card key={ticket.id ?? `ticket-${index}`}>
+      <div className="space-y-3">
+        {loading && <p>Cargando...</p>}
+        {servicios.map((svc) => (
+          <Card key={svc.id}>
             <CardHeader>
-              <CardTitle className="text-base">{getTicketTitle(ticket)}</CardTitle>
-              <p className="text-xs text-slate-600">Producto objetivo: {ticket?.producto_objetivo || 'No definido'}</p>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">{svc.titulo}</CardTitle>
+                <Badge>{svc.estado}</Badge>
+              </div>
+              <p className="text-sm text-slate-600">Ticket: {svc.ticket_number}</p>
             </CardHeader>
-            <CardContent className="flex items-center justify-between">
-              <Badge>{getTicketStatus(ticket)}</Badge>
-              <span className="text-sm text-slate-600">Items: {ticket?.items_count ?? 'N/A'}</span>
+            <CardContent>
+              <p className="text-sm">{svc.descripcion}</p>
+              <p className="text-xs text-slate-600 mt-2">Items: {svc.servicio_items?.length ?? 0}</p>
             </CardContent>
           </Card>
         ))}
+        {!loading && servicios.length === 0 && <p className="text-sm text-slate-600">Sin tickets de servicio</p>}
       </div>
     </div>
   )

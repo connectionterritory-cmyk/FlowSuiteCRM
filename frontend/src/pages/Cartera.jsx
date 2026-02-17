@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useOrg } from '../contexts/org'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 
-const getDaysOverdue = (row) =>
-  row?.dias_mora || row?.dias_atraso || row?.days_overdue || row?.dias
+const getAgingBucket = (diasVencido) => {
+  if (diasVencido <= 30) return '0-30'
+  if (diasVencido <= 60) return '31-60'
+  if (diasVencido <= 90) return '61-90'
+  return '90+'
+}
 
 export default function Cartera() {
   const { orgId } = useOrg()
-  const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [transacciones, setTransacciones] = useState([])
+  const [cargoVueltaCases, setCargoVueltaCases] = useState([])
 
   useEffect(() => {
     const load = async () => {
@@ -19,89 +23,114 @@ export default function Cartera() {
         setLoading(false)
         return
       }
-      setLoading(true)
-      const { data, error: fetchError } = await supabase
-        .from('cuentarp')
-        .select('*')
-        .eq('org_id', orgId)
-        .limit(200)
 
-      if (fetchError) {
-        setError('Tabla cuentarp no disponible o sin permisos')
-        setRows([])
-      } else {
-        setError(null)
-        setRows(data ?? [])
-      }
+      setLoading(true)
+
+      // Load pending transactions
+      const { data: transData } = await supabase
+        .from('transaccionesrp')
+        .select('*, clientes(nombre)')
+        .eq('org_id', orgId)
+        .eq('estado', 'Pendiente')
+        .order('fecha_vencimiento', { ascending: true })
+
+      // Load cargo vuelta cases
+      const { data: cargoData } = await supabase
+        .from('cargo_vuelta_cases')
+        .select('*, clientes(nombre)')
+        .eq('org_id', orgId)
+        .in('estado', ['Abierto', 'En Negociación'])
+
+      setTransacciones(transData ?? [])
+      setCargoVueltaCases(cargoData ?? [])
       setLoading(false)
     }
 
     load()
   }, [orgId])
 
-  const buckets = useMemo(() => {
-    const result = {
-      '0-30': [],
-      '31-60': [],
-      '61-90': [],
-      '90+': [],
+  const buckets = {
+    '0-30': [],
+    '31-60': [],
+    '61-90': [],
+    '90+': [],
+  }
+
+  transacciones.forEach((trans) => {
+    const today = new Date()
+    const vencimiento = new Date(trans.fecha_vencimiento)
+    const diasVencido = Math.floor((today - vencimiento) / (1000 * 60 * 60 * 24))
+
+    if (diasVencido > 0) {
+      const bucket = getAgingBucket(diasVencido)
+      buckets[bucket].push({ ...trans, diasVencido })
     }
-    rows.forEach((row) => {
-      const days = Number(getDaysOverdue(row) ?? 0)
-      if (days <= 30) result['0-30'].push(row)
-      else if (days <= 60) result['31-60'].push(row)
-      else if (days <= 90) result['61-90'].push(row)
-      else result['90+'].push(row)
-    })
-    return result
-  }, [rows])
+  })
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold font-display">Cartera (Aging)</h1>
-        <p className="text-sm text-slate-600">
-          Buckets 0-30 / 31-60 / 61-90 / 90+ con proxima accion. >90 genera Cargo de vuelta + PTP.
-        </p>
-      </div>
-
-      {error ? (
-        <div className="rounded-md border border-warning bg-white p-4 text-sm font-semibold text-warning">
-          {error}
-        </div>
-      ) : null}
+      <h1 className="text-2xl font-semibold font-display">Cartera - Aging & Cobranza</h1>
 
       <div className="grid gap-4 md:grid-cols-4">
-        {Object.entries(buckets).map(([label, list]) => (
-          <Card key={label}>
+        {Object.entries(buckets).map(([bucket, items]) => (
+          <Card key={bucket}>
             <CardHeader>
-              <CardTitle className="text-base">{label} dias</CardTitle>
+              <CardTitle className="text-base">
+                {bucket} días
+                <Badge className="ml-2">{items.length}</Badge>
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-semibold text-ink">{list.length}</p>
-              <p className="text-xs text-slate-600">Proxima accion requerida</p>
+              <p className="text-2xl font-semibold">
+                ${items.reduce((sum, t) => sum + (t.monto || 0), 0).toFixed(2)}
+              </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Cargo de vuelta (>90 dias)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {loading ? <p className="text-sm text-slate-600">Cargando...</p> : null}
-          {!loading && buckets['90+'].length === 0 ? (
-            <p className="text-sm text-slate-600">Sin casos</p>
-          ) : null}
-          {buckets['90+'].slice(0, 6).map((row, index) => (
-            <div key={row.id ?? `overdue-${index}`} className="flex items-center justify-between">
-              <span className="text-sm text-ink">Cuenta #{row?.numero || row?.id || 'N/A'}</span>
-              <Badge variant="warning">PTP requerido</Badge>
-            </div>
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Casos Cargo de Vuelta (&gt;90 días)</h2>
+        <div className="space-y-3">
+          {cargoVueltaCases.map((caso) => (
+            <Card key={caso.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">{caso.clientes?.nombre}</CardTitle>
+                  <Badge>{caso.estado}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">Monto: ${caso.monto_total}</p>
+                <p className="text-sm">Días vencido: {caso.dias_vencido}</p>
+                {caso.acuerdo_tipo && <p className="text-sm">Acuerdo: {caso.acuerdo_tipo}</p>}
+              </CardContent>
+            </Card>
           ))}
-        </CardContent>
-      </Card>
+          {cargoVueltaCases.length === 0 && <p className="text-sm text-slate-600">Sin casos activos</p>}
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Todas las Cuentas Vencidas</h2>
+        <div className="space-y-3">
+          {loading && <p>Cargando...</p>}
+          {Object.entries(buckets).map(([bucket, items]) =>
+            items.map((trans) => (
+              <Card key={trans.id}>
+                <CardHeader>
+                  <CardTitle className="text-base">{trans.clientes?.nombre}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm">Monto: ${trans.monto}</p>
+                  <p className="text-sm">Vencido: {trans.diasVencido} días (Bucket: {bucket})</p>
+                  <p className="text-sm">Vencimiento: {trans.fecha_vencimiento}</p>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }
