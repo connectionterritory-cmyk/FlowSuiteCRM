@@ -1,7 +1,7 @@
-# Deploy Namecheap — FlowSuiteCRM (SPA)
+# Deploy Namecheap - FlowSuiteCRM (SPA)
 
 ## Entorno
-- Hosting estático: `crm.flowiadigital.com`
+- Hosting estatico: `crm.flowiadigital.com`
 - Sin backend Node, sin rutas `/api`.
 
 ## Build
@@ -24,6 +24,6 @@ RewriteRule . /index.html [L]
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-## Verificación
+## Verificacion
 - Abrir rutas profundas (ej. `/pipeline`, `/cliente/123`) sin 404.
 - Login y acceso restringido por org (RLS activo).

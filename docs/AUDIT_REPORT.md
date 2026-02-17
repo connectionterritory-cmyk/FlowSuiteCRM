@@ -1,4 +1,4 @@
-# FlowSuiteCRM v2 — Audit Report (MVP)
+# FlowSuiteCRM v2 - Audit Report (MVP)
 
 Fecha: 2026-02-16
 Modo: AUDIT-ONLY (sin cambios)
@@ -7,7 +7,7 @@ Modo: AUDIT-ONLY (sin cambios)
 **Estructura**
 - `/frontend/` Vite + React template base.
 - `/supabase/` solo placeholders: `migrations/`, `policies/`, `seeds/` con `.gitkeep`.
-- `/docs/` vacío (solo `.gitkeep`).
+- `/docs/` vacio (solo `.gitkeep`).
 - `/assets/` y `/tools/` placeholders.
 
 **Packages & scripts**
@@ -15,7 +15,7 @@ Modo: AUDIT-ONLY (sin cambios)
 
 **Rutas/Modulos**
 - No hay rutas de app. `App.jsx` es template Vite.
-- No hay código de Supabase ni auth.
+- No hay codigo de Supabase ni auth.
 
 ## 2) Frontend (React/Vite)
 **Estado**
@@ -23,9 +23,9 @@ Modo: AUDIT-ONLY (sin cambios)
 - No hay pantallas MVP.
 
 **UI/UX**
-- No hay tokens de UI (tipografías/paleta).
+- No hay tokens de UI (tipografias/paleta).
 - No hay ajustes Safari ni contraste alto.
-- Sin Kanban ni módulos de CRM.
+- Sin Kanban ni modulos de CRM.
 
 ## 3) Supabase
 **Snapshot (provisto por usuario)**
@@ -51,12 +51,12 @@ Triggers:
 
 ## 4) Hosting (Namecheap)
 **Supuesto (provisto por usuario)**
-- Hosting estático para frontend: `crm.flowiadigital.com`.
+- Hosting estatico para frontend: `crm.flowiadigital.com`.
 - SPA rewrite con `.htaccess` hacia `index.html`.
 - Variables de entorno: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 - Sin backend Node ni rutas `/api`.
 
-## Conclusión
-- Repo en estado "bootstrap": frontend template y carpeta supabase vacía.
+## Conclusion
+- Repo en estado "bootstrap": frontend template y carpeta supabase vacio.
 - Supabase real existe fuera del repo; RLS incompleto para multi-tenant.
-- MVP v2 requiere construcción incremental en DB + UI + deploy.
+- MVP v2 requiere construccion incremental en DB + UI + deploy.
