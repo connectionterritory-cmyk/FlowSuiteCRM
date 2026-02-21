@@ -1,0 +1,903 @@
+{
+  "app": {
+    "name": "FlowSuite CRM",
+    "tagline": "End-to-end connected operations"
+  },
+  "sidebar": {
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar"
+  },
+  "languages": {
+    "es": "Spanish",
+    "en": "English",
+    "pt": "Portuguese"
+  },
+  "common": {
+    "language": "Language",
+    "loading": "Loading...",
+    "noData": "No data",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page",
+    "of": "of",
+    "select": "Select",
+    "yes": "Yes",
+    "no": "No",
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "close": "Close",
+    "signOut": "Sign out",
+    "signingOut": "Signing out...",
+    "toggleTheme": "Toggle theme",
+    "themeLight": "Light mode",
+    "themeDark": "Dark mode",
+    "createCliente": "Create customer",
+    "createProducto": "Create product",
+    "supabaseRequired": "Configure Supabase to save changes.",
+    "newLead": "New lead",
+    "newCliente": "New customer",
+    "newVenta": "New sale",
+    "newProducto": "New product",
+    "newUsuario": "New user",
+    "verModulo": "View module"
+  },
+  "messaging": {
+    "title": "Send message via {{channel}}",
+    "subtitle": "Pick a template and personalize the message.",
+    "send": "Send",
+    "channel": {
+      "whatsapp": "WhatsApp",
+      "sms": "SMS",
+      "email": "Email"
+    },
+    "editorTitle": "Editor",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Write your message...",
+    "variables": "Variables: {nombre}, {vendedor}",
+    "templateEmpty": "Custom message",
+    "customHint": "Write a custom message.",
+    "phoneMissing": "Add a phone number to send.",
+    "emailMissing": "Add an email to send.",
+    "emailSubject": "Royal Prestige message",
+    "templates": {
+      "referidoLabel": "Referral",
+      "seguimientoLabel": "Follow-up",
+      "recordatorioLabel": "Reminder",
+      "personalizadoLabel": "Custom",
+      "referido": "Hi {nombre} 😊 {vendedor} from Royal Prestige here...",
+      "seguimiento": "Hi {nombre}, just a reminder about our appointment...",
+      "recordatorio": "Hi {nombre} 👋 Just a quick reminder...",
+      "personalizado": ""
+    }
+  },
+  "organization": {
+    "action": "Organization",
+    "title": "Organization",
+    "subtitle": "Configure the name that appears in WhatsApp templates.",
+    "field": "Organization name",
+    "placeholder": "Connection Worldwide Group"
+  },
+  "whatsapp": {
+    "title": "WhatsApp templates",
+    "subtitle": "Pick a template and review the message before sending.",
+    "send": "Open WhatsApp",
+    "open": "Open WhatsApp",
+    "column": "WhatsApp",
+    "preview": "Preview",
+    "selectTemplate": "Select a template to preview the message.",
+    "noTemplates": "No templates available for this context.",
+    "phoneMissing": "Add a phone number to send the message.",
+    "newTemplate": "+ New template",
+    "customName": "Template name",
+    "customCategory": "Category",
+    "customMessage": "Message",
+    "customVariables": "Available variables: {nombre}, {vendedor}, {organizacion}, {telefono}, {fecha}",
+    "saveTemplate": "Save template",
+    "deleteTemplate": "Delete",
+    "customError": "Fill in the name and message.",
+    "tabs": {
+      "pipeline": "Pipeline",
+      "source": "Source",
+      "client": "Customer",
+      "4en14": "4en14",
+      "conexiones": "Connections",
+      "custom": "Custom"
+    }
+  },
+  "toast": {
+    "success": "Saved successfully",
+    "error": "Error while saving"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "pipeline": "Pipeline",
+    "oportunidades": "Opportunities",
+    "leads": "Leads",
+    "clientes": "Customers",
+    "ventas": "Sales",
+    "productos": "Products",
+    "programas": "Programs",
+    "conexionesInfinitas": "Infinite connections",
+    "programa4en14": "4 in 14",
+    "servicioCliente": "Customer service",
+    "telemercadeo": "Telemarketing",
+    "usuarios": "Users"
+  },
+  "oportunidades": {
+    "title": "Opportunities",
+    "subtitle": "Manage opportunities and progress.",
+    "new": "New opportunity",
+    "form": {
+      "title": "New opportunity",
+      "lead": "Lead (optional)",
+      "cliente": "Customer (optional)",
+      "etapa": "Stage",
+      "valor": "Estimated value",
+      "probabilidad": "Probability (%)",
+      "fecha": "Estimated close date",
+      "notas": "Notes"
+    }
+  },
+  "dashboard": {
+    "title": "Executive overview",
+    "subtitle": "Key metrics for your operation",
+    "periodoActual": "Current period",
+    "missingConfigTitle": "Supabase not configured",
+    "missingConfigDescription": "Connect Supabase to see real-time metrics.",
+    "charts": {
+      "salesTitle": "Sales last 12 months",
+      "salesSubtitle": "Monthly trend",
+      "pipelineTitle": "Pipeline distribution",
+      "pipelineSubtitle": "By stage",
+      "pipelineBadge": "Pipeline"
+    },
+    "metrics": {
+      "leadsNuevos": "New leads",
+      "oportunidadesActivas": "Active opportunities",
+      "demos": "Demos",
+      "ventasMes": "Sales this month",
+      "embajadoresSilver": "Silver ambassadors",
+      "embajadoresGold": "Gold ambassadors",
+      "volumenAnual": "Annual volume",
+      "ciclosActivos": "Active cycles",
+      "serviciosVencidos": "Overdue services",
+      "serviciosProximos": "Services due soon",
+      "cumpleanos": "Upcoming birthdays"
+    },
+    "highlights": {
+      "title": "Highlights",
+      "description": "Quick view of priority areas.",
+      "pipeline": "Active pipeline",
+      "servicio": "Customer service",
+      "programas": "Programs"
+    },
+    "nextSteps": {
+      "title": "Next steps",
+      "description": "Recommended actions for the team.",
+      "leads": "New leads",
+      "ciclos": "Active cycles"
+    }
+  },
+  "auth": {
+    "loginSubtitle": "Sign in to continue.",
+    "email": "Email",
+    "emailPlaceholder": "name@company.com",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in...",
+    "forgotPassword": "Forgot your password?",
+    "resetSent": "We sent you an email to reset your password.",
+    "resetMissingEmail": "Enter your email to reset your password.",
+    "resetting": "Sending...",
+    "resetTitle": "Reset password",
+    "resetSubtitle": "Set a new password for your account.",
+    "newPassword": "New password",
+    "newPasswordPlaceholder": "Minimum 8 characters",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Repeat the password",
+    "resetButton": "Save password",
+    "resetMismatch": "Passwords do not match.",
+    "resetWeak": "Password must be at least 8 characters.",
+    "resetInvalid": "The reset link is invalid or expired.",
+    "resetSuccess": "Password updated.",
+    "resetRedirect": "Redirecting to login..."
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "subtitle": "Track the progress of your opportunities.",
+    "emptyColumn": "No leads in this stage",
+    "nextAction": "Next action",
+    "noAction": "No action set",
+    "columns": {
+      "nuevo": "New",
+      "contactado": "Contacted",
+      "cita": "Appointment",
+      "demo": "Demo",
+      "cierre": "Closure",
+      "descartado": "Discarded"
+    },
+    "cardPlaceholder": "Drag a lead here"
+  },
+  "leads": {
+    "title": "Leads",
+    "subtitle": "Centralize prospects and follow-ups.",
+    "detailsTitle": "Lead details",
+    "form": {
+      "title": "New lead"
+    },
+    "fields": {
+      "nombre": "First name",
+      "apellido": "Last name",
+      "email": "Email",
+      "telefono": "Phone",
+      "fuente": "Source",
+      "fuenteOtro": "Specify source",
+      "programaId": "Program ID",
+      "embajadorId": "Ambassador ID",
+      "ownerId": "Owner ID",
+      "estadoPipeline": "Pipeline status",
+      "nextAction": "Next action",
+      "nextActionDate": "Next action date"
+    },
+    "sources": {
+      "toquePuerta": "Door knock",
+      "feria": "Trade show",
+      "familiares": "Family and friends",
+      "programaCanastas": "Basket program",
+      "redesSociales": "Social media",
+      "exhibicion": "In-store display",
+      "referido": "Referral",
+      "conexionesInfinitas": "Infinite connections",
+      "otro": "Other"
+    },
+    "calificacion": {
+      "title": "Qualification",
+      "sectionTitle": "Qualification details",
+      "generalTitle": "General information",
+      "ventaTitle": "Sales qualification",
+      "saveAll": "Save all",
+      "actions": {
+        "title": "Next steps",
+        "schedule": "Schedule appointment",
+        "add4en14": "Add to 4 in 14",
+        "done": "Done for now"
+      },
+      "general": {
+        "direccion": "Street / Address",
+        "apartamento": "Apt / Suite",
+        "ciudad": "City",
+        "estadoRegion": "State / Province",
+        "codigoPostal": "Postal code",
+        "fechaNacimiento": "Birthdate"
+      },
+      "estadoCivil": "Marital status",
+      "nombreConyuge": "Spouse name",
+      "telefonoConyuge": "Spouse phone",
+      "situacionLaboral": "Employment status",
+      "ninosCasa": "Children at home",
+      "cantidadNinos": "How many",
+      "productosRp": "Owns Royal Prestige products",
+      "vivienda": "Housing",
+      "estados": {
+        "soltero": "Single",
+        "casado": "Married",
+        "viudo": "Widowed",
+        "divorciado": "Divorced"
+      },
+      "laboral": {
+        "solo": "Only one works",
+        "ambos": "Both work",
+        "ninguno": "No one works"
+      },
+      "viviendaOptions": {
+        "duenos": "Owners",
+        "rentan": "Rent"
+      }
+    },
+    "columns": {
+      "nombre": "Name",
+      "telefono": "Phone",
+      "fuente": "Source",
+      "owner": "Owner",
+      "estado": "Status",
+      "nextAction": "Next action"
+    }
+  },
+  "clientes": {
+    "title": "Customers",
+    "subtitle": "Manage relationships and active accounts.",
+    "detailsTitle": "Customer details",
+    "form": {
+      "title": "New customer"
+    },
+    "fields": {
+      "nombre": "First name",
+      "apellido": "Last name",
+      "email": "Email",
+      "telefono": "Phone",
+      "direccion": "Street / Address",
+      "apartamento": "Apt / Suite",
+      "ciudad": "City",
+      "estadoRegion": "State / Province",
+      "codigoPostal": "Postal code",
+      "numeroCuentaFinanciera": "Hycite account",
+      "saldoActual": "Current balance",
+      "estadoMorosidad": "Delinquency status",
+      "vendedorId": "Sales rep ID",
+      "distribuidorId": "Distributor ID",
+      "fechaNacimiento": "Birth date",
+      "activo": "Active"
+    },
+    "estado": {
+      "activo": "Active",
+      "inactivo": "Inactive"
+    },
+    "morosidad": {
+      "0-30": "0-30",
+      "31-60": "31-60",
+      "61-90": "61-90",
+      "91+": "91+"
+    },
+    "columns": {
+      "nombre": "Name",
+      "telefono": "Phone",
+      "cuenta": "Hycite account",
+      "vendedor": "Sales rep",
+      "morosidad": "Delinquency",
+      "estado": "Status"
+    }
+  },
+  "ventas": {
+    "title": "Sales",
+    "subtitle": "Orders and movements at a glance.",
+    "detailsTitle": "Sale details",
+    "form": {
+      "title": "New sale"
+    },
+    "fields": {
+      "numeroNotaPedido": "Order number",
+      "ownerType": "Sale origin",
+      "clienteId": "Customer ID",
+      "prospectoId": "Prospect",
+      "numeroCuentaFinanciera": "HyCite account",
+      "vendedorId": "Sales rep ID",
+      "productoId": "Product ID",
+      "tipoMovimiento": "Movement type",
+      "monto": "Amount",
+      "fechaVenta": "Sale date"
+    },
+    "ownerTypes": {
+      "cliente": "Customer",
+      "prospecto": "Prospect"
+    },
+    "tipo": {
+      "venta_inicial": "Initial sale",
+      "agregado": "Add-on"
+    },
+    "errors": {
+      "selectCliente": "Select a customer.",
+      "selectProspecto": "Select a prospect.",
+      "accountRequired": "Enter the HyCite account to convert the prospect.",
+      "prospectoMissing": "Selected prospect was not found."
+    },
+    "columns": {
+      "nota": "Order",
+      "cliente": "Customer",
+      "producto": "Product",
+      "vendedor": "Sales rep",
+      "monto": "Amount",
+      "tipo": "Type",
+      "fecha": "Date"
+    }
+  },
+  "productos": {
+    "title": "Products",
+    "subtitle": "Catalog and availability.",
+    "detailsTitle": "Product details",
+    "form": {
+      "title": "New product"
+    },
+    "fields": {
+      "codigo": "Code",
+      "nombre": "Name",
+      "categoria": "Category",
+      "precio": "Price",
+      "activo": "Active"
+    },
+    "estado": {
+      "activo": "Active",
+      "inactivo": "Inactive"
+    },
+    "columns": {
+      "codigo": "Code",
+      "nombre": "Name",
+      "categoria": "Category",
+      "precio": "Price",
+      "activo": "Active"
+    }
+  },
+  "programas": {
+    "title": "Programs",
+    "subtitle": "Modules that drive results.",
+    "cards": {
+      "conexiones": {
+        "title": "Infinite connections",
+        "description": "Track ambassadors and annual volume."
+      },
+      "cuatroEnCatorce": {
+        "title": "4 in 14 program",
+        "description": "Commercial cycles and qualified referrals."
+      }
+    }
+  },
+  "conexiones": {
+    "title": "Infinite connections",
+    "subtitle": "Ambassador performance overview.",
+    "tabs": {
+      "activaciones": "Activations",
+      "embajadores": "Ambassadors"
+    },
+    "activaciones": {
+      "title": "Activations",
+      "subtitle": "Manage activations and referrals for the program.",
+      "actions": {
+        "new": "New activation"
+      },
+      "columns": {
+        "fecha": "Date",
+        "representante": "Representative",
+        "cliente": "Customer/Prospect",
+        "referidos": "Referrals",
+        "regalo": "Gift",
+        "foto": "Photo",
+        "whatsapp": "WhatsApp sent",
+        "estado": "Status"
+      },
+      "steps": {
+        "cliente": "Customer and referrals",
+        "clienteHint": "Select the customer and capture 20+ referrals.",
+        "regalo": "Premium gift",
+        "regaloHint": "Choose a gift and upload the customer photo.",
+        "whatsapp": "WhatsApp",
+        "whatsappHint": "Copy the official message and log the send."
+      },
+      "counter": "{{count}}/20 referrals added",
+      "remaining": "{{count}} remaining to activate",
+      "unlockGift": "{{count}} names to unlock the gift",
+      "readyGift": "✅ List complete. Gift unlocked",
+      "form": {
+        "title": "New activation",
+        "searchLabel": "Search customer or prospect",
+        "searchPlaceholder": "Name or phone",
+        "searchHint": "Start typing to find existing records.",
+        "resultsClientes": "Customers",
+        "resultsProspectos": "Prospects",
+        "selectedLabel": "Selected",
+        "selected": {
+          "cliente": "Customer",
+          "prospecto": "Prospect"
+        },
+        "createCliente": "Create customer",
+        "createProspecto": "Create prospect",
+        "createClienteTitle": "New customer",
+        "createProspectoTitle": "New prospect",
+        "clienteNombre": "First name",
+        "clienteApellido": "Last name",
+        "clienteTelefono": "Phone",
+        "clienteCuenta": "HyCite account",
+        "prospectoNombre": "Prospect name",
+        "prospectoApellido": "Prospect last name",
+        "prospectoTelefono": "Prospect phone",
+        "addReferido": "+ Add referral",
+        "removeReferido": "Remove referral",
+        "referidoNombre": "Referral name",
+        "referidoTelefono": "Phone",
+        "foto": "Photo with gift",
+        "fotoAlt": "Gift photo",
+        "fotoMissing": "No photo uploaded",
+        "fotoUploading": "Uploading photo...",
+        "giftEmpty": "No premium gifts available.",
+        "copyMessage": "Copy message",
+        "markSent": "Mark as sent",
+        "sentAt": "Sent {{date}}",
+        "saveDraft": "Save draft",
+        "activateProgram": "Activate program",
+        "updateActivation": "Update activation",
+        "saveGiftSelection": "Save selection",
+        "clientMessageTitle": "Customer message",
+        "copyClientMessage": "Copy Message for Customer",
+        "clientMessageCopied": "Customer message copied"
+      },
+      "whatsapp": {
+        "sent": "Sent",
+        "pending": "Pending",
+        "copied": "Message copied",
+        "marked": "Message marked as sent"
+      },
+      "states": {
+        "borrador": "Draft",
+        "activo": "Active",
+        "completo": "Complete"
+      },
+      "relaciones": {
+        "familiar": "Family",
+        "amigo": "Friend",
+        "companero": "Coworker"
+      },
+      "detailTitle": "Activation - {{name}}",
+      "referidos": {
+        "title": "Referrals",
+        "columns": {
+          "nombre": "Name",
+          "telefono": "Phone",
+          "relacion": "Relation",
+          "estado": "Status",
+          "acciones": "Actions"
+        },
+        "add": "+ Add referral",
+        "save": "Save",
+        "actions": {
+          "whatsapp": "WhatsApp",
+          "createLead": "Create lead",
+          "leadCreated": "Lead created"
+        },
+        "states": {
+          "pendiente": "Pending",
+          "contactado": "Contacted",
+          "cita_agendada": "Appointment scheduled",
+          "presentacion_hecha": "Presentation completed",
+          "regalo_entregado": "Gift delivered"
+        }
+      },
+      "errors": {
+        "minReferidos": "You must add at least 20 referrals.",
+        "minReferidosDraft": "You must add at least 1 referral.",
+        "selectGift": "Select a premium gift.",
+        "photoRequired": "Upload the customer photo with the gift.",
+        "selectCliente": "Select a customer.",
+        "prospectoRequired": "Complete prospect name and phone.",
+        "clienteRequired": "Complete customer name, phone, and HyCite account.",
+        "selectOwner": "Select a customer or prospect.",
+        "noUser": "Representative not found.",
+        "referidoIncompleto": "Complete referral name and phone.",
+        "whatsappBlocked": "Complete gift and photo to enable WhatsApp.",
+        "clientePhoneExists": "A customer with that phone already exists. The existing record was selected.",
+        "prospectoPhoneExists": "A prospect with that phone already exists. The existing record was selected."
+      }
+    },
+    "actions": {
+      "newEmbajador": "New ambassador",
+      "newPeriodo": "New period",
+      "registerPeriodo": "Register in period",
+      "addConexion": "+ Connection"
+    },
+    "form": {
+      "embajadorTitle": "New ambassador",
+      "periodoTitle": "New period",
+      "periodoDescription": "A period represents the program year for Conexiones Infinitas. During this period ambassadors accumulate connections and sales to reach Gold level ($20,000). Only one active period is allowed at a time.",
+      "registroTitle": "Register ambassador in period",
+      "nombre": "First name",
+      "apellido": "Last name",
+      "email": "Email",
+      "telefono": "Phone",
+      "fechaNacimiento": "Birthdate",
+      "vendedor": "Seller",
+      "periodo": "Active period",
+      "nivel": "Level",
+      "fechaInicio": "Start date",
+      "fechaFin": "End date",
+      "nombrePeriodo": "Period name",
+      "anio": "Program year"
+    },
+    "errors": {
+      "noActivePeriod": "No active period available.",
+      "selectEmbajador": "Select an ambassador."
+    },
+    "metrics": {
+      "silver": "Silver ambassadors",
+      "gold": "Gold ambassadors",
+      "volumen": "Annual volume"
+    },
+    "levels": {
+      "silver": "Silver",
+      "gold": "Gold"
+    },
+    "progress": {
+      "tooltip": "{{conexiones}} connections this year | {{ventas}} in generated sales"
+    },
+    "referralLoop": {
+      "title": "+ Connection for {{embajador}}",
+      "subtitle": "Log the people this ambassador brought to a demo.",
+      "counter": "{{count}} connections added",
+      "addRow": "+ Add another",
+      "nombre": "Name",
+      "telefono": "Phone",
+      "estado": "Status",
+      "nombrePlaceholder": "Connection name",
+      "telefonoPlaceholder": "Phone",
+      "whatsapp": "WhatsApp",
+      "sms": "SMS",
+      "email": "Email",
+      "emailSubject": "Premium Gift",
+      "emailPlaceholder": "Email",
+      "save": "Save connections",
+      "skip": "Skip for now",
+      "empty": "Add at least one connection.",
+      "whatsappTemplate": "Hi {nombre}, your Premium Gift is ready. Can we coordinate the delivery?",
+      "states": {
+        "pendiente": "Pending",
+        "demo_calificada": "Qualified demo",
+        "venta": "Sale",
+        "no_interes": "Not interested"
+      }
+    },
+    "columns": {
+      "embajador": "Ambassador",
+      "periodo": "Period",
+      "conexiones": "Connections",
+      "ventas": "Sales",
+      "nivel": "Tier"
+    }
+  },
+  "programa4en14": {
+    "title": "4 in 14 program",
+    "subtitle": "Cycle control and outcomes.",
+    "actions": {
+      "newCycle": "New cycle",
+      "addReferidos": "+ Referrals",
+      "expand": "View referrals",
+      "collapse": "Hide referrals"
+    },
+    "form": {
+      "title": "New cycle",
+      "description": "A 4 in 14 cycle is a 14-day program where the owner must achieve 4 qualified demos to receive their gift. Once completed it can be reactivated with a new cycle.",
+      "ownerType": "Owner type",
+      "owner": "Owner",
+      "vendedor": "Seller",
+      "fechaInicio": "Start date",
+      "fechaFin": "End date",
+      "meta": "Presentation goal",
+      "cicloNumero": "Cycle number",
+      "giftLabel": "Customer gift selection (optional)",
+      "giftCategoryUncategorized": "Uncategorized",
+      "ownerTypes": {
+        "cliente": "Customer",
+        "lead": "Lead",
+        "vendedor": "Seller",
+        "embajador": "Ambassador"
+      }
+    },
+    "metrics": {
+      "ciclosActivos": "Active cycles",
+      "demosCalificadas": "Qualified demos"
+    },
+    "columns": {
+      "expand": "Detail",
+      "propietario": "Owner",
+      "vendedor": "Sales rep",
+      "fechaInicio": "Start date",
+      "estado": "Status",
+      "presentaciones": "Presentations",
+      "regalo": "Gift",
+      "referidos": "Referrals"
+    },
+    "referralTable": {
+      "title": "{{count}} referrals",
+      "empty": "No referrals yet.",
+      "columns": {
+        "nombre": "Name",
+        "telefono": "Phone",
+        "calificacion": "Rating",
+        "prioridad": "Priority",
+        "estado": "Status",
+        "fechaDemo": "Demo date",
+        "acciones": "Actions"
+      },
+      "actions": {
+        "calificar": "Rate",
+        "whatsapp": "WhatsApp",
+        "sms": "SMS",
+        "email": "Email"
+      }
+    },
+    "referralStates": {
+      "pendiente": "Pending",
+      "agendada": "Appointment scheduled",
+      "show": "Demo completed",
+      "demo_calificada": "Qualified demo",
+      "venta": "Closed sale",
+      "no_interes": "Not interested"
+    },
+    "rating": {
+      "none": "-"
+    },
+    "priority": {
+      "top4": "Top 4"
+    },
+    "calificacion": {
+      "title": "Rate referral",
+      "criteriaTitle": "Criteria",
+      "priorityTitle": "Priority",
+      "priorityTop4": "⭐ Top 4 priority",
+      "estado": "Presentation status",
+      "notas": "Additional notes",
+      "notasPlaceholder": "Why would you visit first?",
+      "criteria": {
+        "trabajanDos": "Dual income couple",
+        "ninosEnCasa": "Kids at home",
+        "tieneCredito": "Has credit",
+        "tieneProductosRp": "Knows Royal Prestige",
+        "casaPropia": "Owns home"
+      }
+    },
+    "gift": {
+      "pending": "🎁 Gift pending",
+      "delivered": "✅ Gift delivered",
+      "deliveredWithDate": "✅ Gift delivered · {{date}}",
+      "deliver": "Deliver gift",
+      "confirmDeliver": "Confirm gift delivery?"
+    },
+    "referidos": {
+      "nombre": "Name",
+      "telefono": "Phone",
+      "estado": "Status",
+      "fecha": "Date"
+    },
+    "referralLoop": {
+      "title": "🎉 Qualified demo! Capture referrals now",
+      "subtitle": "Add up to 10 referrals while the moment is fresh. Only name and phone are needed.",
+      "counter": "{{count}} referrals added",
+      "addRow": "+ Add another",
+      "nombre": "Name",
+      "telefono": "Phone",
+      "nombrePlaceholder": "Referral name",
+      "telefonoPlaceholder": "Phone",
+      "emailPlaceholder": "Email",
+      "whatsapp": "WhatsApp",
+      "sms": "SMS",
+      "email": "Email",
+      "emailSubject": "Premium Gift",
+      "save": "Save referrals",
+      "skip": "Skip for now",
+      "empty": "Add at least one referral.",
+      "whatsappTemplate": "Hi {nombre}, your Premium Gift is ready. Can we coordinate the delivery?"
+    }
+  },
+  "servicio": {
+    "title": "Customer service",
+    "subtitle": "Equipment, components, and services in one place.",
+    "newService": "New service",
+    "form": {
+      "title": "New service",
+      "fields": {
+        "cliente": "Customer",
+        "equipo": "Installed equipment",
+        "fecha": "Service date",
+        "tipo": "Service type",
+        "observaciones": "Notes",
+        "venta": "Link to sale"
+      }
+    },
+    "types": {
+      "cambio_repuesto": "Replacement",
+      "revision": "Inspection",
+      "garantia": "Warranty",
+      "queja": "Complaint"
+    },
+    "equipos": {
+      "columns": {
+        "cliente": "Customer",
+        "producto": "Product",
+        "instalacion": "Install date",
+        "numeroSerie": "Serial number",
+        "activo": "Active"
+      }
+    },
+    "componentes": {
+      "columns": {
+        "equipo": "Equipment",
+        "componente": "Component",
+        "ciclo": "Cycle",
+        "proximo": "Next change",
+        "activo": "Active"
+      }
+    },
+    "servicios": {
+      "columns": {
+        "cliente": "Customer",
+        "fecha": "Date",
+        "tipo": "Type",
+        "observaciones": "Notes",
+        "venta": "Sale"
+      }
+    }
+  },
+  "telemercadeo": {
+    "title": "Telemarketing",
+    "subtitle": "Assign sellers to telemarketing reps.",
+    "fields": {
+      "tele": "Telemarketing",
+      "vendedor": "Seller"
+    },
+    "columns": {
+      "vendedor": "Seller",
+      "telefono": "Phone",
+      "actions": "Actions"
+    },
+    "actions": {
+      "assign": "Assign",
+      "remove": "Remove"
+    },
+    "errors": {
+      "missingSelection": "Select a telemarketing rep and a seller.",
+      "alreadyAssigned": "This seller is already assigned to another rep."
+    },
+    "empty": "No sellers assigned.",
+    "noAccessTitle": "Restricted access",
+    "noAccessDescription": "Only admins and distributors can assign telemarketing."
+  },
+  "usuarios": {
+    "title": "Users",
+    "subtitle": "Role and access management.",
+    "detailsTitle": "User details",
+    "form": {
+      "title": "New user",
+      "editTitle": "Edit user"
+    },
+    "fields": {
+      "nombre": "First name",
+      "apellido": "Last name",
+      "email": "Email",
+      "codigoVendedor": "Sales code",
+      "codigoDistribuidor": "Distributor code",
+      "rol": "Role",
+      "activo": "Active"
+    },
+    "roles": {
+      "admin": "Admin",
+      "distribuidor": "Distributor",
+      "vendedor": "Sales rep",
+      "telemercadeo": "Telemarketing"
+    },
+    "estado": {
+      "activo": "Active",
+      "inactivo": "Inactive"
+    },
+    "errors": {
+      "missingRequired": "Name, last name, and email are required.",
+      "missingEmail": "This user has no email.",
+      "authRequired": "You must be signed in to send invites."
+    },
+    "instructions": {
+      "title": "Create user",
+      "singleStep": "An email invite will be sent and the profile will be created automatically."
+    },
+    "success": {
+      "invite": "Invite sent",
+      "inviteResent": "Invite resent",
+      "updated": "User updated",
+      "deleted": "User deactivated"
+    },
+    "actions": {
+      "resendInvite": "Resend invite",
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirmDelete": "Are you sure you want to deactivate this user?"
+    },
+    "filters": {
+      "search": "Search by name, email or code",
+      "allRoles": "All roles",
+      "allStatuses": "All statuses"
+    },
+    "columns": {
+      "nombre": "Name",
+      "email": "Email",
+      "rol": "Role",
+      "codigo": "Code",
+      "activo": "Active",
+      "actions": "Actions"
+    }
+  }
+}

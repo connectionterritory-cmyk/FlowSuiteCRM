@@ -18,6 +18,11 @@ dist/
 build/
 .vite/
 
+# Dumps
+*.dump
+*.sql
+backup.sql
+
 # Editor
 .vscode/
 .idea/
@@ -25,3 +30,6 @@ build/
 # Misc
 *.tmp
 *.swp
+
+.agent/
+**/supabase/.temp/
