@@ -123,19 +123,25 @@ export function UsuariosPage() {
         return
       }
       setResendingId(usuario.id)
-      const { data, error: invokeError } = await supabase.functions.invoke('resend-invite', {
-        body: { email: usuario.email, organizacion: getOrganizationName(session.user?.user_metadata) },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
-      if (invokeError || (data as { error?: string } | null)?.error) {
-        const message = invokeError?.message || (data as { error?: string } | null)?.error || t('toast.error')
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke('resend-invite', {
+          body: { email: usuario.email, organizacion: getOrganizationName(session.user?.user_metadata) },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        })
+        if (invokeError || (data as { error?: string } | null)?.error) {
+          const message = invokeError?.message || (data as { error?: string } | null)?.error || t('toast.error')
+          showToast(message, 'error')
+        } else {
+          showToast(t('usuarios.success.inviteResent'))
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('toast.error')
         showToast(message, 'error')
-      } else {
-        showToast(t('usuarios.success.inviteResent'))
+      } finally {
+        setResendingId(null)
       }
-      setResendingId(null)
     },
     [showToast, t, session],
   )
