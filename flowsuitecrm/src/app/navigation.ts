@@ -105,3 +105,26 @@ export const programSubItems: NavSubItem[] = [
     path: '/conexiones-infinitas',
   },
 ]
+
+export const telemercadeoSubItems: NavSubItem[] = [
+  {
+    key: 'telemercadeo-cartera',
+    labelKey: 'nav.telemercadeoCartera',
+    path: '/telemercadeo/cartera',
+  },
+  {
+    key: 'telemercadeo-cumpleanos',
+    labelKey: 'nav.telemercadeoCumpleanos',
+    path: '/telemercadeo/cumpleanos',
+  },
+  {
+    key: 'telemercadeo-filtros',
+    labelKey: 'nav.telemercadeoFiltros',
+    path: '/telemercadeo/filtros',
+  },
+  {
+    key: 'telemercadeo-referidos',
+    labelKey: 'nav.telemercadeoReferidos',
+    path: '/telemercadeo/referidos',
+  },
+]

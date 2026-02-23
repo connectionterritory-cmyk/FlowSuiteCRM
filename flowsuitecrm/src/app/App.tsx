@@ -13,6 +13,10 @@ import { Programa4en14Page } from '../modules/4en14/Programa4en14Page'
 import { ServicioClientePage } from '../modules/servicio-cliente/ServicioClientePage'
 import { UsuariosPage } from '../modules/usuarios/UsuariosPage'
 import { TelemercadeoPage } from '../modules/telemercadeo/TelemercadeoPage'
+import { TelemercadeoCarteraPage } from '../modules/telemercadeo/TelemercadeoCarteraPage'
+import { TelemercadeoCumpleanosPage } from '../modules/telemercadeo/TelemercadeoCumpleanosPage'
+import { TelemercadeoFiltrosPage } from '../modules/telemercadeo/TelemercadeoFiltrosPage'
+import { TelemercadeoReferidosPage } from '../modules/telemercadeo/TelemercadeoReferidosPage'
 import { ImportacionesPage } from '../modules/importaciones/ImportacionesPage'
 import { PerfilPage } from '../modules/perfil/PerfilPage'
 import { LoginPage } from '../modules/auth/LoginPage'
@@ -58,7 +62,13 @@ export default function App() {
           <Route path="/conexiones-infinitas" element={<ConexionesInfinitasPage />} />
           <Route path="/4en14" element={<Programa4en14Page />} />
           <Route path="/servicio-cliente" element={<ServicioClientePage />} />
-          <Route path="/telemercadeo" element={<TelemercadeoPage />} />
+          <Route path="/telemercadeo" element={<TelemercadeoPage />}>
+            <Route index element={<Navigate to="/telemercadeo/cartera" replace />} />
+            <Route path="cartera" element={<TelemercadeoCarteraPage />} />
+            <Route path="cumpleanos" element={<TelemercadeoCumpleanosPage />} />
+            <Route path="filtros" element={<TelemercadeoFiltrosPage />} />
+            <Route path="referidos" element={<TelemercadeoReferidosPage />} />
+          </Route>
           <Route path="/importaciones" element={<ImportacionesPage />} />
           <Route path="/usuarios" element={<UsuariosPage />} />
           <Route path="/perfil" element={<PerfilPage />} />

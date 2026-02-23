@@ -46,6 +46,9 @@ export function UsuariosPage() {
   const [submitting, setSubmitting] = useState(false)
   const [resendingId, setResendingId] = useState<string | null>(null)
 
+  const [role, setRole] = useState<string | null>(null)
+  const [roleLoading, setRoleLoading] = useState(false)
+
   const [editingId, setEditingId] = useState<string | null>(null)
   const [userToDelete, setUserToDelete] = useState<UsuarioRecord | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -57,6 +60,33 @@ export function UsuariosPage() {
   const [selectedRow, setSelectedRow] = useState<(DataTableRow & { originalData?: UsuarioRecord }) | null>(null)
 
   const configured = isSupabaseConfigured
+
+  useEffect(() => {
+    let active = true
+    if (!configured || !session?.user.id) {
+      setRole(null)
+      return
+    }
+    setRoleLoading(true)
+    const cargarRol = async () => {
+      try {
+        const { data } = await supabase
+          .from('usuarios')
+          .select('rol')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        if (!active) return
+        setRole((data as { rol?: string } | null)?.rol ?? null)
+      } finally {
+        if (!active) return
+        setRoleLoading(false)
+      }
+    }
+    cargarRol()
+    return () => {
+      active = false
+    }
+  }, [configured, session?.user.id])
 
   const loadUsuarios = useCallback(async () => {
     if (!configured) return
@@ -336,169 +366,190 @@ export function UsuariosPage() {
 
   return (
     <div className="page-stack">
-      <SectionHeader
-        title={t('usuarios.title')}
-        subtitle={t('usuarios.subtitle')}
-        action={<Button onClick={() => handleOpenForm()}>{t('common.newUsuario')}</Button>}
-      />
-      {!configured && (
-        <EmptyState
-          title={t('dashboard.missingConfigTitle')}
-          description={t('dashboard.missingConfigDescription')}
-        />
-      )}
-      {error && <div className="form-error">{error}</div>}
-
-      <div className="flex flex-col sm:flex-row gap-4 mb-4">
-        <input
-          type="search"
-          placeholder={t('usuarios.filters.search')}
-          style={{ flex: 1, padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <select
-          style={{ width: 'auto', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-        >
-          <option value="all">{t('usuarios.filters.allRoles')}</option>
-          <option value="admin">{t('usuarios.roles.admin')}</option>
-          <option value="distribuidor">{t('usuarios.roles.distribuidor')}</option>
-          <option value="vendedor">{t('usuarios.roles.vendedor')}</option>
-          <option value="telemercadeo">{t('usuarios.roles.telemercadeo')}</option>
-        </select>
-        <select
-          style={{ width: 'auto', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="all">{t('usuarios.filters.allStatuses')}</option>
-          <option value="active">{t('usuarios.estado.activo')}</option>
-          <option value="inactive">{t('usuarios.estado.inactivo')}</option>
-        </select>
-      </div>
-
-      <DataTable
-        columns={[
-          t('usuarios.columns.nombre'),
-          t('usuarios.columns.email'),
-          t('usuarios.columns.rol'),
-          t('usuarios.columns.codigo'),
-          t('usuarios.columns.activo'),
-          t('usuarios.columns.actions'),
-        ]}
-        rows={rows as DataTableRow[]}
-        emptyLabel={emptyLabel}
-        onRowClick={setSelectedRow as any}
-      />
-
-      <Modal
-        open={formOpen}
-        title={editingId ? t('usuarios.form.editTitle') : t('usuarios.form.title')}
-        onClose={() => setFormOpen(false)}
-        actions={
-          <>
-            <Button variant="ghost" type="button" onClick={() => setFormOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" form="usuario-form" disabled={submitting}>
-              {submitting ? t('common.saving') : t('common.save')}
-            </Button>
-          </>
-        }
-      >
-        {!editingId && (
-          <div className="form-hint">
-            <strong>{t('usuarios.instructions.title')}</strong>
-            <p>{t('usuarios.instructions.singleStep')}</p>
+      {roleLoading ? (
+        <div className="page">Cargando...</div>
+      ) : role && role !== 'admin' && role !== 'distribuidor' ? (
+        <div>
+          <SectionHeader
+            title={t('usuarios.title')}
+            subtitle={t('usuarios.subtitle')}
+          />
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>
+            <p style={{ fontWeight: 600, marginBottom: '0.35rem' }}>Acceso restringido</p>
+            <p style={{ fontSize: '0.9rem' }}>Solo administradores y distribuidores pueden usar este módulo.</p>
           </div>
-        )}
-        <form id="usuario-form" className="form-grid" onSubmit={handleSubmit}>
-          <label className="form-field">
-            <span>{t('usuarios.fields.nombre')}</span>
-            <input value={formValues.nombre} onChange={handleChange('nombre')} required />
-          </label>
-          <label className="form-field">
-            <span>{t('usuarios.fields.apellido')}</span>
-            <input value={formValues.apellido} onChange={handleChange('apellido')} required />
-          </label>
-          <label className="form-field">
-            <span>{t('usuarios.fields.email')}</span>
-            <input
-              type="email"
-              value={formValues.email}
-              onChange={handleChange('email')}
-              required
-              disabled={Boolean(editingId)}
-              title={editingId ? t('usuarios.errors.emailReadonly') : undefined}
+        </div>
+      ) : (
+        <>
+          <SectionHeader
+            title={t('usuarios.title')}
+            subtitle={t('usuarios.subtitle')}
+            action={<Button onClick={() => handleOpenForm()}>{t('common.newUsuario')}</Button>}
+          />
+          {!configured && (
+            <EmptyState
+              title={t('dashboard.missingConfigTitle')}
+              description={t('dashboard.missingConfigDescription')}
             />
-          </label>
-          <label className="form-field">
-            <span>{t('usuarios.fields.codigoVendedor')}</span>
-            <input value={formValues.codigo_vendedor} onChange={handleChange('codigo_vendedor')} />
-          </label>
-          <label className="form-field">
-            <span>{t('usuarios.fields.codigoDistribuidor')}</span>
-            <input value={formValues.codigo_distribuidor} onChange={handleChange('codigo_distribuidor')} />
-          </label>
-          <label className="form-field">
-            <span>{t('usuarios.fields.rol')}</span>
-            <select value={formValues.rol} onChange={handleChange('rol')}>
+          )}
+          {error && <div className="form-error">{error}</div>}
+
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <input
+              type="search"
+              placeholder={t('usuarios.filters.search')}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <select
+              style={{ width: 'auto', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="all">{t('usuarios.filters.allRoles')}</option>
               <option value="admin">{t('usuarios.roles.admin')}</option>
               <option value="distribuidor">{t('usuarios.roles.distribuidor')}</option>
               <option value="vendedor">{t('usuarios.roles.vendedor')}</option>
               <option value="telemercadeo">{t('usuarios.roles.telemercadeo')}</option>
             </select>
-          </label>
-          <label className="form-field checkbox-field">
-            <span>{t('usuarios.fields.activo')}</span>
-            <input type="checkbox" checked={formValues.activo} onChange={handleChange('activo')} />
-          </label>
-          {formError && <div className="form-error">{formError}</div>}
-        </form>
-      </Modal>
-
-      <Modal
-        open={Boolean(userToDelete)}
-        title={t('usuarios.actions.delete')}
-        onClose={() => setUserToDelete(null)}
-        actions={
-          <>
-            <Button variant="ghost" onClick={() => setUserToDelete(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button style={{ backgroundColor: '#dc2626', color: 'white' }} onClick={handleDelete} disabled={deleting}>
-              {deleting ? t('common.saving') : t('usuarios.actions.delete')}
-            </Button>
-          </>
-        }
-      >
-        <p>{t('usuarios.actions.confirmDelete')}</p>
-        <p className="mt-2" style={{ color: '#6b7280', fontSize: '0.875rem' }}>
-          {userToDelete?.nombre} {userToDelete?.apellido} ({userToDelete?.email})
-        </p>
-      </Modal>
-
-      <DetailPanel
-        open={Boolean(selectedRow)}
-        title={t('usuarios.detailsTitle')}
-        items={selectedRow?.detail ?? []}
-        onClose={() => setSelectedRow(null)}
-        action={
-          selectedRow?.originalData && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                handleOpenForm(selectedRow.originalData)
-              }}
-              title={t('usuarios.actions.edit')}
+            <select
+              style={{ width: 'auto', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
             >
-              ✏️
-            </Button>
-          )
-        }
-      />
+              <option value="all">{t('usuarios.filters.allStatuses')}</option>
+              <option value="active">{t('usuarios.estado.activo')}</option>
+              <option value="inactive">{t('usuarios.estado.inactivo')}</option>
+            </select>
+          </div>
+
+          <DataTable
+            columns={[
+              t('usuarios.columns.nombre'),
+              t('usuarios.columns.email'),
+              t('usuarios.columns.rol'),
+              t('usuarios.columns.codigo'),
+              t('usuarios.columns.activo'),
+              t('usuarios.columns.actions'),
+            ]}
+            rows={rows as DataTableRow[]}
+            emptyLabel={emptyLabel}
+            onRowClick={setSelectedRow as any}
+          />
+
+          <Modal
+            open={formOpen}
+            title={editingId ? t('usuarios.form.editTitle') : t('usuarios.form.title')}
+            onClose={() => setFormOpen(false)}
+            actions={
+              <>
+                <Button variant="ghost" type="button" onClick={() => setFormOpen(false)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button type="submit" form="usuario-form" disabled={submitting}>
+                  {submitting ? t('common.saving') : t('common.save')}
+                </Button>
+              </>
+            }
+          >
+            {!editingId && (
+              <div className="form-hint">
+                <strong>{t('usuarios.instructions.title')}</strong>
+                <p>{t('usuarios.instructions.singleStep')}</p>
+              </div>
+            )}
+            <form id="usuario-form" className="form-grid" onSubmit={handleSubmit}>
+              <label className="form-field">
+                <span>{t('usuarios.fields.nombre')}</span>
+                <input value={formValues.nombre} onChange={handleChange('nombre')} required />
+              </label>
+              <label className="form-field">
+                <span>{t('usuarios.fields.apellido')}</span>
+                <input value={formValues.apellido} onChange={handleChange('apellido')} required />
+              </label>
+              <label className="form-field">
+                <span>{t('usuarios.fields.email')}</span>
+                <input
+                  type="email"
+                  value={formValues.email}
+                  onChange={handleChange('email')}
+                  required
+                  disabled={Boolean(editingId)}
+                  title={editingId ? t('usuarios.errors.emailReadonly') : undefined}
+                />
+              </label>
+              <label className="form-field">
+                <span>{t('usuarios.fields.codigoVendedor')}</span>
+                <input value={formValues.codigo_vendedor} onChange={handleChange('codigo_vendedor')} />
+              </label>
+              <label className="form-field">
+                <span>{t('usuarios.fields.codigoDistribuidor')}</span>
+                <input value={formValues.codigo_distribuidor} onChange={handleChange('codigo_distribuidor')} />
+              </label>
+              <label className="form-field">
+                <span>{t('usuarios.fields.rol')}</span>
+                <select value={formValues.rol} onChange={handleChange('rol')}>
+                  <option value="admin">{t('usuarios.roles.admin')}</option>
+                  <option value="distribuidor">{t('usuarios.roles.distribuidor')}</option>
+                  <option value="vendedor">{t('usuarios.roles.vendedor')}</option>
+                  <option value="telemercadeo">{t('usuarios.roles.telemercadeo')}</option>
+                </select>
+              </label>
+              <label className="form-field checkbox-field">
+                <span>{t('usuarios.fields.activo')}</span>
+                <input type="checkbox" checked={formValues.activo} onChange={handleChange('activo')} />
+              </label>
+              {formError && <div className="form-error">{formError}</div>}
+            </form>
+          </Modal>
+
+          <Modal
+            open={Boolean(userToDelete)}
+            title={t('usuarios.actions.delete')}
+            onClose={() => setUserToDelete(null)}
+            actions={
+              <>
+                <Button variant="ghost" onClick={() => setUserToDelete(null)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  style={{ backgroundColor: '#dc2626', color: 'white' }}
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? t('common.saving') : t('usuarios.actions.delete')}
+                </Button>
+              </>
+            }
+          >
+            <p>{t('usuarios.actions.confirmDelete')}</p>
+            <p className="mt-2" style={{ color: '#6b7280', fontSize: '0.875rem' }}>
+              {userToDelete?.nombre} {userToDelete?.apellido} ({userToDelete?.email})
+            </p>
+          </Modal>
+
+          <DetailPanel
+            open={Boolean(selectedRow)}
+            title={t('usuarios.detailsTitle')}
+            items={selectedRow?.detail ?? []}
+            onClose={() => setSelectedRow(null)}
+            action={
+              selectedRow?.originalData && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    handleOpenForm(selectedRow.originalData)
+                  }}
+                  title={t('usuarios.actions.edit')}
+                >
+                  ✏️
+                </Button>
+              )
+            }
+          />
+        </>
+      )}
     </div>
   )
 }

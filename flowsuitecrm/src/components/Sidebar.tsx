@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { navItems, programSubItems } from '../app/navigation'
+import { navItems, programSubItems, telemercadeoSubItems } from '../app/navigation'
 import logoFull from '../assets/FlowSuiteCRM_Vector_Antigravity.svg'
 import logoMark from '../assets/FlowSuiteCRM_Isotype_48px.png'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
@@ -22,13 +22,21 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     location.pathname === '/programas' ||
     location.pathname.startsWith('/4en14') ||
     location.pathname.startsWith('/conexiones-infinitas')
+  const isTelemercadeoRoute = location.pathname.startsWith('/telemercadeo')
   const [programsOpen, setProgramsOpen] = useState(isProgramRoute)
+  const [telemercadeoOpen, setTelemercadeoOpen] = useState(isTelemercadeoRoute)
 
   useEffect(() => {
     if (isProgramRoute) {
       setProgramsOpen(true)
     }
   }, [isProgramRoute])
+
+  useEffect(() => {
+    if (isTelemercadeoRoute) {
+      setTelemercadeoOpen(true)
+    }
+  }, [isTelemercadeoRoute])
 
   useEffect(() => {
     let active = true
@@ -54,6 +62,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     setProgramsOpen((prev) => !prev)
   }
 
+  const handleTelemercadeoToggle = () => {
+    setTelemercadeoOpen((prev) => !prev)
+  }
+
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-top">
@@ -77,6 +89,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {navItems
           .filter((item) => {
             if (item.key !== 'telemercadeo') return true
+            return role === 'admin' || role === 'distribuidor' || role === 'telemercadeo'
+          })
+          .filter((item) => {
+            if (item.key !== 'importaciones') return true
+            return role === 'admin' || role === 'distribuidor'
+          })
+          .filter((item) => {
+            if (item.key !== 'usuarios') return true
             return role === 'admin' || role === 'distribuidor'
           })
           .map((item) => {
@@ -104,6 +124,44 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 {!collapsed && programsOpen && (
                   <div className="nav-subnav">
                     {programSubItems.map((subItem) => (
+                      <NavLink
+                        key={subItem.key}
+                        to={subItem.path}
+                        className={({ isActive }) =>
+                          `nav-link nav-sublink ${isActive ? 'active' : ''}`
+                        }
+                      >
+                        <span className="nav-label">{t(subItem.labelKey)}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          if (item.key === 'telemercadeo') {
+            return (
+              <div key={item.key} className="nav-group">
+                <button
+                  type="button"
+                  className={`nav-link nav-group-trigger ${isTelemercadeoRoute ? 'active' : ''}`}
+                  onClick={handleTelemercadeoToggle}
+                  aria-expanded={telemercadeoOpen}
+                >
+                  <Icon className="nav-icon" />
+                  {!collapsed && (
+                    <span className="nav-label">{t(item.labelKey)}</span>
+                  )}
+                  {!collapsed && (
+                    <span className={`nav-arrow ${telemercadeoOpen ? 'open' : ''}`}>
+                      ▸
+                    </span>
+                  )}
+                </button>
+                {!collapsed && telemercadeoOpen && (
+                  <div className="nav-subnav">
+                    {telemercadeoSubItems.map((subItem) => (
                       <NavLink
                         key={subItem.key}
                         to={subItem.path}
