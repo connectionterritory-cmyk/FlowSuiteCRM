@@ -1,686 +1,487 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
-import { EmptyState } from '../../components/EmptyState'
 import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useMessaging } from '../../hooks/useMessaging'
-import { ActivacionCard } from './ActivacionCard'
 
-type UsuarioRecord = {
+// ─── TIPOS ────────────────────────────────────────────────
+
+type TabKey = 'cartera' | 'cumpleanos' | 'filtros' | 'referidos'
+
+type Cliente = {
   id: string
   nombre: string | null
   apellido: string | null
-  rol: string | null
   telefono: string | null
-  distribuidor_padre_id?: string | null
+  telefono_casa: string | null
+  email: string | null
+  saldo_actual: number | null
+  monto_moroso: number | null
+  dias_atraso: number | null
+  fecha_nacimiento: string | null
+  fecha_ultimo_pedido: string | null
+  hycite_id: string | null
+  estado_cuenta: string | null
+  nivel: number | null
 }
 
-type AssignmentRecord = {
-  vendedor_id: string
-  telemercadista_id: string
-}
-
-type ActivacionRecord = {
+type EquipoInstalado = {
   id: string
-  cliente_id: string | null
-  programa_id: string | null
-  representante_id: string | null
-  estado: string | null
-  created_at: string | null
-}
-
-type ProgramaRecord = {
-  id: string
-  nombre: string | null
+  cliente_id: string
+  fecha_instalacion: string | null
   activo: boolean | null
+  cliente?: Cliente
+  ultimo_servicio?: string | null
 }
 
-type ClienteLite = {
-  id: string
-  nombre: string | null
-  apellido: string | null
-  telefono: string | null
+type ResultadoLlamada =
+  | 'no_contesta'
+  | 'cita_agendada'
+  | 'pago_prometido'
+  | 'pago_realizado'
+  | 'no_interesado'
+  | 'numero_equivocado'
+
+type SegmentoTab = 'todos' | '0_30' | '31_60' | '61_90' | 'mas_90'
+
+// ─── HELPERS ──────────────────────────────────────────────
+
+function nombreCompleto(c: Cliente): string {
+  return [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre'
 }
+
+function segmentoColor(dias: number | null, moroso: number | null): string {
+  if (!moroso || moroso === 0) return '#10b981'
+  if (!dias) return '#10b981'
+  if (dias >= 91) return '#7c3aed'
+  if (dias >= 61) return '#dc2626'
+  if (dias >= 31) return '#ea580c'
+  return '#f59e0b'
+}
+
+function segmentoLabel(dias: number | null, moroso: number | null): string {
+  if (!moroso || moroso === 0) return 'Al día'
+  if (!dias) return 'Al día'
+  if (dias >= 91) return '+90 días'
+  if (dias >= 61) return '61-90 días'
+  if (dias >= 31) return '31-60 días'
+  return '0-30 días'
+}
+
+function cumpleEstesMes(fechaNacimiento: string | null): boolean {
+  if (!fechaNacimiento) return false
+  const mes = new Date().getMonth()
+  const diaNac = new Date(fechaNacimiento + 'T00:00:00')
+  return diaNac.getMonth() === mes
+}
+
+function diasParaCumple(fechaNacimiento: string | null): number {
+  if (!fechaNacimiento) return 999
+  const hoy = new Date()
+  const nac = new Date(fechaNacimiento + 'T00:00:00')
+  const proxCumple = new Date(hoy.getFullYear(), nac.getMonth(), nac.getDate())
+  if (proxCumple < hoy) proxCumple.setFullYear(hoy.getFullYear() + 1)
+  return Math.ceil((proxCumple.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+// ─── COMPONENTE TARJETA CLIENTE ───────────────────────────
+
+function ClienteCard({
+  cliente,
+  extra,
+  onLlamar,
+  onWhatsApp,
+}: {
+  cliente: Cliente
+  extra?: React.ReactNode
+  onLlamar: () => void
+  onWhatsApp: () => void
+}) {
+  const seg = segmentoLabel(cliente.dias_atraso, cliente.monto_moroso)
+  const color = segmentoColor(cliente.dias_atraso, cliente.monto_moroso)
+
+  return (
+    <div style={{
+      padding: '1rem 1.25rem',
+      background: 'var(--color-card, #1e2330)',
+      borderRadius: '0.75rem',
+      border: '1px solid var(--color-border, #2d3348)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '1rem',
+      flexWrap: 'wrap',
+    }}>
+      {/* Info principal */}
+      <div style={{ flex: 1, minWidth: '200px' }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem' }}>{nombreCompleto(cliente)}</p>
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+          {cliente.telefono ?? cliente.telefono_casa ?? 'Sin teléfono'}
+          {cliente.hycite_id && ` · #${cliente.hycite_id}`}
+        </p>
+        {extra}
+      </div>
+
+      {/* Saldo y morosidad */}
+      <div style={{ textAlign: 'center' }}>
+        {cliente.saldo_actual !== null && (
+          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem' }}>
+            ${Number(cliente.saldo_actual).toFixed(2)}
+          </p>
+        )}
+        <span style={{
+          display: 'inline-block',
+          padding: '0.15rem 0.6rem',
+          borderRadius: '9999px',
+          fontSize: '0.7rem',
+          fontWeight: 700,
+          background: color + '22',
+          color,
+          marginTop: '0.25rem',
+        }}>
+          {seg}
+        </span>
+      </div>
+
+      {/* Acciones */}
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button
+          type="button"
+          onClick={onWhatsApp}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: 'none', background: '#25d36622', color: '#25d366', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}
+        >
+          WhatsApp
+        </button>
+        <button
+          type="button"
+          onClick={onLlamar}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: 'none', background: 'var(--color-primary, #3b82f6)', color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}
+        >
+          Registrar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── PÁGINA PRINCIPAL ─────────────────────────────────────
 
 export function TelemercadeoPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
   const { showToast } = useToast()
   const { openWhatsapp, ModalRenderer } = useMessaging()
-  const location = useLocation()
-  const navigate = useNavigate()
   const configured = isSupabaseConfigured
-  const [usuarios, setUsuarios] = useState<UsuarioRecord[]>([])
-  const [assignments, setAssignments] = useState<AssignmentRecord[]>([])
-  const [activaciones, setActivaciones] = useState<ActivacionRecord[]>([])
-  const [programas, setProgramas] = useState<ProgramaRecord[]>([])
-  const [clientes, setClientes] = useState<ClienteLite[]>([])
-  const [representantes, setRepresentantes] = useState<UsuarioRecord[]>([])
-  const [role, setRole] = useState<string | null>(null)
-  const [roleLoading, setRoleLoading] = useState(true)
-  const [selectedTeleId, setSelectedTeleId] = useState('')
-  const [selectedVendorId, setSelectedVendorId] = useState('')
+
+  const [activeTab, setActiveTab] = useState<TabKey>('cartera')
+  const [segmento, setSegmento] = useState<SegmentoTab>('todos')
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [equipos, setEquipos] = useState<EquipoInstalado[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [selectedProgramId, setSelectedProgramId] = useState('')
-  const [selectedRepresentanteId, setSelectedRepresentanteId] = useState('')
-  const [selectedCliente, setSelectedCliente] = useState<ClienteLite | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [searchResults, setSearchResults] = useState<ClienteLite[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [creating, setCreating] = useState(false)
 
-  const loadRole = useCallback(async () => {
-    if (!configured || !session?.user.id) {
-      setRole(null)
-      setRoleLoading(false)
-      return
-    }
-    const { data, error: roleError } = await supabase
-      .from('usuarios')
-      .select('rol')
-      .eq('id', session.user.id)
-      .maybeSingle()
-    if (roleError) {
-      setRole(null)
-    } else {
-      setRole((data as { rol?: string } | null)?.rol ?? null)
-    }
-    setRoleLoading(false)
-  }, [configured, session?.user.id])
+  // Modal llamada
+  const [modalOpen, setModalOpen] = useState(false)
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
+  const [resultado, setResultado] = useState<ResultadoLlamada>('no_contesta')
+  const [notas, setNotas] = useState('')
+  const [fechaFollowup, setFechaFollowup] = useState('')
+  const [montoProme, setMontoProme] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
-  const loadAssignments = useCallback(async () => {
+  const cargarClientes = useCallback(async () => {
     if (!configured) return
     setLoading(true)
-    setError(null)
-    const [usuariosResult, assignmentsResult] = await Promise.all([
-      supabase.from('usuarios').select('id, nombre, apellido, rol, telefono'),
-      supabase.from('vendedor_telemercadeo').select('vendedor_id, telemercadista_id'),
-    ])
-
-    if (usuariosResult.error || assignmentsResult.error) {
-      setError(usuariosResult.error?.message || assignmentsResult.error?.message || t('common.noData'))
-    }
-
-    setUsuarios((usuariosResult.data as UsuarioRecord[]) ?? [])
-    setAssignments((assignmentsResult.data as AssignmentRecord[]) ?? [])
-    setLoading(false)
-  }, [configured, t])
-
-  const loadTelemercadeoData = useCallback(async () => {
-    if (!configured || !session?.user.id) return
-    setLoading(true)
-    setError(null)
-    const [activacionesResult, programasResult, assignmentsResult] = await Promise.all([
-      supabase
-        .from('ci_activaciones')
-        .select('id, cliente_id, programa_id, representante_id, estado, created_at')
-        .order('created_at', { ascending: false }),
-      supabase.from('programas').select('id, nombre, activo').order('nombre'),
-      supabase
-        .from('vendedor_telemercadeo')
-        .select('vendedor_id, telemercadista_id')
-        .eq('telemercadista_id', session.user.id),
-    ])
-
-    if (activacionesResult.error || programasResult.error || assignmentsResult.error) {
-      setError(
-        activacionesResult.error?.message ||
-          programasResult.error?.message ||
-          assignmentsResult.error?.message ||
-          t('common.noData')
-      )
-    }
-
-    const nextActivaciones = (activacionesResult.data as ActivacionRecord[]) ?? []
-    const nextProgramas = (programasResult.data as ProgramaRecord[]) ?? []
-    const nextAssignments = (assignmentsResult.data as AssignmentRecord[]) ?? []
-
-    const repIds = [...new Set(nextAssignments.map((row) => row.vendedor_id))]
-    let representantesData: UsuarioRecord[] = []
-    if (repIds.length > 0) {
-      const repsResult = await supabase
-        .from('usuarios')
-        .select('id, nombre, apellido, telefono, rol, distribuidor_padre_id')
-        .in('id', repIds)
-      representantesData = (repsResult.data as UsuarioRecord[]) ?? []
-    }
-
-    const distribuidorIds = Array.from(
-      new Set(
-        representantesData
-          .map((rep) => rep.distribuidor_padre_id)
-          .filter((id): id is string => Boolean(id))
-          .filter((id) => !repIds.includes(id))
-      )
-    )
-
-    if (distribuidorIds.length > 0) {
-      const distribuidorResult = await supabase
-        .from('usuarios')
-        .select('id, nombre, apellido, telefono, rol')
-        .in('id', distribuidorIds)
-      const distribuidores = (distribuidorResult.data as UsuarioRecord[]) ?? []
-      representantesData = [...representantesData, ...distribuidores]
-    }
-
-    setActivaciones(nextActivaciones)
-    setProgramas(nextProgramas)
-    setAssignments(nextAssignments)
-    setRepresentantes(representantesData)
-    setLoading(false)
-  }, [configured, session?.user.id, t])
-
-  useEffect(() => {
-    if (configured) {
-      loadRole()
-    }
-  }, [configured, loadRole])
-
-  useEffect(() => {
-    if (!role) return
-    if (role === 'telemercadeo') {
-      loadTelemercadeoData()
-    } else if (role === 'admin' || role === 'distribuidor') {
-      loadAssignments()
-    }
-  }, [role, loadAssignments, loadTelemercadeoData])
-
-  useEffect(() => {
-    if (!configured || activaciones.length === 0) {
-      setClientes([])
-      return
-    }
-    const ids = [...new Set(activaciones.map((item) => item.cliente_id).filter(Boolean))] as string[]
-    if (ids.length === 0) {
-      setClientes([])
-      return
-    }
-    supabase
+    const { data } = await supabase
       .from('clientes')
-      .select('id, nombre, apellido, telefono')
-      .in('id', ids)
-      .then(({ data }) => setClientes((data as ClienteLite[]) ?? []))
-  }, [activaciones, configured])
+      .select('id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, hycite_id, estado_cuenta, nivel')
+      .order('dias_atraso', { ascending: false })
+    setClientes((data as Cliente[]) ?? [])
+    setLoading(false)
+  }, [configured])
+
+  const cargarEquipos = useCallback(async () => {
+    if (!configured) return
+    const { data } = await supabase
+      .from('equipos_instalados')
+      .select(`
+        id, cliente_id, fecha_instalacion, activo,
+        cliente:clientes(id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, hycite_id, estado_cuenta, nivel)
+      `)
+      .eq('activo', true)
+    setEquipos((data as EquipoInstalado[]) ?? [])
+  }, [configured])
 
   useEffect(() => {
-    const handle = window.setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim())
-    }, 300)
-    return () => window.clearTimeout(handle)
-  }, [searchTerm])
+    cargarClientes()
+    cargarEquipos()
+  }, [cargarClientes, cargarEquipos])
 
-  useEffect(() => {
-    const runSearch = async () => {
-      if (!configured || debouncedSearch.length < 2) {
-        setSearchResults([])
-        return
-      }
-      setSearchLoading(true)
-      const term = debouncedSearch.replace(/%/g, '')
-      const { data, error: searchError } = await supabase
-        .from('clientes')
-        .select('id, nombre, apellido, telefono')
-        .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
-        .limit(8)
-      if (searchError) {
-        setSearchResults([])
-      } else {
-        setSearchResults((data as ClienteLite[]) ?? [])
-      }
-      setSearchLoading(false)
-    }
+  // ─── LISTAS FILTRADAS ──────────────────────────────────
 
-    runSearch()
-  }, [configured, debouncedSearch])
-
-  useEffect(() => {
-    if (role !== 'telemercadeo') return
-    const params = new URLSearchParams(location.search)
-    if (params.get('new') === '1') {
-      setCreateOpen(true)
-      navigate('/telemercadeo', { replace: true })
-    }
-  }, [location.search, navigate, role])
-
-  const teleUsers = useMemo(
-    () => usuarios.filter((user) => user.rol === 'telemercadeo'),
-    [usuarios]
-  )
-
-  const assignableUsers = useMemo(
-    () => usuarios.filter((user) => user.rol === 'vendedor' || user.rol === 'distribuidor'),
-    [usuarios]
-  )
-
-  const assignmentByVendor = useMemo(() => {
-    const map = new Map<string, string>()
-    assignments.forEach((assignment) => {
-      map.set(assignment.vendedor_id, assignment.telemercadista_id)
+  const clientesCartera = useMemo(() => {
+    return clientes.filter(c => {
+      if (segmento === 'todos') return true
+      const d = c.dias_atraso ?? 0
+      const m = c.monto_moroso ?? 0
+      if (segmento === '0_30') return m > 0 && d < 31
+      if (segmento === '31_60') return d >= 31 && d < 61
+      if (segmento === '61_90') return d >= 61 && d < 91
+      if (segmento === 'mas_90') return d >= 91
+      return true
     })
-    return map
-  }, [assignments])
+  }, [clientes, segmento])
 
-  const assignedToSelected = useMemo(() => {
-    if (!selectedTeleId) return []
-    return assignments
-      .filter((assignment) => assignment.telemercadista_id === selectedTeleId)
-      .map((assignment) => assignment.vendedor_id)
-  }, [assignments, selectedTeleId])
-
-  const assignedVendors = useMemo(() => {
-    const assignedSet = new Set(assignedToSelected)
-    return assignableUsers.filter((user) => assignedSet.has(user.id))
-  }, [assignedToSelected, assignableUsers])
-
-  const availableVendors = useMemo(() => {
-    return assignableUsers.filter((user) => !assignmentByVendor.has(user.id))
-  }, [assignmentByVendor, assignableUsers])
-
-  const clientesById = useMemo(() => {
-    return new Map(clientes.map((cliente) => [cliente.id, cliente]))
+  const clientesCumpleanos = useMemo(() => {
+    return clientes
+      .filter(c => {
+        const dias = diasParaCumple(c.fecha_nacimiento)
+        return dias <= 30
+      })
+      .sort((a, b) => diasParaCumple(a.fecha_nacimiento) - diasParaCumple(b.fecha_nacimiento))
   }, [clientes])
 
-  const programasById = useMemo(() => {
-    return new Map(programas.map((programa) => [programa.id, programa]))
-  }, [programas])
-
-  const activeProgramas = useMemo(
-    () => programas.filter((programa) => programa.activo),
-    [programas]
-  )
-
-  const assignedRows = useMemo<DataTableRow[]>(() => {
-    return assignedVendors.map((vendor) => {
-      const fullName = [vendor.nombre, vendor.apellido].filter(Boolean).join(' ') || vendor.id
-      const roleLabel = vendor.rol ? t(`usuarios.roles.${vendor.rol}`) : ''
-      const nameWithRole = roleLabel ? `${fullName} · ${roleLabel}` : fullName
-      return {
-        id: vendor.id,
-        cells: [
-          nameWithRole,
-          vendor.telefono ?? '-',
-          <Button
-            key={`remove-${vendor.id}`}
-            variant="ghost"
-            type="button"
-            onClick={async (event) => {
-              event.stopPropagation()
-              if (!configured) return
-              const { error: deleteError } = await supabase
-                .from('vendedor_telemercadeo')
-                .delete()
-                .match({ vendedor_id: vendor.id, telemercadista_id: selectedTeleId })
-              if (deleteError) {
-                showToast(deleteError.message, 'error')
-              } else {
-                setAssignments((prev) =>
-                  prev.filter(
-                    (row) =>
-                      !(row.vendedor_id === vendor.id && row.telemercadista_id === selectedTeleId)
-                  )
-                )
-                showToast(t('toast.success'))
-              }
-            }}
-          >
-            {t('telemercadeo.actions.remove')}
-          </Button>,
-        ],
-      }
+  const equiposFiltros = useMemo(() => {
+    return equipos.filter(eq => {
+      if (!eq.fecha_instalacion) return false
+      const instalacion = new Date(eq.fecha_instalacion)
+      const mesesDesde = (new Date().getTime() - instalacion.getTime()) / (1000 * 60 * 60 * 24 * 30)
+      return mesesDesde >= 6
     })
-  }, [assignedVendors, configured, selectedTeleId, showToast, t])
+  }, [equipos])
 
-  const activacionRows = useMemo<DataTableRow[]>(() => {
-    return activaciones.map((activacion) => {
-      const cliente = activacion.cliente_id ? clientesById.get(activacion.cliente_id) : null
-      const programa = activacion.programa_id ? programasById.get(activacion.programa_id) : null
-      const nombreCliente =
-        [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') || activacion.cliente_id || '-'
-      return {
-        id: activacion.id,
-        cells: [
-          nombreCliente,
-          programa?.nombre ?? activacion.programa_id ?? '-',
-          activacion.estado ?? '-',
-          <Button
-            key={`wa-${activacion.id}`}
-            variant="ghost"
-            type="button"
-            onClick={() =>
-              openWhatsapp({
-                nombre: nombreCliente,
-                telefono: cliente?.telefono,
-              })
-            }
-          >
-            {t('telemercadeo.labels.whatsapp')}
-          </Button>,
-        ],
-      }
+  // ─── REGISTRAR LLAMADA ─────────────────────────────────
+
+  const abrirModal = (cliente: Cliente) => {
+    setClienteSeleccionado(cliente)
+    setResultado('no_contesta')
+    setNotas('')
+    setFechaFollowup('')
+    setMontoProme('')
+    setModalOpen(true)
+  }
+
+  const guardarLlamada = async () => {
+    if (!clienteSeleccionado || !session?.user.id) return
+    setGuardando(true)
+    const { error } = await supabase.from('llamadas_telemercadeo').insert({
+      cliente_id: clienteSeleccionado.id,
+      telemercadista_id: session.user.id,
+      resultado,
+      notas: notas || null,
+      followup_at: fechaFollowup || null,
+      monto_prometido: montoProme ? parseFloat(montoProme) : null,
     })
-  }, [activaciones, clientesById, openWhatsapp, programasById, t])
-
-  const activationCards = useMemo(() => {
-    return activaciones.map((activacion) => {
-      const cliente = activacion.cliente_id ? clientesById.get(activacion.cliente_id) : null
-      const programa = activacion.programa_id ? programasById.get(activacion.programa_id) : null
-      const nombreCliente =
-        [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') || activacion.cliente_id || '-'
-      return (
-        <ActivacionCard
-          key={activacion.id}
-          clienteNombre={nombreCliente}
-          clienteTelefono={cliente?.telefono}
-          programaNombre={programa?.nombre ?? activacion.programa_id ?? '-'}
-          estado={activacion.estado ?? '-'}
-          onWhatsapp={() =>
-            openWhatsapp({
-              nombre: nombreCliente,
-              telefono: cliente?.telefono,
-            })
-          }
-          labels={{
-            cliente: t('telemercadeo.labels.cliente'),
-            programa: t('telemercadeo.labels.programa'),
-            telefono: t('telemercadeo.labels.telefono'),
-            whatsapp: t('telemercadeo.labels.whatsapp'),
-          }}
-        />
-      )
-    })
-  }, [activaciones, clientesById, openWhatsapp, programasById, t])
-
-  const handleAssign = async () => {
-    if (!configured) {
-      setError(t('common.supabaseRequired'))
-      return
+    if (error) {
+      showToast(error.message, 'error')
+    } else {
+      showToast('✅ Llamada registrada')
+      setModalOpen(false)
     }
-    if (!selectedTeleId || !selectedVendorId) {
-      showToast(t('telemercadeo.errors.missingSelection'), 'error')
-      return
-    }
-    const assignedTele = assignmentByVendor.get(selectedVendorId)
-    if (assignedTele) {
-      showToast(t('telemercadeo.errors.alreadyAssigned'), 'error')
-      return
-    }
-
-    const { error: insertError } = await supabase
-      .from('vendedor_telemercadeo')
-      .insert({ vendedor_id: selectedVendorId, telemercadista_id: selectedTeleId })
-    if (insertError) {
-      showToast(insertError.message, 'error')
-      return
-    }
-    setAssignments((prev) => [
-      ...prev,
-      { vendedor_id: selectedVendorId, telemercadista_id: selectedTeleId },
-    ])
-    setSelectedVendorId('')
-    showToast(t('toast.success'))
+    setGuardando(false)
   }
 
-  const handleCreateOpen = () => {
-    setCreateOpen(true)
-    setSelectedProgramId('')
-    setSelectedRepresentanteId('')
-    setSelectedCliente(null)
-    setSearchTerm('')
-    setSearchResults([])
-  }
+  // ─── TABS ──────────────────────────────────────────────
 
-  const handleCreateActivation = async () => {
-    if (!configured) {
-      showToast(t('common.supabaseRequired'), 'error')
-      return
-    }
-    if (!selectedProgramId || !selectedRepresentanteId || !selectedCliente?.id) {
-      showToast(t('telemercadeo.errors.missingActivationFields'), 'error')
-      return
-    }
-    setCreating(true)
-    const { error: insertError } = await supabase.from('ci_activaciones').insert({
-      programa_id: selectedProgramId,
-      representante_id: selectedRepresentanteId,
-      cliente_id: selectedCliente.id,
-      estado: 'pendiente',
-    })
-    if (insertError) {
-      showToast(insertError.message, 'error')
-      setCreating(false)
-      return
-    }
-    showToast(t('toast.success'))
-    setCreateOpen(false)
-    setCreating(false)
-    loadTelemercadeoData()
-  }
-
-  if (!configured) {
-    return (
-      <EmptyState
-        title={t('dashboard.missingConfigTitle')}
-        description={t('dashboard.missingConfigDescription')}
-      />
-    )
-  }
-
-  if (roleLoading) {
-    return <div className="page">{t('common.loading')}</div>
-  }
-
-  if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'telemercadeo') {
-    return (
-      <EmptyState
-        title={t('telemercadeo.noAccessTitle')}
-        description={t('telemercadeo.noAccessDescription')}
-      />
-    )
-  }
-
-  const isTelemercadeo = role === 'telemercadeo'
+  const tabs: { key: TabKey; label: string; count: number; emoji: string }[] = [
+    { key: 'cartera', label: 'Cartera', count: clientesCartera.length, emoji: '📋' },
+    { key: 'cumpleanos', label: 'Cumpleaños', count: clientesCumpleanos.length, emoji: '🎂' },
+    { key: 'filtros', label: 'Filtros de agua', count: equiposFiltros.length, emoji: '🔧' },
+    { key: 'referidos', label: 'Referidos', count: 0, emoji: '👥' },
+  ]
 
   return (
     <div className="page-stack">
       <SectionHeader
-        title={t('telemercadeo.title')}
-        subtitle={isTelemercadeo ? t('telemercadeo.subtitleTele') : t('telemercadeo.subtitle')}
-        action={
-          isTelemercadeo ? (
-            <Button type="button" onClick={handleCreateOpen}>
-              {t('telemercadeo.actions.newActivation')}
-            </Button>
-          ) : null
-        }
+        title="Telemercadeo"
+        subtitle="Gestión de cartera, cumpleaños, filtros y referidos"
       />
 
-      {error && <div className="form-error">{error}</div>}
+      {/* TABS */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: '9999px',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              background: activeTab === tab.key ? 'var(--color-primary, #3b82f6)' : 'var(--color-surface)',
+              color: activeTab === tab.key ? 'white' : 'var(--color-text-muted)',
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab.emoji} {tab.label} <span style={{ opacity: 0.7 }}>({tab.count})</span>
+          </button>
+        ))}
+      </div>
 
-      {isTelemercadeo ? (
-        <>
-          <div className="mobile-only activation-cards">
-            {activationCards.length > 0 ? activationCards : (
-              <div className="card empty-card">{loading ? t('common.loading') : t('telemercadeo.activaciones.empty')}</div>
-            )}
-          </div>
-          <div className="desktop-only">
-            <DataTable
-              columns={[
-                t('telemercadeo.columns.cliente'),
-                t('telemercadeo.columns.programa'),
-                t('telemercadeo.columns.estado'),
-                t('telemercadeo.columns.actions'),
-              ]}
-              rows={activacionRows}
-              emptyLabel={loading ? t('common.loading') : t('telemercadeo.activaciones.empty')}
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="card form-card">
-            <div className="form-grid">
-              <label className="form-field">
-                <span>{t('telemercadeo.fields.tele')}</span>
-                <select
-                  value={selectedTeleId}
-                  onChange={(event) => {
-                    setSelectedTeleId(event.target.value)
-                    setSelectedVendorId('')
-                  }}
-                >
-                  <option value="">{t('common.select')}</option>
-                  {teleUsers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {[user.nombre, user.apellido].filter(Boolean).join(' ') || user.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="form-field">
-                <span>{t('telemercadeo.fields.vendedor')}</span>
-                <select
-                  value={selectedVendorId}
-                  onChange={(event) => setSelectedVendorId(event.target.value)}
-                  disabled={!selectedTeleId}
-                >
-                  <option value="">{t('common.select')}</option>
-                  {availableVendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {[
-                        [vendor.nombre, vendor.apellido].filter(Boolean).join(' ') || vendor.id,
-                        vendor.rol ? t(`usuarios.roles.${vendor.rol}`) : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="telemercadeo-actions">
-              <Button type="button" onClick={handleAssign} disabled={!selectedTeleId || !selectedVendorId}>
-                {t('telemercadeo.actions.assign')}
-              </Button>
-            </div>
+      {/* ─── TAB CARTERA ─── */}
+      {activeTab === 'cartera' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Subtabs de segmento */}
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {[
+              { key: 'todos', label: 'Todos', color: '#6b7280' },
+              { key: '0_30', label: '0-30 días', color: '#f59e0b' },
+              { key: '31_60', label: '31-60 días', color: '#ea580c' },
+              { key: '61_90', label: '61-90 días', color: '#dc2626' },
+              { key: 'mas_90', label: '+90 días', color: '#7c3aed' },
+            ].map(s => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSegmento(s.key as SegmentoTab)}
+                style={{
+                  padding: '0.3rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: `1px solid ${segmento === s.key ? s.color : 'var(--color-border)'}`,
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  background: segmento === s.key ? s.color + '22' : 'transparent',
+                  color: segmento === s.key ? s.color : 'var(--color-text-muted)',
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
           </div>
 
-          <DataTable
-            columns={[
-              t('telemercadeo.columns.vendedor'),
-              t('telemercadeo.columns.telefono'),
-              t('telemercadeo.columns.actions'),
-            ]}
-            rows={assignedRows}
-            emptyLabel={loading ? t('common.loading') : t('telemercadeo.empty')}
-          />
-        </>
+          {loading ? (
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Cargando...</p>
+          ) : clientesCartera.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>Sin clientes en este segmento</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {clientesCartera.map(c => (
+                <ClienteCard
+                  key={c.id}
+                  cliente={c}
+                  onLlamar={() => abrirModal(c)}
+                  onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(c), telefono: c.telefono ?? '' })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
+      {/* ─── TAB CUMPLEAÑOS ─── */}
+      {activeTab === 'cumpleanos' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {clientesCumpleanos.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No hay cumpleaños en los próximos 30 días</div>
+          ) : clientesCumpleanos.map(c => {
+            const dias = diasParaCumple(c.fecha_nacimiento)
+            const esHoy = dias === 0
+            return (
+              <ClienteCard
+                key={c.id}
+                cliente={c}
+                extra={
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: esHoy ? '#f59e0b' : 'var(--color-text-muted)' }}>
+                    {esHoy ? '🎉 ¡Hoy es su cumpleaños!' : `🎂 Cumple en ${dias} días`}
+                  </p>
+                }
+                onLlamar={() => abrirModal(c)}
+                onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(c), telefono: c.telefono ?? '' })}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {/* ─── TAB FILTROS ─── */}
+      {activeTab === 'filtros' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {equiposFiltros.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No hay filtros próximos a vencer</div>
+          ) : equiposFiltros.map(eq => {
+            const cliente = eq.cliente as unknown as Cliente
+            if (!cliente) return null
+            const instalacion = new Date(eq.fecha_instalacion!)
+            const meses = Math.floor((new Date().getTime() - instalacion.getTime()) / (1000 * 60 * 60 * 24 * 30))
+            return (
+              <ClienteCard
+                key={eq.id}
+                cliente={cliente}
+                extra={
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: meses >= 12 ? '#dc2626' : '#f59e0b' }}>
+                    🔧 {meses} meses desde instalación — {meses >= 12 ? 'Cambio urgente' : 'Cambio próximo'}
+                  </p>
+                }
+                onLlamar={() => abrirModal(cliente)}
+                onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(cliente), telefono: cliente.telefono ?? '' })}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {/* ─── TAB REFERIDOS ─── */}
+      {activeTab === 'referidos' && (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>
+          <p style={{ fontSize: '2rem' }}>👥</p>
+          <p style={{ fontWeight: 600 }}>Módulo de referidos próximamente</p>
+          <p style={{ fontSize: '0.875rem' }}>Aquí verás los referidos pendientes de contactar</p>
+        </div>
+      )}
+
+      {/* ─── MODAL REGISTRO LLAMADA ─── */}
       <Modal
-        open={createOpen}
-        title={t('telemercadeo.modal.title')}
-        description={t('telemercadeo.modal.subtitle')}
-        onClose={() => setCreateOpen(false)}
+        open={modalOpen}
+        title="Registrar llamada"
+        description={clienteSeleccionado ? nombreCompleto(clienteSeleccionado) : ''}
+        onClose={() => setModalOpen(false)}
         actions={
           <>
-            <Button variant="ghost" type="button" onClick={() => setCreateOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="button" onClick={handleCreateActivation} disabled={creating}>
-              {creating ? t('common.saving') : t('telemercadeo.actions.createActivation')}
+            <Button variant="ghost" type="button" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={guardarLlamada} disabled={guardando}>
+              {guardando ? 'Guardando...' : 'Guardar'}
             </Button>
           </>
         }
       >
         <div className="form-grid">
           <label className="form-field">
-            <span>{t('telemercadeo.fields.programa')}</span>
-            <select value={selectedProgramId} onChange={(event) => setSelectedProgramId(event.target.value)}>
-              <option value="">{t('common.select')}</option>
-              {activeProgramas.map((programa) => (
-                <option key={programa.id} value={programa.id}>
-                  {programa.nombre ?? programa.id}
-                </option>
-              ))}
+            <span>Resultado</span>
+            <select value={resultado} onChange={e => setResultado(e.target.value as ResultadoLlamada)}>
+              <option value="no_contesta">No contestó</option>
+              <option value="cita_agendada">Cita agendada</option>
+              <option value="pago_prometido">Promesa de pago</option>
+              <option value="pago_realizado">Pagó</option>
+              <option value="no_interesado">No interesado</option>
+              <option value="numero_equivocado">Número equivocado</option>
             </select>
           </label>
-          <label className="form-field">
-            <span>{t('telemercadeo.fields.representante')}</span>
-            <select
-              value={selectedRepresentanteId}
-              onChange={(event) => setSelectedRepresentanteId(event.target.value)}
-            >
-              <option value="">{t('common.select')}</option>
-              {representantes.map((representante) => (
-                <option key={representante.id} value={representante.id}>
-                  {[
-                    [representante.nombre, representante.apellido].filter(Boolean).join(' ') || representante.id,
-                    representante.rol ? t(`usuarios.roles.${representante.rol}`) : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
 
-        <div className="cliente-search">
-          <label className="form-field">
-            <span>{t('telemercadeo.fields.buscarCliente')}</span>
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={t('telemercadeo.fields.buscarClientePlaceholder')}
-            />
-          </label>
-          {selectedCliente && (
-            <div className="cliente-selected">
-              <strong>{t('telemercadeo.labels.clienteSeleccionado')}</strong>
-              <p>
-                {[selectedCliente.nombre, selectedCliente.apellido].filter(Boolean).join(' ') || selectedCliente.id}
-                {selectedCliente.telefono ? ` · ${selectedCliente.telefono}` : ''}
-              </p>
-              <button type="button" className="inline-link" onClick={() => setSelectedCliente(null)}>
-                {t('telemercadeo.actions.clearSelection')}
-              </button>
-            </div>
+          {resultado === 'pago_prometido' && (
+            <label className="form-field">
+              <span>Monto prometido ($)</span>
+              <input type="number" value={montoProme} onChange={e => setMontoProme(e.target.value)} placeholder="0.00" />
+            </label>
           )}
-          <div className="cliente-results">
-            {searchLoading ? (
-              <p className="muted">{t('common.loading')}</p>
-            ) : debouncedSearch.length < 2 ? (
-              <p className="muted">{t('telemercadeo.search.helper')}</p>
-            ) : searchResults.length === 0 ? (
-              <p className="muted">{t('telemercadeo.search.empty')}</p>
-            ) : (
-              searchResults.map((cliente) => (
-                <button
-                  key={cliente.id}
-                  type="button"
-                  className="cliente-result"
-                  onClick={() => setSelectedCliente(cliente)}
-                >
-                  <span>
-                    {[cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id}
-                  </span>
-                  <span className="muted">{cliente.telefono ?? '-'}</span>
-                </button>
-              ))
-            )}
-          </div>
+
+          <label className="form-field">
+            <span>Fecha de seguimiento</span>
+            <input type="date" value={fechaFollowup} onChange={e => setFechaFollowup(e.target.value)} />
+          </label>
+
+          <label className="form-field">
+            <span>Notas</span>
+            <input value={notas} onChange={e => setNotas(e.target.value)} placeholder="Observaciones opcionales..." />
+          </label>
         </div>
       </Modal>
+
       <ModalRenderer />
     </div>
   )
