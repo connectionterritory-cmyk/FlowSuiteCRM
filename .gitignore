@@ -30,6 +30,8 @@ backup.sql
 # Misc
 *.tmp
 *.swp
+*.xls
+*.xlsx
 
 .agent/
 **/supabase/.temp/
