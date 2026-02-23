@@ -35,7 +35,7 @@
     "createCliente": "Crear cliente",
     "createProducto": "Crear producto",
     "supabaseRequired": "Configura Supabase para guardar cambios.",
-    "newLead": "Nuevo lead",
+    "newLead": "Nuevo prospecto",
     "newCliente": "Nuevo cliente",
     "newVenta": "Nueva venta",
     "newProducto": "Nuevo producto",
@@ -231,21 +231,21 @@
     "subtitle": "Centraliza prospectos y su seguimiento.",
     "detailsTitle": "Detalle del lead",
     "form": {
-      "title": "Nuevo lead"
+      "title": "Registrar nuevo prospecto"
     },
     "fields": {
       "nombre": "Nombre",
       "apellido": "Apellido",
-      "email": "Email",
+      "email": "Correo electrónico",
       "telefono": "Telefono",
-      "fuente": "Fuente",
-      "fuenteOtro": "Especifica la fuente",
-      "programaId": "Programa ID",
-      "embajadorId": "Embajador ID",
-      "ownerId": "Owner ID",
-      "estadoPipeline": "Estado pipeline",
-      "nextAction": "Proxima accion",
-      "nextActionDate": "Fecha proxima accion"
+      "fuente": "¿Cómo nos conoció?",
+      "fuenteOtro": "¿De dónde exactamente?",
+      "programaId": "Programa",
+      "embajadorId": "Referido por",
+      "ownerId": "Asesor responsable",
+      "estadoPipeline": "Etapa de seguimiento",
+      "nextAction": "¿Qué sigue?",
+      "nextActionDate": "Fecha del próximo paso"
     },
     "sources": {
       "toquePuerta": "Toque de puerta",
@@ -328,11 +328,11 @@
       "ciudad": "Ciudad",
       "estadoRegion": "Estado / Provincia",
       "codigoPostal": "Codigo postal",
-      "numeroCuentaFinanciera": "Cuenta Hycite",
+      "numeroCuentaFinanciera": "Número de cuenta",
       "saldoActual": "Saldo actual",
-      "estadoMorosidad": "Estado morosidad",
-      "vendedorId": "Vendedor ID",
-      "distribuidorId": "Distribuidor ID",
+      "estadoMorosidad": "Estado de cuenta",
+      "vendedorId": "Asesor de ventas",
+      "distribuidorId": "Distribuidor",
       "fechaNacimiento": "Fecha nacimiento",
       "activo": "Activo"
     },
@@ -363,16 +363,16 @@
       "title": "Nueva venta"
     },
     "fields": {
-      "numeroNotaPedido": "Numero nota pedido",
+      "numeroNotaPedido": "Número de pedido",
       "ownerType": "Origen de la venta",
       "clienteId": "Cliente ID",
       "prospectoId": "Prospecto",
       "numeroCuentaFinanciera": "Cuenta HyCite",
       "vendedorId": "Vendedor ID",
       "productoId": "Producto ID",
-      "tipoMovimiento": "Tipo movimiento",
+      "tipoMovimiento": "Tipo de venta",
       "monto": "Monto",
-      "fechaVenta": "Fecha venta"
+      "fechaVenta": "Fecha"
     },
     "ownerTypes": {
       "cliente": "Cliente",
@@ -895,8 +895,8 @@
       "nombre": "Nombre",
       "apellido": "Apellido",
       "email": "Email",
-      "codigoVendedor": "Codigo vendedor",
-      "codigoDistribuidor": "Codigo distribuidor",
+      "codigoVendedor": "Código de asesor",
+      "codigoDistribuidor": "Código de distribuidor",
       "rol": "Rol",
       "activo": "Activo"
     },
