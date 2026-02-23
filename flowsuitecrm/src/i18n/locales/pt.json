@@ -122,7 +122,9 @@
     "programa4en14": "4 em 14",
     "servicioCliente": "Atendimento ao cliente",
     "telemercadeo": "Telemarketing",
-    "usuarios": "Usuarios"
+    "importaciones": "Importaciones",
+    "usuarios": "Usuarios",
+    "perfil": "Perfil"
   },
   "oportunidades": {
     "title": "Oportunidades",
@@ -817,26 +819,65 @@
   "telemercadeo": {
     "title": "Telemarketing",
     "subtitle": "Atribua vendedores aos atendentes de telemarketing.",
+    "subtitleTele": "Gerencie ativacoes atribuídas.",
     "fields": {
       "tele": "Telemarketing",
-      "vendedor": "Vendedor"
+      "vendedor": "Representante",
+      "programa": "Programa",
+      "representante": "Representante",
+      "buscarCliente": "Buscar cliente",
+      "buscarClientePlaceholder": "Nome ou telefone"
     },
     "columns": {
-      "vendedor": "Vendedor",
+      "vendedor": "Representante",
       "telefono": "Telefone",
-      "actions": "Acoes"
+      "actions": "Acoes",
+      "cliente": "Cliente",
+      "programa": "Programa",
+      "estado": "Status"
     },
     "actions": {
       "assign": "Atribuir",
-      "remove": "Remover"
+      "remove": "Remover",
+      "newActivation": "Nova ativacao",
+      "createActivation": "Criar ativacao",
+      "clearSelection": "Limpar selecao"
+    },
+    "labels": {
+      "cliente": "Cliente",
+      "programa": "Programa",
+      "telefono": "Telefone",
+      "whatsapp": "WhatsApp",
+      "clienteSeleccionado": "Cliente selecionado"
+    },
+    "modal": {
+      "title": "Nova ativacao",
+      "subtitle": "Registre uma ativacao para o telemarketing."
+    },
+    "activaciones": {
+      "empty": "Nenhuma ativacao atribuida."
+    },
+    "search": {
+      "empty": "Sem resultados.",
+      "helper": "Digite pelo menos 2 caracteres."
     },
     "errors": {
       "missingSelection": "Selecione um atendente e um vendedor.",
-      "alreadyAssigned": "Este vendedor ja esta atribuido a outro atendente."
+      "alreadyAssigned": "Este vendedor ja esta atribuido a outro atendente.",
+      "missingActivationFields": "Complete programa, representante e cliente."
     },
     "empty": "Nenhum vendedor atribuido.",
     "noAccessTitle": "Acesso restrito",
     "noAccessDescription": "Somente administradores e distribuidores podem atribuir telemarketing."
+  },
+  "profile": {
+    "title": "Perfil",
+    "subtitle": "Suas informacoes e acessos.",
+    "fields": {
+      "name": "Nome",
+      "email": "Email",
+      "role": "Papel"
+    }
   },
   "usuarios": {
     "title": "Usuarios",

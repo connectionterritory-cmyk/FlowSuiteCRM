@@ -80,6 +80,12 @@ export const navItems: NavItem[] = [
     icon: IconUsers,
   },
   {
+    key: 'importaciones',
+    labelKey: 'nav.importaciones',
+    path: '/importaciones',
+    icon: IconUsers,
+  },
+  {
     key: 'usuarios',
     labelKey: 'nav.usuarios',
     path: '/usuarios',

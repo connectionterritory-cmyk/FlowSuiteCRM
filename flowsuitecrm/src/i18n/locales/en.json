@@ -122,7 +122,9 @@
     "programa4en14": "4 in 14",
     "servicioCliente": "Customer service",
     "telemercadeo": "Telemarketing",
-    "usuarios": "Users"
+    "importaciones": "Importaciones",
+    "usuarios": "Users",
+    "perfil": "Profile"
   },
   "oportunidades": {
     "title": "Opportunities",
@@ -817,26 +819,65 @@
   "telemercadeo": {
     "title": "Telemarketing",
     "subtitle": "Assign sellers to telemarketing reps.",
+    "subtitleTele": "Manage assigned activations.",
     "fields": {
       "tele": "Telemarketing",
-      "vendedor": "Seller"
+      "vendedor": "Representative",
+      "programa": "Program",
+      "representante": "Representative",
+      "buscarCliente": "Search client",
+      "buscarClientePlaceholder": "Name or phone"
     },
     "columns": {
-      "vendedor": "Seller",
+      "vendedor": "Representative",
       "telefono": "Phone",
-      "actions": "Actions"
+      "actions": "Actions",
+      "cliente": "Client",
+      "programa": "Program",
+      "estado": "Status"
     },
     "actions": {
       "assign": "Assign",
-      "remove": "Remove"
+      "remove": "Remove",
+      "newActivation": "New activation",
+      "createActivation": "Create activation",
+      "clearSelection": "Clear selection"
+    },
+    "labels": {
+      "cliente": "Client",
+      "programa": "Program",
+      "telefono": "Phone",
+      "whatsapp": "WhatsApp",
+      "clienteSeleccionado": "Selected client"
+    },
+    "modal": {
+      "title": "New activation",
+      "subtitle": "Register an activation for the telemarketer."
+    },
+    "activaciones": {
+      "empty": "No activations assigned."
+    },
+    "search": {
+      "empty": "No results.",
+      "helper": "Type at least 2 characters."
     },
     "errors": {
       "missingSelection": "Select a telemarketing rep and a seller.",
-      "alreadyAssigned": "This seller is already assigned to another rep."
+      "alreadyAssigned": "This seller is already assigned to another rep.",
+      "missingActivationFields": "Complete program, representative, and client."
     },
     "empty": "No sellers assigned.",
     "noAccessTitle": "Restricted access",
     "noAccessDescription": "Only admins and distributors can assign telemarketing."
+  },
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Your information and access.",
+    "fields": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role"
+    }
   },
   "usuarios": {
     "title": "Users",

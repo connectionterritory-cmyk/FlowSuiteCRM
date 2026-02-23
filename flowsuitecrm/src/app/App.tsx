@@ -13,6 +13,7 @@ import { Programa4en14Page } from '../modules/4en14/Programa4en14Page'
 import { ServicioClientePage } from '../modules/servicio-cliente/ServicioClientePage'
 import { UsuariosPage } from '../modules/usuarios/UsuariosPage'
 import { TelemercadeoPage } from '../modules/telemercadeo/TelemercadeoPage'
+import { ImportacionesPage } from '../modules/importaciones/ImportacionesPage'
 import { PerfilPage } from '../modules/perfil/PerfilPage'
 import { LoginPage } from '../modules/auth/LoginPage'
 import { ResetPasswordPage } from '../modules/auth/ResetPasswordPage'
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/4en14" element={<Programa4en14Page />} />
           <Route path="/servicio-cliente" element={<ServicioClientePage />} />
           <Route path="/telemercadeo" element={<TelemercadeoPage />} />
+          <Route path="/importaciones" element={<ImportacionesPage />} />
           <Route path="/usuarios" element={<UsuariosPage />} />
           <Route path="/perfil" element={<PerfilPage />} />
         </Route>

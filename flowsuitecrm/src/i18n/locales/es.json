@@ -122,7 +122,9 @@
     "programa4en14": "4 en 14",
     "servicioCliente": "Servicio al cliente",
     "telemercadeo": "Telemercadeo",
-    "usuarios": "Usuarios"
+    "importaciones": "Importaciones",
+    "usuarios": "Usuarios",
+    "perfil": "Perfil"
   },
   "oportunidades": {
     "title": "Oportunidades",
@@ -817,26 +819,65 @@
   "telemercadeo": {
     "title": "Telemercadeo",
     "subtitle": "Asigna vendedores a cada ejecutivo de telemercadeo.",
+    "subtitleTele": "Gestiona activaciones asignadas.",
     "fields": {
       "tele": "Telemercadeo",
-      "vendedor": "Vendedor"
+      "vendedor": "Representante",
+      "programa": "Programa",
+      "representante": "Representante",
+      "buscarCliente": "Buscar cliente",
+      "buscarClientePlaceholder": "Nombre o telefono"
     },
     "columns": {
-      "vendedor": "Vendedor",
+      "vendedor": "Representante",
       "telefono": "Telefono",
-      "actions": "Acciones"
+      "actions": "Acciones",
+      "cliente": "Cliente",
+      "programa": "Programa",
+      "estado": "Estado"
     },
     "actions": {
       "assign": "Asignar",
-      "remove": "Quitar"
+      "remove": "Quitar",
+      "newActivation": "Nueva activacion",
+      "createActivation": "Crear activacion",
+      "clearSelection": "Limpiar seleccion"
+    },
+    "labels": {
+      "cliente": "Cliente",
+      "programa": "Programa",
+      "telefono": "Telefono",
+      "whatsapp": "WhatsApp",
+      "clienteSeleccionado": "Cliente seleccionado"
+    },
+    "modal": {
+      "title": "Nueva activacion",
+      "subtitle": "Registra una activacion para el telemercadista."
+    },
+    "activaciones": {
+      "empty": "No hay activaciones asignadas."
+    },
+    "search": {
+      "empty": "Sin resultados.",
+      "helper": "Escribe al menos 2 caracteres."
     },
     "errors": {
       "missingSelection": "Selecciona un telemercadeo y un vendedor.",
-      "alreadyAssigned": "Este vendedor ya esta asignado a otro telemercadeo."
+      "alreadyAssigned": "Este vendedor ya esta asignado a otro telemercadeo.",
+      "missingActivationFields": "Completa programa, representante y cliente."
     },
     "empty": "No hay vendedores asignados.",
     "noAccessTitle": "Acceso restringido",
     "noAccessDescription": "Solo administradores y distribuidores pueden asignar telemercadeo."
+  },
+  "profile": {
+    "title": "Perfil",
+    "subtitle": "Tu informacion y accesos.",
+    "fields": {
+      "name": "Nombre",
+      "email": "Email",
+      "role": "Rol"
+    }
   },
   "usuarios": {
     "title": "Usuarios",
