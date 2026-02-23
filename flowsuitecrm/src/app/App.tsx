@@ -13,6 +13,7 @@ import { Programa4en14Page } from '../modules/4en14/Programa4en14Page'
 import { ServicioClientePage } from '../modules/servicio-cliente/ServicioClientePage'
 import { UsuariosPage } from '../modules/usuarios/UsuariosPage'
 import { TelemercadeoPage } from '../modules/telemercadeo/TelemercadeoPage'
+import { PerfilPage } from '../modules/perfil/PerfilPage'
 import { LoginPage } from '../modules/auth/LoginPage'
 import { ResetPasswordPage } from '../modules/auth/ResetPasswordPage'
 import { useAuth } from '../auth/AuthProvider'
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/servicio-cliente" element={<ServicioClientePage />} />
           <Route path="/telemercadeo" element={<TelemercadeoPage />} />
           <Route path="/usuarios" element={<UsuariosPage />} />
+          <Route path="/perfil" element={<PerfilPage />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to={defaultPath} replace />} />

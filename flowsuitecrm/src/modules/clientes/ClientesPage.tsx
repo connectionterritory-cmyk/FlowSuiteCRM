@@ -19,14 +19,23 @@ type ClienteRecord = {
   apellido: string | null
   email: string | null
   telefono: string | null
+  telefono_casa: string | null
   direccion: string | null
   numero_cuenta_financiera: string | null
+  hycite_id: string | null
   saldo_actual: number | null
+  monto_moroso: number | null
+  dias_atraso: number | null
   estado_morosidad: string | null
+  estado_cuenta: string | null
+  nivel: number | null
   vendedor_id: string | null
   distribuidor_id: string | null
+  codigo_vendedor_hycite: string | null
   fecha_nacimiento: string | null
+  fecha_ultimo_pedido: string | null
   activo: boolean | null
+  origen: string | null
   created_at: string | null
 }
 
@@ -35,18 +44,43 @@ const initialForm = {
   apellido: '',
   email: '',
   telefono: '',
+  telefono_casa: '',
   direccion: '',
-  apartamento: '',
-  ciudad: '',
-  estado_region: '',
-  codigo_postal: '',
   numero_cuenta_financiera: '',
   saldo_actual: '',
-  estado_morosidad: '',
   vendedor_id: '',
   distribuidor_id: '',
   fecha_nacimiento: '',
   activo: true,
+}
+
+// Segmento de atraso basado en dias_atraso
+function segmentoAtraso(dias: number | null, moroso: number | null): string {
+  if (!moroso || moroso === 0) return 'Al día'
+  if (!dias) return 'Al día'
+  if (dias >= 91) return '+90 días'
+  if (dias >= 61) return '61-90 días'
+  if (dias >= 31) return '31-60 días'
+  if (dias >= 1) return '0-30 días'
+  return 'Al día'
+}
+
+function badgeColor(segmento: string): string {
+  if (segmento === 'Al día') return '#d1fae5'
+  if (segmento === '0-30 días') return '#fef3c7'
+  if (segmento === '31-60 días') return '#fed7aa'
+  if (segmento === '61-90 días') return '#fecaca'
+  if (segmento === '+90 días') return '#f3e8ff'
+  return '#f3f4f6'
+}
+
+function badgeTextColor(segmento: string): string {
+  if (segmento === 'Al día') return '#065f46'
+  if (segmento === '0-30 días') return '#92400e'
+  if (segmento === '31-60 días') return '#9a3412'
+  if (segmento === '61-90 días') return '#991b1b'
+  if (segmento === '+90 días') return '#6b21a8'
+  return '#374151'
 }
 
 export function ClientesPage() {
@@ -65,35 +99,11 @@ export function ClientesPage() {
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const configured = isSupabaseConfigured
 
-  const parseDireccion = useCallback((value: string | null) => {
-    if (!value) {
-      return {
-        direccion: '-',
-        apartamento: '-',
-        ciudad: '-',
-        estado_region: '-',
-        codigo_postal: '-',
-      }
-    }
-    try {
-      const parsed = JSON.parse(value) as Partial<typeof initialForm>
-      return {
-        direccion: parsed.direccion || '-',
-        apartamento: parsed.apartamento || '-',
-        ciudad: parsed.ciudad || '-',
-        estado_region: parsed.estado_region || '-',
-        codigo_postal: parsed.codigo_postal || '-',
-      }
-    } catch {
-      return {
-        direccion: value,
-        apartamento: '-',
-        ciudad: '-',
-        estado_region: '-',
-        codigo_postal: '-',
-      }
-    }
-  }, [])
+  // --- FILTROS ---
+  const [busqueda, setBusqueda] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('todos')
+  const [filtroAtraso, setFiltroAtraso] = useState('todos')
+  const [filtroVendedor, setFiltroVendedor] = useState('todos')
 
   const loadClientes = useCallback(async () => {
     if (!configured) return
@@ -108,31 +118,117 @@ export function ClientesPage() {
       setError(fetchError.message)
       setClientes([])
     } else {
-      setClientes(data ?? [])
+      setClientes((data ?? []) as ClienteRecord[])
     }
     setLoading(false)
   }, [configured])
 
   useEffect(() => {
-    if (configured) {
-      loadClientes()
-    }
+    if (configured) loadClientes()
   }, [configured, loadClientes])
 
+  // --- VENDEDORES UNICOS para el filtro ---
+  const vendedoresUnicos = useMemo(() => {
+    const ids = [...new Set(clientes.map((c) => c.vendedor_id).filter(Boolean))] as string[]
+    return ids.map((id) => ({
+      id,
+      nombre: usersById[id] ?? `${id.slice(0, 8)}...`,
+    }))
+  }, [clientes, usersById])
+
+  // --- FILTRADO ---
+  const clientesFiltrados = useMemo(() => {
+    return clientes.filter((c) => {
+      const fullName = `${c.nombre ?? ''} ${c.apellido ?? ''}`.toLowerCase()
+      const tel = c.telefono ?? ''
+      const cuenta = c.hycite_id ?? c.numero_cuenta_financiera ?? ''
+      const matchBusqueda =
+        !busqueda ||
+        fullName.includes(busqueda.toLowerCase()) ||
+        tel.includes(busqueda) ||
+        cuenta.includes(busqueda)
+
+      const segmento = segmentoAtraso(c.dias_atraso, c.monto_moroso)
+      const matchAtraso =
+        filtroAtraso === 'todos' ||
+        (filtroAtraso === 'al_dia' && segmento === 'Al día') ||
+        (filtroAtraso === '0_30' && segmento === '0-30 días') ||
+        (filtroAtraso === '31_60' && segmento === '31-60 días') ||
+        (filtroAtraso === '61_90' && segmento === '61-90 días') ||
+        (filtroAtraso === 'mas_90' && segmento === '+90 días')
+
+      const matchEstado =
+        filtroEstado === 'todos' ||
+        (filtroEstado === 'actual' && (c.estado_cuenta === 'actual' || (!c.estado_cuenta && c.activo))) ||
+        (filtroEstado === 'cancelacion_total' && c.estado_cuenta === 'cancelacion_total') ||
+        (filtroEstado === 'inactivo' && (c.estado_cuenta === 'inactivo' || c.activo === false))
+
+      const matchVendedor = filtroVendedor === 'todos' || c.vendedor_id === filtroVendedor
+
+      return matchBusqueda && matchAtraso && matchEstado && matchVendedor
+    })
+  }, [clientes, busqueda, filtroAtraso, filtroEstado, filtroVendedor])
+
+  // --- ESTADISTICAS ---
+  const stats = useMemo(
+    () => ({
+      total: clientes.length,
+      alDia: clientes.filter((c) => !c.monto_moroso || c.monto_moroso === 0).length,
+      conMoroso: clientes.filter((c) => c.monto_moroso && c.monto_moroso > 0).length,
+      cancelados: clientes.filter((c) => c.estado_cuenta === 'cancelacion_total').length,
+    }),
+    [clientes]
+  )
+
+  // --- ROWS ---
   const rows = useMemo<DataTableRow[]>(() => {
-    return clientes.map((cliente) => {
+    return clientesFiltrados.map((cliente) => {
       const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
-      const morosidadLabel = cliente.estado_morosidad
-        ? t(`clientes.morosidad.${cliente.estado_morosidad}`)
+      const vendedorName = cliente.vendedor_id
+        ? usersById[cliente.vendedor_id] ?? cliente.codigo_vendedor_hycite ?? `${cliente.vendedor_id.slice(0, 8)}...`
         : '-'
-      const estadoLabel = cliente.activo ? t('clientes.estado.activo') : t('clientes.estado.inactivo')
-      const vendedorName = cliente.vendedor_id ? usersById[cliente.vendedor_id] ?? cliente.vendedor_id : '-'
-      const direccionParts = parseDireccion(cliente.direccion)
+      const cuenta = cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '-'
+      const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
+
+      const morosidadBadge = (
+        <span
+          style={{
+            padding: '0.2rem 0.6rem',
+            borderRadius: '9999px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            background: badgeColor(segmento),
+            color: badgeTextColor(segmento),
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {segmento}
+        </span>
+      )
+
+      const estadoBadge = (
+        <span
+          style={{
+            padding: '0.2rem 0.6rem',
+            borderRadius: '9999px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            background: cliente.estado_cuenta === 'cancelacion_total' ? '#f3f4f6' : '#d1fae5',
+            color: cliente.estado_cuenta === 'cancelacion_total' ? '#6b7280' : '#065f46',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {cliente.estado_cuenta === 'cancelacion_total' ? 'Cancelado' : 'Actual'}
+        </span>
+      )
+
+      const saldoDisplay = cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-'
+
       const whatsappAction = (
         <button
           type="button"
           className="whatsapp-button"
-          aria-label={t('whatsapp.open')}
+          aria-label="WhatsApp"
           onClick={(event) => {
             event.stopPropagation()
             openWhatsapp({
@@ -146,51 +242,51 @@ export function ClientesPage() {
           <IconWhatsapp className="whatsapp-icon" />
         </button>
       )
+
       return {
         id: cliente.id,
         cells: [
           fullName,
           cliente.telefono ?? '-',
-          cliente.numero_cuenta_financiera ?? '-',
+          cuenta,
           vendedorName,
-          morosidadLabel,
-          estadoLabel,
+          saldoDisplay,
+          morosidadBadge,
+          estadoBadge,
           whatsappAction,
         ],
         detail: [
-          { label: t('clientes.fields.nombre'), value: cliente.nombre ?? '-' },
-          { label: t('clientes.fields.apellido'), value: cliente.apellido ?? '-' },
-          { label: t('clientes.fields.email'), value: cliente.email ?? '-' },
-          { label: t('clientes.fields.telefono'), value: cliente.telefono ?? '-' },
-          { label: t('clientes.fields.direccion'), value: direccionParts.direccion },
-          { label: t('clientes.fields.apartamento'), value: direccionParts.apartamento },
-          { label: t('clientes.fields.ciudad'), value: direccionParts.ciudad },
-          { label: t('clientes.fields.estadoRegion'), value: direccionParts.estado_region },
-          { label: t('clientes.fields.codigoPostal'), value: direccionParts.codigo_postal },
-          { label: t('clientes.fields.numeroCuentaFinanciera'), value: cliente.numero_cuenta_financiera ?? '-' },
-          { label: t('clientes.fields.saldoActual'), value: cliente.saldo_actual ?? '-' },
-          { label: t('clientes.fields.estadoMorosidad'), value: morosidadLabel },
-          { label: t('clientes.fields.vendedorId'), value: vendedorName },
-          { label: t('clientes.fields.distribuidorId'), value: cliente.distribuidor_id ?? '-' },
-          { label: t('clientes.fields.fechaNacimiento'), value: cliente.fecha_nacimiento ?? '-' },
-          { label: t('clientes.fields.activo'), value: estadoLabel },
+          { label: 'Nombre', value: cliente.nombre ?? '-' },
+          { label: 'Apellido', value: cliente.apellido ?? '-' },
+          { label: 'Email', value: cliente.email ?? '-' },
+          { label: 'Telefono movil', value: cliente.telefono ?? '-' },
+          { label: 'Telefono casa', value: cliente.telefono_casa ?? '-' },
+          { label: 'Direccion', value: cliente.direccion ?? '-' },
+          { label: 'Cuenta Hycite', value: cliente.hycite_id ?? '-' },
+          { label: 'Cuenta financiera', value: cliente.numero_cuenta_financiera ?? '-' },
+          { label: 'Saldo actual', value: cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-' },
+          { label: 'Monto moroso', value: cliente.monto_moroso ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-' },
+          { label: 'Dias de atraso', value: segmento },
+          { label: 'Nivel', value: cliente.nivel ? String(cliente.nivel) : '-' },
+          { label: 'Estado', value: cliente.estado_cuenta ?? '-' },
+          { label: 'Ultimo pedido', value: cliente.fecha_ultimo_pedido ?? '-' },
+          { label: 'Vendedor', value: vendedorName },
+          { label: 'Codigo vendedor', value: cliente.codigo_vendedor_hycite ?? '-' },
+          { label: 'Origen', value: cliente.origen ?? '-' },
         ],
       }
     })
-  }, [clientes, parseDireccion, session?.user?.user_metadata, t, usersById])
+  }, [clientesFiltrados, openWhatsapp, usersById])
 
-  const emptyLabel = loading ? t('common.loading') : t('common.noData')
+  const emptyLabel = loading ? t('common.loading') : 'Sin resultados'
 
   const handleOpenForm = () => {
-    setFormValues({
-      ...initialForm,
-      vendedor_id: session?.user.id ?? '',
-    })
+    setFormValues({ ...initialForm, vendedor_id: session?.user.id ?? '' })
     setFormError(null)
     setFormOpen(true)
   }
 
-  const vendedorName = session?.user.id ? (usersById[session.user.id] ?? session.user.id) : '-'
+  const vendedorName = session?.user.id ? usersById[session.user.id] ?? session.user.id : '-'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -200,35 +296,23 @@ export function ClientesPage() {
     }
     setSubmitting(true)
     setFormError(null)
-    const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
-    const vendedorId = session?.user.id ?? null
-    const direccionPayload = {
-      direccion: toNull(formValues.direccion),
-      apartamento: toNull(formValues.apartamento),
-      ciudad: toNull(formValues.ciudad),
-      estado_region: toNull(formValues.estado_region),
-      codigo_postal: toNull(formValues.codigo_postal),
-    }
-    const direccionValue = Object.values(direccionPayload).some((value) => value)
-      ? JSON.stringify(direccionPayload)
-      : null
+    const toNull = (v: string) => (v.trim() === '' ? null : v.trim())
     const payload = {
       nombre: toNull(formValues.nombre),
       apellido: toNull(formValues.apellido),
       email: toNull(formValues.email),
       telefono: toNull(formValues.telefono),
-      direccion: direccionValue,
+      telefono_casa: toNull(formValues.telefono_casa),
+      direccion: toNull(formValues.direccion),
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
       saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),
-      estado_morosidad: formValues.estado_morosidad || null,
-      vendedor_id: vendedorId,
+      vendedor_id: session?.user.id ?? null,
       distribuidor_id: toNull(formValues.distribuidor_id),
       fecha_nacimiento: formValues.fecha_nacimiento || null,
       activo: formValues.activo,
+      origen: 'manual',
     }
-
     const { error: insertError } = await supabase.from('clientes').insert(payload)
-
     if (insertError) {
       setFormError(insertError.message)
       showToast(insertError.message, 'error')
@@ -240,15 +324,25 @@ export function ClientesPage() {
     setSubmitting(false)
   }
 
-  const handleChange = (field: keyof typeof initialForm) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      const target = event.target
-      const value =
-        target instanceof HTMLInputElement && target.type === 'checkbox'
-          ? target.checked
-          : target.value
-      setFormValues((prev) => ({ ...prev, [field]: value }))
-    }
+  const handleChange = (field: keyof typeof initialForm) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const target = event.target
+    const value = target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value
+    setFormValues((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const limpiarFiltros = () => {
+    setBusqueda('')
+    setFiltroEstado('todos')
+    setFiltroAtraso('todos')
+    setFiltroVendedor('todos')
+  }
+
+  const hayFiltros =
+    busqueda || filtroEstado !== 'todos' || filtroAtraso !== 'todos' || filtroVendedor !== 'todos'
+
+  if (!configured) {
+    return <EmptyState title={t('dashboard.missingConfigTitle')} description={t('dashboard.missingConfigDescription')} />
+  }
 
   return (
     <div className="page-stack">
@@ -257,27 +351,200 @@ export function ClientesPage() {
         subtitle={t('clientes.subtitle')}
         action={<Button onClick={handleOpenForm}>{t('common.newCliente')}</Button>}
       />
-      {!configured && (
-        <EmptyState
-          title={t('dashboard.missingConfigTitle')}
-          description={t('dashboard.missingConfigDescription')}
-        />
-      )}
+
+      {/* ESTADISTICAS */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+        {[
+          { label: 'Total', value: stats.total, color: '#3b82f6' },
+          { label: 'Al día', value: stats.alDia, color: '#10b981' },
+          { label: 'Con morosidad', value: stats.conMoroso, color: '#f59e0b' },
+          { label: 'Cancelados', value: stats.cancelados, color: '#6b7280' },
+        ].map((s) => (
+          <div
+            key={s.label}
+            style={{
+              padding: '0.875rem 1rem',
+              background: 'var(--color-surface, #f9fafb)',
+              borderRadius: '0.5rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* FILTROS */}
+      <div
+        style={{
+          padding: '1rem',
+          background: 'var(--color-surface, #f9fafb)',
+          borderRadius: '0.75rem',
+          border: '1px solid var(--color-border, #e5e7eb)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          alignItems: 'flex-end',
+        }}
+      >
+        {/* Busqueda */}
+        <div style={{ flex: '1', minWidth: '200px' }}>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            BUSCAR
+          </label>
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Nombre, telefono, cuenta Hycite..."
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Filtro estado */}
+        <div>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            ESTADO
+          </label>
+          <select
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+            }}
+          >
+            <option value="todos">Todos</option>
+            <option value="actual">Actual</option>
+            <option value="cancelacion_total">Cancelado</option>
+            <option value="inactivo">Inactivo</option>
+          </select>
+        </div>
+
+        {/* Filtro atraso */}
+        <div>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            MOROSIDAD
+          </label>
+          <select
+            value={filtroAtraso}
+            onChange={(e) => setFiltroAtraso(e.target.value)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+            }}
+          >
+            <option value="todos">Todos</option>
+            <option value="al_dia">Al día</option>
+            <option value="0_30">0-30 días</option>
+            <option value="31_60">31-60 días</option>
+            <option value="61_90">61-90 días</option>
+            <option value="mas_90">+90 días</option>
+          </select>
+        </div>
+
+        {/* Filtro vendedor */}
+        <div>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            VENDEDOR
+          </label>
+          <select
+            value={filtroVendedor}
+            onChange={(e) => setFiltroVendedor(e.target.value)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+            }}
+          >
+            <option value="todos">Todos</option>
+            {vendedoresUnicos.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Limpiar filtros */}
+        {hayFiltros && (
+          <Button variant="ghost" type="button" onClick={limpiarFiltros}>
+            Limpiar
+          </Button>
+        )}
+
+        {/* Contador */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            fontSize: '0.8rem',
+            color: 'var(--color-text-muted, #6b7280)',
+            alignSelf: 'center',
+          }}
+        >
+          {clientesFiltrados.length} de {clientes.length} clientes
+        </div>
+      </div>
+
       {error && <div className="form-error">{error}</div>}
+
       <DataTable
-        columns={[
-          t('clientes.columns.nombre'),
-          t('clientes.columns.telefono'),
-          t('clientes.columns.cuenta'),
-          t('clientes.columns.vendedor'),
-          t('clientes.columns.morosidad'),
-          t('clientes.columns.estado'),
-          t('whatsapp.column'),
-        ]}
+        columns={['Nombre', 'Telefono', 'Cuenta Hycite', 'Vendedor', 'Saldo', 'Morosidad', 'Estado', 'WhatsApp']}
         rows={rows}
         emptyLabel={emptyLabel}
         onRowClick={setSelectedRow}
       />
+
+      {/* MODAL NUEVO CLIENTE */}
       <Modal
         open={formOpen}
         title={t('clientes.form.title')}
@@ -307,57 +574,28 @@ export function ClientesPage() {
             <input type="email" value={formValues.email} onChange={handleChange('email')} />
           </label>
           <label className="form-field">
-            <span>{t('clientes.fields.telefono')}</span>
+            <span>Telefono movil</span>
             <input value={formValues.telefono} onChange={handleChange('telefono')} />
+          </label>
+          <label className="form-field">
+            <span>Telefono casa</span>
+            <input value={formValues.telefono_casa} onChange={handleChange('telefono_casa')} />
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.direccion')}</span>
             <input value={formValues.direccion} onChange={handleChange('direccion')} />
           </label>
           <label className="form-field">
-            <span>{t('clientes.fields.apartamento')}</span>
-            <input value={formValues.apartamento} onChange={handleChange('apartamento')} />
-          </label>
-          <label className="form-field">
-            <span>{t('clientes.fields.ciudad')}</span>
-            <input value={formValues.ciudad} onChange={handleChange('ciudad')} />
-          </label>
-          <label className="form-field">
-            <span>{t('clientes.fields.estadoRegion')}</span>
-            <input value={formValues.estado_region} onChange={handleChange('estado_region')} />
-          </label>
-          <label className="form-field">
-            <span>{t('clientes.fields.codigoPostal')}</span>
-            <input value={formValues.codigo_postal} onChange={handleChange('codigo_postal')} />
-          </label>
-          <label className="form-field">
-            <span>{t('clientes.fields.numeroCuentaFinanciera')}</span>
-            <input
-              value={formValues.numero_cuenta_financiera}
-              onChange={handleChange('numero_cuenta_financiera')}
-            />
+            <span>Cuenta Hycite / Financiera</span>
+            <input value={formValues.numero_cuenta_financiera} onChange={handleChange('numero_cuenta_financiera')} />
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.saldoActual')}</span>
             <input type="number" value={formValues.saldo_actual} onChange={handleChange('saldo_actual')} />
           </label>
           <label className="form-field">
-            <span>{t('clientes.fields.estadoMorosidad')}</span>
-            <select value={formValues.estado_morosidad} onChange={handleChange('estado_morosidad')}>
-              <option value="">-</option>
-              <option value="0-30">{t('clientes.morosidad.0-30')}</option>
-              <option value="31-60">{t('clientes.morosidad.31-60')}</option>
-              <option value="61-90">{t('clientes.morosidad.61-90')}</option>
-              <option value="91+">{t('clientes.morosidad.91+')}</option>
-            </select>
-          </label>
-          <label className="form-field">
             <span>{t('clientes.fields.vendedorId')}</span>
             <input value={vendedorName} readOnly />
-          </label>
-          <label className="form-field">
-            <span>{t('clientes.fields.distribuidorId')}</span>
-            <input value={formValues.distribuidor_id} onChange={handleChange('distribuidor_id')} />
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.fechaNacimiento')}</span>
@@ -370,9 +608,10 @@ export function ClientesPage() {
           {formError && <div className="form-error">{formError}</div>}
         </form>
       </Modal>
+
       <DetailPanel
         open={Boolean(selectedRow)}
-        title={t('clientes.detailsTitle')}
+        title="Detalle del cliente"
         items={selectedRow?.detail ?? []}
         onClose={() => setSelectedRow(null)}
       />

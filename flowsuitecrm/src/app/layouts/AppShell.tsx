@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Sidebar } from '../../components/Sidebar'
 import { Topbar } from '../../components/Topbar'
+import { BottomNav } from '../../components/BottomNav'
 import { navItems, programSubItems } from '../navigation'
 
 const STORAGE_KEY = 'flowsuite.sidebar.collapsed'
@@ -46,6 +47,7 @@ export function AppShell() {
     const titleItems = [
       ...navItems.map((item) => ({ labelKey: item.labelKey, path: item.path })),
       ...programSubItems,
+      { labelKey: 'nav.perfil', path: '/perfil' },
     ]
     const match = titleItems.find((item) => location.pathname.startsWith(item.path))
     if (!match) {
@@ -70,6 +72,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <BottomNav />
     </div>
   )
 }
