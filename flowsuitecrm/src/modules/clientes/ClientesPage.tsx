@@ -21,6 +21,9 @@ type ClienteRecord = {
   telefono: string | null
   telefono_casa: string | null
   direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
   numero_cuenta_financiera: string | null
   hycite_id: string | null
   saldo_actual: number | null
@@ -104,6 +107,9 @@ export function ClientesPage() {
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroAtraso, setFiltroAtraso] = useState('todos')
   const [filtroVendedor, setFiltroVendedor] = useState('todos')
+  const [filtroCiudad, setFiltroCiudad] = useState('')
+  const [filtroEstadoRegion, setFiltroEstadoRegion] = useState('')
+  const [filtroCodigoPostal, setFiltroCodigoPostal] = useState('')
 
   const loadClientes = useCallback(async () => {
     if (!configured) return
@@ -164,10 +170,33 @@ export function ClientesPage() {
         (filtroEstado === 'inactivo' && (c.estado_cuenta === 'inactivo' || c.activo === false))
 
       const matchVendedor = filtroVendedor === 'todos' || c.vendedor_id === filtroVendedor
+      const matchCiudad =
+        !filtroCiudad || (c.ciudad ?? '').toLowerCase().includes(filtroCiudad.toLowerCase())
+      const matchEstadoRegion =
+        !filtroEstadoRegion || (c.estado_region ?? '').toLowerCase().includes(filtroEstadoRegion.toLowerCase())
+      const matchCodigoPostal =
+        !filtroCodigoPostal || (c.codigo_postal ?? '').toLowerCase().includes(filtroCodigoPostal.toLowerCase())
 
-      return matchBusqueda && matchAtraso && matchEstado && matchVendedor
+      return (
+        matchBusqueda &&
+        matchAtraso &&
+        matchEstado &&
+        matchVendedor &&
+        matchCiudad &&
+        matchEstadoRegion &&
+        matchCodigoPostal
+      )
     })
-  }, [clientes, busqueda, filtroAtraso, filtroEstado, filtroVendedor])
+  }, [
+    clientes,
+    busqueda,
+    filtroAtraso,
+    filtroEstado,
+    filtroVendedor,
+    filtroCiudad,
+    filtroEstadoRegion,
+    filtroCodigoPostal,
+  ])
 
   // --- ESTADISTICAS ---
   const stats = useMemo(
@@ -262,6 +291,9 @@ export function ClientesPage() {
           { label: 'Telefono movil', value: cliente.telefono ?? '-' },
           { label: 'Telefono casa', value: cliente.telefono_casa ?? '-' },
           { label: 'Direccion', value: cliente.direccion ?? '-' },
+          { label: 'Ciudad', value: cliente.ciudad ?? '-' },
+          { label: 'Estado', value: cliente.estado_region ?? '-' },
+          { label: 'Codigo postal', value: cliente.codigo_postal ?? '-' },
           { label: 'Cuenta Hycite', value: cliente.hycite_id ?? '-' },
           { label: 'Cuenta financiera', value: cliente.numero_cuenta_financiera ?? '-' },
           { label: 'Saldo actual', value: cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-' },
@@ -335,10 +367,19 @@ export function ClientesPage() {
     setFiltroEstado('todos')
     setFiltroAtraso('todos')
     setFiltroVendedor('todos')
+    setFiltroCiudad('')
+    setFiltroEstadoRegion('')
+    setFiltroCodigoPostal('')
   }
 
   const hayFiltros =
-    busqueda || filtroEstado !== 'todos' || filtroAtraso !== 'todos' || filtroVendedor !== 'todos'
+    busqueda ||
+    filtroEstado !== 'todos' ||
+    filtroAtraso !== 'todos' ||
+    filtroVendedor !== 'todos' ||
+    filtroCiudad ||
+    filtroEstadoRegion ||
+    filtroCodigoPostal
 
   if (!configured) {
     return <EmptyState title={t('dashboard.missingConfigTitle')} description={t('dashboard.missingConfigDescription')} />
@@ -406,6 +447,93 @@ export function ClientesPage() {
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Nombre, telefono, cuenta Hycite..."
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Filtro ciudad */}
+        <div style={{ minWidth: '160px' }}>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            CIUDAD
+          </label>
+          <input
+            value={filtroCiudad}
+            onChange={(e) => setFiltroCiudad(e.target.value)}
+            placeholder="Ciudad"
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Filtro estado */}
+        <div style={{ minWidth: '160px' }}>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            ESTADO
+          </label>
+          <input
+            value={filtroEstadoRegion}
+            onChange={(e) => setFiltroEstadoRegion(e.target.value)}
+            placeholder="Estado"
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'white',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Filtro ZIP */}
+        <div style={{ minWidth: '140px' }}>
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.3rem',
+              color: 'var(--color-text-muted, #6b7280)',
+            }}
+          >
+            ZIP
+          </label>
+          <input
+            value={filtroCodigoPostal}
+            onChange={(e) => setFiltroCodigoPostal(e.target.value)}
+            placeholder="Zip Code"
             style={{
               width: '100%',
               padding: '0.5rem 0.75rem',
