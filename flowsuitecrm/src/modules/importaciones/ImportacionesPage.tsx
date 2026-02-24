@@ -17,6 +17,9 @@ interface ClienteImport {
   telefono: string | null
   telefono_casa: string | null
   direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
   saldo_actual: number
   monto_moroso: number
   dias_atraso: number
@@ -65,6 +68,39 @@ function parsearMonto(raw?: string): number {
   return isNaN(n) ? 0 : Math.abs(n)
 }
 
+function normalizarHeader(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .toUpperCase()
+}
+
+function buildNormalizedRow(row: Record<string, string>): Record<string, string> {
+  const normalized: Record<string, string> = {}
+  Object.entries(row).forEach(([key, value]) => {
+    const normalizedKey = normalizarHeader(key)
+    if (!(normalizedKey in normalized)) {
+      normalized[normalizedKey] = value
+    }
+  })
+  return normalized
+}
+
+function obtenerCampo(
+  row: Record<string, string>,
+  normalizedRow: Record<string, string>,
+  aliases: string[],
+): string {
+  for (const alias of aliases) {
+    const raw = row[alias]
+    if (raw && raw.trim()) return raw
+    const normalized = normalizedRow[normalizarHeader(alias)]
+    if (normalized && normalized.trim()) return normalized
+  }
+  return ''
+}
+
 function calcularMoroso(row: Record<string, string>): number {
   return (
     parsearMonto(row['0-30 DÍAS DE MOROSIDAD']) +
@@ -90,30 +126,53 @@ function mapearEstado(s?: string): EstadoCuenta {
 }
 
 function parsearFila(row: Record<string, string>): ClienteImport | null {
-  const hyciteId = (row['# DE CLIENTE'] ?? '').trim()
+  const normalizedRow = buildNormalizedRow(row)
+  const hyciteId = obtenerCampo(row, normalizedRow, [
+    '# DE CLIENTE',
+    'Numero de cuenta hycite',
+    'Numero de cuenta',
+    'Cuenta',
+    'Hycite ID',
+  ]).trim()
   if (!hyciteId) return null
-  const nivel = parseInt(row['NIVEL'] ?? '1')
-  const ap1 = (row['APELLIDO PATERNO'] ?? '').trim()
-  const ap2 = (row['APELLIDO MATERNO'] ?? '').trim()
+  const nivel = parseInt(obtenerCampo(row, normalizedRow, ['NIVEL']) || '1')
+  const nombreRaw = obtenerCampo(row, normalizedRow, ['NOMBRE_1', 'NOMBRE', 'Nombre']).trim()
+  const ap1 = obtenerCampo(row, normalizedRow, ['APELLIDO PATERNO', 'Apellido', 'Apellidos']).trim()
+  const ap2 = obtenerCampo(row, normalizedRow, ['APELLIDO MATERNO']).trim()
+  const apellidoRaw = [ap1, ap2].filter(Boolean).join(' ').trim()
+  let nombre = nombreRaw || null
+  let apellido = apellidoRaw || null
+  if (!nombre && apellido) {
+    nombre = apellido
+    apellido = null
+  }
+  const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad']).trim() || null
+  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO', 'Estado', 'Estado / Provincia']).trim() || null
+  const codigoPostal = obtenerCampo(row, normalizedRow, ['ZIP CODE', 'ZIP', 'Codigo Postal', 'Codigo postal']).trim() || null
+  const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Dirección']).replace(/\n/g, ', ').trim()
+  const direccion = direccionRaw || [ciudad, estadoRegion, codigoPostal].filter(Boolean).join(', ') || null
   return {
     hycite_id: hyciteId,
-    tipo_cliente: (row['CLIENTE'] ?? 'HC').trim(),
-    nombre: (row['NOMBRE_1'] ?? row['NOMBRE'] ?? '').trim() || null,
-    apellido: [ap1, ap2].filter(Boolean).join(' ') || null,
-    email: limpiarEmail(row['CORREO ELECTRÓNICO']),
-    telefono: limpiarTelefono(row['TELÉFONO MÓVIL']),
-    telefono_casa: limpiarTelefono(row['TELÉFONO DE CASA']),
-    direccion: (row['DIRECCIÓN'] ?? '').replace(/\n/g, ', ') || null,
-    saldo_actual: parsearMonto(row['SALDO ACTUAL']),
+    tipo_cliente: obtenerCampo(row, normalizedRow, ['CLIENTE']).trim() || 'HC',
+    nombre,
+    apellido,
+    email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Correo', 'Email', 'email', 'E-mail'])),
+    telefono: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Telefono', 'Teléfono', 'Celular', 'Móvil'])),
+    telefono_casa: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO DE CASA'])),
+    direccion,
+    ciudad,
+    estado_region: estadoRegion,
+    codigo_postal: codigoPostal,
+    saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL'])),
     monto_moroso: calcularMoroso(row),
     dias_atraso: calcularAtraso(row),
     nivel: isNaN(nivel) || nivel < 1 ? 1 : Math.min(nivel, 9),
-    estado_cuenta: mapearEstado(row['STATUS']),
+    estado_cuenta: mapearEstado(obtenerCampo(row, normalizedRow, ['STATUS'])),
     elegible_addon: true,
-    fecha_ultimo_pedido: parsearFecha(row['ÚLTIMA FECHA DE COMPRA']),
+    fecha_ultimo_pedido: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE COMPRA'])),
     origen: 'hycite_import',
-    codigo_vendedor_hycite: (row['VENDEDOR'] ?? '').trim() || null,
-    codigo_dist_hycite: (row['DISTRIBUIDOR'] ?? '').trim() || null,
+    codigo_vendedor_hycite: obtenerCampo(row, normalizedRow, ['VENDEDOR']).trim() || null,
+    codigo_dist_hycite: obtenerCampo(row, normalizedRow, ['DISTRIBUIDOR']).trim() || null,
     updated_at: new Date().toISOString(),
   }
 }
