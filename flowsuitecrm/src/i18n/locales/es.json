@@ -447,9 +447,70 @@
     },
     "activaciones": {
       "title": "Activaciones",
-      "subtitle": "Gestiona activaciones y referidos del programa.",
+      "subtitle": "Aqui ves las listas de referidos que estas trabajando.",
       "actions": {
-        "new": "Nueva activacion"
+        "new": "Nueva activacion",
+        "create": "Crear activacion",
+        "view": "Ver",
+        "reactivate": "Reactivar",
+        "reactivated": "Activacion reactivada",
+        "loadMore": "Cargar mas"
+      },
+      "tabs": {
+        "active": "Activas",
+        "closed": "Cerradas"
+      },
+      "status": {
+        "active": "Activa",
+        "closed": "Cerrada"
+      },
+      "labels": {
+        "owner": "Quien dio la lista",
+        "representante": "Representante",
+        "referidos": "Referidos",
+        "lastActivity": "Ultima actividad",
+        "estado": "Estado",
+        "actions": "Acciones",
+        "search": "Buscar",
+        "scope": "Vista",
+        "mine": "Mis",
+        "distribution": "Mi distribucion"
+      },
+      "scope": {
+        "title": "Alcance",
+        "mine": "Mis activaciones",
+        "distribution": "Mi distribucion",
+        "mineHelp": "Ves solo tus activaciones.",
+        "distributionHelp": "Ves activaciones de tu red.",
+        "hint": "Cambia el alcance desde la seccion superior."
+      },
+      "filters": "Filtros",
+      "emptyActiveTitle": "No tienes activaciones aun.",
+      "emptyActiveDescription": "Crea una nueva para empezar.",
+      "emptyClosedTitle": "No tienes activaciones cerradas.",
+      "emptyClosedDescription": "",
+      "emptyTable": "Sin resultados",
+      "noAccess": "No tienes acceso a este modulo.",
+      "noAccessDetail": "Telemercadeo no tiene acceso a Conexiones Infinitas en esta fase.",
+      "detailTitle": "Detalle de activacion",
+      "relative": {
+        "minutes": "Hace {{count}} min",
+        "hours": "Hace {{count}} h",
+        "days": "Hace {{count}} dias"
+      },
+      "errors": {
+        "programMissing": "No se encontro el programa Conexiones Infinitas.",
+        "ownerRequired": "Selecciona quien dara los referidos."
+      },
+      "wizard": {
+        "title": "Nueva activacion",
+        "ownerTitle": "¿Quien va a enviar la lista de contactos?",
+        "ownerHint": "Normalmente eres tu mismo.",
+        "self": "Yo mismo",
+        "searchUser": "Buscar usuario",
+        "searchPlaceholder": "Nombre o telefono",
+        "confirmTitle": "Confirmar",
+        "confirmHint": "Revisa la informacion antes de crear la activacion."
       },
       "columns": {
         "fecha": "Fecha",

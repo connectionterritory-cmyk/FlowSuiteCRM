@@ -447,9 +447,70 @@
     },
     "activaciones": {
       "title": "Activations",
-      "subtitle": "Manage activations and referrals for the program.",
+      "subtitle": "Here you see the referral lists you are working on.",
       "actions": {
-        "new": "New activation"
+        "new": "New activation",
+        "create": "Create activation",
+        "view": "View",
+        "reactivate": "Reactivate",
+        "reactivated": "Activation reactivated",
+        "loadMore": "Load more"
+      },
+      "tabs": {
+        "active": "Active",
+        "closed": "Closed"
+      },
+      "status": {
+        "active": "Active",
+        "closed": "Closed"
+      },
+      "labels": {
+        "owner": "Who shared the list",
+        "representante": "Representative",
+        "referidos": "Referrals",
+        "lastActivity": "Last activity",
+        "estado": "Status",
+        "actions": "Actions",
+        "search": "Search",
+        "scope": "View",
+        "mine": "Mine",
+        "distribution": "My distribution"
+      },
+      "scope": {
+        "title": "Scope",
+        "mine": "My activations",
+        "distribution": "My distribution",
+        "mineHelp": "You only see your activations.",
+        "distributionHelp": "You see activations from your network.",
+        "hint": "Change scope from the top section."
+      },
+      "filters": "Filters",
+      "emptyActiveTitle": "You don't have activations yet.",
+      "emptyActiveDescription": "Create a new one to get started.",
+      "emptyClosedTitle": "You don't have closed activations.",
+      "emptyClosedDescription": "",
+      "emptyTable": "No results",
+      "noAccess": "You don't have access to this module.",
+      "noAccessDetail": "Telemarketing has no access to Conexiones Infinitas in this phase.",
+      "detailTitle": "Activation detail",
+      "relative": {
+        "minutes": "{{count}} min ago",
+        "hours": "{{count}} h ago",
+        "days": "{{count}} days ago"
+      },
+      "errors": {
+        "programMissing": "Conexiones Infinitas program not found.",
+        "ownerRequired": "Select who will provide referrals."
+      },
+      "wizard": {
+        "title": "New activation",
+        "ownerTitle": "Who will send the contact list?",
+        "ownerHint": "Normally it's you.",
+        "self": "Myself",
+        "searchUser": "Search user",
+        "searchPlaceholder": "Name or phone",
+        "confirmTitle": "Confirm",
+        "confirmHint": "Review the information before creating the activation."
       },
       "columns": {
         "fecha": "Date",

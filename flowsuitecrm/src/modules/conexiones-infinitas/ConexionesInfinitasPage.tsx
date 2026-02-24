@@ -6,9 +6,11 @@ import { StatCard } from '../../components/StatCard'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
+import { DetailPanel } from '../../components/DetailPanel'
 import { useToast } from '../../components/Toast'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
-import { useConexiones } from '../../hooks/useConexiones'
+import { useConexiones, type CiActivacion, type GiftProduct } from '../../hooks/useConexiones'
+import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { CONEXIONES_INFINITAS_DIFUSION, replaceTemplateVariables } from '../../lib/whatsappTemplates'
 import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
 import { useAuth } from '../../auth/AuthProvider'
@@ -32,6 +34,14 @@ type ConexionRow = {
   telefono: string
   email: string
   estado: string
+}
+
+type UsuarioRecord = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  distribuidor_padre_id?: string | null
 }
 
 type CiReferido = {
@@ -79,6 +89,7 @@ const initialRegistroForm = {
 
 const MIN_REFERIDOS_CI = 20
 const MIN_REFERIDOS_DRAFT = 1
+const CI_CLOSED_DAYS = 90
 
 const ciReferidoStates = [
   'pendiente',
@@ -99,6 +110,16 @@ const initialCiReferidoRow: ReferidoFormRow = {
 const buildCiReferidoRows = (count = 5) =>
   Array.from({ length: count }, () => ({ ...initialCiReferidoRow }))
 
+const normalizeCategory = (value?: string | null) =>
+  (value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .toLowerCase()
+
+const CLIENT_DIFFUSION_TEMPLATE =
+  '¡Mira esta belleza! 🎁 Estoy participando para ganármela y ya te dejé anotado para que a ti también te den un Regalo Premium. Te va a contactar mi asesor {vendedor} ({telefono_vendedor}) para explicarte. ¡Cualquier cosa llámame y te cuento cómo funciona!'
+
 const buildConexionRows = (count = 3) =>
   Array.from({ length: count }, () => ({ nombre: '', telefono: '', email: '', estado: 'pendiente' }))
 
@@ -111,10 +132,7 @@ const formatPhone = (value: string) => {
 
 const stripPhone = (value: string) => value.replace(/\D/g, '')
 
-const CLIENT_DIFFUSION_TEMPLATE =
-  '¡Mira esta belleza! 🎁 Estoy participando para ganármela y ya te dejé anotado para que a ti también te den un Regalo Premium. Te va a contactar mi asesor {vendedor} ({telefono_vendedor}) para explicarte. ¡Cualquier cosa llámame y te cuento cómo funciona!'
-
-function ConexionesActivacionesTab() {
+export function ConexionesActivacionesTabLegacy() {
   const { t, i18n } = useTranslation()
   const { session } = useAuth()
   const { usersById } = useUsers()
@@ -171,7 +189,23 @@ function ConexionesActivacionesTab() {
   const [referidoDrafts, setReferidoDrafts] = useState<Record<string, ReferidoFormRow>>({})
   const [referidoSavingId, setReferidoSavingId] = useState<string | null>(null)
   const [newReferidoForm, setNewReferidoForm] = useState<ReferidoFormRow>({ ...initialCiReferidoRow })
+  const [visitGiftEnabled, setVisitGiftEnabled] = useState(false)
+  const [selectedVisitGiftId, setSelectedVisitGiftId] = useState('')
+  const [visitGiftQty, setVisitGiftQty] = useState('1')
+  const [visitGiftDeliveredAt, setVisitGiftDeliveredAt] = useState<string | null>(null)
+  const [visitGiftSearch, setVisitGiftSearch] = useState('')
+  const [premiumGiftQtyPartial, setPremiumGiftQtyPartial] = useState('')
+  const [premiumGiftDeliveredAt, setPremiumGiftDeliveredAt] = useState<string | null>(null)
+  const [premiumGiftSearch, setPremiumGiftSearch] = useState('')
   const [detailGiftId, setDetailGiftId] = useState('')
+  const [detailVisitGiftEnabled, setDetailVisitGiftEnabled] = useState(false)
+  const [detailVisitGiftId, setDetailVisitGiftId] = useState('')
+  const [detailVisitGiftQty, setDetailVisitGiftQty] = useState('1')
+  const [detailVisitGiftDeliveredAt, setDetailVisitGiftDeliveredAt] = useState<string | null>(null)
+  const [detailPremiumGiftQtyPartial, setDetailPremiumGiftQtyPartial] = useState('')
+  const [detailPremiumGiftDeliveredAt, setDetailPremiumGiftDeliveredAt] = useState<string | null>(null)
+  const [detailVisitGiftSearch, setDetailVisitGiftSearch] = useState('')
+  const [detailPremiumGiftSearch, setDetailPremiumGiftSearch] = useState('')
   const [detailPhotoPath, setDetailPhotoPath] = useState<string | null>(null)
   const [detailPhotoPreviewUrl, setDetailPhotoPreviewUrl] = useState<string | null>(null)
   const [detailPhotoUploading, setDetailPhotoUploading] = useState(false)
@@ -207,6 +241,7 @@ function ConexionesActivacionesTab() {
     },
     [dateTimeFormat],
   )
+
 
   const getActivationState = useCallback(
     ({
@@ -316,6 +351,16 @@ function ConexionesActivacionesTab() {
     return map
   }, [productos])
 
+  const premiumProducts = useMemo(
+    () => productos.filter((gift) => normalizeCategory(gift.categoria) === 'regalo premium'),
+    [productos],
+  )
+
+  const visitProducts = useMemo(
+    () => productos.filter((gift) => normalizeCategory(gift.categoria) === 'regalo de visita'),
+    [productos],
+  )
+
   const referidosByActivacion = useMemo(() => {
     const map = new Map<string, CiReferido[]>()
     referidos.forEach((referido) => {
@@ -422,6 +467,7 @@ function ConexionesActivacionesTab() {
     if (!selectedActivation) {
       revokePreviewUrl(detailPhotoPreviewUrl)
       setDetailGiftId('')
+      setDetailVisitGiftEnabled(false)
       setDetailPhotoPath(null)
       setDetailPhotoPreviewUrl(null)
       setDetailWhatsappSentAt(null)
@@ -432,6 +478,22 @@ function ConexionesActivacionesTab() {
     }
     revokePreviewUrl(detailPhotoPreviewUrl)
     setDetailGiftId(selectedActivation.regalo_id ?? '')
+    const hasVisitGift =
+      Boolean(selectedActivation.regalo_visita_id) ||
+      selectedActivation.regalo_visita_cantidad != null ||
+      Boolean(selectedActivation.regalo_visita_entregado_at)
+    setDetailVisitGiftEnabled(hasVisitGift)
+    setDetailVisitGiftId(selectedActivation.regalo_visita_id ?? '')
+    setDetailVisitGiftQty(
+      selectedActivation.regalo_visita_cantidad != null
+        ? String(selectedActivation.regalo_visita_cantidad)
+        : '1',
+    )
+    setDetailVisitGiftDeliveredAt(selectedActivation.regalo_visita_entregado_at ?? null)
+    setDetailPremiumGiftQtyPartial(selectedActivation.regalo_premium_cantidad_parcial ?? '')
+    setDetailPremiumGiftDeliveredAt(selectedActivation.regalo_premium_entregado_at ?? null)
+    setDetailVisitGiftSearch('')
+    setDetailPremiumGiftSearch('')
     setDetailPhotoPath(selectedActivation.foto_url ?? null)
     setDetailPhotoPreviewUrl(null)
     setDetailWhatsappSentAt(selectedActivation.whatsapp_mensaje_enviado_at ?? null)
@@ -453,6 +515,14 @@ function ConexionesActivacionesTab() {
     setNewProspectoForm({ nombre: '', apellido: '', telefono: '' })
     setReferidoRows(buildCiReferidoRows())
     setSelectedGiftId('')
+    setVisitGiftEnabled(false)
+    setSelectedVisitGiftId('')
+    setVisitGiftQty('1')
+    setVisitGiftDeliveredAt(null)
+    setVisitGiftSearch('')
+    setPremiumGiftQtyPartial('')
+    setPremiumGiftDeliveredAt(null)
+    setPremiumGiftSearch('')
     setPhotoPath(null)
     setPhotoPreviewUrl(null)
     setPhotoUploading(false)
@@ -701,6 +771,11 @@ function ConexionesActivacionesTab() {
       }
     }
 
+    if (premiumGiftDeliveredAt && !photoPath) {
+      setActivationError(t('conexiones.activaciones.errors.photoRequired'))
+      return
+    }
+
     if (!selectedOwnerType || !selectedOwnerId) {
       setActivationError(t('conexiones.activaciones.errors.selectOwner'))
       return
@@ -709,10 +784,21 @@ function ConexionesActivacionesTab() {
     setActivationSaving(true)
     setActivationError(null)
 
+    const visitGiftPayload = visitGiftEnabled
+      ? {
+          regaloVisitaId: selectedVisitGiftId || null,
+          regaloVisitaCantidad: visitGiftQty.trim() ? Number(visitGiftQty) : null,
+          regaloVisitaEntregadoAt: visitGiftDeliveredAt,
+        }
+      : { regaloVisitaId: null, regaloVisitaCantidad: null, regaloVisitaEntregadoAt: null }
+
     const { data: activationResult, error: activationError } = await createActivacion({
       clienteId: selectedOwnerType === 'cliente' ? selectedOwnerId : null,
       leadId: selectedOwnerType === 'prospecto' ? selectedOwnerId : null,
       regaloId: selectedGiftId || null,
+      ...visitGiftPayload,
+      regaloPremiumCantidadParcial: premiumGiftQtyPartial.trim() || null,
+      regaloPremiumEntregadoAt: premiumGiftDeliveredAt,
       fotoUrl: photoPath,
       whatsappEnviadoAt: null,
       referidos: validReferidos,
@@ -864,10 +950,36 @@ function ConexionesActivacionesTab() {
     if (!configured || !selectedActivation) return
     setDetailUpdating(true)
     setDetailError(null)
-    let updatePayload: { regalo_id?: string | null; foto_url?: string | null; estado?: string | null } = {}
+    let updatePayload: {
+      regalo_id?: string | null
+      regalo_visita_id?: string | null
+      regalo_visita_cantidad?: number | null
+      regalo_visita_entregado_at?: string | null
+      regalo_premium_cantidad_parcial?: string | null
+      regalo_premium_entregado_at?: string | null
+      foto_url?: string | null
+      estado?: string | null
+    } = {
+      regalo_visita_id: detailVisitGiftEnabled ? detailVisitGiftId || null : null,
+      regalo_visita_cantidad: detailVisitGiftEnabled
+        ? detailVisitGiftQty.trim()
+          ? Number(detailVisitGiftQty)
+          : null
+        : null,
+      regalo_visita_entregado_at: detailVisitGiftEnabled ? detailVisitGiftDeliveredAt : null,
+      regalo_premium_cantidad_parcial: detailPremiumGiftQtyPartial.trim() || null,
+      regalo_premium_entregado_at: detailPremiumGiftDeliveredAt,
+    }
+
+    if (detailPremiumGiftDeliveredAt && !detailPhotoPath) {
+      setDetailError(t('conexiones.activaciones.errors.photoRequired'))
+      setDetailUpdating(false)
+      return
+    }
 
     if (!detailCanUnlockGift) {
       updatePayload = {
+        ...updatePayload,
         regalo_id: detailGiftId || null,
         estado: 'borrador',
       }
@@ -883,6 +995,7 @@ function ConexionesActivacionesTab() {
         whatsappAt: detailWhatsappSentAt ?? selectedActivation.whatsapp_mensaje_enviado_at ?? null,
       })
       updatePayload = {
+        ...updatePayload,
         regalo_id: detailGiftId || null,
         foto_url: detailPhotoPath,
         estado: nextEstado,
@@ -1353,6 +1466,83 @@ function ConexionesActivacionesTab() {
               </div>
             ))}
           </div>
+
+          <div className="ci-gift-visit">
+            <div className="ci-gift-visit-header">
+              <h5>Regalo de visita</h5>
+              <label className="form-field checkbox-field">
+                <span>Aplicar regalo de visita</span>
+                <input
+                  type="checkbox"
+                  checked={visitGiftEnabled}
+                  onChange={(event) => {
+                    const enabled = event.target.checked
+                    setVisitGiftEnabled(enabled)
+                    if (!enabled) {
+                      setSelectedVisitGiftId('')
+                      setVisitGiftQty('1')
+                      setVisitGiftDeliveredAt(null)
+                      setVisitGiftSearch('')
+                    }
+                  }}
+                />
+              </label>
+            </div>
+            <p className="form-hint">
+              Opcional: activalo solo cuando la visita amerita entregar un regalo.
+            </p>
+            {visitProducts.length === 0 ? (
+              <div className="template-empty">No hay regalos de visita configurados.</div>
+            ) : (
+              <div className="ci-gift-visit-fields">
+                <input
+                  className="referral-input"
+                  value={visitGiftSearch}
+                  onChange={(event) => setVisitGiftSearch(event.target.value)}
+                  placeholder="Buscar regalo"
+                  disabled={!visitGiftEnabled}
+                />
+                <select
+                  className="referral-input"
+                  value={selectedVisitGiftId}
+                  onChange={(event) => setSelectedVisitGiftId(event.target.value)}
+                  disabled={!visitGiftEnabled}
+                >
+                  <option value="">Selecciona un regalo</option>
+                  {visitProducts
+                    .filter((gift) => gift.nombre.toLowerCase().includes(visitGiftSearch.toLowerCase()))
+                    .map((gift) => (
+                      <option key={gift.id} value={gift.id}>
+                        {gift.nombre}
+                      </option>
+                    ))}
+                </select>
+                <input
+                  className="referral-input"
+                  type="number"
+                  min={1}
+                  value={visitGiftQty}
+                  onChange={(event) => setVisitGiftQty(event.target.value)}
+                  placeholder="Cantidad"
+                  disabled={!visitGiftEnabled}
+                />
+                <label className="form-field checkbox-field">
+                  <span>Entregado</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(visitGiftDeliveredAt)}
+                    onChange={(event) =>
+                      setVisitGiftDeliveredAt(event.target.checked ? new Date().toISOString() : null)
+                    }
+                    disabled={!visitGiftEnabled}
+                  />
+                </label>
+                {visitGiftDeliveredAt && (
+                  <p className="ci-upload-note">Entregado: {formatDateTime(visitGiftDeliveredAt)}</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {canSeeStep2 && (
@@ -1364,32 +1554,67 @@ function ConexionesActivacionesTab() {
                 <p>{t('conexiones.activaciones.steps.regaloHint')}</p>
               </div>
             </div>
-            {productos.length === 0 ? (
-              <div className="template-empty">{t('conexiones.activaciones.form.giftEmpty')}</div>
-            ) : (
-              <div className="ci-gift-grid">
-                {productos.map((gift) => (
-                  <button
-                    key={gift.id}
-                    type="button"
-                    className={`ci-gift-card ${selectedGiftId === gift.id ? 'selected' : ''}`.trim()}
-                    onClick={() => setSelectedGiftId(gift.id)}
+            {/* Regalo premium */}
+            <div className="ci-gift-premium">
+              <h5>Regalo premium</h5>
+              {premiumProducts.length === 0 ? (
+                <div className="template-empty">{t('conexiones.activaciones.form.giftEmpty')}</div>
+              ) : (
+                <div className="ci-gift-premium-fields">
+                  <input
+                    className="referral-input"
+                    value={premiumGiftSearch}
+                    onChange={(event) => setPremiumGiftSearch(event.target.value)}
+                    placeholder="Buscar regalo premium"
+                  />
+                  <select
+                    className="referral-input"
+                    value={selectedGiftId}
+                    onChange={(event) => setSelectedGiftId(event.target.value)}
                   >
-                    <span>{gift.nombre}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <label className="form-field">
-              <span>{t('conexiones.activaciones.form.foto')}</span>
-              <input type="file" accept="image/*" onChange={handlePhotoChange} />
-            </label>
-            {photoUploading && <p className="ci-upload-note">{t('conexiones.activaciones.form.fotoUploading')}</p>}
-            {photoPreviewUrl && (
-              <div className="ci-photo-preview">
-                <img src={photoPreviewUrl} alt={t('conexiones.activaciones.form.fotoAlt')} />
-              </div>
-            )}
+                    <option value="">Selecciona un regalo premium</option>
+                    {premiumProducts
+                      .filter((gift) =>
+                        gift.nombre.toLowerCase().includes(premiumGiftSearch.toLowerCase()),
+                      )
+                      .map((gift) => (
+                        <option key={gift.id} value={gift.id}>
+                          {gift.nombre}
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    className="referral-input"
+                    value={premiumGiftQtyPartial}
+                    onChange={(event) => setPremiumGiftQtyPartial(event.target.value)}
+                    placeholder="Cantidad parcial (ej: 1 tazón)"
+                  />
+                  <label className="form-field checkbox-field">
+                    <span>Entregado</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(premiumGiftDeliveredAt)}
+                      onChange={(event) =>
+                        setPremiumGiftDeliveredAt(event.target.checked ? new Date().toISOString() : null)
+                      }
+                    />
+                  </label>
+                  {premiumGiftDeliveredAt && (
+                    <p className="ci-upload-note">Entregado: {formatDateTime(premiumGiftDeliveredAt)}</p>
+                  )}
+                </div>
+              )}
+              <label className="form-field">
+                <span>{t('conexiones.activaciones.form.foto')}</span>
+                <input type="file" accept="image/*" onChange={handlePhotoChange} />
+              </label>
+              {photoUploading && <p className="ci-upload-note">{t('conexiones.activaciones.form.fotoUploading')}</p>}
+              {photoPreviewUrl && (
+                <div className="ci-photo-preview">
+                  <img src={photoPreviewUrl} alt={t('conexiones.activaciones.form.fotoAlt')} />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1472,6 +1697,39 @@ function ConexionesActivacionesTab() {
                     </dd>
                   </div>
                   <div className="detail-row">
+                    <dt>Regalo de visita</dt>
+                    <dd>
+                      {selectedActivation.regalo_visita_id
+                        ? giftMap.get(selectedActivation.regalo_visita_id) ??
+                          selectedActivation.regalo_visita_id
+                        : '-'}
+                    </dd>
+                  </div>
+                  <div className="detail-row">
+                    <dt>Cantidad visita</dt>
+                    <dd>{selectedActivation.regalo_visita_cantidad ?? '-'}</dd>
+                  </div>
+                  <div className="detail-row">
+                    <dt>Visita entregado</dt>
+                    <dd>
+                      {selectedActivation.regalo_visita_entregado_at
+                        ? formatDateTime(selectedActivation.regalo_visita_entregado_at)
+                        : '-'}
+                    </dd>
+                  </div>
+                  <div className="detail-row">
+                    <dt>Cantidad parcial premium</dt>
+                    <dd>{selectedActivation.regalo_premium_cantidad_parcial ?? '-'}</dd>
+                  </div>
+                  <div className="detail-row">
+                    <dt>Premium entregado</dt>
+                    <dd>
+                      {selectedActivation.regalo_premium_entregado_at
+                        ? formatDateTime(selectedActivation.regalo_premium_entregado_at)
+                        : '-'}
+                    </dd>
+                  </div>
+                  <div className="detail-row">
                     <dt>{t('conexiones.activaciones.columns.whatsapp')}</dt>
                     <dd>
                       {(detailWhatsappSentAt ?? selectedActivation.whatsapp_mensaje_enviado_at)
@@ -1537,22 +1795,139 @@ function ConexionesActivacionesTab() {
             <div className="ci-activation-actions">
               <div>
                 <h4>{t('conexiones.activaciones.steps.regalo')}</h4>
-                {productos.length === 0 ? (
-                  <div className="template-empty">{t('conexiones.activaciones.form.giftEmpty')}</div>
-                ) : (
-                  <div className="ci-gift-grid">
-                    {productos.map((gift) => (
-                      <button
-                        key={gift.id}
-                        type="button"
-                        className={`ci-gift-card ${detailGiftId === gift.id ? 'selected' : ''}`.trim()}
-                        onClick={() => setDetailGiftId(gift.id)}
-                      >
-                        <span>{gift.nombre}</span>
-                      </button>
-                    ))}
+                <div className="ci-gift-visit">
+                  <div className="ci-gift-visit-header">
+                    <h5>Regalo de visita</h5>
+                    <label className="form-field checkbox-field">
+                      <span>Aplicar regalo de visita</span>
+                      <input
+                        type="checkbox"
+                        checked={detailVisitGiftEnabled}
+                        onChange={(event) => {
+                          const enabled = event.target.checked
+                          setDetailVisitGiftEnabled(enabled)
+                          if (!enabled) {
+                            setDetailVisitGiftId('')
+                            setDetailVisitGiftQty('1')
+                            setDetailVisitGiftDeliveredAt(null)
+                            setDetailVisitGiftSearch('')
+                          }
+                        }}
+                      />
+                    </label>
                   </div>
-                )}
+                  <p className="form-hint">
+                    Opcional: activalo solo cuando la visita amerita entregar un regalo.
+                  </p>
+                  {visitProducts.length === 0 ? (
+                    <div className="template-empty">No hay regalos de visita configurados.</div>
+                  ) : (
+                    <div className="ci-gift-visit-fields">
+                      <input
+                        className="referral-input"
+                        value={detailVisitGiftSearch}
+                        onChange={(event) => setDetailVisitGiftSearch(event.target.value)}
+                        placeholder="Buscar regalo"
+                        disabled={!detailVisitGiftEnabled}
+                      />
+                      <select
+                        className="referral-input"
+                        value={detailVisitGiftId}
+                        onChange={(event) => setDetailVisitGiftId(event.target.value)}
+                        disabled={!detailVisitGiftEnabled}
+                      >
+                        <option value="">Selecciona un regalo</option>
+                        {visitProducts
+                          .filter((gift) =>
+                            gift.nombre.toLowerCase().includes(detailVisitGiftSearch.toLowerCase()),
+                          )
+                          .map((gift) => (
+                            <option key={gift.id} value={gift.id}>
+                              {gift.nombre}
+                            </option>
+                          ))}
+                      </select>
+                      <input
+                        className="referral-input"
+                        type="number"
+                        min={1}
+                        value={detailVisitGiftQty}
+                        onChange={(event) => setDetailVisitGiftQty(event.target.value)}
+                        placeholder="Cantidad"
+                        disabled={!detailVisitGiftEnabled}
+                      />
+                      <label className="form-field checkbox-field">
+                        <span>Entregado</span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(detailVisitGiftDeliveredAt)}
+                          onChange={(event) =>
+                            setDetailVisitGiftDeliveredAt(
+                              event.target.checked ? new Date().toISOString() : null,
+                            )
+                          }
+                          disabled={!detailVisitGiftEnabled}
+                        />
+                      </label>
+                      {detailVisitGiftDeliveredAt && (
+                        <p className="ci-upload-note">Entregado: {formatDateTime(detailVisitGiftDeliveredAt)}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="ci-gift-premium">
+                  <h5>Regalo premium</h5>
+                  {premiumProducts.length === 0 ? (
+                    <div className="template-empty">{t('conexiones.activaciones.form.giftEmpty')}</div>
+                  ) : (
+                    <div className="ci-gift-premium-fields">
+                      <input
+                        className="referral-input"
+                        value={detailPremiumGiftSearch}
+                        onChange={(event) => setDetailPremiumGiftSearch(event.target.value)}
+                        placeholder="Buscar regalo premium"
+                      />
+                      <select
+                        className="referral-input"
+                        value={detailGiftId}
+                        onChange={(event) => setDetailGiftId(event.target.value)}
+                      >
+                        <option value="">Selecciona un regalo premium</option>
+                        {premiumProducts
+                          .filter((gift) =>
+                            gift.nombre.toLowerCase().includes(detailPremiumGiftSearch.toLowerCase()),
+                          )
+                          .map((gift) => (
+                            <option key={gift.id} value={gift.id}>
+                              {gift.nombre}
+                            </option>
+                          ))}
+                      </select>
+                      <input
+                        className="referral-input"
+                        value={detailPremiumGiftQtyPartial}
+                        onChange={(event) => setDetailPremiumGiftQtyPartial(event.target.value)}
+                        placeholder="Cantidad parcial (ej: 1 tazón)"
+                      />
+                      <label className="form-field checkbox-field">
+                        <span>Entregado</span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(detailPremiumGiftDeliveredAt)}
+                          onChange={(event) =>
+                            setDetailPremiumGiftDeliveredAt(
+                              event.target.checked ? new Date().toISOString() : null,
+                            )
+                          }
+                        />
+                      </label>
+                      {detailPremiumGiftDeliveredAt && (
+                        <p className="ci-upload-note">Entregado: {formatDateTime(detailPremiumGiftDeliveredAt)}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               {!detailCanUnlockGift && (
                 <p className="template-warning">
@@ -1770,6 +2145,1388 @@ function ConexionesActivacionesTab() {
         )}
       </Modal>
       <ModalRenderer />
+    </div>
+  )
+}
+
+export function ConexionesActivacionesTabLegacy2() {
+  const { t, i18n } = useTranslation()
+  const { showToast } = useToast()
+  const {
+    configured,
+    loading,
+    error,
+    data,
+    addReferido,
+    updateActivacion,
+    searchProductos,
+    fetchProductosByIds,
+    createActivacionOwner,
+  } = useConexiones({ mode: 'activaciones', autoLoad: true })
+  const { activaciones, referidos, clientes, leads } = data
+  const [referidoSaving, setReferidoSaving] = useState(false)
+  const [referidoError, setReferidoError] = useState<string | null>(null)
+  const [newReferidoForm, setNewReferidoForm] = useState<ReferidoFormRow>({ ...initialCiReferidoRow })
+  const [ownerMode, setOwnerMode] = useState<'cliente' | 'prospecto'>('cliente')
+  const [ownerSearch, setOwnerSearch] = useState('')
+  const [visitSearch, setVisitSearch] = useState('')
+  const [visitResults, setVisitResults] = useState<GiftProduct[]>([])
+  const [visitSelected, setVisitSelected] = useState<GiftProduct | null>(null)
+  const [visitSearching, setVisitSearching] = useState(false)
+  const [visitSaving, setVisitSaving] = useState(false)
+  const [premiumSearch, setPremiumSearch] = useState('')
+  const [premiumResults, setPremiumResults] = useState<GiftProduct[]>([])
+  const [premiumSelected, setPremiumSelected] = useState<GiftProduct | null>(null)
+  const [premiumSearching, setPremiumSearching] = useState(false)
+  const [premiumSaving, setPremiumSaving] = useState(false)
+
+  const dateTimeFormat = useMemo(
+    () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
+    [i18n.language],
+  )
+
+  const formatDateTime = useCallback(
+    (value?: string | null) => {
+      if (!value) return '-'
+      return dateTimeFormat.format(new Date(value))
+    },
+    [dateTimeFormat],
+  )
+
+  const activation = activaciones[0] ?? null
+  const referidosCount = referidos.length
+  const progressValue = Math.min(referidosCount, MIN_REFERIDOS_CI) / MIN_REFERIDOS_CI
+  const extraReferidos = Math.max(0, referidosCount - MIN_REFERIDOS_CI)
+  const premiumUnlocked = referidosCount >= MIN_REFERIDOS_CI
+  const ownerLabel = useMemo(() => {
+    if (!activation) return '-'
+    if (activation.cliente_id) {
+      const owner = clientes.find((item) => item.id === activation.cliente_id)
+      if (!owner) return activation.cliente_id
+      return [owner.nombre, owner.apellido].filter(Boolean).join(' ').trim() || owner.id
+    }
+    if (activation.lead_id) {
+      const owner = leads.find((item) => item.id === activation.lead_id)
+      if (!owner) return activation.lead_id
+      return [owner.nombre, owner.apellido].filter(Boolean).join(' ').trim() || owner.id
+    }
+    return '-'
+  }, [activation, clientes, leads])
+
+  const ownerSearchTerm = ownerSearch.trim().toLowerCase()
+  const ownerSearchPhone = stripPhone(ownerSearchTerm)
+  const filteredOwners = useMemo(() => {
+    if (!ownerSearchTerm) return []
+    if (ownerMode === 'cliente') {
+      return clientes.filter((cliente) => {
+        const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ').toLowerCase()
+        const phone = stripPhone(cliente.telefono ?? '')
+        const matchesPhone = ownerSearchPhone ? phone.includes(ownerSearchPhone) : false
+        return fullName.includes(ownerSearchTerm) || matchesPhone
+      })
+    }
+    return leads.filter((lead) => {
+      const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ').toLowerCase()
+      const phone = stripPhone(lead.telefono ?? '')
+      const matchesPhone = ownerSearchPhone ? phone.includes(ownerSearchPhone) : false
+      return fullName.includes(ownerSearchTerm) || matchesPhone
+    })
+  }, [clientes, leads, ownerMode, ownerSearchPhone, ownerSearchTerm])
+
+  const productLabel = useCallback((product: GiftProduct) => {
+    const code = product.codigo?.trim()
+    return code ? `${code} - ${product.nombre}` : product.nombre
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const ids = [activation?.regalo_visita_id, activation?.regalo_id].filter(Boolean) as string[]
+    if (!activation || ids.length === 0) {
+      setVisitSelected(null)
+      setPremiumSelected(null)
+      return
+    }
+    fetchProductosByIds(ids).then(({ data: products, error: fetchError }) => {
+      if (!active) return
+      if (fetchError || !products) return
+      const visit = products.find((item) => item.id === activation.regalo_visita_id) ?? null
+      const premium = products.find((item) => item.id === activation.regalo_id) ?? null
+      setVisitSelected(visit)
+      setPremiumSelected(premium)
+    })
+    return () => {
+      active = false
+    }
+  }, [activation, fetchProductosByIds])
+
+  useEffect(() => {
+    let active = true
+    const term = visitSearch.trim()
+    if (!term) {
+      setVisitResults([])
+      setVisitSearching(false)
+      return
+    }
+    setVisitSearching(true)
+    const handle = window.setTimeout(() => {
+      searchProductos(term).then(({ data: products, error: searchError }) => {
+        if (!active) return
+        if (searchError || !products) {
+          setVisitResults([])
+          setVisitSearching(false)
+          return
+        }
+        setVisitResults(products)
+        setVisitSearching(false)
+      })
+    }, 350)
+    return () => {
+      active = false
+      window.clearTimeout(handle)
+    }
+  }, [searchProductos, visitSearch])
+
+  useEffect(() => {
+    let active = true
+    const term = premiumSearch.trim()
+    if (!term) {
+      setPremiumResults([])
+      setPremiumSearching(false)
+      return
+    }
+    setPremiumSearching(true)
+    const handle = window.setTimeout(() => {
+      searchProductos(term).then(({ data: products, error: searchError }) => {
+        if (!active) return
+        if (searchError || !products) {
+          setPremiumResults([])
+          setPremiumSearching(false)
+          return
+        }
+        setPremiumResults(products)
+        setPremiumSearching(false)
+      })
+    }, 350)
+    return () => {
+      active = false
+      window.clearTimeout(handle)
+    }
+  }, [premiumSearch, searchProductos])
+
+  const handleAddReferido = async () => {
+    if (!configured || !activation) return
+    setReferidoError(null)
+    const nombre = newReferidoForm.nombre.trim()
+    const telefono = stripPhone(newReferidoForm.telefono)
+    if (!nombre || !telefono) {
+      setReferidoError(t('conexiones.activaciones.errors.referidoIncompleto'))
+      return
+    }
+    setReferidoSaving(true)
+    const { error: addError } = await addReferido(activation.id, {
+      nombre,
+      telefono: newReferidoForm.telefono,
+      relacion: newReferidoForm.relacion,
+    })
+    if (addError) {
+      setReferidoError(addError)
+      showToast(addError, 'error')
+    } else {
+      setNewReferidoForm({ ...initialCiReferidoRow })
+    }
+    setReferidoSaving(false)
+  }
+
+  const handleMarkVisitDelivered = async () => {
+    if (!configured || !activation) return
+    if (!visitSelected) {
+      showToast('Selecciona un regalo de visita antes de marcar como entregado.', 'error')
+      return
+    }
+    setVisitSaving(true)
+    const { error: updateError } = await updateActivacion(activation.id, {
+      regalo_visita_id: visitSelected.id,
+      regalo_visita_entregado_at: new Date().toISOString(),
+    })
+    if (updateError) {
+      showToast(updateError, 'error')
+    } else {
+      showToast(t('toast.success'))
+    }
+    setVisitSaving(false)
+  }
+
+  const handleMarkPremiumDelivered = async () => {
+    if (!configured || !activation) return
+    if (!premiumUnlocked) {
+      showToast('El regalo premium se habilita al llegar a 20 referidos.', 'error')
+      return
+    }
+    if (!premiumSelected) {
+      showToast('Selecciona un regalo premium antes de marcar como entregado.', 'error')
+      return
+    }
+    setPremiumSaving(true)
+    const giftName = productLabel(premiumSelected)
+    const { error: updateError } = await updateActivacion(activation.id, {
+      regalo_id: premiumSelected.id,
+      regalo_premium_entregado_at: new Date().toISOString(),
+      regalo_nombre: giftName,
+    })
+    if (updateError) {
+      showToast(updateError, 'error')
+    } else {
+      showToast(t('toast.success'))
+    }
+    setPremiumSaving(false)
+  }
+
+  const handleSelectOwner = async (id: string) => {
+    if (!configured) return
+    if (!activation) {
+      const { error: createError } = await createActivacionOwner(
+        ownerMode === 'cliente' ? { clienteId: id } : { leadId: id },
+      )
+      if (createError) {
+        showToast(createError, 'error')
+        return
+      }
+      setOwnerSearch('')
+      showToast(t('toast.success'))
+      return
+    }
+    const payload = ownerMode === 'cliente' ? { cliente_id: id, lead_id: null } : { lead_id: id, cliente_id: null }
+    const { error: updateError } = await updateActivacion(activation.id, payload)
+    if (updateError) {
+      showToast(updateError, 'error')
+      return
+    }
+    setOwnerSearch('')
+    showToast(t('toast.success'))
+  }
+
+  return (
+    <div className="page-stack">
+      <SectionHeader
+        title={t('conexiones.activaciones.title')}
+        subtitle={t('conexiones.activaciones.subtitle')}
+      />
+
+      {!configured && (
+        <EmptyState
+          title={t('dashboard.missingConfigTitle')}
+          description={t('dashboard.missingConfigDescription')}
+        />
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+      {loading && <div className="form-hint">{t('common.loading')}</div>}
+
+      {!loading && !activation && configured && (
+        <div className="form-hint">No hay activaciones activas para mostrar.</div>
+      )}
+
+      <>
+        <div className="card">
+          <h4>Como funciona el programa</h4>
+          <p className="form-hint">1) Visita al cliente y registra el regalo de visita si aplica.</p>
+          <p className="form-hint">2) Agrega los referidos del cliente (meta: 20).</p>
+          <p className="form-hint">
+            3) Al llegar a 20 referidos se habilita el regalo premium.
+          </p>
+        </div>
+
+        <div className="card">
+          <h4>Dueno del programa</h4>
+          <p className="form-hint">Actual: {ownerLabel}</p>
+          <div className="ci-owner-actions">
+            <Button
+              variant={ownerMode === 'cliente' ? 'primary' : 'ghost'}
+              type="button"
+              onClick={() => setOwnerMode('cliente')}
+            >
+              Cliente
+            </Button>
+            <Button
+              variant={ownerMode === 'prospecto' ? 'primary' : 'ghost'}
+              type="button"
+              onClick={() => setOwnerMode('prospecto')}
+            >
+              Prospecto
+            </Button>
+          </div>
+          <label className="form-field">
+            <span>Buscar por nombre o telefono</span>
+            <input
+              value={ownerSearch}
+              onChange={(event) => setOwnerSearch(event.target.value)}
+              placeholder={ownerMode === 'cliente' ? 'Buscar cliente' : 'Buscar prospecto'}
+            />
+          </label>
+          {ownerSearchTerm ? (
+            <div className="ci-owner-results">
+              {filteredOwners.length === 0 ? (
+                <span className="ci-owner-empty">{t('common.noData')}</span>
+              ) : (
+                filteredOwners.map((owner) => {
+                  const name = [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
+                  return (
+                    <button
+                      key={owner.id}
+                      type="button"
+                      className="ci-owner-option"
+                      onClick={() => handleSelectOwner(owner.id)}
+                    >
+                      <span>{name}</span>
+                      <span className="ci-owner-meta">{owner.telefono ?? '-'}</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          ) : (
+            <p className="ci-owner-hint">Selecciona el dueno del programa para iniciar.</p>
+          )}
+        </div>
+
+        {activation && (
+            <div className="card">
+              <h4>{t('conexiones.activaciones.referidos.title')}</h4>
+            <div className="ci-activation-progress">
+              <div className="ci-counter">
+                <strong>{t('conexiones.activaciones.counter', { count: referidosCount })}</strong>
+                <span>
+                  Meta: {MIN_REFERIDOS_CI}
+                  {extraReferidos > 0 ? ` · Extra: +${extraReferidos}` : ''}
+                </span>
+              </div>
+              <div className="conexiones-progress" title={`Progreso: ${referidosCount}/${MIN_REFERIDOS_CI}`}>
+                <div
+                  className="conexiones-progress-bar"
+                  style={{ width: `${Math.round(progressValue * 100)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="ci-referidos-add">
+              <input
+                className="referral-input"
+                value={newReferidoForm.nombre}
+                onChange={(event) =>
+                  setNewReferidoForm((prev) => ({ ...prev, nombre: event.target.value }))
+                }
+                placeholder={t('conexiones.activaciones.form.referidoNombre')}
+              />
+              <input
+                className="referral-input"
+                value={newReferidoForm.telefono}
+                onChange={(event) =>
+                  setNewReferidoForm((prev) => ({
+                    ...prev,
+                    telefono: formatPhone(event.target.value),
+                  }))
+                }
+                placeholder={t('conexiones.activaciones.form.referidoTelefono')}
+              />
+              <select
+                className="referral-input"
+                value={newReferidoForm.relacion}
+                onChange={(event) =>
+                  setNewReferidoForm((prev) => ({
+                    ...prev,
+                    relacion: event.target.value as CiRelacion,
+                  }))
+                }
+              >
+                {ciRelacionOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {t(`conexiones.activaciones.relaciones.${option}`)}
+                  </option>
+                ))}
+              </select>
+              <Button type="button" onClick={handleAddReferido} disabled={referidoSaving}>
+                {referidoSaving ? t('common.saving') : t('conexiones.activaciones.referidos.add')}
+              </Button>
+            </div>
+            {referidoError && <div className="form-error">{referidoError}</div>}
+            <div className="referral-subtable-scroll">
+              <table className="referral-subtable">
+                <thead>
+                  <tr>
+                    <th>{t('conexiones.activaciones.referidos.columns.nombre')}</th>
+                    <th>{t('conexiones.activaciones.referidos.columns.telefono')}</th>
+                    <th>{t('conexiones.activaciones.referidos.columns.relacion')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {referidos.length === 0 ? (
+                    <tr>
+                      <td colSpan={3}>{t('common.noData')}</td>
+                    </tr>
+                  ) : (
+                    referidos.map((referido) => (
+                      <tr key={referido.id}>
+                        <td>{referido.nombre ?? '-'}</td>
+                        <td>{formatPhone(referido.telefono ?? '')}</td>
+                        <td>{t(`conexiones.activaciones.relaciones.${referido.relacion ?? 'familiar'}`)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          )}
+
+        {activation && (
+            <div className="card">
+              <h4>{t('conexiones.activaciones.steps.regalo')}</h4>
+              <div className="ci-gift-visit">
+              <h5>Regalo de visita</h5>
+              <label className="form-field">
+                <span>Buscar por codigo o nombre</span>
+                <input
+                  value={visitSearch}
+                  onChange={(event) => setVisitSearch(event.target.value)}
+                  placeholder="Ej: RV-001 o Tazon"
+                />
+              </label>
+              <label className="form-field">
+                <span>Selecciona regalo de visita</span>
+                <select
+                  value={visitSelected?.id ?? ''}
+                  onChange={(event) => {
+                    const selected = visitResults.find((item) => item.id === event.target.value) ?? null
+                    setVisitSelected(selected)
+                  }}
+                >
+                  <option value="">
+                    {visitSearching ? 'Buscando regalos...' : 'Selecciona un regalo'}
+                  </option>
+                  {visitResults.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {productLabel(product)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="form-hint">
+                {visitSelected
+                  ? `Seleccionado: ${productLabel(visitSelected)}`
+                  : activation.regalo_visita_id
+                    ? `Seleccionado: ${activation.regalo_visita_id}`
+                    : 'No hay regalo de visita seleccionado.'}
+              </p>
+              <div className="ci-activation-actions-row">
+                <Button type="button" onClick={handleMarkVisitDelivered} disabled={visitSaving || !visitSelected}>
+                  {visitSaving ? t('common.saving') : 'Marcar Regalo de Visita Entregado'}
+                </Button>
+                {activation.regalo_visita_entregado_at && (
+                  <span className="form-hint">
+                    Entregado: {formatDateTime(activation.regalo_visita_entregado_at)}
+                  </span>
+                )}
+              </div>
+              </div>
+
+              <div className={`ci-gift-premium ${premiumUnlocked ? '' : 'disabled'}`.trim()}>
+              <h5>Regalo premium</h5>
+              {!premiumUnlocked && (
+                <p className="template-warning">
+                  Falta(n) {Math.max(0, MIN_REFERIDOS_CI - referidosCount)} referido(s) para habilitar el regalo premium.
+                </p>
+              )}
+              <label className="form-field">
+                <span>Buscar por codigo o nombre</span>
+                <input
+                  value={premiumSearch}
+                  onChange={(event) => setPremiumSearch(event.target.value)}
+                  placeholder="Ej: RP-001 o Vajilla"
+                  disabled={!premiumUnlocked}
+                />
+              </label>
+              <label className="form-field">
+                <span>Selecciona regalo premium</span>
+                <select
+                  value={premiumSelected?.id ?? ''}
+                  onChange={(event) => {
+                    const selected = premiumResults.find((item) => item.id === event.target.value) ?? null
+                    setPremiumSelected(selected)
+                  }}
+                  disabled={!premiumUnlocked}
+                >
+                  <option value="">
+                    {premiumSearching ? 'Buscando regalos...' : 'Selecciona un regalo'}
+                  </option>
+                  {premiumResults.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {productLabel(product)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="form-hint">
+                {premiumSelected
+                  ? `Seleccionado: ${productLabel(premiumSelected)}`
+                  : activation.regalo_id
+                    ? `Seleccionado: ${activation.regalo_id}`
+                    : 'No hay regalo premium seleccionado.'}
+              </p>
+              <div className="ci-activation-actions-row">
+                <Button
+                  type="button"
+                  onClick={handleMarkPremiumDelivered}
+                  disabled={premiumSaving || !premiumUnlocked || !premiumSelected}
+                >
+                  {premiumSaving ? t('common.saving') : 'Marcar Regalo Premium Entregado'}
+                </Button>
+                {activation.regalo_premium_entregado_at && (
+                  <span className="form-hint">
+                    Entregado: {formatDateTime(activation.regalo_premium_entregado_at)}
+                  </span>
+                )}
+              </div>
+              </div>
+            </div>
+        )}
+      </>
+    </div>
+  )
+}
+
+function ConexionesActivacionesTab() {
+  const { t, i18n } = useTranslation()
+  const { session } = useAuth()
+  const { showToast } = useToast()
+  const configured = isSupabaseConfigured
+  const [role, setRole] = useState<string | null>(null)
+  const [programId, setProgramId] = useState<string | null>(null)
+  const [activaciones, setActivaciones] = useState<CiActivacion[]>([])
+  const [ownerMap, setOwnerMap] = useState<Record<string, string>>({})
+  const [representanteMap, setRepresentanteMap] = useState<Record<string, string>>({})
+  const [referidosCount, setReferidosCount] = useState<Record<string, number>>({})
+  const [tab, setTab] = useState<'activa' | 'cerrada'>('activa')
+  const [viewScope, setViewScope] = useState<'mine' | 'distribution'>('mine')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [limit, setLimit] = useState(50)
+  const [isMobile, setIsMobile] = useState(false)
+  const [selectedActivation, setSelectedActivation] = useState<CiActivacion | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardStep, setWizardStep] = useState(1)
+  const [wizardOwnerId, setWizardOwnerId] = useState<string | null>(session?.user.id ?? null)
+  const [ownerSearch, setOwnerSearch] = useState('')
+  const [ownerResults, setOwnerResults] = useState<UsuarioRecord[]>([])
+  const [ownerSearching, setOwnerSearching] = useState(false)
+  const [wizardError, setWizardError] = useState<string | null>(null)
+  const [wizardSaving, setWizardSaving] = useState(false)
+  const [distributionIds, setDistributionIds] = useState<string[]>([])
+
+  const dateTimeFormat = useMemo(
+    () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
+    [i18n.language],
+  )
+
+  const formatDateTime = useCallback(
+    (value?: string | null) => {
+      if (!value) return '-'
+      return dateTimeFormat.format(new Date(value))
+    },
+    [dateTimeFormat],
+  )
+
+  const formatRelativeTime = useCallback(
+    (value?: string | null) => {
+      if (!value) return '-'
+      const diffMs = Date.now() - new Date(value).getTime()
+      const minutes = Math.max(1, Math.floor(diffMs / 60000))
+      if (diffMs < 60 * 60 * 1000) {
+        return t('conexiones.activaciones.relative.minutes', { count: minutes })
+      }
+      const hours = Math.max(1, Math.floor(diffMs / (60 * 60 * 1000)))
+      if (diffMs < 24 * 60 * 60 * 1000) {
+        return t('conexiones.activaciones.relative.hours', { count: hours })
+      }
+      const days = Math.max(1, Math.floor(diffMs / (24 * 60 * 60 * 1000)))
+      return t('conexiones.activaciones.relative.days', { count: days })
+    },
+    [t],
+  )
+
+  const cutoffDate = useMemo(() => {
+    const date = new Date()
+    date.setDate(date.getDate() - CI_CLOSED_DAYS)
+    return date
+  }, [])
+
+  const isClosed = useCallback(
+    (activation: CiActivacion) => {
+      if (activation.estado === 'cerrado') return true
+      const lastActivity = activation.updated_at ?? activation.created_at
+      if (!lastActivity) return false
+      return new Date(lastActivity) < cutoffDate
+    },
+    [cutoffDate],
+  )
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 720px)')
+    const update = () => setIsMobile(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+
+  const loadRoleAndProgram = useCallback(async () => {
+    if (!configured || !session?.user.id) return
+    setError(null)
+    const [roleResult, programResult] = await Promise.all([
+      supabase.from('usuarios').select('rol').eq('id', session.user.id).maybeSingle(),
+      supabase
+        .from('programas')
+        .select('id')
+        .eq('activo', true)
+        .ilike('nombre', '%conexiones infinitas%')
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    if (roleResult.error) {
+      setError(roleResult.error.message)
+      return
+    }
+    setRole(roleResult.data?.rol ?? null)
+
+    if (programResult.error || !programResult.data?.id) {
+      setError(t('conexiones.activaciones.errors.programMissing'))
+      setProgramId(null)
+      return
+    }
+    setProgramId(programResult.data.id)
+  }, [configured, session?.user.id, t])
+
+  const loadDistributionUsers = useCallback(async () => {
+    if (!configured || !session?.user.id) return []
+    const { data, error: distError } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('distribuidor_padre_id', session.user.id)
+    if (distError) {
+      setError(distError.message)
+      return []
+    }
+    return (data ?? []).map((row) => row.id)
+  }, [configured, session?.user.id])
+
+  const loadActivaciones = useCallback(async () => {
+    if (!configured || !session?.user.id || !programId) return
+    if (role === 'telemercadeo') {
+      setActivaciones([])
+      setReferidosCount({})
+      return
+    }
+    setLoading(true)
+    setError(null)
+
+    let query = supabase
+      .from('ci_activaciones')
+      .select('id, owner_id, representante_id, estado, updated_at, created_at, programa_id')
+      .eq('programa_id', programId)
+
+    if (role === 'vendedor' || (role === 'distribuidor' && viewScope === 'mine')) {
+      query = query.eq('representante_id', session.user.id)
+    }
+
+    if (role === 'distribuidor' && viewScope === 'distribution') {
+      const ids = distributionIds.length > 0 ? distributionIds : await loadDistributionUsers()
+      setDistributionIds(ids)
+      if (ids.length === 0) {
+        setActivaciones([])
+        setReferidosCount({})
+        setLoading(false)
+        return
+      }
+      query = query.in('representante_id', ids)
+    }
+
+    const cutoffIso = cutoffDate.toISOString()
+    if (tab === 'cerrada') {
+      query = query.or(
+        `estado.eq.cerrado,updated_at.lt.${cutoffIso},and(updated_at.is.null,created_at.lt.${cutoffIso})`,
+      )
+    } else {
+      query = query
+        .neq('estado', 'cerrado')
+        .or(`updated_at.gte.${cutoffIso},and(updated_at.is.null,created_at.gte.${cutoffIso})`)
+    }
+
+    const { data, error: fetchError } = await query.order('updated_at', { ascending: false }).limit(limit)
+    if (fetchError) {
+      setError(fetchError.message)
+      setActivaciones([])
+      setReferidosCount({})
+      setLoading(false)
+      return
+    }
+
+    const rows = ((data as CiActivacion[]) ?? []).slice().sort((a, b) => {
+      const timeA = new Date(a.updated_at ?? a.created_at ?? 0).getTime()
+      const timeB = new Date(b.updated_at ?? b.created_at ?? 0).getTime()
+      return timeB - timeA
+    })
+    setActivaciones(rows)
+
+    const activationIds = rows.map((row) => row.id)
+    if (activationIds.length === 0) {
+      setOwnerMap({})
+      setRepresentanteMap({})
+      setReferidosCount({})
+      setLoading(false)
+      return
+    }
+
+    const userIds = Array.from(
+      new Set(
+        rows
+          .flatMap((row) => [row.owner_id, row.representante_id])
+          .filter((value): value is string => Boolean(value)),
+      ),
+    )
+
+    const [usersResult, referidosResult] = await Promise.all([
+      userIds.length > 0
+        ? supabase.from('usuarios').select('id, nombre, apellido').in('id', userIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from('ci_referidos').select('activacion_id').in('activacion_id', activationIds),
+    ])
+
+    if (usersResult.error) {
+      setError(usersResult.error.message)
+    }
+
+    const nameMap: Record<string, string> = {}
+    ;((usersResult.data ?? []) as UsuarioRecord[]).forEach((user) => {
+      const label = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
+      nameMap[user.id] = label || user.id
+    })
+
+    const ownerNameMap: Record<string, string> = {}
+    const representanteNameMap: Record<string, string> = {}
+    rows.forEach((row) => {
+      if (row.owner_id) ownerNameMap[row.owner_id] = nameMap[row.owner_id] ?? row.owner_id
+      if (row.representante_id)
+        representanteNameMap[row.representante_id] = nameMap[row.representante_id] ?? row.representante_id
+    })
+
+    const counts: Record<string, number> = {}
+    ;((referidosResult.data ?? []) as { activacion_id: string | null }[]).forEach((row) => {
+      if (!row.activacion_id) return
+      counts[row.activacion_id] = (counts[row.activacion_id] ?? 0) + 1
+    })
+
+    setOwnerMap(ownerNameMap)
+    setRepresentanteMap(representanteNameMap)
+    setReferidosCount(counts)
+    setLoading(false)
+  }, [
+    configured,
+    session?.user.id,
+    programId,
+    role,
+    viewScope,
+    tab,
+    limit,
+    cutoffDate,
+    distributionIds,
+    loadDistributionUsers,
+  ])
+
+  useEffect(() => {
+    loadRoleAndProgram()
+  }, [loadRoleAndProgram])
+
+  useEffect(() => {
+    if (!programId || !role) return
+    loadActivaciones()
+  }, [loadActivaciones, programId, role])
+
+  useEffect(() => {
+    if (!wizardOpen) {
+      setWizardStep(1)
+      setWizardError(null)
+      setOwnerSearch('')
+      setOwnerResults([])
+      setWizardOwnerId(session?.user.id ?? null)
+    }
+  }, [session?.user.id, wizardOpen])
+
+  const ownerFixedToSelf =
+    role === 'vendedor' || (role === 'distribuidor' && viewScope === 'mine')
+  const canSearchOwner = role === 'admin' || (role === 'distribuidor' && viewScope === 'distribution')
+
+  useEffect(() => {
+    if (!wizardOpen) return
+    if (ownerFixedToSelf && session?.user.id) {
+      setWizardOwnerId(session.user.id)
+      setOwnerSearch('')
+      setOwnerResults([])
+    }
+  }, [ownerFixedToSelf, session?.user.id, wizardOpen])
+
+  useEffect(() => {
+    let active = true
+    const term = ownerSearch.trim()
+    if (!wizardOpen || term.length < 2 || !canSearchOwner) {
+      setOwnerResults([])
+      setOwnerSearching(false)
+      return
+    }
+    setOwnerSearching(true)
+    const handle = window.setTimeout(() => {
+      const run = async () => {
+        let query = supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, telefono')
+          .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
+          .limit(20)
+
+        if (role === 'distribuidor' && viewScope === 'distribution' && session?.user.id) {
+          const ids = distributionIds.length > 0 ? distributionIds : await loadDistributionUsers()
+          const scopedIds = Array.from(new Set([...ids, session.user.id])).filter(Boolean)
+          if (scopedIds.length === 0) {
+            if (!active) return
+            setOwnerResults([])
+            setOwnerSearching(false)
+            return
+          }
+          query = query.in('id', scopedIds)
+        }
+
+        const { data, error: searchError } = await query
+        if (!active) return
+        if (searchError) {
+          setOwnerResults([])
+          setOwnerSearching(false)
+          return
+        }
+        setOwnerResults((data as UsuarioRecord[]) ?? [])
+        setOwnerSearching(false)
+      }
+      void run()
+    }, 350)
+    return () => {
+      active = false
+      window.clearTimeout(handle)
+    }
+  }, [canSearchOwner, distributionIds, loadDistributionUsers, ownerSearch, role, session?.user.id, viewScope, wizardOpen])
+
+  const filteredActivaciones = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return activaciones
+    return activaciones.filter((row) => {
+      const ownerLabel = row.owner_id ? ownerMap[row.owner_id] ?? row.owner_id : ''
+      const repLabel = row.representante_id
+        ? representanteMap[row.representante_id] ?? row.representante_id
+        : ''
+      return (
+        ownerLabel.toLowerCase().includes(term) ||
+        repLabel.toLowerCase().includes(term) ||
+        row.id.toLowerCase().includes(term)
+      )
+    })
+  }, [activaciones, ownerMap, representanteMap, search])
+
+  const filtersCount = useMemo(() => {
+    let count = 0
+    if (search.trim()) count += 1
+    if (role === 'distribuidor' && viewScope === 'distribution') count += 1
+    return count
+  }, [role, search, viewScope])
+
+  const selectedOwnerLabel = useMemo(() => {
+    if (!wizardOwnerId) return '-'
+    if (wizardOwnerId === session?.user.id) return t('conexiones.activaciones.wizard.self')
+    const owner = ownerResults.find((item) => item.id === wizardOwnerId)
+    return owner ? [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id : wizardOwnerId
+  }, [ownerResults, session?.user.id, t, wizardOwnerId])
+
+  const handleOpenDetail = (activation: CiActivacion) => {
+    setSelectedActivation(activation)
+    setDetailOpen(true)
+  }
+
+  const handleReactivate = async (activationId: string) => {
+    if (!configured) return
+    const { error: updateError } = await supabase
+      .from('ci_activaciones')
+      .update({ estado: 'activo', updated_at: new Date().toISOString() })
+      .eq('id', activationId)
+    if (updateError) {
+      showToast(updateError.message, 'error')
+      return
+    }
+    showToast(t('conexiones.activaciones.actions.reactivated'))
+    await loadActivaciones()
+  }
+
+  const handleCreateActivation = async () => {
+    if (!configured || !session?.user.id) return
+    if (!programId) {
+      setWizardError(t('conexiones.activaciones.errors.programMissing'))
+      return
+    }
+    if (!wizardOwnerId) {
+      setWizardError(t('conexiones.activaciones.errors.ownerRequired'))
+      return
+    }
+    setWizardSaving(true)
+    const { data, error: createError } = await supabase
+      .from('ci_activaciones')
+      .insert({
+        representante_id: session.user.id,
+        owner_id: wizardOwnerId,
+        estado: 'activo',
+        programa_id: programId,
+      })
+      .select('id, owner_id, representante_id, estado, updated_at, created_at, programa_id')
+      .single()
+    if (createError || !data) {
+      setWizardError(createError?.message ?? t('toast.error'))
+      setWizardSaving(false)
+      return
+    }
+    setWizardSaving(false)
+    setWizardOpen(false)
+    showToast(t('toast.success'))
+    setSelectedActivation(data as CiActivacion)
+    setDetailOpen(true)
+    await loadActivaciones()
+  }
+
+  const listRows = useMemo<DataTableRow[]>(() => {
+    return filteredActivaciones.map((row) => {
+      const ownerLabel = row.owner_id ? ownerMap[row.owner_id] ?? row.owner_id : '-'
+      const lastActivityValue = row.updated_at ?? row.created_at
+      const lastActivityLabel = formatRelativeTime(lastActivityValue)
+      const lastActivityFull = formatDateTime(lastActivityValue)
+      const statusLabel = isClosed(row)
+        ? t('conexiones.activaciones.status.closed')
+        : t('conexiones.activaciones.status.active')
+      const actions = (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              handleOpenDetail(row)
+            }}
+          >
+            {t('conexiones.activaciones.actions.view')}
+          </Button>
+          {isClosed(row) && (
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                handleReactivate(row.id)
+              }}
+            >
+              {t('conexiones.activaciones.actions.reactivate')}
+            </Button>
+          )}
+        </div>
+      )
+      return {
+        id: row.id,
+        cells: [
+          ownerLabel,
+          referidosCount[row.id] ?? 0,
+          <span key="activity" title={lastActivityFull}>
+            {lastActivityLabel}
+          </span>,
+          statusLabel,
+          actions,
+        ],
+      }
+    })
+  }, [filteredActivaciones, formatDateTime, formatRelativeTime, isClosed, ownerMap, referidosCount, t])
+
+  const canAccess = role !== 'telemercadeo'
+
+  const detailItems = useMemo(() => {
+    if (!selectedActivation) return []
+    const ownerLabel = selectedActivation.owner_id
+      ? ownerMap[selectedActivation.owner_id] ?? selectedActivation.owner_id
+      : '-'
+    const repLabel = selectedActivation.representante_id
+      ? representanteMap[selectedActivation.representante_id] ?? selectedActivation.representante_id
+      : '-'
+    return [
+      { label: t('conexiones.activaciones.labels.owner'), value: ownerLabel },
+      { label: t('conexiones.activaciones.labels.representante'), value: repLabel },
+      { label: t('conexiones.activaciones.labels.referidos'), value: referidosCount[selectedActivation.id] ?? 0 },
+       {
+         label: t('conexiones.activaciones.labels.lastActivity'),
+         value: formatDateTime(selectedActivation.updated_at ?? selectedActivation.created_at),
+       },
+       {
+         label: t('conexiones.activaciones.labels.estado'),
+         value: isClosed(selectedActivation)
+           ? t('conexiones.activaciones.status.closed')
+           : t('conexiones.activaciones.status.active'),
+       },
+    ]
+  }, [
+    formatDateTime,
+    isClosed,
+    ownerMap,
+    representanteMap,
+    referidosCount,
+    selectedActivation,
+    t,
+  ])
+
+  return (
+    <div className="page-stack">
+      <SectionHeader
+        title={t('conexiones.activaciones.title')}
+        subtitle={t('conexiones.activaciones.subtitle')}
+        action={
+          <Button type="button" onClick={() => setWizardOpen(true)} disabled={!canAccess}>
+            {t('conexiones.activaciones.actions.new')}
+          </Button>
+        }
+      />
+
+      {!configured && (
+        <EmptyState
+          title={t('dashboard.missingConfigTitle')}
+          description={t('dashboard.missingConfigDescription')}
+        />
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      {!canAccess && (
+        <EmptyState
+          title={t('conexiones.activaciones.noAccess')}
+          description={t('conexiones.activaciones.noAccessDetail')}
+        />
+      )}
+
+      {canAccess && (
+        <>
+          <div className="template-tabs ci-tabs">
+            <button
+              type="button"
+              className={`template-tab ${tab === 'activa' ? 'active' : ''}`.trim()}
+              onClick={() => setTab('activa')}
+            >
+              {t('conexiones.activaciones.tabs.active')}
+            </button>
+            <button
+              type="button"
+              className={`template-tab ${tab === 'cerrada' ? 'active' : ''}`.trim()}
+              onClick={() => setTab('cerrada')}
+            >
+              {t('conexiones.activaciones.tabs.closed')}
+            </button>
+          </div>
+
+          {role === 'distribuidor' && (
+            <div className="card">
+              <div className="filters-header">
+                <span style={{ fontWeight: 600 }}>{t('conexiones.activaciones.scope.title')}</span>
+              </div>
+              <div className="segmented" style={{ marginTop: '0.75rem' }}>
+                <button
+                  type="button"
+                  className={viewScope === 'mine' ? 'active' : ''}
+                  onClick={() => setViewScope('mine')}
+                >
+                  {t('conexiones.activaciones.scope.mine')}
+                </button>
+                <button
+                  type="button"
+                  className={viewScope === 'distribution' ? 'active' : ''}
+                  onClick={() => setViewScope('distribution')}
+                >
+                  {t('conexiones.activaciones.scope.distribution')}
+                </button>
+              </div>
+              <p className="form-hint" style={{ marginTop: '0.5rem' }}>
+                {viewScope === 'mine'
+                  ? t('conexiones.activaciones.scope.mineHelp')
+                  : t('conexiones.activaciones.scope.distributionHelp')}
+              </p>
+            </div>
+          )}
+
+          <div className="card">
+            <div className="stat-grid">
+              <StatCard
+                label={t('conexiones.activaciones.tabs.active')}
+                value={String(activaciones.filter((row) => !isClosed(row)).length)}
+              />
+              <StatCard
+                label={t('conexiones.activaciones.tabs.closed')}
+                value={String(activaciones.filter((row) => isClosed(row)).length)}
+              />
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="filters-header">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setFiltersOpen((prev) => !prev)}
+              >
+                {t('conexiones.activaciones.filters')}
+                {filtersCount > 0 ? ` (${filtersCount})` : ''}
+              </Button>
+            </div>
+            {(filtersOpen || !isMobile) && (
+              <div className="filters-grid">
+                <label className="form-field">
+                  <span>{t('conexiones.activaciones.labels.search')}</span>
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} />
+                </label>
+                {role === 'distribuidor' && (
+                  <div className="form-hint">{t('conexiones.activaciones.scope.hint')}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {loading && filteredActivaciones.length === 0 ? (
+            <div className="template-empty">{t('common.loading')}</div>
+          ) : filteredActivaciones.length === 0 ? (
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <EmptyState
+                title={
+                  tab === 'activa'
+                    ? t('conexiones.activaciones.emptyActiveTitle')
+                    : t('conexiones.activaciones.emptyClosedTitle')
+                }
+                description={
+                  tab === 'activa'
+                    ? t('conexiones.activaciones.emptyActiveDescription')
+                    : t('conexiones.activaciones.emptyClosedDescription')
+                }
+              />
+              {tab === 'activa' && (
+                <div>
+                  <Button type="button" onClick={() => setWizardOpen(true)}>
+                    {t('conexiones.activaciones.actions.new')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : isMobile ? (
+            <div className="card-grid">
+              {filteredActivaciones.map((row) => {
+                const lastActivityValue = row.updated_at ?? row.created_at
+                return (
+                  <div key={row.id} className="card" onClick={() => handleOpenDetail(row)}>
+                    <div className="card-header">
+                      <strong>{row.owner_id ? ownerMap[row.owner_id] ?? row.owner_id : '-'}</strong>
+                      <span className="badge">
+                        {isClosed(row)
+                          ? t('conexiones.activaciones.status.closed')
+                          : t('conexiones.activaciones.status.active')}
+                      </span>
+                    </div>
+                    <p className="form-hint">
+                      {t('conexiones.activaciones.labels.referidos')}: {referidosCount[row.id] ?? 0}
+                    </p>
+                    <p className="form-hint" title={formatDateTime(lastActivityValue)}>
+                      {t('conexiones.activaciones.labels.lastActivity')}: {formatRelativeTime(lastActivityValue)}
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleOpenDetail(row)
+                        }}
+                      >
+                        {t('conexiones.activaciones.actions.view')}
+                      </Button>
+                      {isClosed(row) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleReactivate(row.id)
+                          }}
+                        >
+                          {t('conexiones.activaciones.actions.reactivate')}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <DataTable
+              columns={[
+                t('conexiones.activaciones.labels.owner'),
+                t('conexiones.activaciones.labels.referidos'),
+                t('conexiones.activaciones.labels.lastActivity'),
+                t('conexiones.activaciones.labels.estado'),
+                t('conexiones.activaciones.labels.actions'),
+              ]}
+              rows={listRows}
+              emptyLabel={t('conexiones.activaciones.emptyTable')}
+              onRowClick={(row) => {
+                const activation = filteredActivaciones.find((item) => item.id === row.id)
+                if (activation) handleOpenDetail(activation)
+              }}
+            />
+          )}
+
+          {filteredActivaciones.length >= limit && (
+            <div className="ci-activation-actions-row">
+              <Button type="button" onClick={() => setLimit((prev) => prev + 50)}>
+                {t('conexiones.activaciones.actions.loadMore')}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      <DetailPanel
+        open={detailOpen}
+        title={t('conexiones.activaciones.detailTitle')}
+        items={detailItems}
+        onClose={() => setDetailOpen(false)}
+        action={
+          selectedActivation && isClosed(selectedActivation) ? (
+            <Button type="button" onClick={() => handleReactivate(selectedActivation.id)}>
+              {t('conexiones.activaciones.actions.reactivate')}
+            </Button>
+          ) : null
+        }
+      />
+
+      <Modal
+        open={wizardOpen}
+        title={t('conexiones.activaciones.wizard.title')}
+        onClose={() => setWizardOpen(false)}
+        className="ci-activation-modal"
+        bodyClassName="ci-activation-modal-body"
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setWizardOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            {wizardStep === 1 ? (
+              <Button type="button" onClick={() => setWizardStep(2)} disabled={!wizardOwnerId}>
+                {t('common.next')}
+              </Button>
+            ) : (
+              <Button type="button" onClick={handleCreateActivation} disabled={wizardSaving}>
+                {wizardSaving ? t('common.saving') : t('conexiones.activaciones.actions.create')}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {wizardStep === 1 ? (
+          <div className="ci-step">
+            <div className="ci-step-header">
+              <span className="ci-step-pill">1</span>
+              <div>
+                <h4>{t('conexiones.activaciones.wizard.ownerTitle')}</h4>
+                <p>{t('conexiones.activaciones.wizard.ownerHint')}</p>
+              </div>
+            </div>
+            <div className="ci-owner-actions">
+              <Button
+                variant={wizardOwnerId === session?.user.id ? 'primary' : 'ghost'}
+                type="button"
+                onClick={() => setWizardOwnerId(session?.user.id ?? null)}
+              >
+                {t('conexiones.activaciones.wizard.self')}
+              </Button>
+            </div>
+            {ownerFixedToSelf ? (
+              <div className="ci-owner-selected">
+                <div>
+                  <strong>{t('conexiones.activaciones.labels.owner')}</strong>
+                  <span>{selectedOwnerLabel}</span>
+                </div>
+                <span className="ci-owner-meta">{t('conexiones.activaciones.wizard.self')}</span>
+              </div>
+            ) : (
+              <>
+                <label className="form-field">
+                  <span>{t('conexiones.activaciones.wizard.searchUser')}</span>
+                  <input
+                    value={ownerSearch}
+                    onChange={(event) => setOwnerSearch(event.target.value)}
+                    placeholder={t('conexiones.activaciones.wizard.searchPlaceholder')}
+                  />
+                </label>
+                {ownerSearch.trim().length >= 2 && (
+                  <div className="ci-owner-results">
+                    {ownerSearching ? (
+                      <span className="ci-owner-empty">{t('common.loading')}</span>
+                    ) : ownerResults.length === 0 ? (
+                      <span className="ci-owner-empty">{t('common.noData')}</span>
+                    ) : (
+                      ownerResults.map((owner) => {
+                        const name = [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
+                        return (
+                          <button
+                            key={owner.id}
+                            type="button"
+                            className={`ci-owner-option ${wizardOwnerId === owner.id ? 'active' : ''}`.trim()}
+                            onClick={() => setWizardOwnerId(owner.id)}
+                          >
+                            <span>{name}</span>
+                            <span className="ci-owner-meta">{owner.telefono ?? '-'}</span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="ci-step">
+            <div className="ci-step-header">
+              <span className="ci-step-pill">2</span>
+              <div>
+                <h4>{t('conexiones.activaciones.wizard.confirmTitle')}</h4>
+                <p>{t('conexiones.activaciones.wizard.confirmHint')}</p>
+              </div>
+            </div>
+            <div className="ci-owner-selected">
+              <div>
+                <strong>{t('conexiones.activaciones.labels.owner')}</strong>
+                <span>{selectedOwnerLabel}</span>
+              </div>
+              <div>
+                <strong>{t('conexiones.activaciones.labels.representante')}</strong>
+                <span>{session?.user.id ? (representanteMap[session.user.id] ?? session.user.id) : '-'}</span>
+              </div>
+            </div>
+            {wizardError && <div className="form-error">{wizardError}</div>}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

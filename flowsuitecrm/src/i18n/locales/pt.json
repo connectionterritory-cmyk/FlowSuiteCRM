@@ -447,9 +447,70 @@
     },
     "activaciones": {
       "title": "Ativacoes",
-      "subtitle": "Gerencie ativacoes e referidos do programa.",
+      "subtitle": "Aqui voce ve as listas de indicados que esta trabalhando.",
       "actions": {
-        "new": "Nova ativacao"
+        "new": "Nova ativacao",
+        "create": "Criar ativacao",
+        "view": "Ver",
+        "reactivate": "Reativar",
+        "reactivated": "Ativacao reativada",
+        "loadMore": "Carregar mais"
+      },
+      "tabs": {
+        "active": "Ativas",
+        "closed": "Encerradas"
+      },
+      "status": {
+        "active": "Ativa",
+        "closed": "Encerrada"
+      },
+      "labels": {
+        "owner": "Quem passou a lista",
+        "representante": "Representante",
+        "referidos": "Indicados",
+        "lastActivity": "Ultima atividade",
+        "estado": "Status",
+        "actions": "Acoes",
+        "search": "Buscar",
+        "scope": "Visao",
+        "mine": "Minhas",
+        "distribution": "Minha distribuicao"
+      },
+      "scope": {
+        "title": "Escopo",
+        "mine": "Minhas ativacoes",
+        "distribution": "Minha distribuicao",
+        "mineHelp": "Voce ve apenas suas ativacoes.",
+        "distributionHelp": "Voce ve ativacoes da sua rede.",
+        "hint": "Altere o escopo na secao acima."
+      },
+      "filters": "Filtros",
+      "emptyActiveTitle": "Voce ainda nao tem ativacoes.",
+      "emptyActiveDescription": "Crie uma nova para comecar.",
+      "emptyClosedTitle": "Voce nao tem ativacoes encerradas.",
+      "emptyClosedDescription": "",
+      "emptyTable": "Sem resultados",
+      "noAccess": "Voce nao tem acesso a este modulo.",
+      "noAccessDetail": "Telemarketing nao tem acesso ao Conexoes Infinitas nesta fase.",
+      "detailTitle": "Detalhe da ativacao",
+      "relative": {
+        "minutes": "Ha {{count}} min",
+        "hours": "Ha {{count}} h",
+        "days": "Ha {{count}} dias"
+      },
+      "errors": {
+        "programMissing": "Programa Conexoes Infinitas nao encontrado.",
+        "ownerRequired": "Selecione quem fornecera os indicados."
+      },
+      "wizard": {
+        "title": "Nova ativacao",
+        "ownerTitle": "Quem vai enviar a lista de contatos?",
+        "ownerHint": "Normalmente e voce mesmo.",
+        "self": "Eu mesmo",
+        "searchUser": "Buscar usuario",
+        "searchPlaceholder": "Nome ou telefone",
+        "confirmTitle": "Confirmar",
+        "confirmHint": "Revise as informacoes antes de criar a ativacao."
       },
       "columns": {
         "fecha": "Data",
