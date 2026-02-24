@@ -272,7 +272,11 @@ export function ImportacionesPage() {
         )
         const validos = rows.map(parsearFila).filter((c): c is ClienteImport => c !== null)
         if (validos.length === 0) { setParseError('No se encontraron registros válidos.'); return }
-        setClientes(validos)
+        const uniq = new Map<string, ClienteImport>()
+        validos.forEach((cliente) => {
+          uniq.set(cliente.hycite_id, cliente)
+        })
+        setClientes(Array.from(uniq.values()))
         setStep('preview')
       } catch {
         setParseError('Error al leer el archivo.')
@@ -294,7 +298,21 @@ export function ImportacionesPage() {
     for (let i = 0; i < clientes.length; i += 50) {
       const lote = clientes.slice(i, i + 50)
       const { data, error } = await supabase.from('clientes').upsert(lote, { onConflict: 'hycite_id' }).select('id')
-      if (error) { err += lote.length } else { imp += data?.length ?? 0 }
+      if (error) {
+        for (const row of lote) {
+          const { error: rowError } = await supabase
+            .from('clientes')
+            .upsert([row], { onConflict: 'hycite_id' })
+            .select('id')
+          if (rowError) {
+            err += 1
+          } else {
+            imp += 1
+          }
+        }
+      } else {
+        imp += data?.length ?? 0
+      }
     }
     await supabase.from('importaciones_hycite').insert({
       importado_por: session.user.id,
