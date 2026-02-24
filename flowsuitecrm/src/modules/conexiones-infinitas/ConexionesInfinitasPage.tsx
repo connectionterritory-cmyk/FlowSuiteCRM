@@ -96,7 +96,7 @@ const initialCiReferidoRow: ReferidoFormRow = {
   relacion: 'familiar',
 }
 
-const buildCiReferidoRows = (count = 3) =>
+const buildCiReferidoRows = (count = 5) =>
   Array.from({ length: count }, () => ({ ...initialCiReferidoRow }))
 
 const buildConexionRows = (count = 3) =>
