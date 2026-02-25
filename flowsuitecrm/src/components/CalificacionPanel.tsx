@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase/client'
 import { useToast } from './Toast'
+import { IconRestore, IconSwap, IconTrash } from './icons'
 
 type LeadCalificacion = {
   id: string
@@ -26,6 +27,8 @@ type LeadCalificacion = {
   cantidad_ninos?: number | null
   tiene_productos_rp?: boolean | null
   tipo_vivienda?: string | null
+  deleted_at?: string | null
+  deleted_reason?: string | null
 }
 
 type CalificacionPanelProps = {
@@ -33,6 +36,8 @@ type CalificacionPanelProps = {
   lead: LeadCalificacion | null
   ownerName?: string | null
   fuenteLabel?: string | null
+  canManage?: boolean
+  onOpenManage?: (lead: LeadCalificacion, mode: 'delete' | 'reassign' | 'restore') => void
   onClose: () => void
   onSaved: () => Promise<void>
 }
@@ -63,6 +68,8 @@ export function CalificacionPanel({
   lead,
   ownerName,
   fuenteLabel,
+  canManage = false,
+  onOpenManage,
   onClose,
   onSaved,
 }: CalificacionPanelProps) {
@@ -102,6 +109,8 @@ export function CalificacionPanel({
     if (!lead) return '-'
     return [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
   }, [lead])
+
+  const isDeleted = Boolean(lead?.deleted_at)
 
   if (!open || !lead) return null
 
@@ -188,10 +197,50 @@ export function CalificacionPanel({
                 {(lead.next_action ?? '-')}
               </p>
             )}
+            {isDeleted && (
+              <p className="drawer-subtitle" style={{ color: '#b91c1c', fontWeight: 600 }}>
+                Eliminado: {lead.deleted_reason ?? '-'}
+              </p>
+            )}
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-            x
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            {canManage && onOpenManage && !isDeleted && (
+              <>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => onOpenManage(lead, 'reassign')}
+                  aria-label="Reasignar"
+                  title="Reasignar"
+                >
+                  <IconSwap />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => onOpenManage(lead, 'delete')}
+                  aria-label="Eliminar"
+                  title="Eliminar"
+                >
+                  <IconTrash />
+                </button>
+              </>
+            )}
+            {canManage && onOpenManage && isDeleted && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => onOpenManage(lead, 'restore')}
+                aria-label="Restaurar"
+                title="Restaurar"
+              >
+                <IconRestore />
+              </button>
+            )}
+            <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
+              x
+            </button>
+          </div>
         </header>
 
         <div className="drawer-body">

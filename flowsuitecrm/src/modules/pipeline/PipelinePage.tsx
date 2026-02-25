@@ -68,12 +68,23 @@ const initialOpportunityForm: OportunidadForm = {
   notas: '',
 }
 
+
+const stageColors: Record<string, string> = {
+  nuevo: '#6366f1',
+  contactado: '#8b5cf6',
+  cita: '#f59e0b',
+  demo: '#f97316',
+  cierre: '#10b981',
+  descartado: '#6b7280',
+}
+
 export function PipelinePage() {
   const { t } = useTranslation()
   const configured = isSupabaseConfigured
   const { usersById } = useUsers()
   const { session } = useAuth()
   const { showToast } = useToast()
+
   const [leads, setLeads] = useState<LeadCard[]>([])
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [loading, setLoading] = useState(false)
@@ -86,6 +97,23 @@ export function PipelinePage() {
   const [formValues, setFormValues] = useState(initialOpportunityForm)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Filters & UI state
+  const [busqueda, setBusqueda] = useState('')
+  const [filtroOwner, setFiltroOwner] = useState('')
+  const [filtroFuente, setFiltroFuente] = useState('')
+  const [filtrosVisible, setFiltrosVisible] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileStage, setMobileStage] = useState('nuevo')
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 720)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  const today = useMemo(() => new Date().toISOString().split('T')[0], [])
 
   const stages = useMemo(
     () => ['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'],
@@ -123,6 +151,25 @@ export function PipelinePage() {
     [usersById]
   )
 
+  const getInitials = useCallback((value?: string | null) => {
+    if (!value) return ''
+    const parts = value.split(' ').filter(Boolean)
+    if (parts.length === 0) return ''
+    const first = parts[0][0] ?? ''
+    const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : ''
+    return `${first}${last}`.toUpperCase()
+  }, [])
+
+  const getDateStatus = useCallback(
+    (date: string | null): 'overdue' | 'today' | null => {
+      if (!date) return null
+      if (date < today) return 'overdue'
+      if (date === today) return 'today'
+      return null
+    },
+    [today]
+  )
+
   const loadLeads = useCallback(async () => {
     if (!configured) return
     setLoading(true)
@@ -130,7 +177,7 @@ export function PipelinePage() {
     const { data, error: fetchError } = await supabase
       .from('leads')
       .select('*')
-
+      .is('deleted_at', null)
     if (fetchError) {
       setError(fetchError.message)
       setLeads([])
@@ -150,24 +197,74 @@ export function PipelinePage() {
     }
   }, [configured, loadLeads])
 
+  const normalizeStage = (stage: string | null): string => {
+    let s = stage ?? 'nuevo'
+    if (s === 'calificado') s = 'cita'
+    if (s === 'demostracion') s = 'demo'
+    if (!['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'].includes(s)) s = 'descartado'
+    return s
+  }
+
   const groupedLeads = useMemo(() => {
     const groups: Record<string, LeadCard[]> = {}
-    stages.forEach((stage) => {
-      groups[stage] = []
-    })
+    stages.forEach((stage) => { groups[stage] = [] })
     leads.forEach((lead) => {
-      let stage = lead.estado_pipeline ?? 'nuevo'
-      if (stage === 'calificado') stage = 'cita'
-      if (stage === 'demostracion') stage = 'demo'
-      if (!stages.includes(stage)) stage = 'descartado'
-      if (!groups[stage]) {
-        groups[stage] = []
-      }
+      const stage = normalizeStage(lead.estado_pipeline)
       groups[stage].push(lead)
     })
     return groups
   }, [leads, stages])
 
+  // --- Filters ---
+  const ownersUnicos = useMemo(
+    () => [...new Set(leads.map((l) => l.owner_id).filter(Boolean) as string[])],
+    [leads]
+  )
+  const fuentesUnicas = useMemo(
+    () => [...new Set(leads.map((l) => l.fuente).filter(Boolean) as string[])],
+    [leads]
+  )
+
+  const filteredLeads = useMemo(() => {
+    return leads.filter((lead) => {
+      const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ').toLowerCase()
+      const phone = (lead.telefono ?? '').toLowerCase()
+      if (busqueda && !fullName.includes(busqueda.toLowerCase()) && !phone.includes(busqueda.toLowerCase())) return false
+      if (filtroOwner && lead.owner_id !== filtroOwner) return false
+      if (filtroFuente && lead.fuente !== filtroFuente) return false
+      return true
+    })
+  }, [leads, busqueda, filtroOwner, filtroFuente])
+
+  const filteredGroupedLeads = useMemo(() => {
+    const groups: Record<string, LeadCard[]> = {}
+    stages.forEach((stage) => { groups[stage] = [] })
+    filteredLeads.forEach((lead) => {
+      const stage = normalizeStage(lead.estado_pipeline)
+      groups[stage].push(lead)
+    })
+    return groups
+  }, [filteredLeads, stages])
+
+  const cantFiltrosActivos = [busqueda, filtroOwner, filtroFuente].filter(Boolean).length
+
+  const limpiarFiltros = () => {
+    setBusqueda('')
+    setFiltroOwner('')
+    setFiltroFuente('')
+  }
+
+  // --- Stats (based on all leads) ---
+  const stats = useMemo(() => {
+    const overdueCount = leads.filter(
+      (l) => l.next_action_date && l.next_action_date < today && normalizeStage(l.estado_pipeline) !== 'descartado'
+    ).length
+    const byStage: Record<string, number> = {}
+    stages.forEach((s) => { byStage[s] = groupedLeads[s]?.length ?? 0 })
+    return { total: leads.length, overdue: overdueCount, byStage }
+  }, [leads, groupedLeads, stages, today])
+
+  // --- Drag & drop ---
   const handleDragStart = (event: DragEvent<HTMLDivElement>, leadId: string) => {
     event.dataTransfer.setData('text/plain', leadId)
     event.dataTransfer.effectAllowed = 'move'
@@ -186,9 +283,7 @@ export function PipelinePage() {
   }
 
   const handleDragLeave = (stage: string) => {
-    if (dragOverStage === stage) {
-      setDragOverStage(null)
-    }
+    if (dragOverStage === stage) setDragOverStage(null)
   }
 
   const handleDrop = async (event: DragEvent<HTMLDivElement>, stage: string) => {
@@ -197,31 +292,52 @@ export function PipelinePage() {
     setDraggingId(null)
     const leadId = event.dataTransfer.getData('text/plain')
     if (!leadId) return
-
     setLeads((prev) =>
-      prev.map((lead) =>
-        lead.id === leadId ? { ...lead, estado_pipeline: stage } : lead
-      )
+      prev.map((lead) => (lead.id === leadId ? { ...lead, estado_pipeline: stage } : lead))
     )
-
     const { error: updateError } = await supabase
       .from('leads')
       .update({ estado_pipeline: stage })
       .eq('id', leadId)
-
     if (updateError) {
       setError(updateError.message)
       loadLeads()
     }
   }
 
+  // --- Quick move (← →) ---
+  const handleMoveCard = useCallback(
+    async (leadId: string, currentStage: string, direction: 'left' | 'right') => {
+      const currentIndex = stages.indexOf(currentStage)
+      const newIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1
+      if (newIndex < 0 || newIndex >= stages.length) return
+      const newStage = stages[newIndex]
+      setLeads((prev) =>
+        prev.map((l) => (l.id === leadId ? { ...l, estado_pipeline: newStage } : l))
+      )
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update({ estado_pipeline: newStage })
+        .eq('id', leadId)
+      if (updateError) {
+        setError(updateError.message)
+        loadLeads()
+      } else {
+        if (isMobile) setMobileStage(newStage)
+      }
+    },
+    [stages, loadLeads, isMobile]
+  )
+
+  // --- Opportunity form ---
   const handleOpenForm = () => {
     setFormValues(initialOpportunityForm)
     setFormError(null)
     setFormOpen(true)
   }
 
-  const handleFormChange = (field: keyof OportunidadForm) =>
+  const handleFormChange =
+    (field: keyof OportunidadForm) =>
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       setFormValues((prev) => ({ ...prev, [field]: event.target.value }))
     }
@@ -246,9 +362,7 @@ export function PipelinePage() {
       fecha_cierre_estimada: formValues.fecha_cierre_estimada || null,
       notas: toNull(formValues.notas),
     }
-
     const { error: insertError } = await supabase.from('oportunidades').insert(payload)
-
     if (insertError) {
       setFormError(insertError.message)
       showToast(insertError.message, 'error')
@@ -259,105 +373,344 @@ export function PipelinePage() {
     setSubmitting(false)
   }
 
-  const getInitials = useCallback((value?: string | null) => {
-    if (!value) return ''
-    const parts = value.split(' ').filter(Boolean)
-    if (parts.length === 0) return ''
-    const first = parts[0][0] ?? ''
-    const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : ''
-    return `${first}${last}`.toUpperCase()
-  }, [])
+  // --- Card renderer ---
+  const renderCard = (lead: LeadCard, stage: string) => {
+    const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
+    const fuenteLabel = getFuenteLabel(lead.fuente)
+    const ownerName = getOwnerName(lead.owner_id)
+    const initials = getInitials(ownerName)
+    const stageIndex = stages.indexOf(stage)
+    const dateStatus = getDateStatus(lead.next_action_date)
+
+    return (
+      <div
+        key={lead.id}
+        className="pipeline-card"
+        draggable
+        onDragStart={(event) => handleDragStart(event, lead.id)}
+        onDragEnd={handleDragEnd}
+        onClick={() => {
+          if (draggingId) return
+          setSelectedLead(lead)
+        }}
+      >
+        {/* Move buttons */}
+        <div className="pipeline-card-moves">
+          {stageIndex > 0 && (
+            <button
+              type="button"
+              className="pipeline-move-btn"
+              title={t('pipeline.moveLeft')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleMoveCard(lead.id, stage, 'left')
+              }}
+            >
+              ←
+            </button>
+          )}
+          {stageIndex < stages.length - 1 && (
+            <button
+              type="button"
+              className="pipeline-move-btn"
+              title={t('pipeline.moveRight')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleMoveCard(lead.id, stage, 'right')
+              }}
+            >
+              →
+            </button>
+          )}
+        </div>
+
+        <div className="pipeline-card-title">{fullName}</div>
+        {fuenteLabel && (
+          <Badge label={fuenteLabel} tone="blue" className="badge-tiny pipeline-badge" />
+        )}
+        <div className="pipeline-card-meta">{lead.telefono ?? '-'}</div>
+        {ownerName && (
+          <div className="pipeline-card-owner">
+            <span className="owner-avatar">{initials || '-'}</span>
+            <span className="owner-name">{ownerName}</span>
+          </div>
+        )}
+        <div className="pipeline-card-next">
+          <span>{t('pipeline.nextAction')}</span>
+          <strong>{lead.next_action ?? t('pipeline.noAction')}</strong>
+        </div>
+        {lead.next_action_date && (
+          <div className="pipeline-card-date">
+            {dateStatus && <span className={`pipeline-date-dot ${dateStatus}`} />}
+            <span>{lead.next_action_date}</span>
+            {dateStatus === 'overdue' && (
+              <span style={{ color: '#f87171', fontSize: '0.7rem', fontWeight: 600 }}>
+                {t('pipeline.overdue')}
+              </span>
+            )}
+            {dateStatus === 'today' && (
+              <span style={{ color: '#fbbf24', fontSize: '0.7rem', fontWeight: 600 }}>
+                {t('pipeline.dueSoon')}
+              </span>
+            )}
+          </div>
+        )}
+        <button
+          type="button"
+          className="whatsapp-button pipeline-whatsapp"
+          aria-label={t('whatsapp.open')}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => {
+            event.stopPropagation()
+            openWhatsapp({
+              nombre: fullName,
+              telefono: lead.telefono ?? '',
+              email: lead.email ?? '',
+              vendedor: ownerName ?? '',
+              leadId: lead.id,
+            })
+          }}
+        >
+          <IconWhatsapp className="whatsapp-icon" />
+        </button>
+      </div>
+    )
+  }
+
+  if (!configured) {
+    return (
+      <EmptyState
+        title={t('dashboard.missingConfigTitle')}
+        description={t('dashboard.missingConfigDescription')}
+      />
+    )
+  }
+
+  const statCards = [
+    { label: 'Total', value: stats.total, color: '#3b82f6' },
+    ...stages
+      .filter((s) => s !== 'descartado')
+      .map((s) => ({ label: t(`pipeline.columns.${s}`), value: stats.byStage[s] ?? 0, color: stageColors[s] ?? '#6b7280' })),
+    { label: t('pipeline.overdue'), value: stats.overdue, color: '#f87171' },
+  ]
 
   return (
     <div className="page-stack">
       <SectionHeader
-        title={t('oportunidades.title')}
-        subtitle={t('oportunidades.subtitle')}
+        title={t('pipeline.title')}
+        subtitle={t('pipeline.subtitle')}
         action={<Button onClick={handleOpenForm}>{t('oportunidades.new')}</Button>}
       />
-      {!configured && (
-        <EmptyState
-          title={t('dashboard.missingConfigTitle')}
-          description={t('dashboard.missingConfigDescription')}
-        />
-      )}
+
       {error && <div className="form-error">{error}</div>}
-      <div className="pipeline-board">
-        {stages.map((stage) => (
+
+      {/* STATS */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))',
+          gap: '0.6rem',
+        }}
+      >
+        {statCards.map((s) => (
           <div
-            className={`pipeline-column ${stage === 'descartado' ? 'discard' : ''} ${dragOverStage === stage ? 'drag-over' : ''}`}
-            key={stage}
-            onDragOver={(event) => handleDragOver(event, stage)}
-            onDragLeave={() => handleDragLeave(stage)}
-            onDrop={(event) => handleDrop(event, stage)}
+            key={s.label}
+            style={{
+              padding: '0.75rem 0.5rem',
+              background: 'var(--color-surface, #f9fafb)',
+              borderRadius: '0.5rem',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              textAlign: 'center',
+            }}
           >
-            <h4 className="pipeline-column-title">
-              <span>{t(`pipeline.columns.${stage}`).toUpperCase()}</span>
-              <span className="pipeline-column-count">({groupedLeads[stage]?.length ?? 0})</span>
-            </h4>
-            {loading && <div className="pipeline-empty">{t('common.loading')}</div>}
-            {!loading && groupedLeads[stage]?.length === 0 && (
-              <div className="pipeline-empty">{t('pipeline.emptyColumn')}</div>
-            )}
-            {groupedLeads[stage]?.map((lead) => {
-              const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
-              const fuenteLabel = getFuenteLabel(lead.fuente)
-              const ownerName = getOwnerName(lead.owner_id)
-              const initials = getInitials(ownerName)
-              let normalizedStage = lead.estado_pipeline ?? 'nuevo'
-              if (normalizedStage === 'calificado') normalizedStage = 'cita'
-              if (normalizedStage === 'demostracion') normalizedStage = 'demo'
-              return (
-                <div
-                  key={lead.id}
-                  className="pipeline-card"
-                  draggable
-                  onDragStart={(event) => handleDragStart(event, lead.id)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => {
-                    if (draggingId) return
-                    setSelectedLead(lead)
-                  }}
-                >
-                  <div className="pipeline-card-title">{fullName}</div>
-                  {fuenteLabel && (
-                    <Badge label={fuenteLabel} tone="blue" className="badge-tiny pipeline-badge" />
-                  )}
-                  <div className="pipeline-card-meta">{lead.telefono ?? '-'}</div>
-                  {ownerName && (
-                    <div className="pipeline-card-owner">
-                      <span className="owner-avatar">{initials || '-'}</span>
-                      <span className="owner-name">{ownerName}</span>
-                    </div>
-                  )}
-                  <div className="pipeline-card-next">
-                    <span>{t('pipeline.nextAction')}</span>
-                    <strong>{lead.next_action ?? t('pipeline.noAction')}</strong>
-                  </div>
-                  <button
-                    type="button"
-                    className="whatsapp-button pipeline-whatsapp"
-                    aria-label={t('whatsapp.open')}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      openWhatsapp({
-                        nombre: fullName,
-                        telefono: lead.telefono ?? '',
-                        email: lead.email ?? '',
-                        vendedor: ownerName ?? '',
-                        leadId: lead.id,
-                      })
-                    }}
-                  >
-                    <IconWhatsapp className="whatsapp-icon" />
-                  </button>
-                </div>
-              )
-            })}
+            <div style={{ fontSize: '1.35rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>
+              {s.value}
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {s.label}
+            </div>
           </div>
         ))}
       </div>
+
+      {/* FILTERS */}
+      <div
+        style={{
+          background: 'var(--color-surface, #f9fafb)',
+          borderRadius: '0.75rem',
+          border: '1px solid var(--color-border, #e5e7eb)',
+        }}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setFiltrosVisible((v) => !v)}
+          onKeyDown={(e) => e.key === 'Enter' && setFiltrosVisible((v) => !v)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.75rem 1rem',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span
+              style={{
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                color: 'var(--color-text-muted, #6b7280)',
+                letterSpacing: '0.05em',
+              }}
+            >
+              FILTROS
+            </span>
+            {cantFiltrosActivos > 0 && (
+              <span
+                style={{
+                  background: '#2563eb',
+                  color: 'white',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  padding: '0.1rem 0.45rem',
+                  borderRadius: '9999px',
+                  lineHeight: 1.4,
+                }}
+              >
+                {cantFiltrosActivos}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
+              {filteredLeads.length} de {leads.length} leads
+            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)' }}>
+              {filtrosVisible ? '▲' : '▼'}
+            </span>
+          </div>
+        </div>
+
+        {filtrosVisible && (
+          <div
+            style={{
+              padding: '0 1rem 1rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              alignItems: 'flex-end',
+              borderTop: '1px solid var(--color-border, #e5e7eb)',
+            }}
+          >
+            <div style={{ flex: '1', minWidth: '200px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)', marginBottom: '4px', marginTop: '12px' }}>
+                Buscar
+              </label>
+              <input
+                style={{ width: '100%', fontSize: '0.875rem' }}
+                placeholder={t('pipeline.filterSearch')}
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </div>
+            <div style={{ minWidth: '160px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)', marginBottom: '4px', marginTop: '12px' }}>
+                Vendedor
+              </label>
+              <select
+                style={{ width: '100%', fontSize: '0.875rem' }}
+                value={filtroOwner}
+                onChange={(e) => setFiltroOwner(e.target.value)}
+              >
+                <option value="">{t('pipeline.allOwners')}</option>
+                {ownersUnicos.map((id) => (
+                  <option key={id} value={id}>
+                    {getOwnerName(id) ?? id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ minWidth: '160px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)', marginBottom: '4px', marginTop: '12px' }}>
+                Fuente
+              </label>
+              <select
+                style={{ width: '100%', fontSize: '0.875rem' }}
+                value={filtroFuente}
+                onChange={(e) => setFiltroFuente(e.target.value)}
+              >
+                <option value="">{t('pipeline.allSources')}</option>
+                {fuentesUnicas.map((f) => (
+                  <option key={f} value={f}>
+                    {getFuenteLabel(f) ?? f}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {cantFiltrosActivos > 0 && (
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={limpiarFiltros}
+                style={{ alignSelf: 'flex-end', marginTop: '12px' }}
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* BOARD */}
+      {isMobile ? (
+        <div>
+          {/* Stage tabs */}
+          <div className="pipeline-mobile-tabs">
+            {stages.map((stage) => (
+              <button
+                key={stage}
+                type="button"
+                className={`pipeline-mobile-tab${mobileStage === stage ? ' active' : ''}`}
+                onClick={() => setMobileStage(stage)}
+              >
+                {t(`pipeline.columns.${stage}`)}
+                <span style={{ opacity: 0.65 }}>({filteredGroupedLeads[stage]?.length ?? 0})</span>
+              </button>
+            ))}
+          </div>
+          {/* Cards for active stage */}
+          {loading && <div className="pipeline-empty">{t('common.loading')}</div>}
+          {!loading && filteredGroupedLeads[mobileStage]?.length === 0 && (
+            <div className="pipeline-empty">{t('pipeline.emptyColumn')}</div>
+          )}
+          {filteredGroupedLeads[mobileStage]?.map((lead) => renderCard(lead, mobileStage))}
+        </div>
+      ) : (
+        <div className="pipeline-board">
+          {stages.map((stage) => (
+            <div
+              className={`pipeline-column${stage === 'descartado' ? ' discard' : ''}${dragOverStage === stage ? ' drag-over' : ''}`}
+              key={stage}
+              onDragOver={(event) => handleDragOver(event, stage)}
+              onDragLeave={() => handleDragLeave(stage)}
+              onDrop={(event) => handleDrop(event, stage)}
+            >
+              <h4 className="pipeline-column-title">
+                <span>{t(`pipeline.columns.${stage}`).toUpperCase()}</span>
+                <span className="pipeline-column-count">({filteredGroupedLeads[stage]?.length ?? 0})</span>
+              </h4>
+              {loading && <div className="pipeline-empty">{t('common.loading')}</div>}
+              {!loading && filteredGroupedLeads[stage]?.length === 0 && (
+                <div className="pipeline-empty">{t('pipeline.emptyColumn')}</div>
+              )}
+              {filteredGroupedLeads[stage]?.map((lead) => renderCard(lead, stage))}
+            </div>
+          ))}
+        </div>
+      )}
+
       <CalificacionPanel
         open={Boolean(selectedLead)}
         lead={selectedLead}
@@ -421,11 +774,19 @@ export function PipelinePage() {
           </label>
           <label className="form-field">
             <span>{t('oportunidades.form.probabilidad')}</span>
-            <input type="number" value={formValues.probabilidad} onChange={handleFormChange('probabilidad')} />
+            <input
+              type="number"
+              value={formValues.probabilidad}
+              onChange={handleFormChange('probabilidad')}
+            />
           </label>
           <label className="form-field">
             <span>{t('oportunidades.form.fecha')}</span>
-            <input type="date" value={formValues.fecha_cierre_estimada} onChange={handleFormChange('fecha_cierre_estimada')} />
+            <input
+              type="date"
+              value={formValues.fecha_cierre_estimada}
+              onChange={handleFormChange('fecha_cierre_estimada')}
+            />
           </label>
           <label className="form-field">
             <span>{t('oportunidades.form.notas')}</span>

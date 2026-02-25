@@ -164,7 +164,7 @@ export function Programa4en14Page() {
     const leadSelectBase =
       'id, nombre, apellido, telefono, email, estado_civil, situacion_laboral, ninos_en_casa, tiene_productos_rp, tipo_vivienda'
     const leadSelectWithCredit = `${leadSelectBase}, tiene_credito`
-    const leadsPromise = supabase.from('leads').select(leadSelectWithCredit)
+    const leadsPromise = supabase.from('leads').select(leadSelectWithCredit).is('deleted_at', null)
     const [
       cyclesResult,
       referidosResult,
@@ -195,7 +195,10 @@ export function Programa4en14Page() {
     let creditAvailable = true
     if (leadsResult.error && leadsResult.error.message?.includes('tiene_credito')) {
       creditAvailable = false
-      leadsResult = await supabase.from('leads').select(leadSelectBase)
+      leadsResult = (await supabase
+        .from('leads')
+        .select(leadSelectBase)
+        .is('deleted_at', null)) as typeof leadsResultWithCredit
     }
 
     if (

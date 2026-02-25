@@ -149,3 +149,36 @@ export function IconMail({ className }: IconProps) {
     </svg>
   )
 }
+
+export function IconTrash({ className }: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" className={className}>
+      <path d="M4 7h16" />
+      <path d="M9 7V5h6v2" />
+      <rect x="6" y="7" width="12" height="13" rx="2" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  )
+}
+
+export function IconSwap({ className }: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" className={className}>
+      <path d="M7 7h10" />
+      <path d="M13 3l4 4-4 4" />
+      <path d="M17 17H7" />
+      <path d="M11 21l-4-4 4-4" />
+    </svg>
+  )
+}
+
+export function IconRestore({ className }: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" className={className}>
+      <path d="M4 12a8 8 0 1114 5" />
+      <path d="M4 12V6" />
+      <path d="M4 6h6" />
+    </svg>
+  )
+}
