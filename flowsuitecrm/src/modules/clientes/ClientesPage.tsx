@@ -57,6 +57,42 @@ const initialForm = {
   activo: true,
 }
 
+const BIRTH_YEAR_DEFAULT = 2000
+const MONTH_OPTIONS = [
+  { value: '01', label: 'Enero' },
+  { value: '02', label: 'Febrero' },
+  { value: '03', label: 'Marzo' },
+  { value: '04', label: 'Abril' },
+  { value: '05', label: 'Mayo' },
+  { value: '06', label: 'Junio' },
+  { value: '07', label: 'Julio' },
+  { value: '08', label: 'Agosto' },
+  { value: '09', label: 'Septiembre' },
+  { value: '10', label: 'Octubre' },
+  { value: '11', label: 'Noviembre' },
+  { value: '12', label: 'Diciembre' },
+]
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, idx) => String(idx + 1).padStart(2, '0'))
+
+const splitBirthDate = (value: string | null) => {
+  if (!value) return { month: '', day: '' }
+  const parts = value.split('-')
+  return {
+    month: parts[1] ?? '',
+    day: parts[2] ?? '',
+  }
+}
+
+const buildBirthDate = (month: string, day: string) => {
+  if (!month || !day) return null
+  const m = Number(month)
+  const d = Number(day)
+  if (!m || !d) return null
+  const candidate = new Date(BIRTH_YEAR_DEFAULT, m - 1, d)
+  if (candidate.getMonth() !== m - 1 || candidate.getDate() !== d) return null
+  return `${BIRTH_YEAR_DEFAULT}-${month}-${day}`
+}
+
 // Segmento de atraso basado en dias_atraso
 function segmentoAtraso(dias: number | null, moroso: number | null): string {
   if (!moroso || moroso === 0) return 'Al día'
@@ -96,6 +132,8 @@ export function ClientesPage() {
   const [error, setError] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [formValues, setFormValues] = useState(initialForm)
+  const [birthMonth, setBirthMonth] = useState('')
+  const [birthDay, setBirthDay] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedRow, setSelectedRow] = useState<DataTableRow | null>(null)
@@ -361,11 +399,14 @@ export function ClientesPage() {
   const handleOpenForm = () => {
     setEditingId(null)
     setFormValues({ ...initialForm, vendedor_id: session?.user.id ?? '' })
+    setBirthMonth('')
+    setBirthDay('')
     setFormError(null)
     setFormOpen(true)
   }
 
   const handleOpenEditForm = (cliente: ClienteRecord) => {
+    const birth = splitBirthDate(cliente.fecha_nacimiento ?? null)
     setEditingId(cliente.id)
     setFormValues({
       nombre: cliente.nombre ?? '',
@@ -381,6 +422,8 @@ export function ClientesPage() {
       fecha_nacimiento: cliente.fecha_nacimiento ?? '',
       activo: cliente.activo ?? true,
     })
+    setBirthMonth(birth.month)
+    setBirthDay(birth.day)
     setFormError(null)
     setFormOpen(true)
   }
@@ -404,6 +447,12 @@ export function ClientesPage() {
     setSubmitting(true)
     setFormError(null)
     const toNull = (v: string) => (v.trim() === '' ? null : v.trim())
+    const birthDate = buildBirthDate(birthMonth, birthDay)
+    if ((birthMonth || birthDay) && !birthDate) {
+      setFormError('Fecha de cumpleaños inválida.')
+      setSubmitting(false)
+      return
+    }
     const basePayload = {
       nombre: toNull(formValues.nombre),
       apellido: toNull(formValues.apellido),
@@ -414,7 +463,7 @@ export function ClientesPage() {
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
       saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),
       distribuidor_id: toNull(formValues.distribuidor_id),
-      fecha_nacimiento: formValues.fecha_nacimiento || null,
+      fecha_nacimiento: birthDate,
       activo: formValues.activo,
     }
     const { error: opError } = editingId
@@ -1018,8 +1067,25 @@ export function ClientesPage() {
             <input value={formVendedorName} readOnly />
           </label>
           <label className="form-field">
-            <span>{t('clientes.fields.fechaNacimiento')}</span>
-            <input type="date" value={formValues.fecha_nacimiento} onChange={handleChange('fecha_nacimiento')} />
+            <span>Cumpleaños (día y mes)</span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select value={birthDay} onChange={(event) => setBirthDay(event.target.value)}>
+                <option value="">Día</option>
+                {DAY_OPTIONS.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+              <select value={birthMonth} onChange={(event) => setBirthMonth(event.target.value)}>
+                <option value="">Mes</option>
+                {MONTH_OPTIONS.map((month) => (
+                  <option key={month.value} value={month.value}>
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </label>
           <label className="form-field checkbox-field">
             <span>{t('clientes.fields.activo')}</span>

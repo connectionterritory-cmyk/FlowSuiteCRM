@@ -5,13 +5,14 @@ import type { MessagingChannel, MessagingContact } from '../types/messaging'
 type ActiveMessage = {
   channel: MessagingChannel
   contact: MessagingContact
+  templateId?: string
 }
 
 export function useMessaging() {
   const [activeMessage, setActiveMessage] = useState<ActiveMessage | null>(null)
 
-  const openChannel = useCallback((channel: MessagingChannel, contact: MessagingContact) => {
-    setActiveMessage({ channel, contact })
+  const openChannel = useCallback((channel: MessagingChannel, contact: MessagingContact, templateId?: string) => {
+    setActiveMessage({ channel, contact, templateId })
   }, [])
 
   const closeModal = useCallback(() => {
@@ -19,22 +20,22 @@ export function useMessaging() {
   }, [])
 
   const openWhatsapp = useCallback(
-    (contact: MessagingContact) => {
-      openChannel('whatsapp', contact)
+    (contact: MessagingContact, templateId?: string) => {
+      openChannel('whatsapp', contact, templateId)
     },
     [openChannel]
   )
 
   const openSms = useCallback(
-    (contact: MessagingContact) => {
-      openChannel('sms', contact)
+    (contact: MessagingContact, templateId?: string) => {
+      openChannel('sms', contact, templateId)
     },
     [openChannel]
   )
 
   const openEmail = useCallback(
-    (contact: MessagingContact) => {
-      openChannel('email', contact)
+    (contact: MessagingContact, templateId?: string) => {
+      openChannel('email', contact, templateId)
     },
     [openChannel]
   )
@@ -42,12 +43,13 @@ export function useMessaging() {
   const ModalRenderer = useMemo(() => {
     return function MessagingModalRenderer() {
       if (!activeMessage) return null
-      return createElement(MessageModal, {
-        open: true,
-        channel: activeMessage.channel,
-        contact: activeMessage.contact,
-        onClose: closeModal,
-      })
+        return createElement(MessageModal, {
+          open: true,
+          channel: activeMessage.channel,
+          contact: activeMessage.contact,
+          initialTemplateId: activeMessage.templateId,
+          onClose: closeModal,
+        })
     }
   }, [activeMessage, closeModal])
 

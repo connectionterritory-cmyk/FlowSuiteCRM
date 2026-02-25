@@ -769,7 +769,15 @@ export function VentasPage() {
                 ))}
               </select>
               {clientes.length === 0 && (
-                <button type="button" className="inline-link" onClick={() => { setClienteFormValues(initialClienteForm); setClienteFormError(null); setClienteFormOpen(true) }}>
+                <button
+                  type="button"
+                  className="inline-link"
+                  onClick={() => {
+                    setClienteFormValues(initialClienteForm)
+                    setClienteFormError(null)
+                    setClienteFormOpen(true)
+                  }}
+                >
                   + {t('common.createCliente')}
                 </button>
               )}
