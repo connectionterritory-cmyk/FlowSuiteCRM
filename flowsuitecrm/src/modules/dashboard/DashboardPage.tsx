@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { StatCard } from '../../components/StatCard'
@@ -11,6 +12,7 @@ import { DonutChart } from '../../components/DonutChart'
 
 export function DashboardPage() {
   const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
   const { metrics, loading, configured } = useDashboardMetrics()
   const { salesSeries, pipelineSeries, loading: chartsLoading } = useDashboardCharts()
 
@@ -40,49 +42,60 @@ export function DashboardPage() {
         <StatCard
           label={t('dashboard.metrics.leadsNuevos')}
           value={loading ? t('common.loading') : formatValue(metrics.leadsNew)}
+          onClick={() => navigate('/leads')}
         />
         <StatCard
           label={t('dashboard.metrics.oportunidadesActivas')}
           value={loading ? t('common.loading') : formatValue(metrics.opportunitiesActive)}
+          onClick={() => navigate('/pipeline')}
         />
         <StatCard
           label={t('dashboard.metrics.demos')}
           value={loading ? t('common.loading') : formatValue(metrics.demos)}
+          onClick={() => navigate('/leads')}
         />
         <StatCard
           label={t('dashboard.metrics.ventasMes')}
           value={loading ? t('common.loading') : formatValue(metrics.salesMonth)}
+          onClick={() => navigate('/ventas')}
         />
         <StatCard
           label={t('dashboard.metrics.embajadoresSilver')}
           value={loading ? t('common.loading') : formatValue(metrics.ambassadorsSilver)}
           accent="gold"
+          onClick={() => navigate('/programas/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.embajadoresGold')}
           value={loading ? t('common.loading') : formatValue(metrics.ambassadorsGold)}
           accent="gold"
+          onClick={() => navigate('/programas/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.volumenAnual')}
           value={loading ? t('common.loading') : formatValue(metrics.ambassadorsVolumeAnnual)}
           accent="gold"
+          onClick={() => navigate('/programas/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.ciclosActivos')}
           value={loading ? t('common.loading') : formatValue(metrics.cyclesActive)}
+          onClick={() => navigate('/programas/4en14')}
         />
         <StatCard
           label={t('dashboard.metrics.serviciosVencidos')}
           value={loading ? t('common.loading') : formatValue(metrics.servicesOverdue)}
+          onClick={() => navigate('/telemercadeo/filtros')}
         />
         <StatCard
           label={t('dashboard.metrics.serviciosProximos')}
           value={loading ? t('common.loading') : formatValue(metrics.servicesDueSoon)}
+          onClick={() => navigate('/telemercadeo/filtros')}
         />
         <StatCard
           label={t('dashboard.metrics.cumpleanos')}
           value={loading ? t('common.loading') : formatValue(metrics.birthdaysUpcoming)}
+          onClick={() => navigate('/telemercadeo/cumpleanos')}
         />
       </div>
 

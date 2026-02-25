@@ -137,6 +137,7 @@ export function LeadsPage() {
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroFuente, setFiltroFuente] = useState('todos')
   const [filtroOwner, setFiltroOwner] = useState('todos')
+  const [filtroVencido, setFiltroVencido] = useState(false)
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [sortCol, setSortCol] = useState<number | null>(null)
@@ -273,6 +274,7 @@ export function LeadsPage() {
 
   // --- FILTRADO ---
   const leadsFiltrados = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
     return leads.filter((lead) => {
       const fullName = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.toLowerCase()
       const tel = lead.telefono ?? ''
@@ -285,9 +287,15 @@ export function LeadsPage() {
         (filtroEstado === 'en_proceso' && EN_PROCESO_STAGES.includes(stage))
       const matchFuente = filtroFuente === 'todos' || lead.fuente === filtroFuente
       const matchOwner = filtroOwner === 'todos' || lead.owner_id === filtroOwner
-      return matchBusqueda && matchEstado && matchFuente && matchOwner
+      const matchVencido =
+        !filtroVencido ||
+        (!!lead.next_action_date &&
+          lead.next_action_date <= today &&
+          lead.estado_pipeline !== 'descartado' &&
+          lead.estado_pipeline !== 'cierre')
+      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, normalizeStage])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, normalizeStage])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -318,15 +326,22 @@ export function LeadsPage() {
   }, [leadsFiltrados, sortCol, sortDir, normalizeStage])
 
   // --- ESTADISTICAS ---
-  const stats = useMemo(
-    () => ({
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    return {
       total: leads.length,
       nuevo: leads.filter((l) => normalizeStage(l.estado_pipeline) === 'nuevo').length,
       enProceso: leads.filter((l) => EN_PROCESO_STAGES.includes(normalizeStage(l.estado_pipeline))).length,
       descartado: leads.filter((l) => l.estado_pipeline === 'descartado').length,
-    }),
-    [leads, normalizeStage]
-  )
+      vencidos: leads.filter(
+        (l) =>
+          l.next_action_date &&
+          l.next_action_date <= today &&
+          l.estado_pipeline !== 'descartado' &&
+          l.estado_pipeline !== 'cierre',
+      ).length,
+    }
+  }, [leads, normalizeStage])
 
   const openManageModal = useCallback(
     (lead: LeadRecord, mode: 'delete' | 'reassign' | 'restore') => {
@@ -599,6 +614,7 @@ export function LeadsPage() {
     setFiltroEstado('todos')
     setFiltroFuente('todos')
     setFiltroOwner('todos')
+    setFiltroVencido(false)
   }
 
   const cantFiltrosActivos = [
@@ -687,6 +703,12 @@ export function LeadsPage() {
           { label: 'Nuevos', value: stats.nuevo, color: '#6366f1', onClick: () => { limpiarFiltros(); setFiltroEstado('nuevo') } },
           { label: 'En proceso', value: stats.enProceso, color: '#f59e0b', onClick: () => { limpiarFiltros(); setFiltroEstado('en_proceso') } },
           { label: 'Descartados', value: stats.descartado, color: '#6b7280', onClick: () => { limpiarFiltros(); setFiltroEstado('descartado') } },
+          {
+            label: 'Seguimientos',
+            value: stats.vencidos,
+            color: stats.vencidos > 0 ? '#ef4444' : '#10b981',
+            onClick: () => { limpiarFiltros(); setFiltroVencido(true) },
+          },
         ].map((s) => (
           <div
             key={s.label}
