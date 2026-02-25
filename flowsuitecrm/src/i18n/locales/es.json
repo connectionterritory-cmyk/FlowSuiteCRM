@@ -216,6 +216,13 @@
     "emptyColumn": "Sin leads en esta etapa",
     "nextAction": "Proxima accion",
     "noAction": "Sin accion definida",
+    "overdue": "Vencido",
+    "dueSoon": "Hoy",
+    "moveLeft": "Etapa anterior",
+    "moveRight": "Siguiente etapa",
+    "filterSearch": "Buscar por nombre o telefono...",
+    "allOwners": "Todos los vendedores",
+    "allSources": "Todas las fuentes",
     "columns": {
       "nuevo": "Nuevo",
       "contactado": "Contactado",
@@ -452,9 +459,14 @@
         "new": "Nueva activacion",
         "create": "Crear activacion",
         "view": "Ver",
+        "editOwner": "Editar dueno",
         "reactivate": "Reactivar",
         "reactivated": "Activacion reactivada",
         "loadMore": "Cargar mas"
+      },
+      "ownerType": {
+        "cliente": "Cliente",
+        "prospecto": "Prospecto"
       },
       "tabs": {
         "active": "Activas",
@@ -492,22 +504,33 @@
       "emptyTable": "Sin resultados",
       "noAccess": "No tienes acceso a este modulo.",
       "noAccessDetail": "Telemercadeo no tiene acceso a Conexiones Infinitas en esta fase.",
-      "detailTitle": "Detalle de activacion",
+      "detailTitle": "Activacion - {{name}}",
       "relative": {
         "minutes": "Hace {{count}} min",
         "hours": "Hace {{count}} h",
         "days": "Hace {{count}} dias"
       },
       "errors": {
-        "programMissing": "No se encontro el programa Conexiones Infinitas.",
-        "ownerRequired": "Selecciona quien dara los referidos."
+        "minReferidos": "Debes agregar al menos 20 referidos.",
+        "minReferidosDraft": "Debes agregar al menos 1 referido.",
+        "selectGift": "Selecciona un regalo premium.",
+        "photoRequired": "Sube la foto del cliente con el regalo.",
+        "selectCliente": "Selecciona un cliente.",
+        "prospectoRequired": "Completa nombre y telefono del prospecto.",
+        "clienteRequired": "Completa nombre, telefono y cuenta HyCite del cliente.",
+        "selectOwner": "Selecciona un cliente o prospecto.",
+        "noUser": "No se encontro el representante.",
+        "referidoIncompleto": "Completa nombre y telefono del referido.",
+        "whatsappBlocked": "Completa el regalo y la foto para habilitar WhatsApp.",
+        "clientePhoneExists": "Ya existe un cliente con ese telefono. Se selecciono el registro existente.",
+        "prospectoPhoneExists": "Ya existe un prospecto con ese telefono. Se selecciono el registro existente."
       },
       "wizard": {
         "title": "Nueva activacion",
         "ownerTitle": "¿Quien va a enviar la lista de contactos?",
-        "ownerHint": "Normalmente eres tu mismo.",
-        "self": "Yo mismo",
-        "searchUser": "Buscar usuario",
+        "ownerHint": "Selecciona al cliente o prospecto que dio la lista.",
+        "selectOwner": "Selecciona un cliente o prospecto.",
+        "searchUser": "Buscar cliente o prospecto",
         "searchPlaceholder": "Nombre o telefono",
         "confirmTitle": "Confirmar",
         "confirmHint": "Revisa la informacion antes de crear la activacion."
@@ -593,7 +616,6 @@
         "amigo": "Amigo",
         "companero": "Companero"
       },
-      "detailTitle": "Activacion - {{name}}",
       "referidos": {
         "title": "Referidos",
         "columns": {
@@ -617,21 +639,6 @@
           "presentacion_hecha": "Presentacion hecha",
           "regalo_entregado": "Regalo entregado"
         }
-      },
-      "errors": {
-        "minReferidos": "Debes agregar al menos 20 referidos.",
-        "minReferidosDraft": "Debes agregar al menos 1 referido.",
-        "selectGift": "Selecciona un regalo premium.",
-        "photoRequired": "Sube la foto del cliente con el regalo.",
-        "selectCliente": "Selecciona un cliente.",
-        "prospectoRequired": "Completa nombre y telefono del prospecto.",
-        "clienteRequired": "Completa nombre, telefono y cuenta HyCite del cliente.",
-        "selectOwner": "Selecciona un cliente o prospecto.",
-        "noUser": "No se encontro el representante.",
-        "referidoIncompleto": "Completa nombre y telefono del referido.",
-        "whatsappBlocked": "Completa el regalo y la foto para habilitar WhatsApp.",
-        "clientePhoneExists": "Ya existe un cliente con ese telefono. Se selecciono el registro existente.",
-        "prospectoPhoneExists": "Ya existe un prospecto con ese telefono. Se selecciono el registro existente."
       }
     },
     "actions": {
@@ -706,6 +713,39 @@
       "conexiones": "Conexiones",
       "ventas": "Ventas",
       "nivel": "Nivel"
+    },
+    "referidoEstados": {
+      "pendiente": "Pendiente",
+      "contactado": "Contactado",
+      "cita_agendada": "Cita agendada",
+      "presentacion_hecha": "Presentacion hecha",
+      "regalo_entregado": "Regalo entregado",
+      "telemercadeo": "Telemercadeo"
+    },
+    "referidosPanel": {
+      "title": "Referidos — {{owner}}",
+      "todos": "Todos",
+      "total": "Total",
+      "citas": "Citas",
+      "cerrados": "Cerrados",
+      "tele": "Telemercadeo",
+      "notasPlaceholder": "Notas...",
+      "apellidoLabel": "Apellido",
+      "apellidoPlaceholder": "Apellido (opcional)",
+      "createLead": "Activar",
+      "addReferido": "Agregar referido",
+      "newRefNombre": "Nombre",
+      "newRefTelefono": "Telefono",
+      "newRefRelacion": "Relacion",
+      "newRefRequired": "Nombre y telefono son requeridos",
+      "calificar": "Ver / Calificar prospecto",
+      "leadDone": "✓ Activo",
+      "ownerInfoToggle": "Ver info del dueno"
+    },
+    "relaciones": {
+      "familiar": "Familiar",
+      "amigo": "Amigo",
+      "companero": "Companero"
     }
   },
   "programa4en14": {

@@ -7,15 +7,27 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
 import { DetailPanel } from '../../components/DetailPanel'
+import { ActivacionReferidosPanel } from '../../components/ActivacionReferidosPanel'
 import { useToast } from '../../components/Toast'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
-import { useConexiones, type CiActivacion, type GiftProduct } from '../../hooks/useConexiones'
+import { useConexiones, type CiActivacion, type CiReferido, type GiftProduct } from '../../hooks/useConexiones'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { CONEXIONES_INFINITAS_DIFUSION, replaceTemplateVariables } from '../../lib/whatsappTemplates'
 import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useMessaging } from '../../hooks/useMessaging'
+import {
+  CI_REFERIDO_ESTADOS,
+  CI_RELACIONES,
+  MIN_REFERIDOS_CI,
+  MIN_REFERIDOS_DRAFT,
+  formatPhone,
+  getActivationState,
+  stripPhone,
+  type CiRelacion,
+  type ReferidoFormRow,
+} from '../../lib/conexiones/validaciones'
 
 type EmbajadorProgramaRecord = {
   id: string
@@ -44,22 +56,12 @@ type UsuarioRecord = {
   distribuidor_padre_id?: string | null
 }
 
-type CiReferido = {
+type OwnerCandidate = {
   id: string
-  activacion_id: string | null
   nombre: string | null
+  apellido: string | null
   telefono: string | null
-  relacion: string | null
-  estado: string | null
-  lead_id: string | null
-}
-
-type CiRelacion = 'familiar' | 'amigo' | 'companero'
-
-type ReferidoFormRow = {
-  nombre: string
-  telefono: string
-  relacion: CiRelacion
+  type: 'cliente' | 'prospecto'
 }
 
 const initialEmbajadorForm = {
@@ -87,19 +89,7 @@ const initialRegistroForm = {
   embajador_id: '',
 }
 
-const MIN_REFERIDOS_CI = 20
-const MIN_REFERIDOS_DRAFT = 1
 const CI_CLOSED_DAYS = 90
-
-const ciReferidoStates = [
-  'pendiente',
-  'contactado',
-  'cita_agendada',
-  'presentacion_hecha',
-  'regalo_entregado',
-] as const
-
-const ciRelacionOptions = ['familiar', 'amigo', 'companero'] as const
 
 const initialCiReferidoRow: ReferidoFormRow = {
   nombre: '',
@@ -122,15 +112,6 @@ const CLIENT_DIFFUSION_TEMPLATE =
 
 const buildConexionRows = (count = 3) =>
   Array.from({ length: count }, () => ({ nombre: '', telefono: '', email: '', estado: 'pendiente' }))
-
-const formatPhone = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 10)
-  if (digits.length <= 3) return digits
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
-}
-
-const stripPhone = (value: string) => value.replace(/\D/g, '')
 
 export function ConexionesActivacionesTabLegacy() {
   const { t, i18n } = useTranslation()
@@ -242,23 +223,6 @@ export function ConexionesActivacionesTabLegacy() {
     [dateTimeFormat],
   )
 
-
-  const getActivationState = useCallback(
-    ({
-      referidosCount,
-      photoPath,
-      whatsappAt,
-    }: {
-      referidosCount: number
-      photoPath: string | null
-      whatsappAt: string | null
-    }) => {
-      if (whatsappAt) return 'completo'
-      if (referidosCount >= MIN_REFERIDOS_CI && photoPath) return 'activo'
-      return 'borrador'
-    },
-    [],
-  )
 
   const validReferidos = useMemo(
     () =>
@@ -1135,8 +1099,12 @@ export function ConexionesActivacionesTabLegacy() {
   const activationActionLabel = canSeeStep2
     ? t('conexiones.activaciones.form.activateProgram')
     : t('conexiones.activaciones.form.saveDraft')
+  const hasSelectedOwner = Boolean(selectedOwnerType && selectedOwnerId)
   const activationActionDisabled =
-    activationSaving || !hasMinimumReferidos || (canSeeStep2 && !canActivate)
+    activationSaving ||
+    !hasMinimumReferidos ||
+    !hasSelectedOwner ||
+    (canSeeStep2 && !canActivate)
 
   const selectedActivationTitle = selectedActivation
     ? t('conexiones.activaciones.detailTitle', {
@@ -1447,7 +1415,7 @@ export function ConexionesActivacionesTabLegacy() {
                   value={row.relacion}
                   onChange={handleReferidoChange(index, 'relacion')}
                 >
-                  {ciRelacionOptions.map((option) => (
+                  {CI_RELACIONES.map((option) => (
                     <option key={option} value={option}>
                       {t(`conexiones.activaciones.relaciones.${option}`)}
                     </option>
@@ -2023,7 +1991,7 @@ export function ConexionesActivacionesTabLegacy() {
                     }))
                   }
                 >
-                  {ciRelacionOptions.map((option) => (
+                  {CI_RELACIONES.map((option) => (
                     <option key={option} value={option}>
                       {t(`conexiones.activaciones.relaciones.${option}`)}
                     </option>
@@ -2072,7 +2040,7 @@ export function ConexionesActivacionesTabLegacy() {
                               value={getReferidoDraftValue(referido, 'relacion')}
                               onChange={handleReferidoDraftChange(referido.id, 'relacion')}
                             >
-                              {ciRelacionOptions.map((option) => (
+                              {CI_RELACIONES.map((option) => (
                                 <option key={option} value={option}>
                                   {t(`conexiones.activaciones.relaciones.${option}`)}
                                 </option>
@@ -2087,7 +2055,7 @@ export function ConexionesActivacionesTabLegacy() {
                               }
                               disabled={referidoUpdatingId === referido.id}
                             >
-                              {ciReferidoStates.map((state) => (
+                              {CI_REFERIDO_ESTADOS.map((state) => (
                                 <option key={state} value={state}>
                                   {t(`conexiones.activaciones.referidos.states.${state}`)}
                                 </option>
@@ -2538,7 +2506,7 @@ export function ConexionesActivacionesTabLegacy2() {
                   }))
                 }
               >
-                {ciRelacionOptions.map((option) => (
+                {CI_RELACIONES.map((option) => (
                   <option key={option} value={option}>
                     {t(`conexiones.activaciones.relaciones.${option}`)}
                   </option>
@@ -2697,12 +2665,15 @@ export function ConexionesActivacionesTabLegacy2() {
 function ConexionesActivacionesTab() {
   const { t, i18n } = useTranslation()
   const { session } = useAuth()
+  const { usersById } = useUsers()
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
+  const [currentUserLabel, setCurrentUserLabel] = useState<string | null>(null)
   const [programId, setProgramId] = useState<string | null>(null)
   const [activaciones, setActivaciones] = useState<CiActivacion[]>([])
-  const [ownerMap, setOwnerMap] = useState<Record<string, string>>({})
+  const [ownerClienteMap, setOwnerClienteMap] = useState<Record<string, string>>({})
+  const [ownerLeadMap, setOwnerLeadMap] = useState<Record<string, string>>({})
   const [representanteMap, setRepresentanteMap] = useState<Record<string, string>>({})
   const [referidosCount, setReferidosCount] = useState<Record<string, number>>({})
   const [tab, setTab] = useState<'activa' | 'cerrada'>('activa')
@@ -2713,17 +2684,30 @@ function ConexionesActivacionesTab() {
   const [search, setSearch] = useState('')
   const [limit, setLimit] = useState(50)
   const [isMobile, setIsMobile] = useState(false)
+  const [sortColAct, setSortColAct] = useState<number | null>(null)
+  const [sortDirAct, setSortDirAct] = useState<'asc' | 'desc'>('asc')
   const [selectedActivation, setSelectedActivation] = useState<CiActivacion | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState(1)
-  const [wizardOwnerId, setWizardOwnerId] = useState<string | null>(session?.user.id ?? null)
+  const [wizardOwnerId, setWizardOwnerId] = useState<string | null>(null)
+  const [wizardOwnerType, setWizardOwnerType] = useState<'cliente' | 'prospecto'>('cliente')
+  const [wizardOwnerLabel, setWizardOwnerLabel] = useState<string | null>(null)
   const [ownerSearch, setOwnerSearch] = useState('')
-  const [ownerResults, setOwnerResults] = useState<UsuarioRecord[]>([])
+  const [ownerResults, setOwnerResults] = useState<OwnerCandidate[]>([])
   const [ownerSearching, setOwnerSearching] = useState(false)
   const [wizardError, setWizardError] = useState<string | null>(null)
   const [wizardSaving, setWizardSaving] = useState(false)
   const [distributionIds, setDistributionIds] = useState<string[]>([])
+  const [ownerEditOpen, setOwnerEditOpen] = useState(false)
+  const [ownerEditType, setOwnerEditType] = useState<'cliente' | 'prospecto'>('cliente')
+  const [ownerEditId, setOwnerEditId] = useState<string | null>(null)
+  const [ownerEditSearch, setOwnerEditSearch] = useState('')
+  const [ownerEditResults, setOwnerEditResults] = useState<OwnerCandidate[]>([])
+  const [ownerEditSearching, setOwnerEditSearching] = useState(false)
+  const [ownerEditSaving, setOwnerEditSaving] = useState(false)
+  const [ownerEditError, setOwnerEditError] = useState<string | null>(null)
+  const [ownerEditPhone, setOwnerEditPhone] = useState<string | null>(null)
 
   const dateTimeFormat = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -2784,7 +2768,7 @@ function ConexionesActivacionesTab() {
     if (!configured || !session?.user.id) return
     setError(null)
     const [roleResult, programResult] = await Promise.all([
-      supabase.from('usuarios').select('rol').eq('id', session.user.id).maybeSingle(),
+      supabase.from('usuarios').select('rol, nombre, apellido').eq('id', session.user.id).maybeSingle(),
       supabase
         .from('programas')
         .select('id')
@@ -2799,6 +2783,8 @@ function ConexionesActivacionesTab() {
       return
     }
     setRole(roleResult.data?.rol ?? null)
+    const nameLabel = [roleResult.data?.nombre, roleResult.data?.apellido].filter(Boolean).join(' ').trim()
+    setCurrentUserLabel(nameLabel || session.user.id)
 
     if (programResult.error || !programResult.data?.id) {
       setError(t('conexiones.activaciones.errors.programMissing'))
@@ -2833,7 +2819,7 @@ function ConexionesActivacionesTab() {
 
     let query = supabase
       .from('ci_activaciones')
-      .select('id, owner_id, representante_id, estado, updated_at, created_at, programa_id')
+      .select('id, representante_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
       .eq('programa_id', programId)
 
     if (role === 'vendedor' || (role === 'distribuidor' && viewScope === 'mine')) {
@@ -2881,45 +2867,68 @@ function ConexionesActivacionesTab() {
 
     const activationIds = rows.map((row) => row.id)
     if (activationIds.length === 0) {
-      setOwnerMap({})
+      setOwnerClienteMap({})
+      setOwnerLeadMap({})
       setRepresentanteMap({})
       setReferidosCount({})
       setLoading(false)
       return
     }
 
-    const userIds = Array.from(
-      new Set(
-        rows
-          .flatMap((row) => [row.owner_id, row.representante_id])
-          .filter((value): value is string => Boolean(value)),
-      ),
+    const representanteIds = Array.from(
+      new Set(rows.map((row) => row.representante_id).filter((value): value is string => Boolean(value))),
+    )
+    const clienteIds = Array.from(
+      new Set(rows.map((row) => row.cliente_id).filter((value): value is string => Boolean(value))),
+    )
+    const leadIds = Array.from(
+      new Set(rows.map((row) => row.lead_id).filter((value): value is string => Boolean(value))),
     )
 
-    const [usersResult, referidosResult] = await Promise.all([
-      userIds.length > 0
-        ? supabase.from('usuarios').select('id, nombre, apellido').in('id', userIds)
+    const [representantesResult, clientesResult, leadsResult, referidosResult] = await Promise.all([
+      representanteIds.length > 0
+        ? supabase.from('usuarios').select('id, nombre, apellido').in('id', representanteIds)
+        : Promise.resolve({ data: [], error: null }),
+      clienteIds.length > 0
+        ? supabase.from('clientes').select('id, nombre, apellido').in('id', clienteIds)
+        : Promise.resolve({ data: [], error: null }),
+      leadIds.length > 0
+        ? supabase.from('leads').select('id, nombre, apellido').in('id', leadIds)
         : Promise.resolve({ data: [], error: null }),
       supabase.from('ci_referidos').select('activacion_id').in('activacion_id', activationIds),
     ])
 
-    if (usersResult.error) {
-      setError(usersResult.error.message)
+    if (representantesResult.error) {
+      setError(representantesResult.error.message)
+    }
+    if (clientesResult.error) {
+      setError(clientesResult.error.message)
+    }
+    if (leadsResult.error) {
+      setError(leadsResult.error.message)
     }
 
-    const nameMap: Record<string, string> = {}
-    ;((usersResult.data ?? []) as UsuarioRecord[]).forEach((user) => {
+    const representanteNameMap: Record<string, string> = {}
+    ;((representantesResult.data ?? []) as UsuarioRecord[]).forEach((user) => {
       const label = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
-      nameMap[user.id] = label || user.id
+      representanteNameMap[user.id] = label || user.id
     })
 
-    const ownerNameMap: Record<string, string> = {}
-    const representanteNameMap: Record<string, string> = {}
-    rows.forEach((row) => {
-      if (row.owner_id) ownerNameMap[row.owner_id] = nameMap[row.owner_id] ?? row.owner_id
-      if (row.representante_id)
-        representanteNameMap[row.representante_id] = nameMap[row.representante_id] ?? row.representante_id
-    })
+    const clienteNameMap: Record<string, string> = {}
+    ;((clientesResult.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach(
+      (cliente) => {
+        const label = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ').trim()
+        clienteNameMap[cliente.id] = label || cliente.id
+      },
+    )
+
+    const leadNameMap: Record<string, string> = {}
+    ;((leadsResult.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach(
+      (lead) => {
+        const label = [lead.nombre, lead.apellido].filter(Boolean).join(' ').trim()
+        leadNameMap[lead.id] = label || lead.id
+      },
+    )
 
     const counts: Record<string, number> = {}
     ;((referidosResult.data ?? []) as { activacion_id: string | null }[]).forEach((row) => {
@@ -2927,7 +2936,8 @@ function ConexionesActivacionesTab() {
       counts[row.activacion_id] = (counts[row.activacion_id] ?? 0) + 1
     })
 
-    setOwnerMap(ownerNameMap)
+    setOwnerClienteMap(clienteNameMap)
+    setOwnerLeadMap(leadNameMap)
     setRepresentanteMap(representanteNameMap)
     setReferidosCount(counts)
     setLoading(false)
@@ -2959,27 +2969,16 @@ function ConexionesActivacionesTab() {
       setWizardError(null)
       setOwnerSearch('')
       setOwnerResults([])
-      setWizardOwnerId(session?.user.id ?? null)
+      setWizardOwnerId(null)
+      setWizardOwnerType('cliente')
+      setWizardOwnerLabel(null)
     }
-  }, [session?.user.id, wizardOpen])
-
-  const ownerFixedToSelf =
-    role === 'vendedor' || (role === 'distribuidor' && viewScope === 'mine')
-  const canSearchOwner = role === 'admin' || (role === 'distribuidor' && viewScope === 'distribution')
-
-  useEffect(() => {
-    if (!wizardOpen) return
-    if (ownerFixedToSelf && session?.user.id) {
-      setWizardOwnerId(session.user.id)
-      setOwnerSearch('')
-      setOwnerResults([])
-    }
-  }, [ownerFixedToSelf, session?.user.id, wizardOpen])
+  }, [wizardOpen])
 
   useEffect(() => {
     let active = true
     const term = ownerSearch.trim()
-    if (!wizardOpen || term.length < 2 || !canSearchOwner) {
+    if (!wizardOpen || term.length < 2) {
       setOwnerResults([])
       setOwnerSearching(false)
       return
@@ -2987,23 +2986,12 @@ function ConexionesActivacionesTab() {
     setOwnerSearching(true)
     const handle = window.setTimeout(() => {
       const run = async () => {
+        const table = wizardOwnerType === 'cliente' ? 'clientes' : 'leads'
         let query = supabase
-          .from('usuarios')
+          .from(table)
           .select('id, nombre, apellido, telefono')
           .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
           .limit(20)
-
-        if (role === 'distribuidor' && viewScope === 'distribution' && session?.user.id) {
-          const ids = distributionIds.length > 0 ? distributionIds : await loadDistributionUsers()
-          const scopedIds = Array.from(new Set([...ids, session.user.id])).filter(Boolean)
-          if (scopedIds.length === 0) {
-            if (!active) return
-            setOwnerResults([])
-            setOwnerSearching(false)
-            return
-          }
-          query = query.in('id', scopedIds)
-        }
 
         const { data, error: searchError } = await query
         if (!active) return
@@ -3012,7 +3000,10 @@ function ConexionesActivacionesTab() {
           setOwnerSearching(false)
           return
         }
-        setOwnerResults((data as UsuarioRecord[]) ?? [])
+        const results = ((data as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }>) ?? []).map(
+          (row) => ({ ...row, type: wizardOwnerType }),
+        )
+        setOwnerResults(results)
         setOwnerSearching(false)
       }
       void run()
@@ -3021,23 +3012,143 @@ function ConexionesActivacionesTab() {
       active = false
       window.clearTimeout(handle)
     }
-  }, [canSearchOwner, distributionIds, loadDistributionUsers, ownerSearch, role, session?.user.id, viewScope, wizardOpen])
+  }, [ownerSearch, wizardOpen, wizardOwnerType])
+
+  useEffect(() => {
+    if (!ownerEditOpen || !selectedActivation) return
+    const ownerId = selectedActivation.cliente_id ?? selectedActivation.lead_id ?? null
+    const ownerTable = selectedActivation.cliente_id ? 'clientes' : 'leads'
+    if (selectedActivation.cliente_id) {
+      setOwnerEditType('cliente')
+      setOwnerEditId(selectedActivation.cliente_id)
+    } else if (selectedActivation.lead_id) {
+      setOwnerEditType('prospecto')
+      setOwnerEditId(selectedActivation.lead_id)
+    } else {
+      setOwnerEditType('cliente')
+      setOwnerEditId(null)
+    }
+    setOwnerEditSearch('')
+    setOwnerEditResults([])
+    setOwnerEditError(null)
+    setOwnerEditPhone(null)
+    if (ownerId && configured) {
+      void supabase
+        .from(ownerTable)
+        .select('telefono')
+        .eq('id', ownerId)
+        .maybeSingle()
+        .then(({ data }) => { if (data) setOwnerEditPhone((data as { telefono: string | null }).telefono ?? null) })
+    }
+  }, [ownerEditOpen, selectedActivation, configured])
+
+  useEffect(() => {
+    let active = true
+    const term = ownerEditSearch.trim()
+    if (!ownerEditOpen || term.length < 2) {
+      setOwnerEditResults([])
+      setOwnerEditSearching(false)
+      return
+    }
+    setOwnerEditSearching(true)
+    const handle = window.setTimeout(() => {
+      const run = async () => {
+        const table = ownerEditType === 'cliente' ? 'clientes' : 'leads'
+        const query = supabase
+          .from(table)
+          .select('id, nombre, apellido, telefono')
+          .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
+          .limit(20)
+
+        const { data, error: searchError } = await query
+        if (!active) return
+        if (searchError) {
+          setOwnerEditResults([])
+          setOwnerEditSearching(false)
+          return
+        }
+        const results = ((data as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }>) ?? []).map(
+          (row) => ({ ...row, type: ownerEditType }),
+        )
+        setOwnerEditResults(results)
+        setOwnerEditSearching(false)
+      }
+      void run()
+    }, 350)
+    return () => {
+      active = false
+      window.clearTimeout(handle)
+    }
+  }, [ownerEditOpen, ownerEditSearch, ownerEditType])
 
   const filteredActivaciones = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return activaciones
     return activaciones.filter((row) => {
-      const ownerLabel = row.owner_id ? ownerMap[row.owner_id] ?? row.owner_id : ''
+      const ownerLabel = row.cliente_id
+        ? ownerClienteMap[row.cliente_id] ?? row.cliente_id
+        : row.lead_id
+          ? ownerLeadMap[row.lead_id] ?? row.lead_id
+          : ''
       const repLabel = row.representante_id
         ? representanteMap[row.representante_id] ?? row.representante_id
         : ''
       return (
         ownerLabel.toLowerCase().includes(term) ||
-        repLabel.toLowerCase().includes(term) ||
-        row.id.toLowerCase().includes(term)
+        repLabel.toLowerCase().includes(term)
       )
     })
-  }, [activaciones, ownerMap, representanteMap, search])
+  }, [activaciones, ownerClienteMap, ownerLeadMap, representanteMap, search])
+
+  const handleSortAct = (colIndex: number) => {
+    if (sortColAct === colIndex) {
+      setSortDirAct((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColAct(colIndex)
+      setSortDirAct('asc')
+    }
+  }
+
+  const sortedActivaciones = useMemo(() => {
+    if (sortColAct === null) return filteredActivaciones
+    return [...filteredActivaciones].sort((a, b) => {
+      let valA: number | string = 0
+      let valB: number | string = 0
+      if (sortColAct === 1) {
+        valA = referidosCount[a.id] ?? 0
+        valB = referidosCount[b.id] ?? 0
+      } else if (sortColAct === 2) {
+        valA = a.updated_at ?? a.created_at ?? ''
+        valB = b.updated_at ?? b.created_at ?? ''
+      }
+      if (valA < valB) return sortDirAct === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirAct === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredActivaciones, sortColAct, sortDirAct, referidosCount])
+
+  const exportarCSVActivaciones = () => {
+    const headers = ['Cliente/Prospecto', 'Referidos', 'Ultima actividad', 'Estado']
+    const csvRows = filteredActivaciones.map((row) => {
+      const ownerLabel = getOwnerLabel(row)
+      const refs = referidosCount[row.id] ?? 0
+      const lastActivity = formatDateTime(row.updated_at ?? row.created_at)
+      const estado = isClosed(row)
+        ? t('conexiones.activaciones.status.closed')
+        : t('conexiones.activaciones.status.active')
+      return [ownerLabel, refs, lastActivity, estado]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    })
+    const csv = [headers.join(','), ...csvRows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `activaciones_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const filtersCount = useMemo(() => {
     let count = 0
@@ -3048,10 +3159,37 @@ function ConexionesActivacionesTab() {
 
   const selectedOwnerLabel = useMemo(() => {
     if (!wizardOwnerId) return '-'
-    if (wizardOwnerId === session?.user.id) return t('conexiones.activaciones.wizard.self')
+    if (wizardOwnerLabel) return wizardOwnerLabel
     const owner = ownerResults.find((item) => item.id === wizardOwnerId)
-    return owner ? [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id : wizardOwnerId
-  }, [ownerResults, session?.user.id, t, wizardOwnerId])
+    if (owner) return [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
+    if (wizardOwnerType === 'cliente') {
+      return ownerClienteMap[wizardOwnerId] ?? wizardOwnerId
+    }
+    return ownerLeadMap[wizardOwnerId] ?? wizardOwnerId
+  }, [ownerClienteMap, ownerLeadMap, ownerResults, wizardOwnerId, wizardOwnerLabel, wizardOwnerType])
+
+  const ownerEditLabel = useMemo(() => {
+    if (!ownerEditId) return '-'
+    const owner = ownerEditResults.find((item) => item.id === ownerEditId)
+    if (owner) return [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
+    if (ownerEditType === 'cliente') {
+      return ownerClienteMap[ownerEditId] ?? ownerEditId
+    }
+    return ownerLeadMap[ownerEditId] ?? ownerEditId
+  }, [ownerClienteMap, ownerEditId, ownerEditResults, ownerEditType, ownerLeadMap])
+
+  const getOwnerLabel = useCallback(
+    (activation: CiActivacion) => {
+      if (activation.cliente_id) {
+        return ownerClienteMap[activation.cliente_id] ?? activation.cliente_id
+      }
+      if (activation.lead_id) {
+        return ownerLeadMap[activation.lead_id] ?? activation.lead_id
+      }
+      return '-'
+    },
+    [ownerClienteMap, ownerLeadMap],
+  )
 
   const handleOpenDetail = (activation: CiActivacion) => {
     setSelectedActivation(activation)
@@ -3072,14 +3210,67 @@ function ConexionesActivacionesTab() {
     await loadActivaciones()
   }
 
+  const canEditOwner = role === 'admin' || role === 'distribuidor'
+
+  const handleSaveOwnerEdit = async () => {
+    if (!configured || !selectedActivation) return
+    if (!ownerEditId) {
+      setOwnerEditError(t('conexiones.activaciones.errors.ownerRequired'))
+      return
+    }
+    setOwnerEditSaving(true)
+    setOwnerEditError(null)
+    const payload =
+      ownerEditType === 'cliente'
+        ? { cliente_id: ownerEditId, lead_id: null }
+        : { lead_id: ownerEditId, cliente_id: null }
+    const { error: updateError } = await supabase
+      .from('ci_activaciones')
+      .update(payload)
+      .eq('id', selectedActivation.id)
+    if (updateError) {
+      setOwnerEditError(updateError.message)
+      setOwnerEditSaving(false)
+      return
+    }
+    setSelectedActivation((prev) => (prev ? { ...prev, ...payload } : prev))
+    setOwnerEditSaving(false)
+    setOwnerEditOpen(false)
+    showToast(t('toast.success'))
+    await loadActivaciones()
+  }
+
   const handleCreateActivation = async () => {
     if (!configured || !session?.user.id) return
     if (!programId) {
       setWizardError(t('conexiones.activaciones.errors.programMissing'))
       return
     }
+    const { data: repRow, error: repError } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('id', session.user.id)
+      .maybeSingle()
+    if (repError || !repRow?.id) {
+      setWizardError(t('conexiones.activaciones.errors.representanteMissing'))
+      return
+    }
     if (!wizardOwnerId) {
       setWizardError(t('conexiones.activaciones.errors.ownerRequired'))
+      return
+    }
+    const ownerField = wizardOwnerType === 'cliente' ? 'cliente_id' : 'lead_id'
+    const { data: existingActivations, error: existingError } = await supabase
+      .from('ci_activaciones')
+      .select('id, estado, updated_at, created_at')
+      .eq('programa_id', programId)
+      .eq(ownerField, wizardOwnerId)
+    if (existingError) {
+      setWizardError(existingError.message)
+      return
+    }
+    if ((existingActivations ?? []).some((row) => !isClosed(row as CiActivacion))) {
+      setWizardError(t('conexiones.activaciones.errors.ownerActive'))
       return
     }
     setWizardSaving(true)
@@ -3087,11 +3278,13 @@ function ConexionesActivacionesTab() {
       .from('ci_activaciones')
       .insert({
         representante_id: session.user.id,
-        owner_id: wizardOwnerId,
+        owner_id: null,
+        cliente_id: wizardOwnerType === 'cliente' ? wizardOwnerId : null,
+        lead_id: wizardOwnerType === 'prospecto' ? wizardOwnerId : null,
         estado: 'activo',
         programa_id: programId,
       })
-      .select('id, owner_id, representante_id, estado, updated_at, created_at, programa_id')
+      .select('id, representante_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
       .single()
     if (createError || !data) {
       setWizardError(createError?.message ?? t('toast.error'))
@@ -3107,8 +3300,8 @@ function ConexionesActivacionesTab() {
   }
 
   const listRows = useMemo<DataTableRow[]>(() => {
-    return filteredActivaciones.map((row) => {
-      const ownerLabel = row.owner_id ? ownerMap[row.owner_id] ?? row.owner_id : '-'
+    return sortedActivaciones.map((row) => {
+      const ownerLabel = getOwnerLabel(row)
       const lastActivityValue = row.updated_at ?? row.created_at
       const lastActivityLabel = formatRelativeTime(lastActivityValue)
       const lastActivityFull = formatDateTime(lastActivityValue)
@@ -3154,42 +3347,10 @@ function ConexionesActivacionesTab() {
         ],
       }
     })
-  }, [filteredActivaciones, formatDateTime, formatRelativeTime, isClosed, ownerMap, referidosCount, t])
+  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, t])
 
   const canAccess = role !== 'telemercadeo'
 
-  const detailItems = useMemo(() => {
-    if (!selectedActivation) return []
-    const ownerLabel = selectedActivation.owner_id
-      ? ownerMap[selectedActivation.owner_id] ?? selectedActivation.owner_id
-      : '-'
-    const repLabel = selectedActivation.representante_id
-      ? representanteMap[selectedActivation.representante_id] ?? selectedActivation.representante_id
-      : '-'
-    return [
-      { label: t('conexiones.activaciones.labels.owner'), value: ownerLabel },
-      { label: t('conexiones.activaciones.labels.representante'), value: repLabel },
-      { label: t('conexiones.activaciones.labels.referidos'), value: referidosCount[selectedActivation.id] ?? 0 },
-       {
-         label: t('conexiones.activaciones.labels.lastActivity'),
-         value: formatDateTime(selectedActivation.updated_at ?? selectedActivation.created_at),
-       },
-       {
-         label: t('conexiones.activaciones.labels.estado'),
-         value: isClosed(selectedActivation)
-           ? t('conexiones.activaciones.status.closed')
-           : t('conexiones.activaciones.status.active'),
-       },
-    ]
-  }, [
-    formatDateTime,
-    isClosed,
-    ownerMap,
-    representanteMap,
-    referidosCount,
-    selectedActivation,
-    t,
-  ])
 
   return (
     <div className="page-stack">
@@ -3197,9 +3358,19 @@ function ConexionesActivacionesTab() {
         title={t('conexiones.activaciones.title')}
         subtitle={t('conexiones.activaciones.subtitle')}
         action={
-          <Button type="button" onClick={() => setWizardOpen(true)} disabled={!canAccess}>
-            {t('conexiones.activaciones.actions.new')}
-          </Button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={exportarCSVActivaciones}
+              disabled={filteredActivaciones.length === 0}
+            >
+              Exportar CSV
+            </Button>
+            <Button type="button" onClick={() => setWizardOpen(true)} disabled={!canAccess}>
+              {t('conexiones.activaciones.actions.new')}
+            </Button>
+          </div>
         }
       />
 
@@ -3330,12 +3501,12 @@ function ConexionesActivacionesTab() {
             </div>
           ) : isMobile ? (
             <div className="card-grid">
-              {filteredActivaciones.map((row) => {
+              {sortedActivaciones.map((row) => {
                 const lastActivityValue = row.updated_at ?? row.created_at
                 return (
                   <div key={row.id} className="card" onClick={() => handleOpenDetail(row)}>
                     <div className="card-header">
-                      <strong>{row.owner_id ? ownerMap[row.owner_id] ?? row.owner_id : '-'}</strong>
+                      <strong>{getOwnerLabel(row)}</strong>
                       <span className="badge">
                         {isClosed(row)
                           ? t('conexiones.activaciones.status.closed')
@@ -3387,6 +3558,10 @@ function ConexionesActivacionesTab() {
               ]}
               rows={listRows}
               emptyLabel={t('conexiones.activaciones.emptyTable')}
+              sortableColumns={[1, 2]}
+              sortColIndex={sortColAct ?? undefined}
+              sortDir={sortDirAct}
+              onSort={handleSortAct}
               onRowClick={(row) => {
                 const activation = filteredActivaciones.find((item) => item.id === row.id)
                 if (activation) handleOpenDetail(activation)
@@ -3404,19 +3579,120 @@ function ConexionesActivacionesTab() {
         </>
       )}
 
-      <DetailPanel
+      <ActivacionReferidosPanel
         open={detailOpen}
-        title={t('conexiones.activaciones.detailTitle')}
-        items={detailItems}
+        activation={selectedActivation}
+        ownerLabel={selectedActivation ? getOwnerLabel(selectedActivation) : ''}
+        ownerClienteId={selectedActivation?.cliente_id ?? null}
+        currentUserId={session?.user.id ?? null}
+        canEditOwner={canEditOwner}
+        isClosed={selectedActivation ? isClosed(selectedActivation) : false}
         onClose={() => setDetailOpen(false)}
-        action={
-          selectedActivation && isClosed(selectedActivation) ? (
-            <Button type="button" onClick={() => handleReactivate(selectedActivation.id)}>
-              {t('conexiones.activaciones.actions.reactivate')}
-            </Button>
-          ) : null
-        }
+        onEditOwner={() => setOwnerEditOpen(true)}
+        onReactivate={() => selectedActivation && handleReactivate(selectedActivation.id)}
+        onRefresh={loadActivaciones}
       />
+
+      <Modal
+        open={ownerEditOpen}
+        title={t('conexiones.activaciones.actions.editOwner')}
+        onClose={() => setOwnerEditOpen(false)}
+        className="ci-activation-modal"
+        bodyClassName="ci-activation-modal-body"
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setOwnerEditOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="button" onClick={handleSaveOwnerEdit} disabled={ownerEditSaving}>
+              {ownerEditSaving ? t('common.saving') : t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <div className="ci-step">
+          <div className="ci-step-header">
+            <div>
+              <h4>{t('conexiones.activaciones.labels.owner')}</h4>
+              <p>{t('conexiones.activaciones.wizard.selectOwner')}</p>
+            </div>
+          </div>
+          <div className="segmented" style={{ marginBottom: '0.75rem' }}>
+            <button
+              type="button"
+              className={ownerEditType === 'cliente' ? 'active' : ''}
+              onClick={() => {
+                setOwnerEditType('cliente')
+                setOwnerEditId(null)
+                setOwnerEditSearch('')
+                setOwnerEditResults([])
+              }}
+            >
+              {t('conexiones.activaciones.ownerType.cliente')}
+            </button>
+            <button
+              type="button"
+              className={ownerEditType === 'prospecto' ? 'active' : ''}
+              onClick={() => {
+                setOwnerEditType('prospecto')
+                setOwnerEditId(null)
+                setOwnerEditSearch('')
+                setOwnerEditResults([])
+              }}
+            >
+              {t('conexiones.activaciones.ownerType.prospecto')}
+            </button>
+          </div>
+          <div className="ci-owner-selected">
+            <div>
+              <strong>{t('conexiones.activaciones.labels.owner')}</strong>
+              <span>{ownerEditLabel}</span>
+              {ownerEditPhone && (
+                <span>📞 {ownerEditPhone}</span>
+              )}
+            </div>
+          </div>
+          <label className="form-field">
+            <span>{t('conexiones.activaciones.wizard.searchUser')}</span>
+            <input
+              value={ownerEditSearch}
+              onChange={(event) => setOwnerEditSearch(event.target.value)}
+              placeholder={t('conexiones.activaciones.wizard.searchPlaceholder')}
+            />
+          </label>
+          {ownerEditSearch.trim().length >= 2 && (
+            <div className="ci-owner-results">
+              {ownerEditSearching ? (
+                <span className="ci-owner-empty">{t('common.loading')}</span>
+              ) : ownerEditResults.length === 0 ? (
+                <span className="ci-owner-empty">{t('common.noData')}</span>
+              ) : (
+                ownerEditResults.map((owner) => {
+                  const name = [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
+                  return (
+                    <button
+                      key={`${owner.type}-${owner.id}`}
+                      type="button"
+                      className={`ci-owner-option ${
+                        ownerEditId === owner.id && ownerEditType === owner.type ? 'active' : ''
+                      }`.trim()}
+                      onClick={() => {
+                        setOwnerEditType(owner.type)
+                        setOwnerEditId(owner.id)
+                        setOwnerEditPhone(owner.telefono ?? null)
+                      }}
+                    >
+                      <span>{name}</span>
+                      <span className="ci-owner-meta">{owner.telefono ?? '-'}</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          )}
+          {ownerEditError && <div className="form-error">{ownerEditError}</div>}
+        </div>
+      </Modal>
 
       <Modal
         open={wizardOpen}
@@ -3450,58 +3726,72 @@ function ConexionesActivacionesTab() {
                 <p>{t('conexiones.activaciones.wizard.ownerHint')}</p>
               </div>
             </div>
-            <div className="ci-owner-actions">
-              <Button
-                variant={wizardOwnerId === session?.user.id ? 'primary' : 'ghost'}
+            <div className="segmented" style={{ marginBottom: '0.75rem' }}>
+              <button
                 type="button"
-                onClick={() => setWizardOwnerId(session?.user.id ?? null)}
+                className={wizardOwnerType === 'cliente' ? 'active' : ''}
+                onClick={() => {
+                  setWizardOwnerType('cliente')
+                  setWizardOwnerId(null)
+                  setWizardOwnerLabel(null)
+                  setOwnerSearch('')
+                  setOwnerResults([])
+                }}
               >
-                {t('conexiones.activaciones.wizard.self')}
-              </Button>
+                {t('conexiones.activaciones.ownerType.cliente')}
+              </button>
+              <button
+                type="button"
+                className={wizardOwnerType === 'prospecto' ? 'active' : ''}
+                onClick={() => {
+                  setWizardOwnerType('prospecto')
+                  setWizardOwnerId(null)
+                  setWizardOwnerLabel(null)
+                  setOwnerSearch('')
+                  setOwnerResults([])
+                }}
+              >
+                {t('conexiones.activaciones.ownerType.prospecto')}
+              </button>
             </div>
-            {ownerFixedToSelf ? (
-              <div className="ci-owner-selected">
-                <div>
-                  <strong>{t('conexiones.activaciones.labels.owner')}</strong>
-                  <span>{selectedOwnerLabel}</span>
-                </div>
-                <span className="ci-owner-meta">{t('conexiones.activaciones.wizard.self')}</span>
-              </div>
-            ) : (
-              <>
-                <label className="form-field">
-                  <span>{t('conexiones.activaciones.wizard.searchUser')}</span>
-                  <input
-                    value={ownerSearch}
-                    onChange={(event) => setOwnerSearch(event.target.value)}
-                    placeholder={t('conexiones.activaciones.wizard.searchPlaceholder')}
-                  />
-                </label>
-                {ownerSearch.trim().length >= 2 && (
-                  <div className="ci-owner-results">
-                    {ownerSearching ? (
-                      <span className="ci-owner-empty">{t('common.loading')}</span>
-                    ) : ownerResults.length === 0 ? (
-                      <span className="ci-owner-empty">{t('common.noData')}</span>
-                    ) : (
-                      ownerResults.map((owner) => {
-                        const name = [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
-                        return (
-                          <button
-                            key={owner.id}
-                            type="button"
-                            className={`ci-owner-option ${wizardOwnerId === owner.id ? 'active' : ''}`.trim()}
-                            onClick={() => setWizardOwnerId(owner.id)}
-                          >
-                            <span>{name}</span>
-                            <span className="ci-owner-meta">{owner.telefono ?? '-'}</span>
-                          </button>
-                        )
-                      })
-                    )}
-                  </div>
+            <p className="form-hint">{t('conexiones.activaciones.wizard.selectOwner')}</p>
+            <label className="form-field">
+              <span>{t('conexiones.activaciones.wizard.searchUser')}</span>
+              <input
+                value={ownerSearch}
+                onChange={(event) => setOwnerSearch(event.target.value)}
+                placeholder={t('conexiones.activaciones.wizard.searchPlaceholder')}
+              />
+            </label>
+            {ownerSearch.trim().length >= 2 && (
+              <div className="ci-owner-results">
+                {ownerSearching ? (
+                  <span className="ci-owner-empty">{t('common.loading')}</span>
+                ) : ownerResults.length === 0 ? (
+                  <span className="ci-owner-empty">{t('common.noData')}</span>
+                ) : (
+                  ownerResults.map((owner) => {
+                    const name = [owner.nombre, owner.apellido].filter(Boolean).join(' ') || owner.id
+                    return (
+                      <button
+                        key={`${owner.type}-${owner.id}`}
+                        type="button"
+                        className={`ci-owner-option ${
+                          wizardOwnerId === owner.id && wizardOwnerType === owner.type ? 'active' : ''
+                        }`.trim()}
+                        onClick={() => {
+                          setWizardOwnerType(owner.type)
+                          setWizardOwnerId(owner.id)
+                          setWizardOwnerLabel(name)
+                        }}
+                      >
+                        <span>{name}</span>
+                        <span className="ci-owner-meta">{owner.telefono ?? '-'}</span>
+                      </button>
+                    )
+                  })
                 )}
-              </>
+              </div>
             )}
           </div>
         ) : (
@@ -3520,7 +3810,14 @@ function ConexionesActivacionesTab() {
               </div>
               <div>
                 <strong>{t('conexiones.activaciones.labels.representante')}</strong>
-                <span>{session?.user.id ? (representanteMap[session.user.id] ?? session.user.id) : '-'}</span>
+                <span>
+                  {session?.user.id
+                    ? usersById[session.user.id] ??
+                      currentUserLabel ??
+                      representanteMap[session.user.id] ??
+                      session.user.id
+                    : '-'}
+                </span>
               </div>
             </div>
             {wizardError && <div className="form-error">{wizardError}</div>}
@@ -3563,7 +3860,18 @@ function ConexionesEmbajadoresTab() {
   const [registroForm, setRegistroForm] = useState(initialRegistroForm)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [busquedaEmb, setBusquedaEmb] = useState('')
+  const [sortColEmb, setSortColEmb] = useState<number | null>(null)
+  const [sortDirEmb, setSortDirEmb] = useState<'asc' | 'desc'>('asc')
+  const [isMobileEmb, setIsMobileEmb] = useState(false)
   const conexionNameRefs = useRef<Array<HTMLInputElement | null>>([])
+
+  useEffect(() => {
+    const check = () => setIsMobileEmb(window.innerWidth < 720)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(i18n.language),
@@ -3589,8 +3897,72 @@ function ConexionesEmbajadoresTab() {
 
   const activePeriod = useMemo(() => periodos.find((periodo) => periodo.activo), [periodos])
 
+  const filteredProgramas = useMemo(() => {
+    if (!busquedaEmb.trim()) return programas
+    const term = busquedaEmb.trim().toLowerCase()
+    return programas.filter((p) => {
+      const name = p.embajador_id ? (embajadorMap.get(p.embajador_id) ?? '').toLowerCase() : ''
+      return name.includes(term)
+    })
+  }, [programas, busquedaEmb, embajadorMap])
+
+  const handleSortEmb = (colIndex: number) => {
+    if (sortColEmb === colIndex) {
+      setSortDirEmb((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColEmb(colIndex)
+      setSortDirEmb('asc')
+    }
+  }
+
+  const sortedProgramas = useMemo(() => {
+    if (sortColEmb === null) return filteredProgramas
+    return [...filteredProgramas].sort((a, b) => {
+      let valA = 0
+      let valB = 0
+      if (sortColEmb === 2) {
+        valA = Number(a.total_conexiones_anual ?? a.total_conexiones ?? a.conexiones ?? 0)
+        valB = Number(b.total_conexiones_anual ?? b.total_conexiones ?? b.conexiones ?? 0)
+      } else if (sortColEmb === 3) {
+        valA = Number(a.total_ventas_generadas_anual ?? a.ventas_generadas ?? 0)
+        valB = Number(b.total_ventas_generadas_anual ?? b.ventas_generadas ?? 0)
+      }
+      if (valA < valB) return sortDirEmb === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirEmb === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredProgramas, sortColEmb, sortDirEmb])
+
+  const exportarCSVEmb = () => {
+    const headers = [
+      t('conexiones.columns.embajador'),
+      t('conexiones.columns.periodo'),
+      t('conexiones.columns.conexiones'),
+      t('conexiones.columns.ventas'),
+      t('conexiones.columns.nivel'),
+    ]
+    const csvRows = filteredProgramas.map((p) => {
+      const name = p.embajador_id ? embajadorMap.get(p.embajador_id) ?? p.embajador_id : '-'
+      const periodo = p.periodo_id ? periodoMap.get(p.periodo_id) ?? p.periodo_id : '-'
+      const conexiones = Number(p.total_conexiones_anual ?? p.total_conexiones ?? p.conexiones ?? 0)
+      const ventas = Number(p.total_ventas_generadas_anual ?? p.ventas_generadas ?? 0)
+      const nivel = p.nivel ?? '-'
+      return [name, periodo, conexiones, ventas, nivel]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    })
+    const csv = [headers.join(','), ...csvRows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `embajadores_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const rows = useMemo<DataTableRow[]>(() => {
-    return programas.map((programa) => {
+    return sortedProgramas.map((programa) => {
       const embajadorName = programa.embajador_id
         ? embajadorMap.get(programa.embajador_id) ?? programa.embajador_id
         : '-'
@@ -3652,7 +4024,7 @@ function ConexionesEmbajadoresTab() {
         ],
       }
     })
-  }, [embajadorMap, numberFormat, periodoMap, programas, t])
+  }, [embajadorMap, numberFormat, periodoMap, sortedProgramas, t])
 
   const emptyLabel = loadingEmbajadores ? t('common.loading') : t('common.noData')
   const vendedorName = session?.user.id ? usersById[session.user.id] ?? session.user.id : '-'
@@ -3840,6 +4212,14 @@ function ConexionesEmbajadoresTab() {
             <Button
               variant="ghost"
               type="button"
+              onClick={exportarCSVEmb}
+              disabled={filteredProgramas.length === 0}
+            >
+              Exportar CSV
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
               onClick={() => {
                 setFormError(null)
                 setEmbajadorForm(initialEmbajadorForm)
@@ -3900,17 +4280,120 @@ function ConexionesEmbajadoresTab() {
       )}
       {errorEmbajadores && <div className="form-error">{errorEmbajadores}</div>}
       {loadingEmbajadores && <div className="form-hint">{t('common.loading')}</div>}
-      <DataTable
-        columns={[
-          t('conexiones.columns.embajador'),
-          t('conexiones.columns.periodo'),
-          t('conexiones.columns.conexiones'),
-          t('conexiones.columns.ventas'),
-          t('conexiones.columns.nivel'),
-        ]}
-        rows={rows}
-        emptyLabel={emptyLabel}
-      />
+
+      {/* Search */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <input
+          style={{ flex: 1, fontSize: '0.875rem' }}
+          placeholder="Buscar embajador..."
+          value={busquedaEmb}
+          onChange={(e) => setBusquedaEmb(e.target.value)}
+        />
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)', whiteSpace: 'nowrap' }}>
+          {filteredProgramas.length} de {programas.length}
+        </span>
+      </div>
+
+      {isMobileEmb ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {sortedProgramas.map((programa) => {
+            const embajadorName = programa.embajador_id
+              ? embajadorMap.get(programa.embajador_id) ?? programa.embajador_id
+              : '-'
+            const periodoName = programa.periodo_id
+              ? periodoMap.get(programa.periodo_id) ?? programa.periodo_id
+              : '-'
+            const conexiones = Number(
+              programa.total_conexiones_anual ?? programa.total_conexiones ?? programa.conexiones ?? 0
+            )
+            const ventas = Number(programa.total_ventas_generadas_anual ?? programa.ventas_generadas ?? 0)
+            const isGold = programa.nivel === 'gold'
+            const progressValue = isGold ? 1 : Math.min(1, ventas / 20000)
+            return (
+              <div key={programa.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <strong style={{ fontSize: '0.95rem' }}>{embajadorName}</strong>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      background: isGold ? 'rgba(234,179,8,0.18)' : 'rgba(148,163,184,0.18)',
+                      color: isGold ? '#b45309' : '#475569',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {programa.nivel ?? 'silver'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '4px' }}>
+                  {periodoName}
+                </div>
+                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#6366f1', lineHeight: 1 }}>
+                      {numberFormat.format(conexiones)}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--color-text-muted, #6b7280)', textTransform: 'uppercase', marginTop: '2px' }}>
+                      {t('conexiones.columns.conexiones')}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#10b981', lineHeight: 1 }}>
+                      {numberFormat.format(ventas)}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--color-text-muted, #6b7280)', textTransform: 'uppercase', marginTop: '2px' }}>
+                      {t('conexiones.columns.ventas')}
+                    </div>
+                  </div>
+                </div>
+                <div className={`conexiones-progress ${isGold ? 'gold' : 'silver'}`} style={{ marginTop: '10px' }}>
+                  <div
+                    className="conexiones-progress-bar"
+                    style={{ width: `${Math.round(progressValue * 100)}%` }}
+                  />
+                  {isGold && <span className="conexiones-progress-icon">🏆</span>}
+                </div>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  style={{ marginTop: '8px', alignSelf: 'flex-start' }}
+                  onClick={() => {
+                    setConexionProgram(programa)
+                    setConexionRows(buildConexionRows())
+                    setConexionError(null)
+                    setConexionOpen(true)
+                  }}
+                >
+                  {t('conexiones.actions.addConexion')}
+                </Button>
+              </div>
+            )
+          })}
+          {sortedProgramas.length === 0 && (
+            <div className="form-hint" style={{ textAlign: 'center', padding: '1rem' }}>
+              {emptyLabel}
+            </div>
+          )}
+        </div>
+      ) : (
+        <DataTable
+          columns={[
+            t('conexiones.columns.embajador'),
+            t('conexiones.columns.periodo'),
+            t('conexiones.columns.conexiones'),
+            t('conexiones.columns.ventas'),
+            t('conexiones.columns.nivel'),
+          ]}
+          rows={rows}
+          emptyLabel={emptyLabel}
+          sortableColumns={[2, 3]}
+          sortColIndex={sortColEmb ?? undefined}
+          sortDir={sortDirEmb}
+          onSort={handleSortEmb}
+        />
+      )}
       <Modal
         open={embajadorOpen}
         title={t('conexiones.form.embajadorTitle')}

@@ -7,6 +7,7 @@ export const CI_REFERIDO_ESTADOS = [
   'cita_agendada',
   'presentacion_hecha',
   'regalo_entregado',
+  'telemercadeo',
 ] as const
 
 export const CI_RELACIONES = ['familiar', 'amigo', 'companero'] as const

@@ -14,11 +14,20 @@ export type CiActivacion = {
   representante_id: string | null
   cliente_id: string | null
   lead_id: string | null
+  owner_id?: string | null
+  programa_id?: string | null
   regalo_id: string | null
+  regalo_nombre?: string | null
+  regalo_visita_id?: string | null
+  regalo_visita_cantidad?: number | null
+  regalo_visita_entregado_at?: string | null
+  regalo_premium_cantidad_parcial?: string | null
+  regalo_premium_entregado_at?: string | null
   foto_url: string | null
   whatsapp_mensaje_enviado_at: string | null
   estado: string | null
   created_at?: string | null
+  updated_at?: string | null
 }
 
 export type CiReferido = {
@@ -29,6 +38,8 @@ export type CiReferido = {
   relacion: string | null
   estado: string | null
   lead_id: string | null
+  notas: string | null
+  calificacion: number | null
 }
 
 export type CiCliente = {
@@ -48,6 +59,7 @@ export type CiLead = {
 export type GiftProduct = {
   id: string
   nombre: string
+  codigo?: string | null
   categoria: string | null
   activo: boolean | null
 }
@@ -62,6 +74,11 @@ export type CreateActivacionInput = {
   clienteId: string | null
   leadId: string | null
   regaloId: string | null
+  regaloVisitaId?: string | null
+  regaloVisitaCantidad?: number | null
+  regaloVisitaEntregadoAt?: string | null
+  regaloPremiumCantidadParcial?: string | null
+  regaloPremiumEntregadoAt?: string | null
   fotoUrl: string | null
   whatsappEnviadoAt: string | null
   referidos: ReferidoFormRow[]
@@ -111,6 +128,7 @@ export type ConexionesData = {
   productos: GiftProduct[]
   representante: Representante | null
   representantesMap: Record<string, Representante>
+  programaId: string | null
 }
 
 export type ConexionesEmbajadoresData = {
@@ -138,6 +156,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
   const [productos, setProductos] = useState<GiftProduct[]>([])
   const [representante, setRepresentante] = useState<Representante | null>(null)
   const [representantesMap, setRepresentantesMap] = useState<Record<string, Representante>>({})
+  const [programaId, setProgramaId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [embajadores, setEmbajadores] = useState<EmbajadorRecord[]>([])
@@ -151,92 +170,141 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     if (!configured) return
     setLoading(true)
     setError(null)
+    setClientes([])
+    setLeads([])
+    setProductos([])
+    setRepresentante(null)
+    setRepresentantesMap({})
 
     const userId = session?.user.id ?? null
-    const representantePromise = userId
-      ? supabase.from('usuarios').select('id, nombre, apellido, telefono').eq('id', userId).maybeSingle()
-      : Promise.resolve({ data: null, error: null })
-
-    const [
-      activacionesResult,
-      referidosResult,
-      clientesResult,
-      leadsResult,
-      productosResult,
-      representanteResult,
-      usuariosResult,
-    ] = await Promise.all([
-      supabase.from('ci_activaciones').select('*').order('created_at', { ascending: false }),
-      supabase
-        .from('ci_referidos')
-        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id')
-        .order('created_at', { ascending: true }),
-      supabase.from('clientes').select('id, nombre, apellido, telefono').order('nombre'),
-      supabase.from('leads').select('id, nombre, apellido, telefono').order('created_at', { ascending: false }),
-      supabase
-        .from('productos')
-        .select('id, nombre, categoria, activo')
-        .eq('categoria', 'regalo_premium')
-        .eq('activo', true)
-        .order('nombre'),
-      representantePromise,
-      supabase.from('usuarios').select('id, nombre, apellido, telefono'),
-    ])
-
-    if (
-      activacionesResult.error ||
-      referidosResult.error ||
-      clientesResult.error ||
-      leadsResult.error ||
-      productosResult.error ||
-      representanteResult.error ||
-      usuariosResult.error
-    ) {
-      setError(
-        activacionesResult.error?.message ||
-          referidosResult.error?.message ||
-          clientesResult.error?.message ||
-          leadsResult.error?.message ||
-          productosResult.error?.message ||
-          representanteResult.error?.message ||
-          usuariosResult.error?.message ||
-          'Error loading data',
-      )
+    if (!userId) {
+      setError('Auth required')
+      setClientes([])
+      setLeads([])
+      setProductos([])
+      setRepresentante(null)
+      setRepresentantesMap({})
+      setLoading(false)
+      return
     }
 
-    setActivaciones((activacionesResult.data as CiActivacion[]) ?? [])
+    const programResult = await supabase
+      .from('programas')
+      .select('id')
+      .eq('activo', true)
+      .ilike('nombre', '%conexiones infinitas%')
+      .limit(1)
+      .maybeSingle()
+
+    let activeProgramId = programResult.data?.id ?? null
+
+    if (!activeProgramId && !programResult.error) {
+      const { data: createdProgram, error: createProgramError } = await supabase
+        .from('programas')
+        .insert({ nombre: 'Conexiones Infinitas', activo: true })
+        .select('id')
+        .single()
+      if (createProgramError || !createdProgram?.id) {
+        setError(createProgramError?.message ?? 'Programa Conexiones Infinitas no encontrado')
+        setActivaciones([])
+        setReferidos([])
+        setClientes([])
+        setLeads([])
+        setProductos([])
+        setRepresentante(null)
+        setRepresentantesMap({})
+        setProgramaId(null)
+        setLoading(false)
+        return
+      }
+      activeProgramId = createdProgram.id
+    }
+
+    if (!activeProgramId || programResult.error) {
+      setError(programResult.error?.message ?? 'Programa Conexiones Infinitas no encontrado')
+      setActivaciones([])
+      setReferidos([])
+      setClientes([])
+      setLeads([])
+      setProductos([])
+      setRepresentante(null)
+      setRepresentantesMap({})
+      setProgramaId(null)
+      setLoading(false)
+      return
+    }
+    setProgramaId(activeProgramId)
+
+    const activationResult = await supabase
+      .from('ci_activaciones')
+      .select('*')
+      .eq('representante_id', userId)
+      .eq('estado', 'activo')
+      .eq('programa_id', activeProgramId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let activation = activationResult.data as CiActivacion | null
+
+    if (activationResult.error) {
+      setError(activationResult.error.message)
+      setActivaciones([])
+      setReferidos([])
+      setClientes([])
+      setLeads([])
+      setProductos([])
+      setRepresentante(null)
+      setRepresentantesMap({})
+      setLoading(false)
+      return
+    }
+
+    const [clientesResult, leadsResult] = await Promise.all([
+      supabase.from('clientes').select('id, nombre, apellido, telefono').order('nombre'),
+      supabase.from('leads').select('id, nombre, apellido, telefono, owner_id').order('created_at', { ascending: false }),
+    ])
+    if (clientesResult.error || leadsResult.error) {
+      setError(clientesResult.error?.message || leadsResult.error?.message || null)
+    }
+    if (!activation) {
+      setActivaciones([])
+      setReferidos([])
+      setClientes((clientesResult.data as CiCliente[]) ?? [])
+      setLeads((leadsResult.data as CiLead[]) ?? [])
+      setProductos([])
+      setRepresentante(null)
+      setRepresentantesMap({})
+      setLoading(false)
+      return
+    }
+
+    const referidosResult = await supabase
+      .from('ci_referidos')
+      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id')
+      .eq('activacion_id', activation.id)
+      .order('created_at', { ascending: true })
+
+    if (referidosResult.error) {
+      setError(referidosResult.error.message)
+      setActivaciones([activation])
+      setReferidos([])
+      setClientes((clientesResult.data as CiCliente[]) ?? [])
+      setLeads((leadsResult.data as CiLead[]) ?? [])
+      setProductos([])
+      setRepresentante(null)
+      setRepresentantesMap({})
+      setLoading(false)
+      return
+    }
+
+    setActivaciones([activation])
     setReferidos((referidosResult.data as CiReferido[]) ?? [])
     setClientes((clientesResult.data as CiCliente[]) ?? [])
     setLeads((leadsResult.data as CiLead[]) ?? [])
-    setProductos((productosResult.data as GiftProduct[]) ?? [])
-
-    const usuariosList =
-      (usuariosResult.data as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }> | null) ??
-      []
-    const representantes: Record<string, Representante> = {}
-    usuariosList.forEach((user) => {
-      const fullName = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
-      representantes[user.id] = {
-        id: user.id,
-        nombre: fullName || user.id,
-        telefono: user.telefono ?? '',
-      }
-    })
-    setRepresentantesMap(representantes)
-
-    const repData =
-      (representanteResult.data as { id?: string; nombre?: string | null; apellido?: string | null; telefono?: string | null } | null) ??
-      null
-    if (repData && userId) {
-      const repName = [repData.nombre, repData.apellido].filter(Boolean).join(' ').trim()
-      setRepresentante({
-        id: userId,
-        nombre: repName || userId,
-        telefono: repData.telefono ?? '',
-      })
-    } else {
-      setRepresentante(null)
-    }
+    setProductos([])
+    setRepresentante(null)
+    setRepresentantesMap({})
 
     setLoading(false)
   }, [configured, session?.user.id])
@@ -298,6 +366,11 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
         cliente_id: input.clienteId,
         lead_id: input.leadId,
         regalo_id: input.regaloId,
+        regalo_visita_id: input.regaloVisitaId ?? null,
+        regalo_visita_cantidad: input.regaloVisitaCantidad ?? null,
+        regalo_visita_entregado_at: input.regaloVisitaEntregadoAt ?? null,
+        regalo_premium_cantidad_parcial: input.regaloPremiumCantidadParcial ?? null,
+        regalo_premium_entregado_at: input.regaloPremiumEntregadoAt ?? null,
         foto_url: input.fotoUrl,
         whatsapp_mensaje_enviado_at: input.whatsappEnviadoAt,
         estado,
@@ -353,10 +426,40 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       if (updateError || !data) {
         return { data: null, error: updateError?.message ?? 'Error updating activation' }
       }
-      setActivaciones((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)))
+      setActivaciones((prev) =>
+        prev.map((item) => (item.id === id ? { ...(item as CiActivacion), ...updates } : item)),
+      )
       return { data: data as CiActivacion, error: null }
     },
     [configured],
+  )
+
+  const createActivacionOwner = useCallback(
+    async (input: { clienteId?: string | null; leadId?: string | null }): Promise<ConexionesResult<CiActivacion>> => {
+      if (!configured) return { data: null, error: 'Supabase not configured' }
+      if (!session?.user.id) return { data: null, error: 'Auth required' }
+      const program = programaId
+      if (!program) return { data: null, error: 'Programa no encontrado' }
+      const { data, error: insertError } = await supabase
+        .from('ci_activaciones')
+        .insert({
+          representante_id: session.user.id,
+          owner_id: session.user.id,
+          estado: 'activo',
+          programa_id: program,
+          cliente_id: input.clienteId ?? null,
+          lead_id: input.leadId ?? null,
+        })
+        .select('*')
+        .single()
+      if (insertError || !data) {
+        return { data: null, error: insertError?.message ?? 'Error creating activation' }
+      }
+      setActivaciones([data as CiActivacion])
+      setReferidos([])
+      return { data: data as CiActivacion, error: null }
+    },
+    [configured, programaId, session?.user.id],
   )
 
   const updateReferido = useCallback(
@@ -370,7 +473,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
         .from('ci_referidos')
         .update(payload)
         .eq('id', id)
-        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id')
+        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
         .single()
       if (updateError || !data) {
         return { data: null, error: updateError?.message ?? 'Error updating referido' }
@@ -384,17 +487,54 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
   const addReferido = useCallback(
     async (activacionId: string, row: ReferidoFormRow): Promise<ConexionesResult<CiReferido>> => {
       if (!configured) return { data: null, error: 'Supabase not configured' }
+      if (!session?.user.id) return { data: null, error: 'Auth required' }
       const payload = normalizeReferido(row)
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
-        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente' })
-        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id')
+        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id })
+        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
         .single()
       if (insertError || !data) {
         return { data: null, error: insertError?.message ?? 'Error creating referido' }
       }
       setReferidos((prev) => [data as CiReferido, ...prev])
       return { data: data as CiReferido, error: null }
+    },
+    [configured, session?.user.id],
+  )
+
+  const searchProductos = useCallback(
+    async (query: string): Promise<ConexionesResult<GiftProduct[]>> => {
+      if (!configured) return { data: null, error: 'Supabase not configured' }
+      const term = query.trim()
+      if (!term) return { data: [], error: null }
+      const { data, error: searchError } = await supabase
+        .from('productos')
+        .select('id, nombre, codigo, categoria, activo')
+        .eq('activo', true)
+        .or(`codigo.ilike.%${term}%,nombre.ilike.%${term}%`)
+        .order('nombre')
+        .limit(20)
+      if (searchError) {
+        return { data: null, error: searchError.message }
+      }
+      return { data: (data as GiftProduct[]) ?? [], error: null }
+    },
+    [configured],
+  )
+
+  const fetchProductosByIds = useCallback(
+    async (ids: string[]): Promise<ConexionesResult<GiftProduct[]>> => {
+      if (!configured) return { data: null, error: 'Supabase not configured' }
+      if (ids.length === 0) return { data: [], error: null }
+      const { data, error: fetchError } = await supabase
+        .from('productos')
+        .select('id, nombre, codigo, categoria, activo')
+        .in('id', ids)
+      if (fetchError) {
+        return { data: null, error: fetchError.message }
+      }
+      return { data: (data as GiftProduct[]) ?? [], error: null }
     },
     [configured],
   )
@@ -432,7 +572,6 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       return { data: null, error: insertError.message }
     }
     const cliente = data as CiCliente
-    setClientes((prev) => [cliente, ...prev])
     return { data: cliente, error: null }
   }, [configured])
 
@@ -455,7 +594,6 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       return { data: null, error: insertError.message }
     }
     const lead = data as CiLead
-    setLeads((prev) => [lead, ...prev])
     return { data: lead, error: null }
   }, [configured])
 
@@ -490,7 +628,6 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     }
 
     const lead = leadData as CiLead
-    setLeads((prev) => [lead, ...prev])
     setReferidos((prev) => prev.map((row) => (row.id === payload.referidoId ? { ...row, lead_id: leadData.id } : row)))
     return { data: lead, error: null }
   }, [configured])
@@ -613,8 +750,26 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
   )
 
   const data = useMemo<ConexionesData>(
-    () => ({ activaciones, referidos, clientes, leads, productos, representante, representantesMap }),
-    [activaciones, referidos, clientes, leads, productos, representante, representantesMap],
+    () => ({
+      activaciones,
+      referidos,
+      clientes,
+      leads,
+      productos,
+      representante,
+      representantesMap,
+      programaId,
+    }),
+    [
+      activaciones,
+      referidos,
+      clientes,
+      leads,
+      productos,
+      representante,
+      representantesMap,
+      programaId,
+    ],
   )
 
   const embajadoresData = useMemo<ConexionesEmbajadoresData>(
@@ -646,5 +801,8 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     createPeriodo,
     registerEmbajadorPrograma,
     saveConexiones,
+    searchProductos,
+    fetchProductosByIds,
+    createActivacionOwner,
   }
 }

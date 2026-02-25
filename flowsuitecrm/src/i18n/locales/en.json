@@ -216,6 +216,13 @@
     "emptyColumn": "No leads in this stage",
     "nextAction": "Next action",
     "noAction": "No action set",
+    "overdue": "Overdue",
+    "dueSoon": "Today",
+    "moveLeft": "Previous stage",
+    "moveRight": "Next stage",
+    "filterSearch": "Search by name or phone...",
+    "allOwners": "All sales reps",
+    "allSources": "All sources",
     "columns": {
       "nuevo": "New",
       "contactado": "Contacted",
@@ -452,9 +459,14 @@
         "new": "New activation",
         "create": "Create activation",
         "view": "View",
+        "editOwner": "Edit owner",
         "reactivate": "Reactivate",
         "reactivated": "Activation reactivated",
         "loadMore": "Load more"
+      },
+      "ownerType": {
+        "cliente": "Customer",
+        "prospecto": "Prospect"
       },
       "tabs": {
         "active": "Active",
@@ -492,22 +504,33 @@
       "emptyTable": "No results",
       "noAccess": "You don't have access to this module.",
       "noAccessDetail": "Telemarketing has no access to Conexiones Infinitas in this phase.",
-      "detailTitle": "Activation detail",
+      "detailTitle": "Activation - {{name}}",
       "relative": {
         "minutes": "{{count}} min ago",
         "hours": "{{count}} h ago",
         "days": "{{count}} days ago"
       },
       "errors": {
-        "programMissing": "Conexiones Infinitas program not found.",
-        "ownerRequired": "Select who will provide referrals."
+        "minReferidos": "You must add at least 20 referrals.",
+        "minReferidosDraft": "You must add at least 1 referral.",
+        "selectGift": "Select a premium gift.",
+        "photoRequired": "Upload the customer photo with the gift.",
+        "selectCliente": "Select a customer.",
+        "prospectoRequired": "Complete prospect name and phone.",
+        "clienteRequired": "Complete customer name, phone, and HyCite account.",
+        "selectOwner": "Select a customer or prospect.",
+        "noUser": "Representative not found.",
+        "referidoIncompleto": "Complete referral name and phone.",
+        "whatsappBlocked": "Complete gift and photo to enable WhatsApp.",
+        "clientePhoneExists": "A customer with that phone already exists. The existing record was selected.",
+        "prospectoPhoneExists": "A prospect with that phone already exists. The existing record was selected."
       },
       "wizard": {
         "title": "New activation",
         "ownerTitle": "Who will send the contact list?",
-        "ownerHint": "Normally it's you.",
-        "self": "Myself",
-        "searchUser": "Search user",
+        "ownerHint": "Select the customer or prospect who shared the list.",
+        "selectOwner": "Select a customer or prospect.",
+        "searchUser": "Search customer or prospect",
         "searchPlaceholder": "Name or phone",
         "confirmTitle": "Confirm",
         "confirmHint": "Review the information before creating the activation."
@@ -593,7 +616,6 @@
         "amigo": "Friend",
         "companero": "Coworker"
       },
-      "detailTitle": "Activation - {{name}}",
       "referidos": {
         "title": "Referrals",
         "columns": {
@@ -617,21 +639,6 @@
           "presentacion_hecha": "Presentation completed",
           "regalo_entregado": "Gift delivered"
         }
-      },
-      "errors": {
-        "minReferidos": "You must add at least 20 referrals.",
-        "minReferidosDraft": "You must add at least 1 referral.",
-        "selectGift": "Select a premium gift.",
-        "photoRequired": "Upload the customer photo with the gift.",
-        "selectCliente": "Select a customer.",
-        "prospectoRequired": "Complete prospect name and phone.",
-        "clienteRequired": "Complete customer name, phone, and HyCite account.",
-        "selectOwner": "Select a customer or prospect.",
-        "noUser": "Representative not found.",
-        "referidoIncompleto": "Complete referral name and phone.",
-        "whatsappBlocked": "Complete gift and photo to enable WhatsApp.",
-        "clientePhoneExists": "A customer with that phone already exists. The existing record was selected.",
-        "prospectoPhoneExists": "A prospect with that phone already exists. The existing record was selected."
       }
     },
     "actions": {
@@ -706,6 +713,39 @@
       "conexiones": "Connections",
       "ventas": "Sales",
       "nivel": "Tier"
+    },
+    "referidoEstados": {
+      "pendiente": "Pending",
+      "contactado": "Contacted",
+      "cita_agendada": "Appointment set",
+      "presentacion_hecha": "Presentation done",
+      "regalo_entregado": "Gift delivered",
+      "telemercadeo": "Telemarketing"
+    },
+    "referidosPanel": {
+      "title": "Referrals — {{owner}}",
+      "todos": "All",
+      "total": "Total",
+      "citas": "Appts",
+      "cerrados": "Closed",
+      "tele": "Telemarketing",
+      "notasPlaceholder": "Notes...",
+      "apellidoLabel": "Last name",
+      "apellidoPlaceholder": "Last name (optional)",
+      "createLead": "Activate",
+      "addReferido": "Add referral",
+      "newRefNombre": "Name",
+      "newRefTelefono": "Phone",
+      "newRefRelacion": "Relation",
+      "newRefRequired": "Name and phone are required",
+      "calificar": "View / Qualify prospect",
+      "leadDone": "✓ Active",
+      "ownerInfoToggle": "View owner info"
+    },
+    "relaciones": {
+      "familiar": "Family",
+      "amigo": "Friend",
+      "companero": "Coworker"
     }
   },
   "programa4en14": {
