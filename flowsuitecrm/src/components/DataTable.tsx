@@ -15,6 +15,10 @@ type DataTableProps = {
   pageSize?: number
   onRowClick?: (row: DataTableRow) => void
   emptyLabel?: string
+  sortableColumns?: number[]
+  sortColIndex?: number
+  sortDir?: 'asc' | 'desc'
+  onSort?: (colIndex: number) => void
 }
 
 export function DataTable({
@@ -23,6 +27,10 @@ export function DataTable({
   pageSize = 20,
   onRowClick,
   emptyLabel,
+  sortableColumns,
+  sortColIndex,
+  sortDir,
+  onSort,
 }: DataTableProps) {
   const { t } = useTranslation()
   const [page, setPage] = useState(0)
@@ -47,9 +55,24 @@ export function DataTable({
       <table className="data-table">
         <thead>
           <tr>
-            {columns.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
+            {columns.map((column, idx) => {
+              const isSortable = sortableColumns?.includes(idx)
+              const isActive = sortColIndex === idx
+              return (
+                <th
+                  key={column}
+                  onClick={isSortable ? () => onSort?.(idx) : undefined}
+                  style={isSortable ? { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' } : undefined}
+                >
+                  {column}
+                  {isSortable && (
+                    <span style={{ marginLeft: '0.3rem', opacity: isActive ? 1 : 0.3, fontSize: '0.75rem' }}>
+                      {isActive && sortDir === 'desc' ? '↓' : '↑'}
+                    </span>
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
