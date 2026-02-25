@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ClipboardEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase/client'
 import { useToast } from './Toast'
 import { IconRestore, IconSwap, IconTrash } from './icons'
+import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
 
 type LeadCalificacion = {
   id: string
@@ -79,6 +80,7 @@ export function CalificacionPanel({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showActions, setShowActions] = useState(false)
+  const [parsedAddr, setParsedAddr] = useState<ParsedAddress | null>(null)
 
   useEffect(() => {
     if (!lead) return
@@ -103,6 +105,7 @@ export function CalificacionPanel({
       tipo_vivienda: lead.tipo_vivienda ?? '',
     })
     setShowActions(false)
+    setParsedAddr(null)
   }, [lead])
 
   const fullName = useMemo(() => {
@@ -122,6 +125,26 @@ export function CalificacionPanel({
         [field]: value,
       }))
     }
+
+  const handleCapitalize = (field: 'nombre' | 'apellido') => () => {
+    setFormValues((prev) => ({ ...prev, [field]: capitalizeProperName(prev[field] as string) }))
+  }
+
+  const handleDireccionPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const pasted = event.clipboardData.getData('text')
+    const parsed = parseUsAddress(pasted)
+    if (parsed) {
+      event.preventDefault()
+      setFormValues((prev) => ({
+        ...prev,
+        direccion: parsed.direccion,
+        ciudad: parsed.ciudad,
+        estado_region: parsed.estado_region,
+        codigo_postal: parsed.codigo_postal,
+      }))
+      setParsedAddr(parsed)
+    }
+  }
 
   const handleSave = async () => {
     if (!lead) return
@@ -249,11 +272,11 @@ export function CalificacionPanel({
             <div className="form-grid">
               <label className="form-field">
                 <span>{t('leads.fields.nombre')}</span>
-                <input value={formValues.nombre} onChange={handleChange('nombre')} />
+                <input value={formValues.nombre} onChange={handleChange('nombre')} onBlur={handleCapitalize('nombre')} />
               </label>
               <label className="form-field">
                 <span>{t('leads.fields.apellido')}</span>
-                <input value={formValues.apellido} onChange={handleChange('apellido')} />
+                <input value={formValues.apellido} onChange={handleChange('apellido')} onBlur={handleCapitalize('apellido')} />
               </label>
               <label className="form-field">
                 <span>{t('leads.fields.email')}</span>
@@ -265,8 +288,31 @@ export function CalificacionPanel({
               </label>
               <label className="form-field">
                 <span>{t('leads.calificacion.general.direccion')}</span>
-                <input value={formValues.direccion} onChange={handleChange('direccion')} />
+                <input
+                  value={formValues.direccion}
+                  onChange={handleChange('direccion')}
+                  onPaste={handleDireccionPaste}
+                  placeholder="Pega la dirección completa para auto-rellenar"
+                />
               </label>
+              {parsedAddr && (
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    padding: '0.5rem 0.75rem',
+                    background: '#d1fae5',
+                    border: '1px solid #6ee7b7',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.82rem',
+                    color: '#065f46',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  ✓ Dirección detectada — ciudad, estado y ZIP rellenados automáticamente
+                </div>
+              )}
               <label className="form-field">
                 <span>{t('leads.calificacion.general.apartamento')}</span>
                 <input value={formValues.apartamento} onChange={handleChange('apartamento')} />
@@ -283,6 +329,38 @@ export function CalificacionPanel({
                 <span>{t('leads.calificacion.general.codigoPostal')}</span>
                 <input value={formValues.codigo_postal} onChange={handleChange('codigo_postal')} />
               </label>
+              {(formValues.direccion || formValues.ciudad) && (() => {
+                const mapsUrl = buildMapsNavUrl({
+                  direccion: formValues.direccion || null,
+                  ciudad: formValues.ciudad || null,
+                  estado_region: formValues.estado_region || null,
+                  codigo_postal: formValues.codigo_postal || null,
+                })
+                return mapsUrl ? (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: '0.82rem',
+                        color: '#10b981',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        padding: '0.25rem 0.75rem',
+                        border: '1px solid #10b98133',
+                        borderRadius: '9999px',
+                        background: '#10b98111',
+                      }}
+                    >
+                      🗺 Ver en mapa / Navegar
+                    </a>
+                  </div>
+                ) : null
+              })()}
               <label className="form-field">
                 <span>{t('leads.calificacion.general.fechaNacimiento')}</span>
                 <input

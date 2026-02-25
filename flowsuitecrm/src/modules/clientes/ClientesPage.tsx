@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
@@ -12,6 +12,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useMessaging } from '../../hooks/useMessaging'
+import { parseUsAddress, buildMapsNavUrl, buildTelUrl, capitalizeProperName, type ParsedAddress } from '../../lib/addressUtils'
 
 type ClienteRecord = {
   id: string
@@ -49,6 +50,9 @@ const initialForm = {
   telefono: '',
   telefono_casa: '',
   direccion: '',
+  ciudad: '',
+  estado_region: '',
+  codigo_postal: '',
   numero_cuenta_financiera: '',
   saldo_actual: '',
   vendedor_id: '',
@@ -136,6 +140,7 @@ export function ClientesPage() {
   const [birthDay, setBirthDay] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [parsedAddr, setParsedAddr] = useState<ParsedAddress | null>(null)
   const [selectedRow, setSelectedRow] = useState<DataTableRow | null>(null)
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const configured = isSupabaseConfigured
@@ -280,6 +285,35 @@ export function ClientesPage() {
     })
   }, [clientesFiltrados, sortCol, sortDir])
 
+  // --- DUPLICADOS ---
+  const [showDuplicados, setShowDuplicados] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const duplicateGroups = useMemo(() => {
+    const phoneMap = new Map<string, ClienteRecord[]>()
+    for (const c of clientes) {
+      const normalized = (c.telefono ?? '').replace(/\D/g, '')
+      if (!normalized) continue
+      if (!phoneMap.has(normalized)) phoneMap.set(normalized, [])
+      phoneMap.get(normalized)!.push(c)
+    }
+    return [...phoneMap.values()]
+      .filter((group) => group.length > 1)
+      .map((group) => group.sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '')))
+  }, [clientes])
+
+  const handleDeleteCliente = async (id: string) => {
+    setDeletingId(id)
+    const { error: delError } = await supabase.from('clientes').delete().eq('id', id)
+    if (delError) {
+      showToast(delError.message, 'error')
+    } else {
+      showToast('Cliente eliminado')
+      await loadClientes()
+    }
+    setDeletingId(null)
+  }
+
   // --- ESTADISTICAS ---
   const stats = useMemo(
     () => ({
@@ -370,9 +404,40 @@ export function ClientesPage() {
           { label: 'Nombre', value: cliente.nombre ?? '-' },
           { label: 'Apellido', value: cliente.apellido ?? '-' },
           { label: 'Email', value: cliente.email ?? '-' },
-          { label: 'Telefono movil', value: cliente.telefono ?? '-' },
-          { label: 'Telefono casa', value: cliente.telefono_casa ?? '-' },
-          { label: 'Direccion', value: cliente.direccion ?? '-' },
+          {
+            label: 'Telefono movil',
+            value: cliente.telefono ? (
+              <a href={buildTelUrl(cliente.telefono)} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>
+                📞 {cliente.telefono}
+              </a>
+            ) : '-',
+          },
+          {
+            label: 'Telefono casa',
+            value: cliente.telefono_casa ? (
+              <a href={buildTelUrl(cliente.telefono_casa)} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>
+                📞 {cliente.telefono_casa}
+              </a>
+            ) : '-',
+          },
+          {
+            label: 'Direccion',
+            value: (() => {
+              const mapsUrl = buildMapsNavUrl({ direccion: cliente.direccion, ciudad: cliente.ciudad, estado_region: cliente.estado_region, codigo_postal: cliente.codigo_postal })
+              const addr = [cliente.direccion, cliente.ciudad, cliente.estado_region, cliente.codigo_postal].filter(Boolean).join(', ')
+              return addr ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span>{addr}</span>
+                  {mapsUrl && (
+                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none', padding: '0.1rem 0.5rem', border: '1px solid #10b98133', borderRadius: '9999px', background: '#10b98111' }}>
+                      🗺 Navegar
+                    </a>
+                  )}
+                </span>
+              ) : '-'
+            })(),
+          },
           { label: 'Ciudad', value: cliente.ciudad ?? '-' },
           { label: 'Estado', value: cliente.estado_region ?? '-' },
           { label: 'Codigo postal', value: cliente.codigo_postal ?? '-' },
@@ -415,6 +480,9 @@ export function ClientesPage() {
       telefono: cliente.telefono ?? '',
       telefono_casa: cliente.telefono_casa ?? '',
       direccion: cliente.direccion ?? '',
+      ciudad: cliente.ciudad ?? '',
+      estado_region: cliente.estado_region ?? '',
+      codigo_postal: cliente.codigo_postal ?? '',
       numero_cuenta_financiera: cliente.numero_cuenta_financiera ?? '',
       saldo_actual: cliente.saldo_actual != null ? String(cliente.saldo_actual) : '',
       vendedor_id: cliente.vendedor_id ?? '',
@@ -422,6 +490,7 @@ export function ClientesPage() {
       fecha_nacimiento: cliente.fecha_nacimiento ?? '',
       activo: cliente.activo ?? true,
     })
+    setParsedAddr(null)
     setBirthMonth(birth.month)
     setBirthDay(birth.day)
     setFormError(null)
@@ -453,6 +522,22 @@ export function ClientesPage() {
       setSubmitting(false)
       return
     }
+    // Dedup: compare normalized phone (digits only) against existing clientes
+    if (!editingId) {
+      const normalizedNew = formValues.telefono.replace(/\D/g, '')
+      if (normalizedNew) {
+        const duplicate = clientes.find((c) => {
+          const existing = (c.telefono ?? '').replace(/\D/g, '')
+          return existing && existing === normalizedNew
+        })
+        if (duplicate) {
+          const dupName = [duplicate.nombre, duplicate.apellido].filter(Boolean).join(' ') || 'Sin nombre'
+          setFormError(`Ya existe un cliente con este teléfono: ${dupName} (${duplicate.telefono})`)
+          setSubmitting(false)
+          return
+        }
+      }
+    }
     const basePayload = {
       nombre: toNull(formValues.nombre),
       apellido: toNull(formValues.apellido),
@@ -460,6 +545,9 @@ export function ClientesPage() {
       telefono: toNull(formValues.telefono),
       telefono_casa: toNull(formValues.telefono_casa),
       direccion: toNull(formValues.direccion),
+      ciudad: toNull(formValues.ciudad),
+      estado_region: toNull(formValues.estado_region),
+      codigo_postal: toNull(formValues.codigo_postal),
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
       saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),
       distribuidor_id: toNull(formValues.distribuidor_id),
@@ -484,6 +572,26 @@ export function ClientesPage() {
     const target = event.target
     const value = target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value
     setFormValues((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleCapitalize = (field: 'nombre' | 'apellido') => () => {
+    setFormValues((prev) => ({ ...prev, [field]: capitalizeProperName(prev[field] as string) }))
+  }
+
+  const handleDireccionPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const pasted = event.clipboardData.getData('text')
+    const parsed = parseUsAddress(pasted)
+    if (parsed) {
+      event.preventDefault()
+      setFormValues((prev) => ({
+        ...prev,
+        direccion: parsed.direccion,
+        ciudad: parsed.ciudad,
+        estado_region: parsed.estado_region,
+        codigo_postal: parsed.codigo_postal,
+      }))
+      setParsedAddr(parsed)
+    }
   }
 
   const limpiarFiltros = () => {
@@ -560,6 +668,16 @@ export function ClientesPage() {
         subtitle={t('clientes.subtitle')}
         action={
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {duplicateGroups.length > 0 && (
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setShowDuplicados(true)}
+                style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+              >
+                ⚠ Duplicados ({duplicateGroups.length})
+              </Button>
+            )}
             <Button
               variant="ghost"
               type="button"
@@ -1032,11 +1150,11 @@ export function ClientesPage() {
         <form id="cliente-form" className="form-grid" onSubmit={handleSubmit}>
           <label className="form-field">
             <span>{t('clientes.fields.nombre')}</span>
-            <input value={formValues.nombre} onChange={handleChange('nombre')} />
+            <input value={formValues.nombre} onChange={handleChange('nombre')} onBlur={handleCapitalize('nombre')} />
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.apellido')}</span>
-            <input value={formValues.apellido} onChange={handleChange('apellido')} />
+            <input value={formValues.apellido} onChange={handleChange('apellido')} onBlur={handleCapitalize('apellido')} />
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.email')}</span>
@@ -1052,7 +1170,42 @@ export function ClientesPage() {
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.direccion')}</span>
-            <input value={formValues.direccion} onChange={handleChange('direccion')} />
+            <input
+              value={formValues.direccion}
+              onChange={handleChange('direccion')}
+              onPaste={handleDireccionPaste}
+              placeholder="Pega la dirección completa aquí para auto-rellenar"
+            />
+          </label>
+          {parsedAddr && (
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                padding: '0.5rem 0.75rem',
+                background: '#d1fae5',
+                border: '1px solid #6ee7b7',
+                borderRadius: '0.375rem',
+                fontSize: '0.82rem',
+                color: '#065f46',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              ✓ Dirección detectada — ciudad, estado y ZIP rellenados automáticamente
+            </div>
+          )}
+          <label className="form-field">
+            <span>Ciudad</span>
+            <input value={formValues.ciudad} onChange={handleChange('ciudad')} />
+          </label>
+          <label className="form-field">
+            <span>Estado</span>
+            <input value={formValues.estado_region} onChange={handleChange('estado_region')} />
+          </label>
+          <label className="form-field">
+            <span>Código postal</span>
+            <input value={formValues.codigo_postal} onChange={handleChange('codigo_postal')} />
           </label>
           <label className="form-field">
             <span>Cuenta Hycite / Financiera</span>
@@ -1130,6 +1283,124 @@ export function ClientesPage() {
         }
       />
       <ModalRenderer />
+
+      {/* MODAL DUPLICADOS */}
+      <Modal
+        open={showDuplicados}
+        title={`Clientes duplicados (${duplicateGroups.length} grupos)`}
+        onClose={() => setShowDuplicados(false)}
+        actions={
+          <Button variant="ghost" type="button" onClick={() => setShowDuplicados(false)}>
+            Cerrar
+          </Button>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #6b7280)', margin: 0 }}>
+            Cada grupo comparte el mismo teléfono. El primero de cada grupo (más antiguo) está marcado como <strong>Original</strong>. Elimina los duplicados que no necesites.
+          </p>
+          {duplicateGroups.map((group, gi) => (
+            <div
+              key={gi}
+              style={{
+                border: '1px solid #fca5a5',
+                borderRadius: '0.5rem',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  background: '#fef2f2',
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: '#dc2626',
+                }}
+              >
+                Tel: {group[0].telefono} — {group.length} registros
+              </div>
+              {group.map((c, idx) => {
+                const name = [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre'
+                const vendorName = c.vendedor_id ? (usersById[c.vendedor_id] ?? c.vendedor_id.slice(0, 8)) : '-'
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.5rem 0.75rem',
+                      borderTop: idx > 0 ? '1px solid #fee2e2' : undefined,
+                      background: idx === 0 ? '#fff7ed' : 'white',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                        {idx === 0 && (
+                          <span style={{ fontSize: '0.7rem', background: '#d1fae5', color: '#065f46', padding: '0.1rem 0.4rem', borderRadius: '9999px', marginRight: '0.4rem' }}>
+                            Original
+                          </span>
+                        )}
+                        {name}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                        {vendorName} · {c.created_at ? new Date(c.created_at).toLocaleDateString('es') : '-'}
+                        {c.direccion ? ` · ${c.direccion}` : ''}
+                      </div>
+                    </div>
+                    {idx > 0 && (
+                      <button
+                        type="button"
+                        disabled={deletingId === c.id}
+                        onClick={() => handleDeleteCliente(c.id)}
+                        style={{
+                          padding: '0.3rem 0.75rem',
+                          borderRadius: '0.375rem',
+                          border: '1px solid #fca5a5',
+                          background: '#fee2e2',
+                          color: '#dc2626',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {deletingId === c.id ? 'Eliminando…' : 'Eliminar'}
+                      </button>
+                    )}
+                    {idx === 0 && (
+                      <button
+                        type="button"
+                        disabled={deletingId === c.id}
+                        onClick={() => handleDeleteCliente(c.id)}
+                        style={{
+                          padding: '0.3rem 0.75rem',
+                          borderRadius: '0.375rem',
+                          border: '1px solid #e5e7eb',
+                          background: 'white',
+                          color: '#6b7280',
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {deletingId === c.id ? 'Eliminando…' : 'Eliminar original'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+          {duplicateGroups.length === 0 && (
+            <p style={{ textAlign: 'center', color: '#10b981', fontWeight: 600 }}>
+              ✓ No hay duplicados
+            </p>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }
