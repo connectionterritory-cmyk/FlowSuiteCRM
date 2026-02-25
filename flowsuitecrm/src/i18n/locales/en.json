@@ -60,15 +60,19 @@
     "phoneMissing": "Add a phone number to send.",
     "emailMissing": "Add an email to send.",
     "emailSubject": "Royal Prestige message",
+    "imagenLabel": "Image link (optional)",
+    "imagenPlaceholder": "Paste your Google Drive or Dropbox link...",
     "templates": {
       "referidoLabel": "Referral",
       "seguimientoLabel": "Follow-up",
       "recordatorioLabel": "Reminder",
       "personalizadoLabel": "Custom",
+      "cumpleanosLabel": "Happy Birthday",
       "referido": "Hi {nombre} 😊 {vendedor} from Royal Prestige here...",
       "seguimiento": "Hi {nombre}, just a reminder about our appointment...",
       "recordatorio": "Hi {nombre} 👋 Just a quick reminder...",
-      "personalizado": ""
+      "personalizado": "",
+      "cumpleanos": "🎉 Happy birthday {nombre}! 🎂\n\nThis is {vendedor}, Authorized Distributor of Royal Prestige.\n\nWe want to celebrate with you: you have a special $200 BONUS for your next equipment and a surprise gift we'll deliver personally. 🥳\n\nHave an amazing day! Contact us today to claim your gift."
     }
   },
   "organization": {

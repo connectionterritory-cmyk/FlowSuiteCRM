@@ -134,7 +134,7 @@ const baseTemplates: WhatsappTemplate[] = [
     id: 'client.cumpleanos',
     category: 'client',
     label: 'Cumpleaños',
-    message: '🎉 Hola {nombre}, en {organizacion} te deseamos un feliz cumpleaños. ¡Que tengas un día increíble!',
+    message: '🎉 ¡Feliz cumpleaños {nombre}! 🎂\n\nTe saluda {vendedor}, Distribuidor Autorizado de Royal Prestige.\n\nQueremos celebrar contigo: tienes un BONO especial de $200 para tu próximo equipo y un detalle sorpresa que te entregaremos personalmente. 🥳\n\n¡Que tengas un día increíble! Contáctanos hoy para reclamar tu regalo.',
   },
   {
     id: 'client.morosa',

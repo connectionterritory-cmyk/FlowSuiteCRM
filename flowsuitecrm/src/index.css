@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif;
+  font-family: "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -104,7 +104,8 @@ a {
 }
 
 button,
-select {
+select,
+textarea {
   font-family: inherit;
 }
 
@@ -1220,6 +1221,7 @@ body.theme-light .pipeline-card {
   border-radius: 10px;
   padding: 9px 12px;
   color: var(--text-primary);
+  font-family: "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
 }
 
 body.theme-light .form-field input,
@@ -1732,6 +1734,7 @@ body.theme-light .template-item {
 .template-snippet {
   font-size: 0.78rem;
   color: var(--text-muted);
+  font-family: "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
 }
 
 .template-preview {

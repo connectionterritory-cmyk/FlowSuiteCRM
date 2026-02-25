@@ -17,10 +17,11 @@ type MessageModalProps = {
   open: boolean
   channel: MessagingChannel
   contact: MessagingContact | null
+  initialTemplateId?: string | null
   onClose: () => void
 }
 
-const builtinTemplateIds = ['referido', 'seguimiento', 'recordatorio', 'personalizado'] as const
+const builtinTemplateIds = ['cumpleanos', 'referido', 'seguimiento', 'recordatorio', 'personalizado'] as const
 type BuiltinTemplateId = (typeof builtinTemplateIds)[number]
 
 const sanitizePhone = (value: string) => value.replace(/\D/g, '')
@@ -68,13 +69,14 @@ const CHANNEL_ICON: Record<MessagingChannel, string> = {
 }
 
 // --- COMPONENT ---
-export function MessageModal({ open, channel, contact, onClose }: MessageModalProps) {
+export function MessageModal({ open, channel, contact, initialTemplateId, onClose }: MessageModalProps) {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
   const [activeChannel, setActiveChannel] = useState<MessagingChannel>(channel)
   const [sending, setSending] = useState(false)
 
@@ -110,15 +112,19 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
 
   useEffect(() => {
     if (!open || !contact) return
-    const defaultTemplate = builtinTemplates[0]
-    if (!defaultTemplate) return
-    setSelectedTemplateId(defaultTemplate.id)
-    setMessage(replaceTemplateVariables(defaultTemplate.message, variables))
+    const preferredId = initialTemplateId ?? builtinTemplates[0]?.id ?? null
+    if (!preferredId) return
+    setSelectedTemplateId(preferredId)
+    const builtin = builtinTemplates.find((item) => item.id === preferredId)
+    const custom = customTemplates.find((item) => item.id === preferredId)
+    const templateMessage = builtin?.message ?? custom?.message ?? ''
+    setMessage(templateMessage ? replaceTemplateVariables(templateMessage, variables) : '')
     setShowSaveForm(false)
     setSavingTitle('')
     setEditingTemplateId(null)
     setShowHistory(false)
-  }, [open, contact, builtinTemplates, variables])
+    setImageUrl('')
+  }, [open, contact, builtinTemplates, customTemplates, variables, initialTemplateId])
 
   useEffect(() => {
     if (!open) return
@@ -254,19 +260,22 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
   const handleSend = async () => {
     if (!canSendMessage || warningMessage) return
     setSending(true)
+    const finalMessage = imageUrl.trim()
+      ? message.trim() + '\n\n' + imageUrl.trim()
+      : message
     if (activeChannel === 'whatsapp') {
-      const url = contact.telefono ? buildWhatsappUrl(contact.telefono, message) : null
+      const url = contact.telefono ? buildWhatsappUrl(contact.telefono, finalMessage) : null
       if (url) window.open(url, '_blank', 'noopener,noreferrer')
     }
     if (activeChannel === 'sms' && hasPhone) {
-      window.open(`sms:${phoneValue}?&body=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+      window.open(`sms:${phoneValue}?&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
     }
     if (activeChannel === 'email' && hasEmail && contact.email) {
       const subject = t('messaging.emailSubject')
-      window.open(`mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+      window.open(`mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
     }
     // Save to history
-    appendHistory({ contactName: contact.nombre, channel: activeChannel, message, sentAt: new Date().toISOString() })
+    appendHistory({ contactName: contact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
     setHistoryEntries(loadHistory())
     await updateLeadContact()
     setSending(false)
@@ -590,6 +599,36 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
               — clic para insertar
             </span>
           </div>
+
+          {/* LINK DE IMAGEN */}
+          {activeChannel === 'whatsapp' && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted, #6b7280)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  📎 {t('messaging.imagenLabel')}
+                </span>
+                <input
+                  type="url"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder={t('messaging.imagenPlaceholder')}
+                  style={{
+                    padding: '0.45rem 0.65rem',
+                    borderRadius: '0.5rem',
+                    border: `1px solid ${imageUrl.trim() ? 'rgba(59,130,246,0.5)' : 'var(--color-border, #e5e7eb)'}`,
+                    background: 'var(--color-surface, #f9fafb)',
+                    color: 'var(--color-text)',
+                    fontSize: '0.8rem',
+                  }}
+                />
+                {imageUrl.trim() && (
+                  <p style={{ margin: 0, fontSize: '0.7rem', color: '#10b981' }}>
+                    ✓ El link se adjuntará al final del mensaje
+                  </p>
+                )}
+              </label>
+            </div>
+          )}
 
           {warningMessage && <p className="template-warning">{warningMessage}</p>}
 

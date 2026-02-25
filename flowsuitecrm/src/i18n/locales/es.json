@@ -60,15 +60,19 @@
     "phoneMissing": "Agrega un telefono para enviar.",
     "emailMissing": "Agrega un email para enviar.",
     "emailSubject": "Mensaje de Royal Prestige",
+    "imagenLabel": "Link de imagen (opcional)",
+    "imagenPlaceholder": "Pega el link de Google Drive o Dropbox...",
     "templates": {
       "referidoLabel": "Referido",
       "seguimientoLabel": "Seguimiento",
       "recordatorioLabel": "Recordatorio",
       "personalizadoLabel": "Personalizado",
+      "cumpleanosLabel": "Feliz Cumpleaños",
       "referido": "Hola {nombre} 😊 Te contacta {vendedor} de Royal Prestige...",
       "seguimiento": "Hola {nombre}, te recuerdo nuestra cita...",
       "recordatorio": "Hola {nombre} 👋 Solo queria recordarte...",
-      "personalizado": ""
+      "personalizado": "",
+      "cumpleanos": "🎉 ¡Feliz cumpleaños {nombre}! 🎂\n\nTe saluda {vendedor}, Distribuidor Autorizado de Royal Prestige.\n\nQueremos celebrar contigo: tienes un BONO especial de $200 para tu próximo equipo y un detalle sorpresa que te entregaremos personalmente. 🥳\n\n¡Que tengas un día increíble! Contáctanos hoy para reclamar tu regalo."
     }
   },
   "organization": {
