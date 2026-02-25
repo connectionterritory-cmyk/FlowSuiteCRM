@@ -23,6 +23,17 @@ type UsuarioRecord = {
   created_at: string | null
 }
 
+type TeleAssignment = {
+  id: string
+  vendedor_id: string
+  vendedor?: {
+    nombre: string | null
+    apellido: string | null
+    rol: string | null
+    email: string | null
+  }
+}
+
 const initialForm = {
   nombre: '',
   apellido: '',
@@ -58,6 +69,11 @@ export function UsuariosPage() {
   const [statusFilter, setStatusFilter] = useState('all')
 
   const [selectedRow, setSelectedRow] = useState<(DataTableRow & { originalData?: UsuarioRecord }) | null>(null)
+
+  const [teleAssignments, setTeleAssignments] = useState<TeleAssignment[]>([])
+  const [teleAssignSearch, setTeleAssignSearch] = useState('')
+  const [teleAssignResults, setTeleAssignResults] = useState<UsuarioRecord[]>([])
+  const [teleAssignLoading, setTeleAssignLoading] = useState(false)
 
   const configured = isSupabaseConfigured
 
@@ -111,6 +127,93 @@ export function UsuariosPage() {
       loadUsuarios()
     }
   }, [configured, loadUsuarios])
+
+  // Load tele_vendedor_assignments when editing a telemercadeo user
+  useEffect(() => {
+    if (!editingId || formValues.rol !== 'telemercadeo' || !configured) {
+      setTeleAssignments([])
+      setTeleAssignSearch('')
+      setTeleAssignResults([])
+      return
+    }
+    let active = true
+    setTeleAssignLoading(true)
+    const load = async () => {
+      const { data } = await supabase
+        .from('tele_vendedor_assignments')
+        .select('id, vendedor_id, vendedor:usuarios!vendedor_id(nombre, apellido, rol, email)')
+        .eq('tele_id', editingId)
+      if (!active) return
+      setTeleAssignments((data as unknown as TeleAssignment[]) ?? [])
+      setTeleAssignLoading(false)
+    }
+    load()
+    return () => { active = false }
+  }, [editingId, formValues.rol, configured])
+
+  // Debounced search for vendedores to assign
+  useEffect(() => {
+    if (!teleAssignSearch.trim() || !configured) {
+      setTeleAssignResults([])
+      return
+    }
+    const term = teleAssignSearch.trim()
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, rol, activo, created_at')
+        .in('rol', ['vendedor', 'distribuidor'])
+        .eq('activo', true)
+        .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,email.ilike.%${term}%`)
+        .limit(6)
+      setTeleAssignResults(
+        ((data ?? []) as UsuarioRecord[]).filter(
+          (u) => !teleAssignments.some((a) => a.vendedor_id === u.id),
+        ),
+      )
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [teleAssignSearch, configured, teleAssignments])
+
+  const handleAddTeleAssignment = useCallback(
+    async (vendedor: UsuarioRecord) => {
+      if (!editingId) return
+      const { data, error } = await supabase
+        .from('tele_vendedor_assignments')
+        .insert({ tele_id: editingId, vendedor_id: vendedor.id })
+        .select('id, vendedor_id')
+        .single()
+      if (error) {
+        showToast(error.message, 'error')
+        return
+      }
+      setTeleAssignments((prev) => [
+        ...prev,
+        {
+          ...(data as { id: string; vendedor_id: string }),
+          vendedor: { nombre: vendedor.nombre, apellido: vendedor.apellido, rol: vendedor.rol, email: vendedor.email },
+        },
+      ])
+      setTeleAssignSearch('')
+      setTeleAssignResults([])
+    },
+    [editingId, showToast],
+  )
+
+  const handleRemoveTeleAssignment = useCallback(
+    async (assignmentId: string) => {
+      const { error } = await supabase
+        .from('tele_vendedor_assignments')
+        .delete()
+        .eq('id', assignmentId)
+      if (error) {
+        showToast(error.message, 'error')
+        return
+      }
+      setTeleAssignments((prev) => prev.filter((a) => a.id !== assignmentId))
+    },
+    [showToast],
+  )
 
   const handleResendInvite = useCallback(
     async (usuario: UsuarioRecord) => {
@@ -508,6 +611,156 @@ export function UsuariosPage() {
               </label>
               {formError && <div className="form-error">{formError}</div>}
             </form>
+
+            {editingId && formValues.rol === 'telemercadeo' && (
+              <div
+                style={{
+                  marginTop: '1.5rem',
+                  borderTop: '1px solid var(--color-border, #2b3244)',
+                  paddingTop: '1.25rem',
+                }}
+              >
+                <p
+                  style={{
+                    fontWeight: 700,
+                    marginBottom: '0.75rem',
+                    fontSize: '0.9rem',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  Vendedores asignados
+                </p>
+
+                {teleAssignLoading ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Cargando...</p>
+                ) : (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.4rem',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    {teleAssignments.length === 0 ? (
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                        Sin vendedores asignados
+                      </p>
+                    ) : (
+                      teleAssignments.map((a) => {
+                        const name =
+                          [a.vendedor?.nombre, a.vendedor?.apellido].filter(Boolean).join(' ') ||
+                          a.vendedor?.email ||
+                          '—'
+                        return (
+                          <div
+                            key={a.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.4rem 0.75rem',
+                              background: 'var(--color-card, #1b2230)',
+                              borderRadius: '0.5rem',
+                              border: '1px solid var(--color-border, #2b3244)',
+                            }}
+                          >
+                            <div>
+                              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{name}</span>
+                              <span
+                                style={{
+                                  marginLeft: '0.5rem',
+                                  fontSize: '0.75rem',
+                                  color: 'var(--color-text-muted)',
+                                }}
+                              >
+                                ({a.vendedor?.rol ?? '?'})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTeleAssignment(a.id)}
+                              title="Quitar asignación"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: '#ef4444',
+                                fontSize: '1rem',
+                                lineHeight: 1,
+                                padding: '0 0.25rem',
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
+
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="search"
+                    placeholder="Buscar vendedor o distribuidor..."
+                    value={teleAssignSearch}
+                    onChange={(e) => setTeleAssignSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.7rem',
+                      borderRadius: '0.4rem',
+                      border: '1px solid var(--color-border, #2b3244)',
+                      background: 'var(--color-input, #1b2230)',
+                      color: 'var(--color-text)',
+                      fontSize: '0.85rem',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  {teleAssignResults.length > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        zIndex: 20,
+                        background: 'var(--color-card, #1b2230)',
+                        border: '1px solid var(--color-border, #2b3244)',
+                        borderRadius: '0.5rem',
+                        marginTop: '0.25rem',
+                        boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
+                      }}
+                    >
+                      {teleAssignResults.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => handleAddTeleAssignment(u)}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '0.5rem 0.75rem',
+                            background: 'none',
+                            border: 'none',
+                            borderBottom: '1px solid var(--color-border, #2b3244)',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            color: 'var(--color-text)',
+                          }}
+                        >
+                          {[u.nombre, u.apellido].filter(Boolean).join(' ') || u.email}{' '}
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
+                            ({u.rol})
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </Modal>
 
           <Modal
