@@ -58,6 +58,38 @@ export function segmentoLabel(dias: number | null, moroso: number | null): strin
   return '0-30 días'
 }
 
+export function resultadoLabel(resultado: string): string {
+  const map: Record<string, string> = {
+    no_contesta: 'No contestó',
+    cita_agendada: 'Cita agendada',
+    pago_prometido: 'Promesa de pago',
+    pago_realizado: 'Pagó',
+    no_interesado: 'No interesado',
+    numero_equivocado: 'Número equivocado',
+  }
+  return map[resultado] ?? resultado
+}
+
+export function resultadoColor(resultado: string): string {
+  const map: Record<string, string> = {
+    no_contesta: '#6b7280',
+    cita_agendada: '#3b82f6',
+    pago_prometido: '#f59e0b',
+    pago_realizado: '#10b981',
+    no_interesado: '#ef4444',
+    numero_equivocado: '#9ca3af',
+  }
+  return map[resultado] ?? '#6b7280'
+}
+
+export function formatFechaCorta(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('es', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 export function diasParaCumple(fechaNacimiento: string | null): number {
   if (!fechaNacimiento) return 999
   const hoy = new Date()
