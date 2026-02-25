@@ -1283,7 +1283,7 @@ export function LeadsPage() {
         ownerName={selectedLead ? getOwnerName(selectedLead.owner_id) : undefined}
         fuenteLabel={selectedLead ? getFuenteLabel(selectedLead.fuente) : undefined}
         canManage={canManageLeads}
-        onOpenManage={openManageModal}
+        onOpenManage={(lead, mode) => openManageModal(lead as LeadRecord, mode)}
         onClose={() => setSelectedLead(null)}
         onSaved={loadLeads}
       />
