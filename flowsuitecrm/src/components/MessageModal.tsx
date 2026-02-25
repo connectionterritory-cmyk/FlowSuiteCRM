@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from './Button'
 import { Modal } from './Modal'
-import { buildWhatsappUrl, replaceTemplateVariables } from '../lib/whatsappTemplates'
+import {
+  buildWhatsappUrl,
+  replaceTemplateVariables,
+  loadCustomTemplates,
+  saveCustomTemplates,
+  type CustomWhatsappTemplate,
+} from '../lib/whatsappTemplates'
 import { supabase } from '../lib/supabase/client'
 import { useToast } from './Toast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
@@ -14,20 +20,80 @@ type MessageModalProps = {
   onClose: () => void
 }
 
-const templateIds = ['referido', 'seguimiento', 'recordatorio', 'personalizado'] as const
+const builtinTemplateIds = ['referido', 'seguimiento', 'recordatorio', 'personalizado'] as const
+type BuiltinTemplateId = (typeof builtinTemplateIds)[number]
 
 const sanitizePhone = (value: string) => value.replace(/\D/g, '')
 
+// --- HISTORIAL ---
+const HISTORY_KEY = 'flowsuite.messaging.history'
+const MAX_HISTORY = 30
+
+type HistoryEntry = {
+  id: string
+  contactName: string
+  channel: MessagingChannel
+  message: string
+  sentAt: string
+}
+
+function loadHistory(): HistoryEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as HistoryEntry[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function appendHistory(entry: Omit<HistoryEntry, 'id'>): void {
+  if (typeof window === 'undefined') return
+  const prev = loadHistory()
+  const updated = [{ ...entry, id: `h_${Date.now()}` }, ...prev].slice(0, MAX_HISTORY)
+  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('es-MX', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const CHANNEL_ICON: Record<MessagingChannel, string> = {
+  whatsapp: '💬',
+  sms: '📱',
+  email: '✉️',
+}
+
+// --- COMPONENT ---
 export function MessageModal({ open, channel, contact, onClose }: MessageModalProps) {
   const { t } = useTranslation()
   const { showToast } = useToast()
-  const [selectedTemplateId, setSelectedTemplateId] = useState<(typeof templateIds)[number] | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [activeChannel, setActiveChannel] = useState<MessagingChannel>(channel)
   const [sending, setSending] = useState(false)
 
-  const templates = useMemo(() => {
-    return templateIds.map((id) => ({
+  // Custom templates
+  const [customTemplates, setCustomTemplates] = useState<CustomWhatsappTemplate[]>(() => loadCustomTemplates())
+  const [savingTitle, setSavingTitle] = useState('')
+  const [showSaveForm, setShowSaveForm] = useState(false)
+
+  // Edit custom template inline
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [editingMessage, setEditingMessage] = useState('')
+
+  // History
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>(() => loadHistory())
+  const [showHistory, setShowHistory] = useState(false)
+
+  const builtinTemplates = useMemo(() => {
+    return builtinTemplateIds.map((id) => ({
       id,
       label: t(`messaging.templates.${id}Label`),
       message: t(`messaging.templates.${id}`),
@@ -44,11 +110,15 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
 
   useEffect(() => {
     if (!open || !contact) return
-    const defaultTemplate = templates[0]
+    const defaultTemplate = builtinTemplates[0]
     if (!defaultTemplate) return
     setSelectedTemplateId(defaultTemplate.id)
     setMessage(replaceTemplateVariables(defaultTemplate.message, variables))
-  }, [open, contact, templates, variables])
+    setShowSaveForm(false)
+    setSavingTitle('')
+    setEditingTemplateId(null)
+    setShowHistory(false)
+  }, [open, contact, builtinTemplates, variables])
 
   useEffect(() => {
     if (!open) return
@@ -58,12 +128,14 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
   if (!open || !contact) return null
 
   const channelLabel = t(`messaging.channel.${activeChannel}`)
-  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? null
   const canSendMessage = message.trim().length > 0
   const phoneValue = contact.telefono ? sanitizePhone(contact.telefono) : ''
   const hasPhone = phoneValue.length > 0
   const hasEmail = Boolean(contact.email?.trim())
   const channelTabs: MessagingChannel[] = ['whatsapp', 'sms', 'email']
+  const charCount = message.length
+  const charOver = charCount > 1024
+  const charCaution = charCount > 800 && !charOver
 
   const warningMessage =
     activeChannel === 'email'
@@ -74,13 +146,99 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
         ? t('messaging.phoneMissing')
         : null
 
-  const handleSelectTemplate = (id: (typeof templateIds)[number]) => {
-    setSelectedTemplateId(id)
-    const template = templates.find((item) => item.id === id)
-    const nextMessage = template ? replaceTemplateVariables(template.message, variables) : ''
-    setMessage(nextMessage)
+  // --- VARIABLE INSERTION AT CURSOR ---
+  const insertVariable = (variable: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      setMessage((prev) => prev + variable)
+      return
+    }
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const next = message.slice(0, start) + variable + message.slice(end)
+    setMessage(next)
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + variable.length, start + variable.length)
+    }, 0)
   }
 
+  // --- BUILTIN TEMPLATE SELECT ---
+  const handleSelectBuiltin = (id: BuiltinTemplateId) => {
+    setSelectedTemplateId(id)
+    const template = builtinTemplates.find((item) => item.id === id)
+    setMessage(template ? replaceTemplateVariables(template.message, variables) : '')
+    setShowSaveForm(false)
+    setEditingTemplateId(null)
+  }
+
+  // --- CUSTOM TEMPLATE SELECT ---
+  const handleSelectCustom = (id: string) => {
+    setSelectedTemplateId(id)
+    const template = customTemplates.find((item) => item.id === id)
+    setMessage(template ? replaceTemplateVariables(template.message, variables) : '')
+    setShowSaveForm(false)
+  }
+
+  // --- SAVE NEW CUSTOM TEMPLATE ---
+  const handleSaveTemplate = () => {
+    const title = savingTitle.trim()
+    if (!title || !message.trim()) return
+    const newTemplate: CustomWhatsappTemplate = {
+      id: `custom_${Date.now()}`,
+      label: title,
+      message: message.trim(),
+      category: 'custom',
+      custom: true,
+    }
+    const updated = [...customTemplates, newTemplate]
+    setCustomTemplates(updated)
+    saveCustomTemplates(updated)
+    setSelectedTemplateId(newTemplate.id)
+    setSavingTitle('')
+    setShowSaveForm(false)
+    showToast('Plantilla guardada')
+  }
+
+  // --- EDIT CUSTOM TEMPLATE ---
+  const handleStartEdit = (template: CustomWhatsappTemplate) => {
+    setEditingTemplateId(template.id)
+    setEditingTitle(template.label)
+    setEditingMessage(template.message)
+  }
+
+  const handleSaveEdit = () => {
+    if (!editingTemplateId || !editingTitle.trim()) return
+    const updated = customTemplates.map((tmpl) =>
+      tmpl.id === editingTemplateId
+        ? { ...tmpl, label: editingTitle.trim(), message: editingMessage.trim() }
+        : tmpl
+    )
+    setCustomTemplates(updated)
+    saveCustomTemplates(updated)
+    if (selectedTemplateId === editingTemplateId) {
+      setMessage(replaceTemplateVariables(editingMessage.trim(), variables))
+    }
+    setEditingTemplateId(null)
+    showToast('Plantilla actualizada')
+  }
+
+  const handleCancelEdit = () => {
+    setEditingTemplateId(null)
+  }
+
+  // --- DELETE CUSTOM TEMPLATE ---
+  const handleDeleteCustomTemplate = (id: string) => {
+    const updated = customTemplates.filter((tmpl) => tmpl.id !== id)
+    setCustomTemplates(updated)
+    saveCustomTemplates(updated)
+    if (selectedTemplateId === id) {
+      setSelectedTemplateId(null)
+      setMessage('')
+    }
+  }
+
+  // --- SEND ---
   const updateLeadContact = useCallback(async () => {
     if (!contact.leadId) return
     const { error } = await supabase
@@ -90,33 +248,26 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
         whatsapp_mensaje_enviado_at: new Date().toISOString(),
       })
       .eq('id', contact.leadId)
-    if (error) {
-      showToast(error.message, 'error')
-    }
+    if (error) showToast(error.message, 'error')
   }, [contact.leadId, showToast])
 
   const handleSend = async () => {
     if (!canSendMessage || warningMessage) return
     setSending(true)
     if (activeChannel === 'whatsapp') {
-      const whatsappUrl = contact.telefono ? buildWhatsappUrl(contact.telefono, message) : null
-      if (whatsappUrl) {
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-      }
+      const url = contact.telefono ? buildWhatsappUrl(contact.telefono, message) : null
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
     }
-    if (activeChannel === 'sms') {
-      if (hasPhone) {
-        const smsUrl = `sms:${phoneValue}?&body=${encodeURIComponent(message)}`
-        window.open(smsUrl, '_blank', 'noopener,noreferrer')
-      }
+    if (activeChannel === 'sms' && hasPhone) {
+      window.open(`sms:${phoneValue}?&body=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
     }
-    if (activeChannel === 'email') {
-      if (hasEmail && contact.email) {
-        const subject = t('messaging.emailSubject')
-        const emailUrl = `mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
-        window.open(emailUrl, '_blank', 'noopener,noreferrer')
-      }
+    if (activeChannel === 'email' && hasEmail && contact.email) {
+      const subject = t('messaging.emailSubject')
+      window.open(`mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
     }
+    // Save to history
+    appendHistory({ contactName: contact.nombre, channel: activeChannel, message, sentAt: new Date().toISOString() })
+    setHistoryEntries(loadHistory())
     await updateLeadContact()
     setSending(false)
   }
@@ -132,12 +283,13 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
           <Button variant="ghost" type="button" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button type="button" onClick={handleSend} disabled={!canSendMessage || Boolean(warningMessage) || sending}>
+          <Button type="button" onClick={handleSend} disabled={!canSendMessage || Boolean(warningMessage) || sending || charOver}>
             {sending ? t('common.saving') : t('messaging.send')}
           </Button>
         </>
       }
     >
+      {/* CANAL TABS */}
       <div className="template-tabs messaging-tabs">
         {channelTabs.map((tab) => (
           <button
@@ -150,47 +302,350 @@ export function MessageModal({ open, channel, contact, onClose }: MessageModalPr
           </button>
         ))}
       </div>
+
       <div className="template-grid">
+        {/* PANEL IZQUIERDO — TEMPLATES + HISTORIAL */}
         <div className="template-list">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
-              onClick={() => handleSelectTemplate(template.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  handleSelectTemplate(template.id)
-                }
-              }}
-            >
-              <div className="template-item-header">
-                <span className="template-title">{template.label}</span>
+          {!showHistory ? (
+            <>
+              {/* PLANTILLAS BASE */}
+              {builtinTemplates.map((template) => (
+                <div
+                  key={template.id}
+                  className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
+                  onClick={() => handleSelectBuiltin(template.id as BuiltinTemplateId)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectBuiltin(template.id as BuiltinTemplateId) }
+                  }}
+                >
+                  <div className="template-item-header">
+                    <span className="template-title">{template.label}</span>
+                  </div>
+                  <span className="template-snippet">
+                    {template.message ? replaceTemplateVariables(template.message, variables) : t('messaging.templateEmpty')}
+                  </span>
+                </div>
+              ))}
+
+              {/* MIS PLANTILLAS GUARDADAS */}
+              {customTemplates.length > 0 && (
+                <>
+                  <div
+                    style={{
+                      padding: '0.5rem 0.75rem 0.25rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      color: 'var(--color-text-muted, #6b7280)',
+                      letterSpacing: '0.05em',
+                      borderTop: '1px solid var(--color-border, #e5e7eb)',
+                      marginTop: '0.25rem',
+                    }}
+                  >
+                    MIS PLANTILLAS
+                  </div>
+                  {customTemplates.map((template) =>
+                    editingTemplateId === template.id ? (
+                      // EDIT FORM INLINE
+                      <div
+                        key={template.id}
+                        style={{
+                          padding: '0.6rem 0.75rem',
+                          background: 'var(--color-surface, #f9fafb)',
+                          borderBottom: '1px solid var(--color-border, #e5e7eb)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.4rem',
+                        }}
+                      >
+                        <input
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
+                          autoFocus
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          placeholder="Título..."
+                          style={{
+                            padding: '0.3rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            border: '1px solid var(--color-border, #e5e7eb)',
+                            fontSize: '0.8rem',
+                          }}
+                        />
+                        <textarea
+                          rows={3}
+                          value={editingMessage}
+                          onChange={(e) => setEditingMessage(e.target.value)}
+                          style={{
+                            padding: '0.3rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            border: '1px solid var(--color-border, #e5e7eb)',
+                            fontSize: '0.78rem',
+                            resize: 'vertical',
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-text-muted, #6b7280)' }}
+                          >
+                            Cancelar
+                          </button>
+                          <Button type="button" onClick={handleSaveEdit} disabled={!editingTitle.trim()}>
+                            Guardar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // NORMAL DISPLAY
+                      <div
+                        key={template.id}
+                        className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
+                        onClick={() => handleSelectCustom(template.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectCustom(template.id) }
+                        }}
+                      >
+                        <div
+                          className="template-item-header"
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          <span className="template-title">{template.label}</span>
+                          <div style={{ display: 'flex', gap: '0.15rem', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              aria-label="Editar plantilla"
+                              title="Editar"
+                              onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}
+                              style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                color: 'var(--color-text-muted, #6b7280)', fontSize: '0.7rem',
+                                padding: '0.1rem 0.25rem', lineHeight: 1, borderRadius: '0.2rem',
+                              }}
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Eliminar plantilla"
+                              title="Eliminar"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteCustomTemplate(template.id) }}
+                              style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                color: 'var(--color-text-muted, #6b7280)', fontSize: '0.75rem',
+                                padding: '0.1rem 0.25rem', lineHeight: 1, borderRadius: '0.2rem',
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                        <span className="template-snippet">
+                          {replaceTemplateVariables(template.message, variables)}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </>
+              )}
+
+              {/* TOGGLE HISTORIAL */}
+              {historyEntries.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(true)}
+                  style={{
+                    marginTop: '0.5rem',
+                    background: 'none',
+                    border: '1px dashed var(--color-border, #e5e7eb)',
+                    borderRadius: '0.375rem',
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.75rem',
+                    color: 'var(--color-text-muted, #6b7280)',
+                    cursor: 'pointer',
+                    width: '100%',
+                    textAlign: 'left',
+                  }}
+                >
+                  🕐 Ver historial ({historyEntries.length})
+                </button>
+              )}
+            </>
+          ) : (
+            // HISTORIAL VIEW
+            <>
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  color: 'var(--color-text-muted, #6b7280)',
+                  padding: '0.4rem 0.75rem',
+                  textAlign: 'left',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                }}
+              >
+                ← Volver a plantillas
+              </button>
+              <div
+                style={{
+                  borderTop: '1px solid var(--color-border, #e5e7eb)',
+                  paddingTop: '0.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem',
+                  maxHeight: '340px',
+                  overflowY: 'auto',
+                }}
+              >
+                {historyEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => { setMessage(entry.message); setShowHistory(false); setSelectedTemplateId(null) }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { setMessage(entry.message); setShowHistory(false); setSelectedTemplateId(null) }
+                    }}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--color-border, #e5e7eb)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                        {CHANNEL_ICON[entry.channel]} {entry.contactName}
+                      </span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                        {formatDate(entry.sentAt)}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted, #6b7280)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {entry.message}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <span className="template-snippet">
-                {template.message ? replaceTemplateVariables(template.message, variables) : t('messaging.templateEmpty')}
-              </span>
-            </div>
-          ))}
+            </>
+          )}
         </div>
+
+        {/* PANEL DERECHO — EDITOR */}
         <div className="template-preview">
           <h4>{t('messaging.editorTitle')}</h4>
           <label className="form-field template-message">
             <span>{t('messaging.messageLabel')}</span>
             <textarea
+              ref={textareaRef}
               rows={4}
               value={message}
-              onChange={(event) => setMessage(event.target.value)}
+              onChange={(e) => setMessage(e.target.value)}
               placeholder={t('messaging.messagePlaceholder')}
             />
           </label>
-          <div className="template-variables">{t('messaging.variables')}</div>
-          {selectedTemplate && !selectedTemplate.message && (
-            <p className="template-preview-text muted">{t('messaging.customHint')}</p>
-          )}
+
+          {/* CONTADOR DE CARACTERES */}
+          <div
+            style={{
+              fontSize: '0.72rem',
+              color: charOver ? '#dc2626' : charCaution ? '#d97706' : 'var(--color-text-muted, #6b7280)',
+              textAlign: 'right',
+              marginTop: '0.15rem',
+            }}
+          >
+            {charCount} caracteres{charOver ? ' — mensaje demasiado largo' : charCaution ? ' — casi al límite' : ''}
+          </div>
+
+          {/* VARIABLES CLICABLES */}
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+            {['{nombre}', '{vendedor}'].map((variable) => (
+              <button
+                key={variable}
+                type="button"
+                title={`Insertar ${variable}`}
+                onClick={() => insertVariable(variable)}
+                style={{
+                  background: 'var(--color-surface, #f3f4f6)',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  borderRadius: '0.25rem',
+                  padding: '0.15rem 0.45rem',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {variable}
+              </button>
+            ))}
+            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', alignSelf: 'center' }}>
+              — clic para insertar
+            </span>
+          </div>
+
           {warningMessage && <p className="template-warning">{warningMessage}</p>}
+
+          {/* GUARDAR COMO PLANTILLA */}
+          {message.trim() && !showSaveForm && (
+            <button
+              type="button"
+              onClick={() => setShowSaveForm(true)}
+              style={{
+                marginTop: '0.6rem',
+                background: 'none',
+                border: '1px dashed var(--color-border, #e5e7eb)',
+                borderRadius: '0.375rem',
+                padding: '0.4rem 0.75rem',
+                fontSize: '0.78rem',
+                color: 'var(--color-text-muted, #6b7280)',
+                cursor: 'pointer',
+                width: '100%',
+                textAlign: 'left',
+              }}
+            >
+              + Guardar como plantilla
+            </button>
+          )}
+          {showSaveForm && (
+            <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+                value={savingTitle}
+                onChange={(e) => setSavingTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTemplate()
+                  if (e.key === 'Escape') { setShowSaveForm(false); setSavingTitle('') }
+                }}
+                placeholder="Nombre de la plantilla..."
+                style={{
+                  flex: 1,
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.8rem',
+                }}
+              />
+              <Button type="button" onClick={handleSaveTemplate} disabled={!savingTitle.trim()}>
+                Guardar
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setShowSaveForm(false); setSavingTitle('') }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted, #6b7280)', fontSize: '0.9rem', padding: '0.25rem' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
