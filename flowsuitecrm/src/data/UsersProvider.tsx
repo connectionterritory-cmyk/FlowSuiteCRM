@@ -7,10 +7,12 @@ type UserRow = {
   nombre: string | null
   apellido: string | null
   email: string | null
+  rol: string | null
 }
 
 type UsersContextValue = {
   usersById: Record<string, string>
+  currentRole: string | null
   loading: boolean
 }
 
@@ -19,11 +21,13 @@ const UsersContext = createContext<UsersContextValue | undefined>(undefined)
 export function UsersProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth()
   const [usersById, setUsersById] = useState<Record<string, string>>({})
+  const [currentRole, setCurrentRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!session) {
       setUsersById({})
+      setCurrentRole(null)
       setLoading(false)
       return
     }
@@ -33,12 +37,13 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
       setLoading(true)
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email')
+        .select('id, nombre, apellido, email, rol')
 
       if (!active) return
 
       if (error) {
         setUsersById({})
+        setCurrentRole(null)
       } else {
         const map: Record<string, string> = {}
         ;(data as UserRow[] | null)?.forEach((user) => {
@@ -46,6 +51,8 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
           map[user.id] = fullName || user.email || user.id
         })
         setUsersById(map)
+        const me = (data as UserRow[] | null)?.find((u) => u.id === session.user.id)
+        setCurrentRole(me?.rol ?? null)
       }
       setLoading(false)
     }
@@ -56,7 +63,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session])
 
-  const value = useMemo(() => ({ usersById, loading }), [usersById, loading])
+  const value = useMemo(() => ({ usersById, currentRole, loading }), [usersById, currentRole, loading])
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>
 }

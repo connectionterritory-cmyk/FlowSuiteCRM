@@ -88,7 +88,7 @@ function tipoBadgeStyle(tipo: string | null): { background: string; color: strin
 export function VentasPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
-  const { usersById } = useUsers()
+  const { usersById, currentRole } = useUsers()
   const { showToast } = useToast()
   const [ventas, setVentas] = useState<VentaRecord[]>([])
   const [clientes, setClientes] = useState<ClienteOption[]>([])
@@ -130,10 +130,14 @@ export function VentasPage() {
     if (!configured) return
     setLoading(true)
     setError(null)
-    const { data, error: fetchError } = await supabase
+    let query = supabase
       .from('ventas')
       .select('id, numero_nota_pedido, cliente_id, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, created_at')
       .order('created_at', { ascending: false })
+    if (currentRole === 'vendedor' && session?.user.id) {
+      query = query.eq('vendedor_id', session.user.id)
+    }
+    const { data, error: fetchError } = await query
     if (fetchError) {
       setError(fetchError.message)
       setVentas([])
@@ -141,7 +145,7 @@ export function VentasPage() {
       setVentas(data ?? [])
     }
     setLoading(false)
-  }, [configured])
+  }, [configured, currentRole, session?.user.id])
 
   const loadOptions = useCallback(async () => {
     if (!configured) return

@@ -197,6 +197,9 @@ export function LeadsPage() {
     if (role === 'telemercadeo') {
       query = query.eq('estado_pipeline', 'nuevo')
     }
+    if (role === 'vendedor' && session?.user.id) {
+      query = query.eq('owner_id', session.user.id)
+    }
     const { data, error: fetchError } = await query
 
     if (fetchError) {
@@ -206,7 +209,7 @@ export function LeadsPage() {
       setLeads(data ?? [])
     }
     setLoading(false)
-  }, [configured, role, viewMode])
+  }, [configured, role, viewMode, session?.user.id])
 
   useEffect(() => {
     if (configured) loadRole()

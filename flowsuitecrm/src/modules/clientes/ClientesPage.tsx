@@ -89,7 +89,7 @@ function badgeTextColor(segmento: string): string {
 export function ClientesPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
-  const { usersById } = useUsers()
+  const { usersById, currentRole } = useUsers()
   const { showToast } = useToast()
   const [clientes, setClientes] = useState<ClienteRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -120,10 +120,11 @@ export function ClientesPage() {
     if (!configured) return
     setLoading(true)
     setError(null)
-    const { data, error: fetchError } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('created_at', { ascending: false })
+    let query = supabase.from('clientes').select('*').order('created_at', { ascending: false })
+    if (currentRole === 'vendedor' && session?.user.id) {
+      query = query.eq('vendedor_id', session.user.id)
+    }
+    const { data, error: fetchError } = await query
 
     if (fetchError) {
       setError(fetchError.message)
@@ -132,7 +133,7 @@ export function ClientesPage() {
       setClientes((data ?? []) as ClienteRecord[])
     }
     setLoading(false)
-  }, [configured])
+  }, [configured, currentRole, session?.user.id])
 
   useEffect(() => {
     if (configured) loadClientes()
