@@ -155,24 +155,34 @@ export function UsuariosPage() {
   useEffect(() => {
     if (!teleAssignSearch.trim() || !configured) {
       setTeleAssignResults([])
+      setTeleAssignLoading(false)
       return
     }
     const term = teleAssignSearch.trim()
+    let active = true
+    setTeleAssignLoading(true)
     const timer = setTimeout(async () => {
       const { data } = await supabase
         .from('usuarios')
         .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, rol, activo, created_at')
         .in('rol', ['vendedor', 'distribuidor'])
         .eq('activo', true)
-        .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,email.ilike.%${term}%`)
+        .or(
+          `nombre.ilike.%${term}%,apellido.ilike.%${term}%,email.ilike.%${term}%,codigo_vendedor.ilike.%${term}%,codigo_distribuidor.ilike.%${term}%`,
+        )
         .limit(6)
+      if (!active) return
       setTeleAssignResults(
         ((data ?? []) as UsuarioRecord[]).filter(
           (u) => !teleAssignments.some((a) => a.vendedor_id === u.id),
         ),
       )
+      setTeleAssignLoading(false)
     }, 300)
-    return () => clearTimeout(timer)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
   }, [teleAssignSearch, configured, teleAssignments])
 
   const handleAddTeleAssignment = useCallback(
@@ -660,9 +670,10 @@ export function UsuariosPage() {
                               alignItems: 'center',
                               justifyContent: 'space-between',
                               padding: '0.4rem 0.75rem',
-                              background: 'var(--color-card, #1b2230)',
+                              background: 'var(--color-surface, #f8fafb)',
                               borderRadius: '0.5rem',
                               border: '1px solid var(--color-border, #2b3244)',
+                              color: 'var(--color-text)',
                             }}
                           >
                             <div>
@@ -717,45 +728,69 @@ export function UsuariosPage() {
                       boxSizing: 'border-box',
                     }}
                   />
-                  {teleAssignResults.length > 0 && (
+                  {(teleAssignSearch.trim() !== '' || teleAssignLoading) && (
                     <div
                       style={{
                         position: 'absolute',
-                        top: '100%',
+                        bottom: 'calc(100% + 6px)',
                         left: 0,
                         right: 0,
                         zIndex: 20,
                         background: 'var(--color-card, #1b2230)',
                         border: '1px solid var(--color-border, #2b3244)',
                         borderRadius: '0.5rem',
-                        marginTop: '0.25rem',
+                        marginBottom: '0.25rem',
                         boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
+                        maxHeight: '180px',
+                        overflowY: 'auto',
                       }}
                     >
-                      {teleAssignResults.map((u) => (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => handleAddTeleAssignment(u)}
+                      {teleAssignLoading ? (
+                        <div
                           style={{
-                            display: 'block',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '0.5rem 0.75rem',
-                            background: 'none',
-                            border: 'none',
-                            borderBottom: '1px solid var(--color-border, #2b3244)',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem',
-                            color: 'var(--color-text)',
+                            padding: '0.6rem 0.75rem',
+                            fontSize: '0.82rem',
+                            color: 'var(--color-text-muted)',
                           }}
                         >
-                          {[u.nombre, u.apellido].filter(Boolean).join(' ') || u.email}{' '}
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
-                            ({u.rol})
-                          </span>
-                        </button>
-                      ))}
+                          Buscando...
+                        </div>
+                      ) : teleAssignResults.length === 0 ? (
+                        <div
+                          style={{
+                            padding: '0.6rem 0.75rem',
+                            fontSize: '0.82rem',
+                            color: 'var(--color-text-muted)',
+                          }}
+                        >
+                          Sin resultados
+                        </div>
+                      ) : (
+                        teleAssignResults.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => handleAddTeleAssignment(u)}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '0.5rem 0.75rem',
+                              background: 'none',
+                              border: 'none',
+                              borderBottom: '1px solid var(--color-border, #2b3244)',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                              color: 'var(--color-text)',
+                            }}
+                          >
+                            {[u.nombre, u.apellido].filter(Boolean).join(' ') || u.email}{' '}
+                            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
+                              ({u.rol})
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

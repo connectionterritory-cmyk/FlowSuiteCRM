@@ -511,7 +511,7 @@ export function VentasPage() {
   const inputStyle = {
     width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.375rem',
     border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem',
-    background: 'white', boxSizing: 'border-box' as const,
+    background: 'var(--color-input)', color: 'var(--color-text)', boxSizing: 'border-box' as const,
   }
   const labelStyle = {
     display: 'block', fontSize: '0.75rem', fontWeight: 600,
@@ -607,7 +607,7 @@ export function VentasPage() {
               <select
                 value={filtroTipo}
                 onChange={(e) => setFiltroTipo(e.target.value)}
-                style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'white' }}
+                style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
               >
                 <option value="todos">Todos</option>
                 <option value="venta_inicial">{t('ventas.tipo.venta_inicial')}</option>
@@ -619,7 +619,7 @@ export function VentasPage() {
               <select
                 value={filtroVendedor}
                 onChange={(e) => setFiltroVendedor(e.target.value)}
-                style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'white' }}
+                style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
               >
                 <option value="todos">Todos</option>
                 {vendedoresUnicos.map((v) => (

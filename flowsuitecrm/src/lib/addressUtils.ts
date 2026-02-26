@@ -88,16 +88,42 @@ export function parseUsAddress(raw: string): ParsedAddress | null {
  * Builds a Google Maps navigation URL from address parts.
  * No API key required — opens Google Maps in a new tab.
  */
-export function buildMapsNavUrl(parts: {
+type AddressParts = {
   direccion?: string | null
   ciudad?: string | null
   estado_region?: string | null
   codigo_postal?: string | null
-}): string | null {
-  const segments = [parts.direccion, parts.ciudad, parts.estado_region, parts.codigo_postal].filter(Boolean)
+}
+
+function normalizeAddressParts(parts: AddressParts): AddressParts {
+  let { direccion, ciudad, estado_region, codigo_postal } = parts
+  if (direccion && direccion.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(direccion) as Partial<AddressParts> & { apartamento?: string | null }
+      if (parsed && typeof parsed === 'object') {
+        direccion = parsed.direccion ?? direccion
+        ciudad = ciudad ?? parsed.ciudad
+        estado_region = estado_region ?? parsed.estado_region
+        codigo_postal = codigo_postal ?? parsed.codigo_postal
+      }
+    } catch {
+    }
+  }
+  return { direccion, ciudad, estado_region, codigo_postal }
+}
+
+export function formatAddressLabel(parts: AddressParts): string | null {
+  const normalized = normalizeAddressParts(parts)
+  const segments = [normalized.direccion, normalized.ciudad, normalized.estado_region, normalized.codigo_postal]
+    .filter(Boolean)
   if (segments.length === 0) return null
-  const query = segments.join(', ')
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`
+  return segments.join(', ')
+}
+
+export function buildMapsNavUrl(parts: AddressParts): string | null {
+  const query = formatAddressLabel(parts)
+  if (!query) return null
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 
 /**

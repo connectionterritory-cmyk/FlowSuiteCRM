@@ -182,3 +182,12 @@ export function IconRestore({ className }: IconProps) {
     </svg>
   )
 }
+
+export function IconPhone({ className }: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" className={className}>
+      <path d="M4 5.5l4-2 3 3-2 4c1.6 2.3 3.7 4.4 6 6l4-2 3 3-2 4" />
+      <path d="M7 3.5c0 8.5 6.9 15.5 15.5 15.5" />
+    </svg>
+  )
+}

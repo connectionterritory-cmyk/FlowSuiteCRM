@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { buildTelUrl } from '../../lib/addressUtils'
 
 export type Cliente = {
   id: string
@@ -12,6 +13,7 @@ export type Cliente = {
   dias_atraso: number | null
   fecha_nacimiento: string | null
   fecha_ultimo_pedido: string | null
+  ultima_fecha_pago: string | null
   hycite_id: string | null
   estado_cuenta: string | null
   nivel: number | null
@@ -34,7 +36,7 @@ export type ResultadoLlamada =
   | 'no_interesado'
   | 'numero_equivocado'
 
-export type SegmentoTab = 'todos' | '0_30' | '31_60' | '61_90' | 'mas_90'
+export type SegmentoTab = 'todos' | '0_30' | '31_60' | '61_90' | 'mas_90' | 'hoy' | 'promesas_vencidas'
 
 export function nombreCompleto(c: Cliente): string {
   return [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre'
@@ -165,6 +167,18 @@ export function ClienteCard({
             ${Number(cliente.saldo_actual).toFixed(2)}
           </p>
         )}
+        {(cliente.monto_moroso ?? 0) > 0 && (
+          <p
+            style={{
+              margin: '0.1rem 0 0',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              color: '#ef4444',
+            }}
+          >
+            ${Number(cliente.monto_moroso).toFixed(2)} moroso
+          </p>
+        )}
         <span
           style={{
             display: 'inline-block',
@@ -182,7 +196,7 @@ export function ClienteCard({
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <button
           type="button"
           onClick={onWhatsApp}
@@ -199,6 +213,26 @@ export function ClienteCard({
         >
           WhatsApp
         </button>
+        {(cliente.telefono || cliente.telefono_casa) && (
+          <a
+            href={buildTelUrl(cliente.telefono ?? cliente.telefono_casa ?? '')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.55rem',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              background: 'rgba(16, 185, 129, 0.16)',
+              color: '#10b981',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Llamar
+          </a>
+        )}
         <button
           type="button"
           onClick={onLlamar}

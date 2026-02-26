@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import type { Cliente, EquipoInstalado } from './TelemercadeoShared'
 
 const CLIENTE_FIELDS =
-  'id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, hycite_id, estado_cuenta, nivel'
+  'id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, ultima_fecha_pago, hycite_id, estado_cuenta, nivel'
 
 /**
  * Returns the list of vendedor_ids assigned to a telemercadeo user.
@@ -27,11 +27,12 @@ async function getTeleVendedorIds(userId: string): Promise<string[] | null> {
   return ((data ?? []) as { vendedor_id: string }[]).map((r) => r.vendedor_id)
 }
 
-export function useTelemercadeoClientes() {
+export function useTelemercadeoClientes(options?: { balanceOnly?: boolean }) {
   const configured = isSupabaseConfigured
   const { session } = useAuth()
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(false)
+  const balanceOnly = options?.balanceOnly ?? false
 
   const cargarClientes = useCallback(async () => {
     if (!configured || !session?.user.id) return
@@ -51,15 +52,20 @@ export function useTelemercadeoClientes() {
       .select(CLIENTE_FIELDS)
       .order('dias_atraso', { ascending: false })
 
-    // If vendedorIds is non-null, filter by owner_id IN assigned vendedores
+    if (balanceOnly) {
+      query = query.gt('saldo_actual', 0)
+    }
+
+    // If vendedorIds is non-null, filter by vendedor_id or distribuidor_id
     if (vendedorIds !== null) {
-      query = query.in('owner_id', vendedorIds)
+      const idsList = vendedorIds.join(',')
+      query = query.or(`vendedor_id.in.(${idsList}),distribuidor_id.in.(${idsList})`)
     }
 
     const { data } = await query
     setClientes((data as Cliente[]) ?? [])
     setLoading(false)
-  }, [configured, session?.user.id])
+  }, [configured, session?.user.id, balanceOnly])
 
   useEffect(() => {
     cargarClientes()

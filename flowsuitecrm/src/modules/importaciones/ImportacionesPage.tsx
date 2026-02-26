@@ -27,6 +27,7 @@ interface ClienteImport {
   estado_cuenta: EstadoCuenta
   elegible_addon: boolean
   fecha_ultimo_pedido: string | null
+  ultima_fecha_pago: string | null
   origen: 'hycite_import'
   codigo_vendedor_hycite: string | null
   codigo_dist_hycite: string | null
@@ -170,6 +171,9 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     estado_cuenta: mapearEstado(obtenerCampo(row, normalizedRow, ['STATUS'])),
     elegible_addon: true,
     fecha_ultimo_pedido: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE COMPRA'])),
+    ultima_fecha_pago: parsearFecha(
+      obtenerCampo(row, normalizedRow, ['ULTIMA FECHA DE PAGO', 'ÚLTIMA FECHA DE PAGO', 'ultima fecha de pago']),
+    ),
     origen: 'hycite_import',
     codigo_vendedor_hycite: obtenerCampo(row, normalizedRow, ['VENDEDOR']).trim() || null,
     codigo_dist_hycite: obtenerCampo(row, normalizedRow, ['DISTRIBUIDOR']).trim() || null,

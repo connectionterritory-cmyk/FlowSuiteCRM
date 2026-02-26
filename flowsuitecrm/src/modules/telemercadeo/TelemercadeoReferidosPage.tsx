@@ -13,11 +13,8 @@ type CiReferido = {
   email: string | null
   notas: string | null
   calificacion: number | null
-  estado_activacion: string | null
+  estado: string | null
   created_at: string
-  conexion?: {
-    nombre: string | null
-  }
 }
 
 type ContactoResultado = 'no_contesta' | 'cita_agendada' | 'interesado' | 'no_interesado' | 'numero_equivocado'
@@ -58,13 +55,13 @@ export function TelemercadeoReferidosPage() {
     setLoading(true)
     let query = supabase
       .from('ci_referidos')
-      .select('id, nombre, telefono, email, notas, calificacion, estado_activacion, created_at, conexion:ci_conexiones!conexion_id(nombre)')
+      .select('id, nombre, telefono, email, notas, calificacion, estado, created_at')
       .order('calificacion', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(100)
 
     if (filtro === 'pendientes') {
-      query = query.or('estado_activacion.is.null,estado_activacion.neq.activado')
+      query = query.or('estado.is.null,estado.neq.activado')
     }
 
     const { data } = await query
@@ -89,11 +86,11 @@ export function TelemercadeoReferidosPage() {
     const nuevoEstado =
       resultado === 'cita_agendada' || resultado === 'interesado'
         ? 'en_proceso'
-        : selected.estado_activacion
+        : selected.estado
 
     const { error } = await supabase
       .from('ci_referidos')
-      .update({ notas: notas || null, estado_activacion: nuevoEstado })
+      .update({ notas: notas || null, estado: nuevoEstado })
       .eq('id', selected.id)
 
     if (error) {
@@ -146,9 +143,9 @@ export function TelemercadeoReferidosPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {referidos.map((ref) => {
             const estadoColor =
-              ref.estado_activacion === 'en_proceso'
+              ref.estado === 'en_proceso'
                 ? '#3b82f6'
-                : ref.estado_activacion === 'activado'
+                : ref.estado === 'activado'
                 ? '#10b981'
                 : '#6b7280'
 
@@ -183,12 +180,11 @@ export function TelemercadeoReferidosPage() {
                         border: `1px solid ${estadoColor}44`,
                       }}
                     >
-                      {ref.estado_activacion ?? 'pendiente'}
+                      {ref.estado ?? 'pendiente'}
                     </span>
                   </div>
                   <p style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
                     {ref.telefono ?? ref.email ?? 'Sin contacto'}
-                    {ref.conexion?.nombre && ` · de: ${ref.conexion.nombre}`}
                   </p>
                   {ref.notas && (
                     <p

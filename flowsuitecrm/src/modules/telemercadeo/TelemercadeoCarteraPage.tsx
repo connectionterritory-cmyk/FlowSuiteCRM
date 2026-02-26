@@ -16,17 +16,20 @@ import { supabase } from '../../lib/supabase/client'
 type LastCall = {
   resultado: string
   created_at: string
+  followup_at: string | null
 }
 
 export function TelemercadeoCarteraPage() {
   const { openWhatsapp, ModalRenderer } = useMessaging()
-  const { clientes, loading } = useTelemercadeoClientes()
+  const { clientes, loading } = useTelemercadeoClientes({ balanceOnly: true })
   const [segmento, setSegmento] = useState<SegmentoTab>('todos')
   const [modalOpen, setModalOpen] = useState(false)
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [lastCallMap, setLastCallMap] = useState<Record<string, LastCall>>({})
   const [busqueda, setBusqueda] = useState('')
   const [sinContacto, setSinContacto] = useState(false)
+  const [seguimientosHoyIds, setSeguimientosHoyIds] = useState<Set<string>>(new Set())
+  const [promesasVencidasIds, setPromesasVencidasIds] = useState<Set<string>>(new Set())
 
   // Batch-load the most recent call per client
   useEffect(() => {
@@ -36,25 +39,64 @@ export function TelemercadeoCarteraPage() {
     }
     const ids = clientes.map((c) => c.id)
     const load = async () => {
+      const today = new Date().toISOString().split('T')[0]
       const { data } = await supabase
         .from('llamadas_telemercadeo')
-        .select('cliente_id, resultado, created_at')
+        .select('cliente_id, resultado, created_at, followup_at')
         .in('cliente_id', ids)
         .order('created_at', { ascending: false })
+
+      type Row = { cliente_id: string; resultado: string; created_at: string; followup_at: string | null }
+      const rows = (data ?? []) as Row[]
+
       const map: Record<string, LastCall> = {}
-      for (const row of (data ?? []) as { cliente_id: string; resultado: string; created_at: string }[]) {
+      const hoy = new Set<string>()
+      const byClient: Record<string, Row[]> = {}
+
+      for (const row of rows) {
         if (!map[row.cliente_id]) {
-          map[row.cliente_id] = { resultado: row.resultado, created_at: row.created_at }
+          map[row.cliente_id] = {
+            resultado: row.resultado,
+            created_at: row.created_at,
+            followup_at: row.followup_at,
+          }
+        }
+        if (row.followup_at === today) hoy.add(row.cliente_id)
+        if (!byClient[row.cliente_id]) byClient[row.cliente_id] = []
+        byClient[row.cliente_id].push(row)
+      }
+
+      const vencidas = new Set<string>()
+      for (const [clienteId, calls] of Object.entries(byClient)) {
+        for (const call of calls) {
+          if (call.resultado === 'pago_prometido' && call.followup_at && call.followup_at < today) {
+            const hasPago = calls.some(
+              (c) => c.resultado === 'pago_realizado' && c.created_at > call.created_at,
+            )
+            if (!hasPago) vencidas.add(clienteId)
+            break
+          }
         }
       }
+
       setLastCallMap(map)
+      setSeguimientosHoyIds(hoy)
+      setPromesasVencidasIds(vencidas)
     }
     load()
   }, [clientes])
 
   // Count per segment (unfiltered, for badges)
   const segmentCounts = useMemo(() => {
-    const counts = { todos: clientes.length, '0_30': 0, '31_60': 0, '61_90': 0, mas_90: 0 }
+    const counts = {
+      todos: clientes.length,
+      '0_30': 0,
+      '31_60': 0,
+      '61_90': 0,
+      mas_90: 0,
+      hoy: 0,
+      promesas_vencidas: 0,
+    }
     for (const c of clientes) {
       const d = c.dias_atraso ?? 0
       const m = c.monto_moroso ?? 0
@@ -62,9 +104,11 @@ export function TelemercadeoCarteraPage() {
       if (d >= 31 && d < 61) counts['31_60']++
       if (d >= 61 && d < 91) counts['61_90']++
       if (d >= 91) counts.mas_90++
+      if (seguimientosHoyIds.has(c.id)) counts.hoy++
+      if (promesasVencidasIds.has(c.id)) counts.promesas_vencidas++
     }
     return counts
-  }, [clientes])
+  }, [clientes, seguimientosHoyIds, promesasVencidasIds])
 
   const clientesCartera = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -75,6 +119,8 @@ export function TelemercadeoCarteraPage() {
       if (segmento === '31_60' && !(d >= 31 && d < 61)) return false
       if (segmento === '61_90' && !(d >= 61 && d < 91)) return false
       if (segmento === 'mas_90' && !(d >= 91)) return false
+      if (segmento === 'hoy' && !seguimientosHoyIds.has(c.id)) return false
+      if (segmento === 'promesas_vencidas' && !promesasVencidasIds.has(c.id)) return false
       if (sinContacto && lastCallMap[c.id]) return false
       if (q) {
         const nombre = `${c.nombre ?? ''} ${c.apellido ?? ''}`.toLowerCase()
@@ -84,7 +130,7 @@ export function TelemercadeoCarteraPage() {
       }
       return true
     })
-  }, [clientes, segmento, busqueda, sinContacto, lastCallMap])
+  }, [clientes, segmento, busqueda, sinContacto, lastCallMap, seguimientosHoyIds, promesasVencidasIds])
 
   const abrirModal = (cliente: Cliente) => {
     setClienteSeleccionado(cliente)
@@ -96,23 +142,51 @@ export function TelemercadeoCarteraPage() {
     // Refresh last calls after registering a new one
     if (clientes.length === 0) return
     const ids = clientes.map((c) => c.id)
+    const today = new Date().toISOString().split('T')[0]
     supabase
       .from('llamadas_telemercadeo')
-      .select('cliente_id, resultado, created_at')
+      .select('cliente_id, resultado, created_at, followup_at')
       .in('cliente_id', ids)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
+        type Row = { cliente_id: string; resultado: string; created_at: string; followup_at: string | null }
+        const rows = (data ?? []) as Row[]
         const map: Record<string, LastCall> = {}
-        for (const row of (data ?? []) as { cliente_id: string; resultado: string; created_at: string }[]) {
+        const hoy = new Set<string>()
+        const byClient: Record<string, Row[]> = {}
+        for (const row of rows) {
           if (!map[row.cliente_id]) {
-            map[row.cliente_id] = { resultado: row.resultado, created_at: row.created_at }
+            map[row.cliente_id] = {
+              resultado: row.resultado,
+              created_at: row.created_at,
+              followup_at: row.followup_at,
+            }
+          }
+          if (row.followup_at === today) hoy.add(row.cliente_id)
+          if (!byClient[row.cliente_id]) byClient[row.cliente_id] = []
+          byClient[row.cliente_id].push(row)
+        }
+        const vencidas = new Set<string>()
+        for (const [clienteId, calls] of Object.entries(byClient)) {
+          for (const call of calls) {
+            if (call.resultado === 'pago_prometido' && call.followup_at && call.followup_at < today) {
+              const hasPago = calls.some(
+                (c) => c.resultado === 'pago_realizado' && c.created_at > call.created_at,
+              )
+              if (!hasPago) vencidas.add(clienteId)
+              break
+            }
           }
         }
         setLastCallMap(map)
+        setSeguimientosHoyIds(hoy)
+        setPromesasVencidasIds(vencidas)
       })
   }
 
   const SEGMENTOS = [
+    { key: 'hoy', label: 'Hoy', color: '#3b82f6' },
+    { key: 'promesas_vencidas', label: 'Promesas venc.', color: '#f59e0b' },
     { key: 'todos', label: 'Todos', color: '#6b7280' },
     { key: '0_30', label: '0-30 días', color: '#f59e0b' },
     { key: '31_60', label: '31-60 días', color: '#ea580c' },

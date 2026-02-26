@@ -12,7 +12,14 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useMessaging } from '../../hooks/useMessaging'
-import { parseUsAddress, buildMapsNavUrl, buildTelUrl, capitalizeProperName, type ParsedAddress } from '../../lib/addressUtils'
+import {
+  parseUsAddress,
+  buildMapsNavUrl,
+  buildTelUrl,
+  capitalizeProperName,
+  formatAddressLabel,
+  type ParsedAddress,
+} from '../../lib/addressUtils'
 
 type ClienteRecord = {
   id: string
@@ -53,12 +60,13 @@ const initialForm = {
   ciudad: '',
   estado_region: '',
   codigo_postal: '',
+  hycite_id: '',
   numero_cuenta_financiera: '',
   saldo_actual: '',
   vendedor_id: '',
   distribuidor_id: '',
   fecha_nacimiento: '',
-  activo: true,
+  estado_cuenta: 'actual',
 }
 
 const BIRTH_YEAR_DEFAULT = 2000
@@ -130,6 +138,7 @@ export function ClientesPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
   const { usersById, currentRole } = useUsers()
+  const canDelete = currentRole === 'admin' || currentRole === 'distribuidor'
   const { showToast } = useToast()
   const [clientes, setClientes] = useState<ClienteRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -303,6 +312,7 @@ export function ClientesPage() {
   }, [clientes])
 
   const handleDeleteCliente = async (id: string) => {
+    if (!canDelete) return
     setDeletingId(id)
     const { error: delError } = await supabase.from('clientes').delete().eq('id', id)
     if (delError) {
@@ -423,8 +433,18 @@ export function ClientesPage() {
           {
             label: 'Direccion',
             value: (() => {
-              const mapsUrl = buildMapsNavUrl({ direccion: cliente.direccion, ciudad: cliente.ciudad, estado_region: cliente.estado_region, codigo_postal: cliente.codigo_postal })
-              const addr = [cliente.direccion, cliente.ciudad, cliente.estado_region, cliente.codigo_postal].filter(Boolean).join(', ')
+              const mapsUrl = buildMapsNavUrl({
+                direccion: cliente.direccion,
+                ciudad: cliente.ciudad,
+                estado_region: cliente.estado_region,
+                codigo_postal: cliente.codigo_postal,
+              })
+              const addr = formatAddressLabel({
+                direccion: cliente.direccion,
+                ciudad: cliente.ciudad,
+                estado_region: cliente.estado_region,
+                codigo_postal: cliente.codigo_postal,
+              })
               return addr ? (
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <span>{addr}</span>
@@ -458,6 +478,7 @@ export function ClientesPage() {
   }, [clientesOrdenados, openWhatsapp, usersById])
 
   const selectedCliente = selectedRow ? clientes.find((c) => c.id === selectedRow.id) ?? null : null
+  const editingCliente = editingId ? clientes.find((c) => c.id === editingId) ?? null : null
 
   const emptyLabel = loading ? t('common.loading') : 'Sin resultados'
 
@@ -483,12 +504,13 @@ export function ClientesPage() {
       ciudad: cliente.ciudad ?? '',
       estado_region: cliente.estado_region ?? '',
       codigo_postal: cliente.codigo_postal ?? '',
+      hycite_id: cliente.hycite_id ?? '',
       numero_cuenta_financiera: cliente.numero_cuenta_financiera ?? '',
       saldo_actual: cliente.saldo_actual != null ? String(cliente.saldo_actual) : '',
       vendedor_id: cliente.vendedor_id ?? '',
       distribuidor_id: cliente.distribuidor_id ?? '',
       fecha_nacimiento: cliente.fecha_nacimiento ?? '',
-      activo: cliente.activo ?? true,
+      estado_cuenta: cliente.estado_cuenta ?? 'actual',
     })
     setParsedAddr(null)
     setBirthMonth(birth.month)
@@ -548,11 +570,13 @@ export function ClientesPage() {
       ciudad: toNull(formValues.ciudad),
       estado_region: toNull(formValues.estado_region),
       codigo_postal: toNull(formValues.codigo_postal),
+      hycite_id: toNull(formValues.hycite_id),
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
       saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),
       distribuidor_id: toNull(formValues.distribuidor_id),
       fecha_nacimiento: birthDate,
-      activo: formValues.activo,
+      estado_cuenta: formValues.estado_cuenta,
+      activo: formValues.estado_cuenta === 'actual',
     }
     const { error: opError } = editingId
       ? await supabase.from('clientes').update(basePayload).eq('id', editingId)
@@ -815,7 +839,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                   boxSizing: 'border-box',
                 }}
               />
@@ -844,7 +869,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                   boxSizing: 'border-box',
                 }}
               />
@@ -873,7 +899,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                   boxSizing: 'border-box',
                 }}
               />
@@ -902,7 +929,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                   boxSizing: 'border-box',
                 }}
               />
@@ -929,7 +957,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="todos">Todos</option>
@@ -960,7 +989,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="todos">Todos</option>
@@ -994,7 +1024,8 @@ export function ClientesPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="todos">Todos</option>
@@ -1208,8 +1239,12 @@ export function ClientesPage() {
             <input value={formValues.codigo_postal} onChange={handleChange('codigo_postal')} />
           </label>
           <label className="form-field">
-            <span>Cuenta Hycite / Financiera</span>
-            <input value={formValues.numero_cuenta_financiera} onChange={handleChange('numero_cuenta_financiera')} />
+            <span>No. Hycite</span>
+            <input value={formValues.hycite_id} onChange={handleChange('hycite_id')} placeholder="Número de cliente Hycite" />
+          </label>
+          <label className="form-field">
+            <span>No. Financiero</span>
+            <input value={formValues.numero_cuenta_financiera} onChange={handleChange('numero_cuenta_financiera')} placeholder="Número de cuenta financiera" />
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.saldoActual')}</span>
@@ -1240,10 +1275,27 @@ export function ClientesPage() {
               </select>
             </div>
           </label>
-          <label className="form-field checkbox-field">
-            <span>{t('clientes.fields.activo')}</span>
-            <input type="checkbox" checked={formValues.activo} onChange={handleChange('activo')} />
+          <label className="form-field">
+            <span>Estado de cuenta</span>
+            <select value={formValues.estado_cuenta} onChange={handleChange('estado_cuenta')}>
+              <option value="actual">Actual</option>
+              <option value="cancelacion_total">Cancelado</option>
+              <option value="inactivo">Inactivo</option>
+            </select>
           </label>
+          {editingCliente && (editingCliente.nivel || (editingCliente.monto_moroso ?? 0) > 0 || (editingCliente.dias_atraso ?? 0) > 0 || editingCliente.fecha_ultimo_pedido) && (
+            <div style={{ gridColumn: '1 / -1', padding: '0.75rem', background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '0.375rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                DATOS DEL SISTEMA HYCITE (solo lectura)
+              </div>
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+                {editingCliente.nivel ? <span><strong>Nivel:</strong> {editingCliente.nivel}</span> : null}
+                {(editingCliente.monto_moroso ?? 0) > 0 ? <span><strong>Moroso:</strong> ${Number(editingCliente.monto_moroso).toFixed(2)}</span> : null}
+                {(editingCliente.dias_atraso ?? 0) > 0 ? <span><strong>Días atraso:</strong> {editingCliente.dias_atraso}</span> : null}
+                {editingCliente.fecha_ultimo_pedido ? <span><strong>Último pedido:</strong> {editingCliente.fecha_ultimo_pedido}</span> : null}
+              </div>
+            </div>
+          )}
           {formError && <div className="form-error">{formError}</div>}
         </form>
       </Modal>
@@ -1350,7 +1402,7 @@ export function ClientesPage() {
                         {c.direccion ? ` · ${c.direccion}` : ''}
                       </div>
                     </div>
-                    {idx > 0 && (
+                    {canDelete && idx > 0 && (
                       <button
                         type="button"
                         disabled={deletingId === c.id}
@@ -1370,7 +1422,7 @@ export function ClientesPage() {
                         {deletingId === c.id ? 'Eliminando…' : 'Eliminar'}
                       </button>
                     )}
-                    {idx === 0 && (
+                    {canDelete && idx === 0 && (
                       <button
                         type="button"
                         disabled={deletingId === c.id}

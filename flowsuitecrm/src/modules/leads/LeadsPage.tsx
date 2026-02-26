@@ -823,7 +823,8 @@ export function LeadsPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                   boxSizing: 'border-box',
                 }}
               />
@@ -849,7 +850,8 @@ export function LeadsPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="todos">Todos</option>
@@ -883,7 +885,8 @@ export function LeadsPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="todos">Todas</option>
@@ -913,7 +916,8 @@ export function LeadsPage() {
                   borderRadius: '0.375rem',
                   border: '1px solid var(--color-border, #e5e7eb)',
                   fontSize: '0.875rem',
-                  background: 'white',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="todos">Todos</option>

@@ -94,7 +94,9 @@ export function TelemercadeoCumpleanosPage() {
             borderRadius: '0.55rem',
             border: '1px solid var(--color-border, #e5e7eb)',
             padding: '0 0.6rem',
-            background: 'white',
+            background: 'var(--color-input, #ffffff)',
+            color: 'var(--color-text, #111827)',
+            boxShadow: 'none',
             fontSize: '0.85rem',
           }}
         >

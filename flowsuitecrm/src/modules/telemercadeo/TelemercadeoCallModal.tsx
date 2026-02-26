@@ -3,13 +3,17 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase/client'
+import { buildTelUrl } from '../../lib/addressUtils'
 import { useAuth } from '../../auth/AuthProvider'
+import { IconPhone } from '../../components/icons'
 import {
   type Cliente,
   type ResultadoLlamada,
   resultadoLabel,
   resultadoColor,
   formatFechaCorta,
+  segmentoColor,
+  segmentoLabel,
 } from './TelemercadeoShared'
 
 type LlamadaHistorial = {
@@ -27,6 +31,34 @@ type TelemercadeoCallModalProps = {
   onClose: () => void
 }
 
+function guionContextual(dias: number | null, moroso: number | null) {
+  if (!moroso || moroso === 0) return null
+  if (!dias || dias < 1) return null
+  if (dias >= 91)
+    return {
+      titulo: '+90 días — Gestión externa',
+      texto: 'Informar que la cuenta puede ser escalada a distribuidor o cobranza externa. Solicitar confirmación de intención de pago o acuerdo inmediato.',
+      color: '#7c3aed',
+    }
+  if (dias >= 61)
+    return {
+      titulo: '61-90 días — Última oportunidad',
+      texto: 'Comunicar urgencia máxima. Solicitar al menos un pago parcial hoy y compromiso con fecha específica para saldar el resto.',
+      color: '#dc2626',
+    }
+  if (dias >= 31)
+    return {
+      titulo: '31-60 días — Compromiso urgente',
+      texto: 'Solicitar compromiso de pago con fecha concreta. Ofrecer plan de pagos si es necesario. Registrar la promesa en el sistema.',
+      color: '#ea580c',
+    }
+  return {
+    titulo: '0-30 días — Recordatorio amistoso',
+    texto: 'Recordar el saldo pendiente de forma cordial. Ofrecer facilidad de pago. Mantener tono positivo y relación a largo plazo.',
+    color: '#f59e0b',
+  }
+}
+
 export function TelemercadeoCallModal({
   open,
   cliente,
@@ -42,6 +74,7 @@ export function TelemercadeoCallModal({
 
   const [historial, setHistorial] = useState<LlamadaHistorial[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
+  const [guionAbierto, setGuionAbierto] = useState(false)
 
   // Reset form fields when modal opens for a new client
   useEffect(() => {
@@ -50,6 +83,7 @@ export function TelemercadeoCallModal({
     setNotas('')
     setFechaFollowup('')
     setMontoProme('')
+    setGuionAbierto(false)
   }, [open, cliente?.id])
 
   // Load call history when modal opens
@@ -78,6 +112,10 @@ export function TelemercadeoCallModal({
   }, [open, cliente?.id])
 
   if (!open || !cliente) return null
+
+  const guion = guionContextual(cliente.dias_atraso, cliente.monto_moroso)
+  const segColor = segmentoColor(cliente.dias_atraso, cliente.monto_moroso)
+  const segLbl = segmentoLabel(cliente.dias_atraso, cliente.monto_moroso)
 
   const guardarLlamada = async () => {
     if (!session?.user.id) return
@@ -116,6 +154,145 @@ export function TelemercadeoCallModal({
         </>
       }
     >
+      {/* Datos financieros del cliente */}
+      <div
+        style={{
+          marginBottom: '1rem',
+          padding: '0.6rem 0.85rem',
+          borderRadius: '0.5rem',
+          background: 'var(--color-surface-strong, rgba(30, 41, 59, 0.6))',
+          border: '1px solid var(--color-border, #2b3244)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.4rem 1rem',
+          alignItems: 'center',
+        }}
+      >
+        {cliente.saldo_actual !== null && (
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted-strong)' }}>
+            Saldo:{' '}
+            <strong style={{ color: 'var(--color-text)' }}>
+              ${Number(cliente.saldo_actual).toFixed(2)}
+            </strong>
+          </span>
+        )}
+        {(cliente.monto_moroso ?? 0) > 0 && (
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ef4444' }}>
+            ${Number(cliente.monto_moroso).toFixed(2)} moroso
+          </span>
+        )}
+        {(cliente.monto_moroso ?? 0) > 0 && (
+          <span
+            style={{
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              padding: '0.1rem 0.45rem',
+              borderRadius: '9999px',
+              background: segColor + '22',
+              color: segColor,
+              border: `1px solid ${segColor}44`,
+            }}
+          >
+            {segLbl}
+          </span>
+        )}
+        {cliente.fecha_ultimo_pedido && (
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted-strong)' }}>
+            Últ. pedido:{' '}
+            <strong style={{ color: 'var(--color-text)' }}>
+              {formatFechaCorta(cliente.fecha_ultimo_pedido)}
+            </strong>
+          </span>
+        )}
+        {cliente.ultima_fecha_pago && (
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted-strong)' }}>
+            Últ. pago:{' '}
+            <strong style={{ color: 'var(--color-text)' }}>
+              {formatFechaCorta(cliente.ultima_fecha_pago)}
+            </strong>
+          </span>
+        )}
+        {(cliente.telefono || cliente.telefono_casa) && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--color-text)' }}>
+              {cliente.telefono ?? cliente.telefono_casa}
+            </span>
+            <a
+              href={buildTelUrl(cliente.telefono ?? cliente.telefono_casa ?? '')}
+              style={{
+                width: '28px',
+                height: '28px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '999px',
+                background: 'rgba(37, 99, 235, 0.12)',
+                color: '#2563eb',
+                border: '1px solid rgba(37, 99, 235, 0.35)',
+                textDecoration: 'none',
+              }}
+              aria-label="Llamar"
+              title="Llamar"
+            >
+              <IconPhone />
+            </a>
+          </span>
+        )}
+        {cliente.hycite_id && (
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted-strong)' }}>
+            #{cliente.hycite_id}
+          </span>
+        )}
+      </div>
+
+      {/* Guión contextual por segmento */}
+      {guion && (
+        <div
+          style={{
+            marginBottom: '1rem',
+            borderRadius: '0.5rem',
+            border: `1px solid ${guion.color}44`,
+            background: guion.color + '11',
+            overflow: 'hidden',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setGuionAbierto((v) => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '0.45rem 0.75rem',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: guion.color,
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              textAlign: 'left',
+            }}
+          >
+            <span>{guion.titulo}</span>
+            <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>{guionAbierto ? '▲' : '▼'}</span>
+          </button>
+          {guionAbierto && (
+            <p
+              style={{
+                margin: 0,
+                padding: '0 0.75rem 0.6rem',
+                fontSize: '0.8rem',
+                color: 'var(--color-text)',
+                lineHeight: '1.5',
+              }}
+            >
+              {guion.texto}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Historial de llamadas anteriores */}
       {loadingHistorial ? (
         <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>

@@ -24,6 +24,15 @@
   --text-muted: #94a3b8;
   --text-muted-strong: rgba(241, 245, 249, 0.75);
   --shadow-soft: 0 18px 50px rgba(2, 6, 23, 0.45);
+
+  --color-card: var(--card-bg);
+  --color-border: rgba(148, 163, 184, 0.22);
+  --color-input: rgba(15, 23, 42, 0.28);
+  --color-surface: rgba(15, 23, 42, 0.12);
+  --color-surface-strong: rgba(30, 41, 59, 0.6);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --color-primary: var(--accent);
 }
 
 body.theme-light {
@@ -35,6 +44,15 @@ body.theme-light {
   --text-muted: #6b7280;
   --text-muted-strong: rgba(17, 24, 39, 0.7);
   --shadow-soft: 0 18px 50px rgba(15, 23, 42, 0.12);
+
+  --color-card: #ffffff;
+  --color-border: rgba(15, 23, 42, 0.12);
+  --color-input: #ffffff;
+  --color-surface: #f8fafb;
+  --color-surface-strong: #eef2f6;
+  --color-text: #111827;
+  --color-text-muted: #6b7280;
+  --color-primary: #2563eb;
 }
 
 * {
@@ -111,6 +129,28 @@ textarea {
 
 input {
   font-family: inherit;
+}
+
+.page input:not([type='checkbox']),
+.page select,
+.page textarea,
+.modal input:not([type='checkbox']),
+.modal select,
+.modal textarea {
+  background: var(--color-input);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  min-height: 36px;
+  box-shadow: none;
+}
+
+.page input:not([type='checkbox'])::placeholder,
+.page textarea::placeholder,
+.modal input:not([type='checkbox'])::placeholder,
+.modal textarea::placeholder {
+  color: var(--text-muted-strong);
 }
 
 img {
@@ -1209,25 +1249,33 @@ body.theme-light .pipeline-card {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 0.8125rem;
-  color: var(--text-muted);
+  font-size: 0.875rem;
+  color: var(--text-muted-strong);
 }
 
 .form-field input,
 .form-field select,
 .form-field textarea {
   background: rgba(15, 23, 42, 0.28);
-  border: 1px solid var(--card-border);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 10px;
   padding: 9px 12px;
   color: var(--text-primary);
   font-family: "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  font-size: 0.875rem;
+  min-height: 36px;
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+  color: var(--text-muted-strong);
 }
 
 body.theme-light .form-field input,
 body.theme-light .form-field select,
 body.theme-light .form-field textarea {
   background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
 }
 
 .form-field.checkbox-field {
