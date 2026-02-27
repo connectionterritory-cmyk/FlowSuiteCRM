@@ -550,7 +550,11 @@ export function ActivacionReferidosPanel({
                           title="WhatsApp"
                           disabled={!ref.telefono || isTeleReadOnly}
                           onClick={() =>
-                            openWhatsapp({ nombre: ref.nombre ?? '', telefono: ref.telefono ?? '' })
+                            openWhatsapp({
+                              nombre: ref.nombre ?? '',
+                              telefono: ref.telefono ?? '',
+                              recomendadoPor: ownerLabel ?? '',
+                            })
                           }
                         >
                           WA

@@ -425,6 +425,11 @@ export function ClientesPage() {
               telefono: cliente.telefono ?? '',
               email: cliente.email ?? '',
               vendedor: vendedorName === '-' ? '' : vendedorName,
+              cuentaHycite: cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '',
+              saldoActual: cliente.saldo_actual,
+              montoMoroso: cliente.monto_moroso,
+              diasAtraso: cliente.dias_atraso,
+              estadoMorosidad: cliente.estado_morosidad,
             })
           }}
         >
@@ -1173,7 +1178,12 @@ export function ClientesPage() {
                           nombre: fullName,
                           telefono: cliente.telefono ?? '',
                           email: cliente.email ?? '',
-                    vendedor: cardVendedor === 'Sin asignar' ? '' : cardVendedor,
+                          vendedor: cardVendedor === 'Sin asignar' ? '' : cardVendedor,
+                          cuentaHycite: cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '',
+                          saldoActual: cliente.saldo_actual,
+                          montoMoroso: cliente.monto_moroso,
+                          diasAtraso: cliente.dias_atraso,
+                          estadoMorosidad: cliente.estado_morosidad,
                         })
                       }}
                     >
@@ -1354,6 +1364,11 @@ export function ClientesPage() {
                     telefono: selectedCliente.telefono ?? '',
                     email: selectedCliente.email ?? '',
                     vendedor: selectedCliente.vendedor_id ? (usersById[selectedCliente.vendedor_id] ?? '') : '',
+                    cuentaHycite: selectedCliente.hycite_id ?? selectedCliente.numero_cuenta_financiera ?? '',
+                    saldoActual: selectedCliente.saldo_actual,
+                    montoMoroso: selectedCliente.monto_moroso,
+                    diasAtraso: selectedCliente.dias_atraso,
+                    estadoMorosidad: selectedCliente.estado_morosidad,
                   })
                 }
               >

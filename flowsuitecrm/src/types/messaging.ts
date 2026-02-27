@@ -3,6 +3,12 @@ export type MessagingContact = {
   telefono?: string | null
   email?: string | null
   vendedor?: string
+  recomendadoPor?: string | null
+  cuentaHycite?: string | null
+  saldoActual?: number | null
+  montoMoroso?: number | null
+  diasAtraso?: number | null
+  estadoMorosidad?: string | null
   leadId?: string | null
 }
 

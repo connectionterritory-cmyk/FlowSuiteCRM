@@ -344,7 +344,15 @@ export function TelemercadeoCarteraPage() {
                 }
                 onLlamar={() => abrirModal(c)}
                 onWhatsApp={() =>
-                  openWhatsapp({ nombre: nombreCompleto(c), telefono: c.telefono ?? '' })
+                  openWhatsapp({
+                    nombre: nombreCompleto(c),
+                    telefono: c.telefono ?? '',
+                    cuentaHycite: c.hycite_id ?? '',
+                    saldoActual: c.saldo_actual,
+                    montoMoroso: c.monto_moroso,
+                    diasAtraso: c.dias_atraso,
+                    estadoMorosidad: null,
+                  })
                 }
               />
             )

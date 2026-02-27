@@ -29,6 +29,7 @@ type LeadRecord = {
   fuente: string | null
   programa_id: string | null
   embajador_id: string | null
+  referido_por_cliente_id?: string | null
   owner_id: string | null
   vendedor_id?: string | null
   estado_pipeline: string | null
@@ -115,6 +116,8 @@ export function LeadsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [role, setRole] = useState<string | null>(null)
+  const [embajadorMap, setEmbajadorMap] = useState<Record<string, string>>({})
+  const [clienteReferidoMap, setClienteReferidoMap] = useState<Record<string, string>>({})
   const [viewMode, setViewMode] = useState<'active' | 'trash'>('active')
   const [formOpen, setFormOpen] = useState(false)
   const [formValues, setFormValues] = useState(initialForm)
@@ -231,6 +234,68 @@ export function LeadsPage() {
   }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id])
 
   useEffect(() => {
+    if (!configured || leads.length === 0) {
+      setEmbajadorMap({})
+      setClienteReferidoMap({})
+      return
+    }
+    let active = true
+    const embajadorIds = Array.from(
+      new Set(leads.map((lead) => lead.embajador_id).filter((value): value is string => Boolean(value)))
+    )
+    const clienteIds = Array.from(
+      new Set(leads.map((lead) => lead.referido_por_cliente_id).filter((value): value is string => Boolean(value)))
+    )
+
+    const loadMaps = async () => {
+      if (embajadorIds.length === 0) {
+        setEmbajadorMap({})
+      } else {
+        const { data, error } = await supabase
+          .from('embajadores')
+          .select('id, nombre, apellido')
+          .in('id', embajadorIds)
+        if (!active) return
+        if (error) {
+          setEmbajadorMap({})
+        } else {
+          const map: Record<string, string> = {}
+          ;((data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach((row) => {
+            const label = [row.nombre, row.apellido].filter(Boolean).join(' ').trim()
+            map[row.id] = label || row.id
+          })
+          setEmbajadorMap(map)
+        }
+      }
+
+      if (clienteIds.length === 0) {
+        setClienteReferidoMap({})
+      } else {
+        const { data, error } = await supabase
+          .from('clientes')
+          .select('id, nombre, apellido')
+          .in('id', clienteIds)
+        if (!active) return
+        if (error) {
+          setClienteReferidoMap({})
+        } else {
+          const map: Record<string, string> = {}
+          ;((data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach((row) => {
+            const label = [row.nombre, row.apellido].filter(Boolean).join(' ').trim()
+            map[row.id] = label || row.id
+          })
+          setClienteReferidoMap(map)
+        }
+      }
+    }
+
+    loadMaps()
+    return () => {
+      active = false
+    }
+  }, [configured, leads])
+
+  useEffect(() => {
     if (configured) loadRole()
   }, [configured, loadRole])
 
@@ -276,6 +341,17 @@ export function LeadsPage() {
   const getLeadVendedorId = useCallback(
     (lead: LeadRecord) => lead.vendedor_id ?? lead.owner_id ?? null,
     [],
+  )
+
+  const getRecomendadoPor = useCallback(
+    (lead: LeadRecord) => {
+      if (lead.embajador_id && embajadorMap[lead.embajador_id]) return embajadorMap[lead.embajador_id]
+      if (lead.referido_por_cliente_id && clienteReferidoMap[lead.referido_por_cliente_id]) {
+        return clienteReferidoMap[lead.referido_por_cliente_id]
+      }
+      return ''
+    },
+    [embajadorMap, clienteReferidoMap]
   )
 
   const getVendedorLabel = useCallback(
@@ -502,6 +578,7 @@ export function LeadsPage() {
               telefono: lead.telefono ?? '',
               email: lead.email ?? '',
               vendedor: ownerName === '-' ? '' : ownerName,
+              recomendadoPor: getRecomendadoPor(lead),
               leadId: lead.id,
             })
           }}
@@ -582,7 +659,7 @@ export function LeadsPage() {
         detail: [],
       }
     })
-  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, isTrashView, leadsOrdenados, normalizeStage, openManageModal, openWhatsapp, t])
+  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, getRecomendadoPor, isTrashView, leadsOrdenados, normalizeStage, openManageModal, openWhatsapp, t])
 
   const emptyLabel = loading
     ? t('common.loading')
@@ -1115,6 +1192,7 @@ export function LeadsPage() {
                           telefono: lead.telefono ?? '',
                           email: lead.email ?? '',
                           vendedor: ownerLabel === '-' ? '' : ownerLabel,
+                          recomendadoPor: getRecomendadoPor(lead),
                           leadId: lead.id,
                         })
                       }}

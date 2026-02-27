@@ -1117,6 +1117,14 @@ export function ConexionesActivacionesTabLegacy() {
     })
     : ''
 
+  const selectedActivationOwnerName = selectedActivation
+    ? selectedActivation.cliente_id
+      ? clientesMap.get(selectedActivation.cliente_id) ?? ''
+      : selectedActivation.lead_id
+        ? leadsMap.get(selectedActivation.lead_id) ?? ''
+        : ''
+    : ''
+
   const getReferidoDraftValue = useCallback(
     (referido: CiReferido, field: keyof ReferidoFormRow) => {
       const draft = referidoDrafts[referido.id]
@@ -2083,6 +2091,7 @@ export function ConexionesActivacionesTabLegacy() {
                                     nombre: referido.nombre ?? '',
                                     telefono: referido.telefono ?? '',
                                     vendedor: representante?.nombre ?? '',
+                                    recomendadoPor: selectedActivationOwnerName,
                                     leadId: referido.lead_id,
                                   })
                                 }
@@ -4573,11 +4582,15 @@ function ConexionesEmbajadoresTab() {
             const hasName = row.nombre.trim() !== ''
             const hasPhone = phoneDigits.length > 0
             const hasEmail = row.email.trim() !== ''
+            const embajadorName = conexionProgram?.embajador_id
+              ? embajadorMap.get(conexionProgram.embajador_id) ?? conexionProgram.embajador_id
+              : ''
             const contact = {
               nombre: row.nombre.trim() || t('common.noData'),
               telefono: row.telefono,
               email: row.email,
               vendedor: vendedorName === '-' ? '' : vendedorName,
+              recomendadoPor: embajadorName,
             }
             return (
               <div key={`conexion-${index}`} className="conexion-row">

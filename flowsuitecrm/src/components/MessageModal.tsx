@@ -7,11 +7,14 @@ import {
   replaceTemplateVariables,
   loadCustomTemplates,
   saveCustomTemplates,
+  DEFAULT_SYSTEM_TEMPLATES,
   type CustomWhatsappTemplate,
 } from '../lib/whatsappTemplates'
-import { supabase } from '../lib/supabase/client'
+import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useToast } from './Toast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
+import { useAuth } from '../auth/AuthProvider'
+import { useUsers } from '../data/UsersProvider'
 
 type MessageModalProps = {
   open: boolean
@@ -20,9 +23,6 @@ type MessageModalProps = {
   initialTemplateId?: string | null
   onClose: () => void
 }
-
-const builtinTemplateIds = ['cumpleanos', 'referido', 'seguimiento', 'recordatorio', 'personalizado'] as const
-type BuiltinTemplateId = (typeof builtinTemplateIds)[number]
 
 const sanitizePhone = (value: string) => value.replace(/\D/g, '')
 
@@ -68,10 +68,42 @@ const CHANNEL_ICON: Record<MessagingChannel, string> = {
   email: '✉️',
 }
 
+type SystemTemplate = {
+  id: string
+  templateKey: string
+  label: string
+  message: string
+  category: string
+  isSystem: boolean
+}
+
+type TemplateFilter = 'all' | 'system' | 'custom'
+
+const formatAmount = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return ''
+  return Number(value).toFixed(2)
+}
+
+const firstName = (value?: string | null) => {
+  if (!value) return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  return trimmed.split(/\s+/)[0] ?? ''
+}
+
+const buildSubtitle = (value: string) => {
+  const compact = value.replace(/\s+/g, ' ').trim()
+  if (!compact) return ''
+  if (compact.length <= 80) return compact
+  return compact.slice(0, 77) + '...'
+}
+
 // --- COMPONENT ---
 export function MessageModal({ open, channel, contact, initialTemplateId, onClose }: MessageModalProps) {
   const { t } = useTranslation()
   const { showToast } = useToast()
+  const { session } = useAuth()
+  const { currentUser } = useUsers()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
@@ -94,37 +126,191 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>(() => loadHistory())
   const [showHistory, setShowHistory] = useState(false)
 
-  const builtinTemplates = useMemo(() => {
-    return builtinTemplateIds.map((id) => ({
-      id,
-      label: t(`messaging.templates.${id}Label`),
-      message: t(`messaging.templates.${id}`),
-    }))
-  }, [t])
+  // System templates (org-level)
+  const [systemTemplates, setSystemTemplates] = useState<SystemTemplate[]>([])
+  const [systemLoading, setSystemLoading] = useState(false)
+  const [systemError, setSystemError] = useState<string | null>(null)
 
-  const variables = useMemo(
-    () => ({
-      nombre: contact?.nombre ?? '',
-      vendedor: contact?.vendedor ?? '',
-    }),
-    [contact]
+  // Search + filter
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateFilter, setTemplateFilter] = useState<TemplateFilter>('all')
+  const [historySearch, setHistorySearch] = useState('')
+
+  // Edit system template inline
+  const [editingSystemId, setEditingSystemId] = useState<string | null>(null)
+  const [editingSystemTitle, setEditingSystemTitle] = useState('')
+  const [editingSystemMessage, setEditingSystemMessage] = useState('')
+
+  const [distributorPhone, setDistributorPhone] = useState('')
+
+  const canEditSystem = currentUser?.rol === 'admin' || currentUser?.rol === 'distribuidor'
+  const organizacion = currentUser?.organizacion?.trim() ?? ''
+
+  const defaultSystemTemplates = useMemo<SystemTemplate[]>(
+    () =>
+      DEFAULT_SYSTEM_TEMPLATES.map((template) => ({
+        id: template.key,
+        templateKey: template.key,
+        label: template.label,
+        message: template.message,
+        category: template.category,
+        isSystem: true,
+      })),
+    []
   )
+
+  const variables = useMemo(() => {
+    const cliente = firstName(contact?.nombre ?? '')
+    return {
+      cliente,
+      nombre: cliente,
+      vendedor: contact?.vendedor ?? '',
+      recomendado_por: contact?.recomendadoPor ?? '',
+      telefono: distributorPhone || currentUser?.telefono || '',
+      email: contact?.email ?? '',
+      organizacion: currentUser?.organizacion ?? '',
+      cuenta_hycite: contact?.cuentaHycite ?? '',
+      saldo_actual: formatAmount(contact?.saldoActual),
+      monto_moroso: formatAmount(contact?.montoMoroso),
+      dias_atraso: contact?.diasAtraso != null ? String(contact.diasAtraso) : '',
+      estado_morosidad: contact?.estadoMorosidad ?? '',
+    }
+  }, [contact, currentUser?.organizacion, currentUser?.telefono, distributorPhone])
+
+  const loadSystemTemplates = useCallback(async () => {
+    if (!open) return
+    if (!isSupabaseConfigured || !organizacion) {
+      setSystemTemplates(defaultSystemTemplates)
+      return
+    }
+    setSystemLoading(true)
+    setSystemError(null)
+    const { data, error } = await supabase
+      .from('whatsapp_templates_org')
+      .select('id, template_key, label, message, category, is_system')
+      .eq('organizacion', organizacion)
+      .order('created_at', { ascending: true })
+    if (error) {
+      setSystemError(error.message)
+      setSystemTemplates(defaultSystemTemplates)
+      setSystemLoading(false)
+      return
+    }
+
+    const rows = (data ?? []) as Array<{
+      id: string
+      template_key: string
+      label: string
+      message: string
+      category: string
+      is_system: boolean
+    }>
+
+    if (rows.length === 0 && canEditSystem && session?.user.id) {
+      const seedRows = DEFAULT_SYSTEM_TEMPLATES.map((template) => ({
+        organizacion,
+        template_key: template.key,
+        label: template.label,
+        message: template.message,
+        category: template.category,
+        is_system: true,
+        updated_by: session.user.id,
+      }))
+      const { data: inserted, error: insertError } = await supabase
+        .from('whatsapp_templates_org')
+        .insert(seedRows)
+        .select('id, template_key, label, message, category, is_system')
+      if (insertError) {
+        setSystemError(insertError.message)
+        setSystemTemplates(defaultSystemTemplates)
+        setSystemLoading(false)
+        return
+      }
+      const insertedRows = (inserted ?? []) as Array<{
+        id: string
+        template_key: string
+        label: string
+        message: string
+        category: string
+        is_system: boolean
+      }>
+      setSystemTemplates(
+        insertedRows.map((row) => ({
+          id: row.id,
+          templateKey: row.template_key,
+          label: row.label,
+          message: row.message,
+          category: row.category,
+          isSystem: row.is_system,
+        }))
+      )
+      setSystemLoading(false)
+      return
+    }
+
+    if (rows.length === 0) {
+      setSystemTemplates(defaultSystemTemplates)
+      setSystemLoading(false)
+      return
+    }
+
+    setSystemTemplates(
+      rows.map((row) => ({
+        id: row.id,
+        templateKey: row.template_key,
+        label: row.label,
+        message: row.message,
+        category: row.category,
+        isSystem: row.is_system,
+      }))
+    )
+    setSystemLoading(false)
+  }, [open, organizacion, defaultSystemTemplates, canEditSystem, session?.user.id])
+
+  const loadDistributorPhone = useCallback(async () => {
+    if (!open) return
+    if (!isSupabaseConfigured) {
+      setDistributorPhone(currentUser?.telefono ?? '')
+      return
+    }
+    const { data, error } = await supabase.rpc('get_distributor_phone')
+    if (error) {
+      setDistributorPhone(currentUser?.telefono ?? '')
+      return
+    }
+    setDistributorPhone((data as string | null) ?? currentUser?.telefono ?? '')
+  }, [open, currentUser?.telefono])
+
+  useEffect(() => {
+    if (!open) return
+    loadSystemTemplates()
+  }, [open, loadSystemTemplates])
+
+  useEffect(() => {
+    if (!open) return
+    loadDistributorPhone()
+  }, [open, loadDistributorPhone])
 
   useEffect(() => {
     if (!open || !contact) return
-    const preferredId = initialTemplateId ?? builtinTemplates[0]?.id ?? null
+    const preferredId =
+      initialTemplateId ??
+      systemTemplates[0]?.templateKey ??
+      customTemplates[0]?.id ??
+      null
     if (!preferredId) return
     setSelectedTemplateId(preferredId)
-    const builtin = builtinTemplates.find((item) => item.id === preferredId)
+    const system = systemTemplates.find((item) => item.templateKey === preferredId)
     const custom = customTemplates.find((item) => item.id === preferredId)
-    const templateMessage = builtin?.message ?? custom?.message ?? ''
+    const templateMessage = system?.message ?? custom?.message ?? ''
     setMessage(templateMessage ? replaceTemplateVariables(templateMessage, variables) : '')
     setShowSaveForm(false)
     setSavingTitle('')
     setEditingTemplateId(null)
+    setEditingSystemId(null)
     setShowHistory(false)
     setImageUrl('')
-  }, [open, contact, builtinTemplates, customTemplates, variables, initialTemplateId])
+  }, [open, contact, systemTemplates, customTemplates, variables, initialTemplateId])
 
   useEffect(() => {
     if (!open) return
@@ -169,13 +355,13 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     }, 0)
   }
 
-  // --- BUILTIN TEMPLATE SELECT ---
-  const handleSelectBuiltin = (id: BuiltinTemplateId) => {
-    setSelectedTemplateId(id)
-    const template = builtinTemplates.find((item) => item.id === id)
-    setMessage(template ? replaceTemplateVariables(template.message, variables) : '')
+  // --- SYSTEM TEMPLATE SELECT ---
+  const handleSelectSystem = (template: SystemTemplate) => {
+    setSelectedTemplateId(template.templateKey)
+    setMessage(template.message ? replaceTemplateVariables(template.message, variables) : '')
     setShowSaveForm(false)
     setEditingTemplateId(null)
+    setEditingSystemId(null)
   }
 
   // --- CUSTOM TEMPLATE SELECT ---
@@ -184,6 +370,54 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const template = customTemplates.find((item) => item.id === id)
     setMessage(template ? replaceTemplateVariables(template.message, variables) : '')
     setShowSaveForm(false)
+  }
+
+  // --- EDIT SYSTEM TEMPLATE ---
+  const handleStartSystemEdit = (template: SystemTemplate) => {
+    if (!canEditSystem) return
+    setEditingSystemId(template.id)
+    setEditingSystemTitle(template.label)
+    setEditingSystemMessage(template.message)
+  }
+
+  const handleSaveSystemEdit = async () => {
+    if (!canEditSystem || !editingSystemId || !session?.user.id) return
+    const title = editingSystemTitle.trim()
+    if (!title || !editingSystemMessage.trim()) return
+    const { data, error } = await supabase
+      .from('whatsapp_templates_org')
+      .update({ label: title, message: editingSystemMessage.trim(), updated_by: session.user.id })
+      .eq('id', editingSystemId)
+      .select('id, template_key, label, message, category, is_system')
+      .maybeSingle()
+    if (error) {
+      showToast(error.message, 'error')
+      return
+    }
+    if (data) {
+      const updated = systemTemplates.map((template) =>
+        template.id === data.id
+          ? {
+              id: data.id,
+              templateKey: data.template_key,
+              label: data.label,
+              message: data.message,
+              category: data.category,
+              isSystem: data.is_system,
+            }
+          : template
+      )
+      setSystemTemplates(updated)
+      if (selectedTemplateId === data.template_key) {
+        setMessage(replaceTemplateVariables(data.message, variables))
+      }
+      setEditingSystemId(null)
+      showToast('Plantilla del sistema actualizada')
+    }
+  }
+
+  const handleCancelSystemEdit = () => {
+    setEditingSystemId(null)
   }
 
   // --- SAVE NEW CUSTOM TEMPLATE ---
@@ -281,6 +515,34 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     setSending(false)
   }
 
+  const normalizedSearch = templateSearch.trim().toLowerCase()
+  const matchesSearch = (label: string, messageText: string) => {
+    if (!normalizedSearch) return true
+    return (
+      label.toLowerCase().includes(normalizedSearch) ||
+      messageText.toLowerCase().includes(normalizedSearch)
+    )
+  }
+
+  const filteredSystemTemplates = systemTemplates.filter((template) => {
+    if (templateFilter === 'custom') return false
+    return matchesSearch(template.label, template.message)
+  })
+
+  const filteredCustomTemplates = customTemplates.filter((template) => {
+    if (templateFilter === 'system') return false
+    return matchesSearch(template.label, template.message)
+  })
+
+  const normalizedHistorySearch = historySearch.trim().toLowerCase()
+  const filteredHistoryEntries = historyEntries.filter((entry) => {
+    if (!normalizedHistorySearch) return true
+    return (
+      entry.contactName.toLowerCase().includes(normalizedHistorySearch) ||
+      entry.message.toLowerCase().includes(normalizedHistorySearch)
+    )
+  })
+
   return (
     <Modal
       open={open}
@@ -317,29 +579,187 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         <div className="template-list">
           {!showHistory ? (
             <>
-              {/* PLANTILLAS BASE */}
-              {builtinTemplates.map((template) => (
-                <div
-                  key={template.id}
-                  className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
-                  onClick={() => handleSelectBuiltin(template.id as BuiltinTemplateId)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectBuiltin(template.id as BuiltinTemplateId) }
+              {/* BUSCADOR + FILTROS */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                <input
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  placeholder="Buscar plantillas..."
+                  style={{
+                    padding: '0.45rem 0.6rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--color-border, #e5e7eb)',
+                    background: 'var(--color-surface, #f9fafb)',
+                    color: 'var(--color-text)',
+                    fontSize: '0.8rem',
                   }}
-                >
-                  <div className="template-item-header">
-                    <span className="template-title">{template.label}</span>
-                  </div>
-                  <span className="template-snippet">
-                    {template.message ? replaceTemplateVariables(template.message, variables) : t('messaging.templateEmpty')}
-                  </span>
+                />
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  {([
+                    { key: 'all', label: 'Todas' },
+                    { key: 'system', label: 'Sistema' },
+                    { key: 'custom', label: 'Mis plantillas' },
+                  ] as const).map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => setTemplateFilter(filter.key)}
+                      style={{
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '9999px',
+                        border: `1px solid ${templateFilter === filter.key ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
+                        background: templateFilter === filter.key ? 'rgba(59,130,246,0.12)' : 'transparent',
+                        color: templateFilter === filter.key ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
+
+              {templateFilter !== 'custom' && (
+                <>
+                  {/* PLANTILLAS DEL SISTEMA */}
+                  <div
+                    style={{
+                      padding: '0.4rem 0.75rem 0.25rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      color: 'var(--color-text-muted, #6b7280)',
+                      letterSpacing: '0.05em',
+                      borderTop: '1px solid var(--color-border, #e5e7eb)',
+                    }}
+                  >
+                    SISTEMA
+                  </div>
+
+                  {systemLoading && <div className="template-empty">{t('common.loading')}</div>}
+                  {systemError && (
+                    <div className="template-warning" style={{ margin: '0.35rem 0' }}>
+                      {systemError}
+                    </div>
+                  )}
+                  {!systemLoading && filteredSystemTemplates.length === 0 && (
+                    <div className="template-empty">Sin resultados</div>
+                  )}
+
+                  {!systemLoading && filteredSystemTemplates.map((template) =>
+                    editingSystemId === template.id && canEditSystem ? (
+                      <div
+                        key={template.id}
+                        style={{
+                          padding: '0.6rem 0.75rem',
+                          background: 'var(--color-surface, #f9fafb)',
+                          borderBottom: '1px solid var(--color-border, #e5e7eb)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.4rem',
+                        }}
+                      >
+                        <input
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
+                          autoFocus
+                          value={editingSystemTitle}
+                          onChange={(e) => setEditingSystemTitle(e.target.value)}
+                          placeholder="Título..."
+                          style={{
+                            padding: '0.3rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            border: '1px solid var(--color-border, #e5e7eb)',
+                            fontSize: '0.8rem',
+                          }}
+                        />
+                        <textarea
+                          rows={3}
+                          value={editingSystemMessage}
+                          onChange={(e) => setEditingSystemMessage(e.target.value)}
+                          style={{
+                            padding: '0.3rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            border: '1px solid var(--color-border, #e5e7eb)',
+                            fontSize: '0.78rem',
+                            resize: 'vertical',
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            onClick={handleCancelSystemEdit}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-text-muted, #6b7280)' }}
+                          >
+                            Cancelar
+                          </button>
+                          <Button type="button" onClick={handleSaveSystemEdit} disabled={!editingSystemTitle.trim()}>
+                            Guardar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        key={template.id}
+                        className={`template-item ${selectedTemplateId === template.templateKey ? 'active' : ''}`}
+                        onClick={() => handleSelectSystem(template)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectSystem(template) }
+                        }}
+                      >
+                        <div
+                          className="template-item-header"
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          <span className="template-title">{template.label}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span
+                              style={{
+                                fontSize: '0.6rem',
+                                fontWeight: 700,
+                                padding: '0.05rem 0.35rem',
+                                borderRadius: '9999px',
+                                border: '1px solid rgba(59,130,246,0.35)',
+                                color: '#3b82f6',
+                              }}
+                            >
+                              Sistema
+                            </span>
+                            {canEditSystem && (
+                              <button
+                                type="button"
+                                aria-label="Editar plantilla del sistema"
+                                title="Editar"
+                                onClick={(e) => { e.stopPropagation(); handleStartSystemEdit(template) }}
+                                style={{
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  color: 'var(--color-text-muted, #6b7280)', fontSize: '0.7rem',
+                                  padding: '0.1rem 0.25rem', lineHeight: 1, borderRadius: '0.2rem',
+                                }}
+                              >
+                                ✎
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <span
+                          className="template-snippet"
+                          style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {template.message
+                            ? buildSubtitle(replaceTemplateVariables(template.message, variables))
+                            : t('messaging.templateEmpty')}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </>
+              )}
 
               {/* MIS PLANTILLAS GUARDADAS */}
-              {customTemplates.length > 0 && (
+              {(templateFilter !== 'system' || filteredCustomTemplates.length > 0) && (
                 <>
                   <div
                     style={{
@@ -354,7 +774,10 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                   >
                     MIS PLANTILLAS
                   </div>
-                  {customTemplates.map((template) =>
+                  {filteredCustomTemplates.length === 0 && (
+                    <div className="template-empty">Sin plantillas personales.</div>
+                  )}
+                  {filteredCustomTemplates.map((template) =>
                     editingTemplateId === template.id ? (
                       // EDIT FORM INLINE
                       <div
@@ -452,8 +875,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                             </button>
                           </div>
                         </div>
-                        <span className="template-snippet">
-                          {replaceTemplateVariables(template.message, variables)}
+                        <span
+                          className="template-snippet"
+                          style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {buildSubtitle(replaceTemplateVariables(template.message, variables))}
                         </span>
                       </div>
                     )
@@ -504,6 +930,22 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
               >
                 ← Volver a plantillas
               </button>
+              <div style={{ padding: '0 0.75rem 0.5rem' }}>
+                <input
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Buscar en historial..."
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.6rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--color-border, #e5e7eb)',
+                    background: 'var(--color-surface, #f9fafb)',
+                    color: 'var(--color-text)',
+                    fontSize: '0.8rem',
+                  }}
+                />
+              </div>
               <div
                 style={{
                   borderTop: '1px solid var(--color-border, #e5e7eb)',
@@ -515,7 +957,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                   overflowY: 'auto',
                 }}
               >
-                {historyEntries.map((entry) => (
+                {filteredHistoryEntries.map((entry) => (
                   <div
                     key={entry.id}
                     role="button"
@@ -575,27 +1017,38 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           </div>
 
           {/* VARIABLES CLICABLES */}
-          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-            {['{nombre}', '{vendedor}'].map((variable) => (
-              <button
-                key={variable}
-                type="button"
-                title={`Insertar ${variable}`}
-                onClick={() => insertVariable(variable)}
-                style={{
-                  background: 'var(--color-surface, #f3f4f6)',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  borderRadius: '0.25rem',
-                  padding: '0.15rem 0.45rem',
-                  fontSize: '0.72rem',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {variable}
-              </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
+            {[
+              { label: 'Cliente', vars: ['{cliente}', '{email}'] },
+              { label: 'Vendedor', vars: ['{vendedor}', '{organizacion}'] },
+              { label: 'Recomendado', vars: ['{recomendado_por}'] },
+              { label: 'Contacto', vars: ['{telefono}'] },
+              { label: 'Cartera', vars: ['{cuenta_hycite}', '{saldo_actual}', '{monto_moroso}', '{dias_atraso}', '{estado_morosidad}'] },
+            ].map((group) => (
+              <div key={group.label} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)' }}>{group.label}</span>
+                {group.vars.map((variable) => (
+                  <button
+                    key={variable}
+                    type="button"
+                    title={`Insertar ${variable}`}
+                    onClick={() => insertVariable(variable)}
+                    style={{
+                      background: 'var(--color-surface, #f3f4f6)',
+                      border: '1px solid var(--color-border, #e5e7eb)',
+                      borderRadius: '0.25rem',
+                      padding: '0.15rem 0.45rem',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {variable}
+                  </button>
+                ))}
+              </div>
             ))}
-            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', alignSelf: 'center' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
               — clic para insertar
             </span>
           </div>

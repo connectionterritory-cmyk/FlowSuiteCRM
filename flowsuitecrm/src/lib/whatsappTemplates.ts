@@ -34,6 +34,13 @@ export type WhatsappTemplateCategory =
   | 'conexiones'
   | 'custom'
 
+export type SystemTemplateSeed = {
+  key: string
+  label: string
+  message: string
+  category: 'basic' | 'cartera'
+}
+
 export type WhatsappTemplate = {
   id: string
   label: string
@@ -53,6 +60,64 @@ export const templateTabs = [
   { key: 'conexiones', labelKey: 'whatsapp.tabs.conexiones' },
   { key: 'custom', labelKey: 'whatsapp.tabs.custom' },
 ] as const
+
+export const DEFAULT_SYSTEM_TEMPLATES: SystemTemplateSeed[] = [
+  {
+    key: 'cumpleanos',
+    label: 'Feliz Cumpleanos',
+    category: 'basic',
+    message:
+      '🎉 ¡Feliz cumpleaños {cliente}! 🎂\nTe saluda {vendedor} de {organizacion}.\nQueremos celebrar contigo con un detalle especial. ¿Te parece si coordinamos?\nContáctame al {telefono}.',
+  },
+  {
+    key: 'referido',
+    label: 'Referido',
+    category: 'basic',
+    message:
+      'Hola {cliente} 😊\nTe contacto de parte de {recomendado_por}.\nSoy {vendedor} de {organizacion}. Me gustaría presentarte algo especial de Royal Prestige.\n¿Tienes unos minutos esta semana?\nContacto: {telefono}.',
+  },
+  {
+    key: 'seguimiento',
+    label: 'Seguimiento',
+    category: 'basic',
+    message:
+      'Hola {cliente}, soy {vendedor} de {organizacion}.\nQuería darle seguimiento a nuestra conversación. ¿Podemos coordinar una cita?\nEstoy pendiente en {telefono}.',
+  },
+  {
+    key: 'recordatorio',
+    label: 'Recordatorio',
+    category: 'basic',
+    message:
+      'Hola {cliente} 👋\nSolo quería recordarte nuestra cita/seguimiento con Royal Prestige.\nSi necesitas ajustar horario, me dices por {telefono}.',
+  },
+  {
+    key: 'personalizado',
+    label: 'Personalizado',
+    category: 'basic',
+    message: '',
+  },
+  {
+    key: 'cartera_0_30',
+    label: 'Cartera 0-30',
+    category: 'cartera',
+    message:
+      'Hola {cliente}, soy {vendedor} de {organizacion}.\nTe escribo por tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.\nSaldo actual: ${saldo_actual}.\nSi ya realizaste el pago, ignora este mensaje. Si necesitas apoyo, escríbeme al {telefono}.',
+  },
+  {
+    key: 'cartera_31_60',
+    label: 'Cartera 31-60',
+    category: 'cartera',
+    message:
+      '{cliente}, te escribo por tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.\nTienes {dias_atraso} días de atraso y un monto moroso de ${monto_moroso}.\nSi no regularizas el pago, puede afectar tu historial crediticio.\nNecesito tu respuesta para coordinar pago o arreglo.\nContacto: {telefono}.',
+  },
+  {
+    key: 'cartera_60_mas',
+    label: 'Cartera 60+',
+    category: 'cartera',
+    message:
+      '{cliente}, tu cuenta Royal Prestige (HyCite) #{cuenta_hycite} tiene {dias_atraso} días de atraso.\nMonto moroso: ${monto_moroso}.\nSi no llegamos a un arreglo, tu cuenta será enviada a tu distribuidor y el crédito podrá ser reportado, afectando tu historial.\nComunícate al {telefono}.',
+  },
+]
 
 export type WhatsappTemplateTabKey = (typeof templateTabs)[number]['key']
 

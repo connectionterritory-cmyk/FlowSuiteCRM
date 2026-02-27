@@ -10,6 +10,9 @@ type UserRow = {
   rol: string | null
   codigo_distribuidor?: string | null
   codigo_vendedor?: string | null
+  distribuidor_padre_id?: string | null
+  organizacion?: string | null
+  telefono?: string | null
   foto_url?: string | null
 }
 
@@ -42,7 +45,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
       setLoading(true)
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email, rol, codigo_distribuidor, codigo_vendedor, foto_url')
+        .select('id, nombre, apellido, email, rol, codigo_distribuidor, codigo_vendedor, distribuidor_padre_id, organizacion, telefono, foto_url')
 
       if (!active) return
 
