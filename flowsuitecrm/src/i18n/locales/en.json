@@ -21,6 +21,7 @@
     "page": "Page",
     "of": "of",
     "select": "Select",
+    "clearFilters": "Clear filters",
     "yes": "Yes",
     "no": "No",
     "save": "Save",
@@ -40,7 +41,12 @@
     "newVenta": "New sale",
     "newProducto": "New product",
     "newUsuario": "New user",
-    "verModulo": "View module"
+    "verModulo": "View module",
+    "modeLabel": "Mode",
+    "modeSeller": "Seller",
+    "modeDistributor": "Distributor",
+    "delete": "Delete",
+    "edit": "Edit"
   },
   "messaging": {
     "title": "Send message via {{channel}}",
@@ -253,7 +259,7 @@
       "fuenteOtro": "Specify source",
       "programaId": "Program ID",
       "embajadorId": "Ambassador ID",
-      "ownerId": "Owner ID",
+      "ownerId": "Sales rep",
       "estadoPipeline": "Pipeline status",
       "nextAction": "Next action",
       "nextActionDate": "Next action date"
@@ -317,7 +323,7 @@
       "nombre": "Name",
       "telefono": "Phone",
       "fuente": "Source",
-      "owner": "Owner",
+      "owner": "Sales rep",
       "estado": "Status",
       "nextAction": "Next action"
     }
@@ -421,6 +427,7 @@
       "nombre": "Name",
       "categoria": "Category",
       "precio": "Price",
+      "foto": "Photo",
       "activo": "Active"
     },
     "estado": {
@@ -428,6 +435,7 @@
       "inactivo": "Inactive"
     },
     "columns": {
+      "foto": "Photo",
       "codigo": "Code",
       "nombre": "Name",
       "categoria": "Category",
@@ -494,8 +502,8 @@
       },
       "scope": {
         "title": "Scope",
-        "mine": "My activations",
-        "distribution": "My distribution",
+        "mine": "As seller",
+        "distribution": "As distributor",
         "mineHelp": "You only see your activations.",
         "distributionHelp": "You see activations from your network.",
         "hint": "Change scope from the top section."
@@ -744,7 +752,15 @@
       "newRefRequired": "Name and phone are required",
       "calificar": "View / Qualify prospect",
       "leadDone": "✓ Active",
-      "ownerInfoToggle": "View owner info"
+      "ownerInfoToggle": "View owner info",
+      "management": {
+        "telemercadeo": "Telemarketing",
+        "vendedorDirecto": "Direct Seller"
+      },
+      "actions": {
+        "take": "Take referral",
+        "return": "Return to telemarketing"
+      }
     },
     "relaciones": {
       "familiar": "Family",
@@ -985,7 +1001,11 @@
     "fields": {
       "name": "Name",
       "email": "Email",
-      "role": "Role"
+      "role": "Role",
+      "avatar": "Photo"
+    },
+    "actions": {
+      "savePhoto": "Save photo"
     }
   },
   "usuarios": {
@@ -1002,6 +1022,7 @@
       "email": "Email",
       "codigoVendedor": "Sales code",
       "codigoDistribuidor": "Distributor code",
+      "codigoReclutador": "Recruiter code",
       "rol": "Role",
       "activo": "Active"
     },
@@ -1009,7 +1030,8 @@
       "admin": "Admin",
       "distribuidor": "Distributor",
       "vendedor": "Sales rep",
-      "telemercadeo": "Telemarketing"
+      "telemercadeo": "Telemarketing",
+      "supervisor_telemercadeo": "Telemarketing Supervisor"
     },
     "estado": {
       "activo": "Active",

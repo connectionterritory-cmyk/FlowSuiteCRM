@@ -11,6 +11,7 @@ import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 import { useMessaging } from '../../hooks/useMessaging'
 import {
   parseUsAddress,
@@ -138,6 +139,19 @@ export function ClientesPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
   const { usersById, currentRole } = useUsers()
+  const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
+  const VENDEDOR_UNASSIGNED = 'sin_asignar'
+  const currentUserLabel = useMemo(() => {
+    if (!session?.user) return null
+    const metadata = session.user.user_metadata as Record<string, string> | undefined
+    const name =
+      [metadata?.first_name, metadata?.last_name].filter(Boolean).join(' ').trim() ||
+      metadata?.full_name ||
+      metadata?.name ||
+      ''
+    return name || usersById[session.user.id] || session.user.email || null
+  }, [session?.user, usersById])
+  const canManageClientes = currentRole === 'admin' || currentRole === 'distribuidor'
   const canDelete = currentRole === 'admin' || currentRole === 'distribuidor'
   const { showToast } = useToast()
   const [clientes, setClientes] = useState<ClienteRecord[]>([])
@@ -173,8 +187,11 @@ export function ClientesPage() {
     setLoading(true)
     setError(null)
     let query = supabase.from('clientes').select('*').order('created_at', { ascending: false })
-    if (currentRole === 'vendedor' && session?.user.id) {
+    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
       query = query.eq('vendedor_id', session.user.id)
+    }
+    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+      query = query.in('vendedor_id', distributionUserIds)
     }
     const { data, error: fetchError } = await query
 
@@ -198,13 +215,32 @@ export function ClientesPage() {
   }, [])
 
   // --- VENDEDORES UNICOS para el filtro ---
+  const getClienteVendedorLabel = useCallback(
+    (userId: string | null) => {
+      if (!userId) return 'Sin asignar'
+      if (userId === session?.user.id && currentUserLabel) return currentUserLabel
+      return usersById[userId] ?? 'Sin nombre'
+    },
+    [currentUserLabel, session?.user.id, usersById]
+  )
+
+  const getClienteResponsableId = useCallback(
+    (cliente: ClienteRecord) => cliente.vendedor_id ?? cliente.distribuidor_id ?? null,
+    [],
+  )
+
+  const getClienteVendedorKey = useCallback(
+    (cliente: ClienteRecord) => getClienteResponsableId(cliente) ?? VENDEDOR_UNASSIGNED,
+    [getClienteResponsableId],
+  )
+
   const vendedoresUnicos = useMemo(() => {
-    const ids = [...new Set(clientes.map((c) => c.vendedor_id).filter(Boolean))] as string[]
+    const ids = [...new Set(clientes.map((c) => getClienteVendedorKey(c)))] as string[]
     return ids.map((id) => ({
       id,
-      nombre: usersById[id] ?? `${id.slice(0, 8)}...`,
+      nombre: id === VENDEDOR_UNASSIGNED ? 'Sin asignar' : getClienteVendedorLabel(id),
     }))
-  }, [clientes, usersById])
+  }, [clientes, getClienteVendedorKey, getClienteVendedorLabel])
 
   // --- FILTRADO ---
   const clientesFiltrados = useMemo(() => {
@@ -234,7 +270,7 @@ export function ClientesPage() {
         (filtroEstado === 'cancelacion_total' && c.estado_cuenta === 'cancelacion_total') ||
         (filtroEstado === 'inactivo' && (c.estado_cuenta === 'inactivo' || c.activo === false))
 
-      const matchVendedor = filtroVendedor === 'todos' || c.vendedor_id === filtroVendedor
+      const matchVendedor = filtroVendedor === 'todos' || getClienteVendedorKey(c) === filtroVendedor
       const matchCiudad =
         !filtroCiudad || (c.ciudad ?? '').toLowerCase().includes(filtroCiudad.toLowerCase())
       const matchEstadoRegion =
@@ -339,9 +375,7 @@ export function ClientesPage() {
   const rows = useMemo<DataTableRow[]>(() => {
     return clientesOrdenados.map((cliente) => {
       const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
-      const vendedorName = cliente.vendedor_id
-        ? usersById[cliente.vendedor_id] ?? cliente.codigo_vendedor_hycite ?? `${cliente.vendedor_id.slice(0, 8)}...`
-        : '-'
+      const vendedorName = getClienteVendedorLabel(getClienteResponsableId(cliente))
       const cuenta = cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '-'
       const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
 
@@ -483,6 +517,7 @@ export function ClientesPage() {
   const emptyLabel = loading ? t('common.loading') : 'Sin resultados'
 
   const handleOpenForm = () => {
+    if (!canManageClientes) return
     setEditingId(null)
     setFormValues({ ...initialForm, vendedor_id: session?.user.id ?? '' })
     setBirthMonth('')
@@ -492,6 +527,7 @@ export function ClientesPage() {
   }
 
   const handleOpenEditForm = (cliente: ClienteRecord) => {
+    if (!canManageClientes) return
     const birth = splitBirthDate(cliente.fecha_nacimiento ?? null)
     setEditingId(cliente.id)
     setFormValues({
@@ -526,7 +562,7 @@ export function ClientesPage() {
 
   const vendedorName = session?.user.id ? usersById[session.user.id] ?? session.user.id : '-'
   const formVendedorName = editingId
-    ? formValues.vendedor_id ? (usersById[formValues.vendedor_id] ?? formValues.vendedor_id) : '-'
+    ? getClienteVendedorLabel(formValues.vendedor_id || null)
     : vendedorName
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -648,7 +684,7 @@ export function ClientesPage() {
       c.monto_moroso ?? 0,
       c.dias_atraso ?? 0,
       c.estado_cuenta ?? '',
-      c.vendedor_id ? (usersById[c.vendedor_id] ?? c.vendedor_id) : '',
+      getClienteVendedorLabel(getClienteResponsableId(c)),
     ])
     const csv = [headers, ...csvRows]
       .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -710,7 +746,9 @@ export function ClientesPage() {
             >
               Exportar CSV
             </Button>
-            <Button onClick={handleOpenForm}>{t('common.newCliente')}</Button>
+            {canManageClientes && (
+              <Button onClick={handleOpenForm}>{t('common.newCliente')}</Button>
+            )}
           </div>
         }
       />
@@ -1068,9 +1106,7 @@ export function ClientesPage() {
             clientesFiltrados.map((cliente) => {
               const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
               const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
-              const cardVendedor = cliente.vendedor_id
-                ? usersById[cliente.vendedor_id] ?? cliente.codigo_vendedor_hycite ?? `${cliente.vendedor_id.slice(0, 8)}...`
-                : '-'
+              const cardVendedor = getClienteVendedorLabel(getClienteResponsableId(cliente))
               const matchingRow = rows.find((r) => r.id === cliente.id)
               return (
                 <div
@@ -1137,7 +1173,7 @@ export function ClientesPage() {
                           nombre: fullName,
                           telefono: cliente.telefono ?? '',
                           email: cliente.email ?? '',
-                          vendedor: cardVendedor === '-' ? '' : cardVendedor,
+                    vendedor: cardVendedor === 'Sin asignar' ? '' : cardVendedor,
                         })
                       }}
                     >
@@ -1323,13 +1359,15 @@ export function ClientesPage() {
               >
                 <IconWhatsapp className="whatsapp-icon" />
               </button>
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => handleOpenEditForm(selectedCliente)}
-              >
-                Editar
-              </Button>
+              {canManageClientes && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => handleOpenEditForm(selectedCliente)}
+                >
+                  Editar
+                </Button>
+              )}
             </div>
           ) : null
         }
@@ -1373,7 +1411,7 @@ export function ClientesPage() {
               </div>
               {group.map((c, idx) => {
                 const name = [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre'
-                const vendorName = c.vendedor_id ? (usersById[c.vendedor_id] ?? c.vendedor_id.slice(0, 8)) : '-'
+                const vendorName = getClienteVendedorLabel(getClienteResponsableId(c))
                 return (
                   <div
                     key={c.id}

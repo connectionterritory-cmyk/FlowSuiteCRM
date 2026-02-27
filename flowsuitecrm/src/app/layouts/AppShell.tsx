@@ -5,6 +5,7 @@ import { Sidebar } from '../../components/Sidebar'
 import { Topbar } from '../../components/Topbar'
 import { BottomNav } from '../../components/BottomNav'
 import { navItems, programSubItems } from '../navigation'
+import { ViewModeProvider } from '../../data/ViewModeProvider'
 
 const STORAGE_KEY = 'flowsuite.sidebar.collapsed'
 const THEME_KEY = 'flowsuite.theme'
@@ -65,14 +66,16 @@ export function AppShell() {
         } as React.CSSProperties
       }
     >
-      <Sidebar collapsed={collapsed} onToggle={handleToggle} />
-      <div className="app-main">
-        <Topbar title={currentTitle} theme={theme} onToggleTheme={handleThemeToggle} />
-        <main className="page">
-          <Outlet />
-        </main>
-      </div>
-      <BottomNav />
+      <ViewModeProvider>
+        <Sidebar collapsed={collapsed} onToggle={handleToggle} />
+        <div className="app-main">
+          <Topbar title={currentTitle} theme={theme} onToggleTheme={handleThemeToggle} />
+          <main className="page">
+            <Outlet />
+          </main>
+        </div>
+        <BottomNav />
+      </ViewModeProvider>
     </div>
   )
 }

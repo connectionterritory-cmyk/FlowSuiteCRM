@@ -8,11 +8,15 @@ type UserRow = {
   apellido: string | null
   email: string | null
   rol: string | null
+  codigo_distribuidor?: string | null
+  codigo_vendedor?: string | null
+  foto_url?: string | null
 }
 
 type UsersContextValue = {
   usersById: Record<string, string>
   currentRole: string | null
+  currentUser: UserRow | null
   loading: boolean
 }
 
@@ -22,6 +26,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth()
   const [usersById, setUsersById] = useState<Record<string, string>>({})
   const [currentRole, setCurrentRole] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<UserRow | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -37,7 +42,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
       setLoading(true)
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email, rol')
+        .select('id, nombre, apellido, email, rol, codigo_distribuidor, codigo_vendedor, foto_url')
 
       if (!active) return
 
@@ -46,12 +51,40 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
         setCurrentRole(null)
       } else {
         const map: Record<string, string> = {}
-        ;(data as UserRow[] | null)?.forEach((user) => {
+        const currentUserId = session.user.id
+        const metadata = session.user.user_metadata as Record<string, string> | undefined
+        const metadataFirst = metadata?.first_name?.trim() || ''
+        const metadataLast = metadata?.last_name?.trim() || ''
+        const metadataName =
+          [metadataFirst, metadataLast].filter(Boolean).join(' ').trim() ||
+          metadata?.full_name ||
+          metadata?.name ||
+          ''
+        const rows = (data as UserRow[] | null) ?? []
+        const currentUserRow = rows.find((user) => user.id === currentUserId) ?? null
+        rows.forEach((user) => {
           const fullName = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
-          map[user.id] = fullName || user.email || user.id
+          map[user.id] = fullName || user.email || 'Sin nombre'
         })
+
+        if (currentUserId) {
+          const currentFallback = metadataName || map[currentUserId] || session.user.email || 'Sin nombre'
+          map[currentUserId] = currentFallback
+
+          if (metadataName && currentUserRow && !currentUserRow.nombre && !currentUserRow.apellido) {
+            await supabase
+              .from('usuarios')
+              .update({
+                nombre: metadataFirst || metadataName,
+                apellido: metadataLast || null,
+                email: currentUserRow.email ?? session.user.email ?? null,
+              })
+              .eq('id', currentUserId)
+          }
+        }
         setUsersById(map)
-        const me = (data as UserRow[] | null)?.find((u) => u.id === session.user.id)
+        const me = (data as UserRow[] | null)?.find((u) => u.id === session.user.id) ?? null
+        setCurrentUser(me)
         setCurrentRole(me?.rol ?? null)
       }
       setLoading(false)
@@ -63,7 +96,10 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session])
 
-  const value = useMemo(() => ({ usersById, currentRole, loading }), [usersById, currentRole, loading])
+  const value = useMemo(
+    () => ({ usersById, currentRole, currentUser, loading }),
+    [usersById, currentRole, currentUser, loading],
+  )
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>
 }

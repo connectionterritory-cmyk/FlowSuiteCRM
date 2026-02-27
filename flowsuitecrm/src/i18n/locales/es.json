@@ -21,6 +21,7 @@
     "page": "Pagina",
     "of": "de",
     "select": "Selecciona",
+    "clearFilters": "Limpiar filtros",
     "yes": "Si",
     "no": "No",
     "save": "Guardar",
@@ -40,7 +41,12 @@
     "newVenta": "Nueva venta",
     "newProducto": "Nuevo producto",
     "newUsuario": "Nuevo usuario",
-    "verModulo": "Ver modulo"
+    "verModulo": "Ver modulo",
+    "modeLabel": "Modo",
+    "modeSeller": "Vendedor",
+    "modeDistributor": "Distribuidor",
+    "delete": "Eliminar",
+    "edit": "Editar"
   },
   "messaging": {
     "title": "Enviar mensaje por {{channel}}",
@@ -253,7 +259,7 @@
       "fuenteOtro": "¿De dónde exactamente?",
       "programaId": "Programa",
       "embajadorId": "Referido por",
-      "ownerId": "Asesor responsable",
+      "ownerId": "Vendedor",
       "estadoPipeline": "Etapa de seguimiento",
       "nextAction": "¿Qué sigue?",
       "nextActionDate": "Fecha del próximo paso"
@@ -317,7 +323,7 @@
       "nombre": "Nombre",
       "telefono": "Telefono",
       "fuente": "Fuente",
-      "owner": "Responsable",
+      "owner": "Vendedor",
       "estado": "Estado",
       "nextAction": "Proxima accion"
     }
@@ -421,6 +427,7 @@
       "nombre": "Nombre",
       "categoria": "Categoria",
       "precio": "Precio",
+      "foto": "Foto",
       "activo": "Activo"
     },
     "estado": {
@@ -428,6 +435,7 @@
       "inactivo": "Inactivo"
     },
     "columns": {
+      "foto": "Foto",
       "codigo": "Codigo",
       "nombre": "Nombre",
       "categoria": "Categoria",
@@ -494,8 +502,8 @@
       },
       "scope": {
         "title": "Alcance",
-        "mine": "Mis activaciones",
-        "distribution": "Mi distribucion",
+        "mine": "Como vendedor",
+        "distribution": "Como distribuidor",
         "mineHelp": "Ves solo tus activaciones.",
         "distributionHelp": "Ves activaciones de tu red.",
         "hint": "Cambia el alcance desde la seccion superior."
@@ -744,7 +752,15 @@
       "newRefRequired": "Nombre y telefono son requeridos",
       "calificar": "Ver / Calificar prospecto",
       "leadDone": "✓ Activo",
-      "ownerInfoToggle": "Ver info del dueno"
+      "ownerInfoToggle": "Ver info del dueno",
+      "management": {
+        "telemercadeo": "Telemercadeo",
+        "vendedorDirecto": "Vendedor Directo"
+      },
+      "actions": {
+        "take": "Tomar referido",
+        "return": "Devolver a telemercadeo"
+      }
     },
     "relaciones": {
       "familiar": "Familiar",
@@ -985,7 +1001,11 @@
     "fields": {
       "name": "Nombre",
       "email": "Email",
-      "role": "Rol"
+      "role": "Rol",
+      "avatar": "Foto"
+    },
+    "actions": {
+      "savePhoto": "Guardar foto"
     }
   },
   "usuarios": {
@@ -1002,6 +1022,7 @@
       "email": "Email",
       "codigoVendedor": "Código de asesor",
       "codigoDistribuidor": "Código de distribuidor",
+      "codigoReclutador": "Código reclutador",
       "rol": "Rol",
       "activo": "Activo"
     },
@@ -1009,7 +1030,8 @@
       "admin": "Admin",
       "distribuidor": "Distribuidor",
       "vendedor": "Vendedor",
-      "telemercadeo": "Telemercadeo"
+      "telemercadeo": "Telemercadeo",
+      "supervisor_telemercadeo": "Supervisor Telemercadeo"
     },
     "estado": {
       "activo": "Activo",

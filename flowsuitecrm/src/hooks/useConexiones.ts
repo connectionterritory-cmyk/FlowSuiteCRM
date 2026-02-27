@@ -40,6 +40,11 @@ export type CiReferido = {
   lead_id: string | null
   notas: string | null
   calificacion: number | null
+  modo_gestion?: string | null
+  asignado_a?: string | null
+  gestionado_por_usuario_id?: string | null
+  tomado_por_vendedor_at?: string | null
+  liberado_a_telemercadeo_at?: string | null
 }
 
 export type CiCliente = {
@@ -281,7 +286,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
 
     const referidosResult = await supabase
       .from('ci_referidos')
-      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id')
+      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, modo_gestion, asignado_a')
       .eq('activacion_id', activation.id)
       .order('created_at', { ascending: true })
 
@@ -398,7 +403,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
         const { data, error: referidosError } = await supabase
           .from('ci_referidos')
           .insert(referidosPayload)
-          .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id')
+          .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, modo_gestion, asignado_a')
         if (referidosError) {
           return { data: null, error: referidosError.message }
         }
@@ -473,7 +478,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
         .from('ci_referidos')
         .update(payload)
         .eq('id', id)
-        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
+        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (updateError || !data) {
         return { data: null, error: updateError?.message ?? 'Error updating referido' }
@@ -492,7 +497,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
         .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id })
-        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
+        .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (insertError || !data) {
         return { data: null, error: insertError?.message ?? 'Error creating referido' }

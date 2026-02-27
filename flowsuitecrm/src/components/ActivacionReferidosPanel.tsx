@@ -19,6 +19,7 @@ type Props = {
   ownerLabel: string
   ownerClienteId: string | null
   currentUserId: string | null
+  currentRole: string | null
   canEditOwner: boolean
   isClosed: boolean
   onClose: () => void
@@ -79,9 +80,11 @@ const EMPTY_NEW_REF: NewRefForm = {
 function StarRating({
   value,
   onChange,
+  disabled = false,
 }: {
   value: number | null
   onChange: (n: number) => void
+  disabled?: boolean
 }) {
   const [hovered, setHovered] = useState<number | null>(null)
   const display = hovered ?? value ?? 0
@@ -94,6 +97,7 @@ function StarRating({
           className={`arp-star ${n <= display ? 'filled' : ''}`}
           onMouseEnter={() => setHovered(n)}
           onClick={() => onChange(n === value ? 0 : n)}
+          disabled={disabled}
           aria-label={`${n} estrella${n !== 1 ? 's' : ''}`}
         >
           ★
@@ -109,6 +113,7 @@ export function ActivacionReferidosPanel({
   ownerLabel,
   ownerClienteId,
   currentUserId,
+  currentRole,
   canEditOwner,
   isClosed,
   onClose,
@@ -143,7 +148,9 @@ export function ActivacionReferidosPanel({
     setError(null)
     const { data, error: fetchError } = await supabase
       .from('ci_referidos')
-      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
+      .select(
+        'id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por_usuario_id, tomado_por_vendedor_at, liberado_a_telemercadeo_at',
+      )
       .eq('activacion_id', activation.id)
       .order('created_at', { ascending: true })
     if (fetchError) {
@@ -218,6 +225,18 @@ export function ActivacionReferidosPanel({
     await supabase.from('ci_referidos').update({ notas }).eq('id', referidoId)
     setReferidos((prev) => prev.map((r) => (r.id === referidoId ? { ...r, notas } : r)))
     setNotasSaving((prev) => ({ ...prev, [referidoId]: false }))
+  }
+
+  const handleTakeReferido = async (referidoId: string) => {
+    if (!configured) return
+    await supabase.from('ci_referidos').update({ modo_gestion: 'vendedor_directo' }).eq('id', referidoId)
+    await loadReferidos()
+  }
+
+  const handleReturnReferido = async (referidoId: string) => {
+    if (!configured) return
+    await supabase.from('ci_referidos').update({ modo_gestion: 'telemercadeo' }).eq('id', referidoId)
+    await loadReferidos()
   }
 
   const handleCreateLead = async (ref: CiReferido) => {
@@ -467,6 +486,21 @@ export function ActivacionReferidosPanel({
                 const style = ESTADO_STYLE[ref.estado ?? 'pendiente'] ?? ESTADO_STYLE.pendiente
                 const isExpanded = expandedLeadId === ref.id
                 const form = leadForms[ref.id]
+                const isVendedorDirecto = ref.modo_gestion === 'vendedor_directo'
+                const isTeleReadOnly = currentRole === 'telemercadeo' && isVendedorDirecto
+                const canTakeReferido =
+                  !isClosed &&
+                  currentRole === 'vendedor' &&
+                  currentUserId != null &&
+                  !isVendedorDirecto &&
+                  (ref.asignado_a === currentUserId || activation?.representante_id === currentUserId)
+                const canReturnReferido =
+                  !isClosed &&
+                  isVendedorDirecto &&
+                  (currentRole === 'vendedor' ||
+                    currentRole === 'admin' ||
+                    currentRole === 'distribuidor' ||
+                    currentRole === 'supervisor_telemercadeo')
 
                 return (
                   <div key={ref.id} className="arp-row">
@@ -479,6 +513,7 @@ export function ActivacionReferidosPanel({
                         onChange={(e) =>
                           handleEstadoChange(ref.id, e.target.value as CiReferidoEstado)
                         }
+                        disabled={isTeleReadOnly}
                       >
                         {CI_REFERIDO_ESTADOS.map((estado) => (
                           <option key={estado} value={estado}>
@@ -494,6 +529,17 @@ export function ActivacionReferidosPanel({
                         {ref.relacion && (
                           <span className="arp-relacion-chip">{ref.relacion}</span>
                         )}
+                        <span
+                          className="arp-relacion-chip"
+                          style={{
+                            background: isVendedorDirecto ? '#fde68a' : 'rgba(148,163,184,0.2)',
+                            color: isVendedorDirecto ? '#92400e' : '#334155',
+                          }}
+                        >
+                          {isVendedorDirecto
+                            ? t('conexiones.referidosPanel.management.vendedorDirecto')
+                            : t('conexiones.referidosPanel.management.telemercadeo')}
+                        </span>
                       </div>
 
                       {/* Actions */}
@@ -502,7 +548,7 @@ export function ActivacionReferidosPanel({
                           type="button"
                           className="arp-icon-btn arp-icon-btn--wa"
                           title="WhatsApp"
-                          disabled={!ref.telefono}
+                          disabled={!ref.telefono || isTeleReadOnly}
                           onClick={() =>
                             openWhatsapp({ nombre: ref.nombre ?? '', telefono: ref.telefono ?? '' })
                           }
@@ -513,7 +559,7 @@ export function ActivacionReferidosPanel({
                           type="button"
                           className="arp-icon-btn arp-icon-btn--sms"
                           title="SMS"
-                          disabled={!ref.telefono}
+                          disabled={!ref.telefono || isTeleReadOnly}
                           onClick={() =>
                             openSms({ nombre: ref.nombre ?? '', telefono: ref.telefono ?? '' })
                           }
@@ -525,6 +571,7 @@ export function ActivacionReferidosPanel({
                             type="button"
                             className="arp-icon-btn arp-icon-btn--calificar"
                             title={t('conexiones.referidosPanel.calificar')}
+                            disabled={isTeleReadOnly}
                             onClick={() =>
                               setCalificacionLead({
                                 id: ref.lead_id!,
@@ -540,6 +587,7 @@ export function ActivacionReferidosPanel({
                           <button
                             type="button"
                             className="arp-icon-btn"
+                            disabled={isTeleReadOnly}
                             onClick={() => {
                               if (isExpanded) {
                                 setExpandedLeadId(null)
@@ -555,6 +603,26 @@ export function ActivacionReferidosPanel({
                             + {t('conexiones.referidosPanel.createLead')}
                           </button>
                         )}
+                        {canTakeReferido && (
+                          <button
+                            type="button"
+                            className="arp-icon-btn arp-icon-btn--calificar"
+                            onClick={() => handleTakeReferido(ref.id)}
+                            title={t('conexiones.referidosPanel.actions.take')}
+                          >
+                            {t('conexiones.referidosPanel.actions.take')}
+                          </button>
+                        )}
+                        {canReturnReferido && (
+                          <button
+                            type="button"
+                            className="arp-icon-btn"
+                            onClick={() => handleReturnReferido(ref.id)}
+                            title={t('conexiones.referidosPanel.actions.return')}
+                          >
+                            {t('conexiones.referidosPanel.actions.return')}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -563,6 +631,7 @@ export function ActivacionReferidosPanel({
                       <StarRating
                         value={ref.calificacion ?? null}
                         onChange={(n) => handleStarChange(ref.id, n)}
+                        disabled={isTeleReadOnly}
                       />
                     </div>
 
@@ -572,10 +641,13 @@ export function ActivacionReferidosPanel({
                       placeholder={t('conexiones.referidosPanel.notasPlaceholder')}
                       value={notasDrafts[ref.id] ?? ''}
                       rows={2}
+                      disabled={isTeleReadOnly}
                       onChange={(e) =>
                         setNotasDrafts((prev) => ({ ...prev, [ref.id]: e.target.value }))
                       }
-                      onBlur={() => handleNotasBlur(ref.id)}
+                      onBlur={() => {
+                        if (!isTeleReadOnly) handleNotasBlur(ref.id)
+                      }}
                     />
                     {notasSaving[ref.id] && (
                       <span className="form-hint" style={{ fontSize: '0.75rem' }}>
@@ -591,7 +663,7 @@ export function ActivacionReferidosPanel({
                           <Button
                             type="button"
                             onClick={() => handleCreateLead(ref)}
-                            disabled={form.saving}
+                            disabled={form.saving || isTeleReadOnly}
                           >
                             {form.saving
                               ? t('common.saving')

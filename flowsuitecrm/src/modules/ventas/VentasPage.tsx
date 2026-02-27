@@ -10,6 +10,7 @@ import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 
 type VentaRecord = {
   id: string
@@ -89,6 +90,7 @@ export function VentasPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
   const { usersById, currentRole } = useUsers()
+  const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
   const [ventas, setVentas] = useState<VentaRecord[]>([])
   const [clientes, setClientes] = useState<ClienteOption[]>([])
@@ -134,8 +136,11 @@ export function VentasPage() {
       .from('ventas')
       .select('id, numero_nota_pedido, cliente_id, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, created_at')
       .order('created_at', { ascending: false })
-    if (currentRole === 'vendedor' && session?.user.id) {
+    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
       query = query.eq('vendedor_id', session.user.id)
+    }
+    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+      query = query.in('vendedor_id', distributionUserIds)
     }
     const { data, error: fetchError } = await query
     if (fetchError) {

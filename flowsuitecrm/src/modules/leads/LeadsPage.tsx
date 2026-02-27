@@ -11,6 +11,7 @@ import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 import { useMessaging } from '../../hooks/useMessaging'
 
 type LeadRecord = {
@@ -29,6 +30,7 @@ type LeadRecord = {
   programa_id: string | null
   embajador_id: string | null
   owner_id: string | null
+  vendedor_id?: string | null
   estado_pipeline: string | null
   next_action: string | null
   next_action_date: string | null
@@ -107,6 +109,7 @@ export function LeadsPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
   const { usersById } = useUsers()
+  const { viewMode: scopeMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
   const [leads, setLeads] = useState<LeadRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -130,7 +133,18 @@ export function LeadsPage() {
   const [ownersLoading, setOwnersLoading] = useState(false)
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const configured = isSupabaseConfigured
-  const canManageLeads = role === 'admin' || role === 'distribuidor'
+  const canDeleteLeads = scopeMode === 'distributor' && (role === 'admin' || role === 'distribuidor')
+  const canReassignLeads = scopeMode === 'distributor' && (role === 'admin' || role === 'distribuidor')
+  const currentUserLabel = useMemo(() => {
+    if (!session?.user) return null
+    const metadata = session.user.user_metadata as Record<string, string> | undefined
+    const name =
+      [metadata?.first_name, metadata?.last_name].filter(Boolean).join(' ').trim() ||
+      metadata?.full_name ||
+      metadata?.name ||
+      ''
+    return name || usersById[session.user.id] || session.user.email || null
+  }, [session?.user, usersById])
 
   // --- FILTROS ---
   const [busqueda, setBusqueda] = useState('')
@@ -161,7 +175,7 @@ export function LeadsPage() {
   }, [configured, session?.user.id])
 
   const loadOwnerOptions = useCallback(async () => {
-    if (!configured || !session?.user.id || !canManageLeads) return
+    if (!configured || !session?.user.id || !canReassignLeads) return
     setOwnersLoading(true)
     const { data, error: fetchError } = await supabase
       .from('usuarios')
@@ -183,7 +197,7 @@ export function LeadsPage() {
     })
     setOwnerOptions(options)
     setOwnersLoading(false)
-  }, [configured, session?.user.id, canManageLeads])
+  }, [configured, session?.user.id, canReassignLeads])
 
   const loadLeads = useCallback(async () => {
     if (!configured) return
@@ -198,8 +212,12 @@ export function LeadsPage() {
     if (role === 'telemercadeo') {
       query = query.eq('estado_pipeline', 'nuevo')
     }
-    if (role === 'vendedor' && session?.user.id) {
-      query = query.eq('owner_id', session.user.id)
+    if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
+      query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+    }
+    if (hasDistribuidorScope && scopeMode === 'distributor' && distributionUserIds.length > 0) {
+      const ids = distributionUserIds.join(',')
+      query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
     }
     const { data, error: fetchError } = await query
 
@@ -210,17 +228,17 @@ export function LeadsPage() {
       setLeads(data ?? [])
     }
     setLoading(false)
-  }, [configured, role, viewMode, session?.user.id])
+  }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id])
 
   useEffect(() => {
     if (configured) loadRole()
   }, [configured, loadRole])
 
   useEffect(() => {
-    if (!canManageLeads && viewMode === 'trash') {
+    if (!canDeleteLeads && viewMode === 'trash') {
       setViewMode('active')
     }
-  }, [canManageLeads, viewMode])
+  }, [canDeleteLeads, viewMode])
 
   useEffect(() => {
     if (configured) loadLeads()
@@ -253,19 +271,35 @@ export function LeadsPage() {
     [t]
   )
 
-  const getOwnerName = useCallback(
-    (ownerId: string | null) => {
-      if (!ownerId) return '-'
-      return usersById[ownerId] ?? ownerId
-    },
-    [usersById]
+  const VENDEDOR_UNASSIGNED = 'sin_asignar'
+
+  const getLeadVendedorId = useCallback(
+    (lead: LeadRecord) => lead.vendedor_id ?? lead.owner_id ?? null,
+    [],
   )
 
-  // --- OWNERS / FUENTES ÚNICOS ---
-  const ownersUnicos = useMemo(() => {
-    const ids = [...new Set(leads.map((l) => l.owner_id).filter(Boolean))] as string[]
-    return ids.map((id) => ({ id, nombre: usersById[id] ?? id }))
-  }, [leads, usersById])
+  const getVendedorLabel = useCallback(
+    (vendedorId: string | null) => {
+      if (!vendedorId) return 'Sin asignar'
+      if (vendedorId === session?.user.id && currentUserLabel) return currentUserLabel
+      return usersById[vendedorId] ?? 'Sin nombre'
+    },
+    [currentUserLabel, session?.user.id, usersById]
+  )
+
+  const getLeadVendedorKey = useCallback(
+    (lead: LeadRecord) => getLeadVendedorId(lead) ?? VENDEDOR_UNASSIGNED,
+    [getLeadVendedorId],
+  )
+
+  // --- VENDEDORES / FUENTES ÚNICOS ---
+  const vendedoresUnicos = useMemo(() => {
+    const ids = [...new Set(leads.map((l) => getLeadVendedorKey(l)))] as string[]
+    return ids.map((id) => ({
+      id,
+      nombre: id === VENDEDOR_UNASSIGNED ? 'Sin asignar' : getVendedorLabel(id),
+    }))
+  }, [leads, getLeadVendedorKey, getVendedorLabel])
 
   const fuentesUnicas = useMemo(() => {
     const values = [...new Set(leads.map((l) => l.fuente).filter(Boolean))] as string[]
@@ -286,7 +320,7 @@ export function LeadsPage() {
         lead.estado_pipeline === filtroEstado ||
         (filtroEstado === 'en_proceso' && EN_PROCESO_STAGES.includes(stage))
       const matchFuente = filtroFuente === 'todos' || lead.fuente === filtroFuente
-      const matchOwner = filtroOwner === 'todos' || lead.owner_id === filtroOwner
+      const matchOwner = filtroOwner === 'todos' || getLeadVendedorKey(lead) === filtroOwner
       const matchVencido =
         !filtroVencido ||
         (!!lead.next_action_date &&
@@ -345,15 +379,17 @@ export function LeadsPage() {
 
   const openManageModal = useCallback(
     (lead: LeadRecord, mode: 'delete' | 'reassign' | 'restore') => {
-      if (!canManageLeads) return
+      if (mode === 'delete' && !canDeleteLeads) return
+      if (mode === 'restore' && !canDeleteLeads) return
+      if (mode === 'reassign' && !canReassignLeads) return
       setManageLead(lead)
       setManageMode(mode)
       setManageReason('')
-      setManageOwnerId(lead.owner_id ?? '')
+      setManageOwnerId(lead.vendedor_id ?? '')
       setManageError(null)
       setManageOpen(true)
     },
-    [canManageLeads],
+    [canDeleteLeads, canReassignLeads],
   )
 
   const closeManageModal = useCallback(() => {
@@ -366,6 +402,7 @@ export function LeadsPage() {
   }, [])
 
   const handleDeleteLead = useCallback(async () => {
+    if (!canDeleteLeads) return
     if (!manageLead || !session?.user.id) return
     const reason = manageReason.trim()
     if (!reason) {
@@ -392,9 +429,10 @@ export function LeadsPage() {
     closeManageModal()
     setSelectedLead(null)
     await loadLeads()
-  }, [closeManageModal, loadLeads, manageLead, manageReason, session?.user.id, showToast])
+  }, [canDeleteLeads, closeManageModal, loadLeads, manageLead, manageReason, session?.user.id, showToast])
 
   const handleRestoreLead = useCallback(async () => {
+    if (!canDeleteLeads) return
     if (!manageLead) return
     setManageSaving(true)
     setManageError(null)
@@ -416,19 +454,20 @@ export function LeadsPage() {
     closeManageModal()
     setSelectedLead(null)
     await loadLeads()
-  }, [closeManageModal, loadLeads, manageLead, showToast])
+  }, [canDeleteLeads, closeManageModal, loadLeads, manageLead, showToast])
 
   const handleReassignLead = useCallback(async () => {
+    if (!canReassignLeads) return
     if (!manageLead) return
     if (!manageOwnerId) {
-      setManageError('Selecciona un owner para reasignar.')
+      setManageError('Selecciona un vendedor para reasignar.')
       return
     }
     setManageSaving(true)
     setManageError(null)
     const { error: updateError } = await supabase
       .from('leads')
-      .update({ owner_id: manageOwnerId })
+      .update({ vendedor_id: manageOwnerId })
       .eq('id', manageLead.id)
     if (updateError) {
       setManageError(updateError.message)
@@ -440,7 +479,7 @@ export function LeadsPage() {
     closeManageModal()
     setSelectedLead(null)
     await loadLeads()
-  }, [closeManageModal, loadLeads, manageLead, manageOwnerId, showToast])
+  }, [canReassignLeads, closeManageModal, loadLeads, manageLead, manageOwnerId, showToast])
 
   // --- ROWS ---
   const isTrashView = viewMode === 'trash'
@@ -457,7 +496,7 @@ export function LeadsPage() {
           aria-label={t('whatsapp.open')}
           onClick={(event) => {
             event.stopPropagation()
-            const ownerName = getOwnerName(lead.owner_id)
+            const ownerName = getVendedorLabel(getLeadVendedorId(lead))
             openWhatsapp({
               nombre: fullName,
               telefono: lead.telefono ?? '',
@@ -471,10 +510,10 @@ export function LeadsPage() {
         </button>
       )
       let actions: ReactElement | undefined
-      if (canManageLeads) {
+      if (canDeleteLeads || canReassignLeads) {
         actions = (
           <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
-            {isTrashView ? (
+            {isTrashView && canDeleteLeads ? (
               <button
                 type="button"
                 className="icon-button"
@@ -487,34 +526,38 @@ export function LeadsPage() {
               >
                 <IconRestore />
               </button>
-            ) : (
+            ) : !isTrashView && (canReassignLeads || canDeleteLeads) ? (
               <>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Reasignar"
-                  title="Reasignar"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openManageModal(lead, 'reassign')
-                  }}
-                >
-                  <IconSwap />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Eliminar"
-                  title="Eliminar"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openManageModal(lead, 'delete')
-                  }}
-                >
-                  <IconTrash />
-                </button>
+                {canReassignLeads && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Reasignar"
+                    title="Reasignar"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      openManageModal(lead, 'reassign')
+                    }}
+                  >
+                    <IconSwap />
+                  </button>
+                )}
+                {canDeleteLeads && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Eliminar"
+                    title="Eliminar"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      openManageModal(lead, 'delete')
+                    }}
+                  >
+                    <IconTrash />
+                  </button>
+                )}
               </>
-            )}
+            ) : null}
           </div>
         )
       }
@@ -523,13 +566,13 @@ export function LeadsPage() {
         fullName,
         lead.telefono ?? '-',
         getFuenteLabel(lead.fuente),
-        getOwnerName(lead.owner_id),
+        getVendedorLabel(getLeadVendedorId(lead)),
         estadoLabel,
         lead.next_action ?? '-',
         whatsappAction,
       ]
 
-      if (canManageLeads && actions) {
+      if ((canDeleteLeads || canReassignLeads) && actions) {
         cells.push(actions)
       }
 
@@ -539,7 +582,7 @@ export function LeadsPage() {
         detail: [],
       }
     })
-  }, [canManageLeads, getFuenteLabel, getOwnerName, isTrashView, leadsOrdenados, normalizeStage, openManageModal, openWhatsapp, t])
+  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, isTrashView, leadsOrdenados, normalizeStage, openManageModal, openWhatsapp, t])
 
   const emptyLabel = loading
     ? t('common.loading')
@@ -635,7 +678,7 @@ export function LeadsPage() {
       l.telefono ?? '',
       l.email ?? '',
       getFuenteLabel(l.fuente),
-      getOwnerName(l.owner_id),
+      getVendedorLabel(getLeadVendedorId(l)),
       t(`pipeline.columns.${normalizeStage(l.estado_pipeline)}`),
       l.next_action ?? '',
       l.next_action_date ?? '',
@@ -670,7 +713,7 @@ export function LeadsPage() {
         subtitle={t('leads.subtitle')}
         action={
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {canManageLeads && (
+            {canDeleteLeads && (
               <Button
                 variant="ghost"
                 type="button"
@@ -906,7 +949,7 @@ export function LeadsPage() {
                   color: 'var(--color-text-muted, #6b7280)',
                 }}
               >
-                OWNER
+                VENDEDOR
               </label>
               <select
                 value={filtroOwner}
@@ -921,7 +964,7 @@ export function LeadsPage() {
                 }}
               >
                 <option value="todos">Todos</option>
-                {ownersUnicos.map((o) => (
+                {vendedoresUnicos.map((o) => (
                   <option key={o.id} value={o.id}>{o.nombre}</option>
                 ))}
               </select>
@@ -957,7 +1000,7 @@ export function LeadsPage() {
               const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
               const stage = normalizeStage(lead.estado_pipeline)
               const stageLabel = t(`pipeline.columns.${stage}`)
-              const ownerLabel = getOwnerName(lead.owner_id)
+              const ownerLabel = getVendedorLabel(getLeadVendedorId(lead))
               return (
                 <div
                   key={lead.id}
@@ -1015,7 +1058,7 @@ export function LeadsPage() {
                     </div>
                   )}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem', gap: '0.35rem' }}>
-                    {canManageLeads && isTrashView ? (
+                    {canDeleteLeads && isTrashView ? (
                       <button
                         type="button"
                         className="icon-button"
@@ -1029,32 +1072,36 @@ export function LeadsPage() {
                         <IconRestore />
                       </button>
                     ) : null}
-                    {canManageLeads && !isTrashView ? (
+                    {!isTrashView && (canDeleteLeads || canReassignLeads) ? (
                       <>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label="Reasignar"
-                          title="Reasignar"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openManageModal(lead, 'reassign')
-                          }}
-                        >
-                          <IconSwap />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label="Eliminar"
-                          title="Eliminar"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openManageModal(lead, 'delete')
-                          }}
-                        >
-                          <IconTrash />
-                        </button>
+                        {canReassignLeads && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label="Reasignar"
+                            title="Reasignar"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openManageModal(lead, 'reassign')
+                            }}
+                          >
+                            <IconSwap />
+                          </button>
+                        )}
+                        {canDeleteLeads && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label="Eliminar"
+                            title="Eliminar"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openManageModal(lead, 'delete')
+                            }}
+                          >
+                            <IconTrash />
+                          </button>
+                        )}
                       </>
                     ) : null}
                     <button
@@ -1090,7 +1137,7 @@ export function LeadsPage() {
             t('leads.columns.estado'),
             t('leads.columns.nextAction'),
             t('whatsapp.column'),
-            ...(canManageLeads ? ['Acciones'] : []),
+            ...(canDeleteLeads || canReassignLeads ? ['Acciones'] : []),
           ]}
           rows={rows}
           emptyLabel={emptyLabel}
@@ -1205,15 +1252,15 @@ export function LeadsPage() {
               </Button>
             )}
             {manageMode === 'reassign' && (
-              <Button
-                type="button"
-                onClick={handleReassignLead}
-                disabled={
-                  manageSaving ||
-                  manageOwnerId === '' ||
-                  manageOwnerId === manageLead?.owner_id
-                }
-              >
+                <Button
+                  type="button"
+                  onClick={handleReassignLead}
+                  disabled={
+                    manageSaving ||
+                    manageOwnerId === '' ||
+                    manageOwnerId === manageLead?.vendedor_id
+                  }
+                >
                 {manageSaving ? t('common.saving') : 'Reasignar'}
               </Button>
             )}
@@ -1309,9 +1356,9 @@ export function LeadsPage() {
       <CalificacionPanel
         open={Boolean(selectedLead)}
         lead={selectedLead}
-        ownerName={selectedLead ? getOwnerName(selectedLead.owner_id) : undefined}
+        ownerName={selectedLead ? getVendedorLabel(getLeadVendedorId(selectedLead)) : undefined}
         fuenteLabel={selectedLead ? getFuenteLabel(selectedLead.fuente) : undefined}
-        canManage={canManageLeads}
+        canManage={canDeleteLeads || canReassignLeads}
         onOpenManage={(lead, mode) => openManageModal(lead as LeadRecord, mode)}
         onClose={() => setSelectedLead(null)}
         onSaved={loadLeads}

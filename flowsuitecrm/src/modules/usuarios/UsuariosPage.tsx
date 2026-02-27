@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 import { getOrganizationName } from '../../lib/whatsappTemplates'
 
 type UsuarioRecord = {
@@ -18,6 +19,7 @@ type UsuarioRecord = {
   email: string | null
   codigo_vendedor: string | null
   codigo_distribuidor: string | null
+  reclutador_codigo: string | null
   rol: string | null
   activo: boolean | null
   created_at: string | null
@@ -40,6 +42,7 @@ const initialForm = {
   email: '',
   codigo_vendedor: '',
   codigo_distribuidor: '',
+  reclutador_codigo: '',
   rol: 'vendedor',
   activo: true,
 }
@@ -48,6 +51,7 @@ export function UsuariosPage() {
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { session } = useAuth()
+  const { viewMode } = useViewMode()
   const [usuarios, setUsuarios] = useState<UsuarioRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,7 +114,7 @@ export function UsuariosPage() {
     setError(null)
     const { data, error: fetchError } = await supabase
       .from('usuarios')
-      .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, rol, activo, created_at')
+      .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, reclutador_codigo, rol, activo, created_at')
       .order('created_at', { ascending: false })
 
     if (fetchError) {
@@ -164,7 +168,7 @@ export function UsuariosPage() {
     const timer = setTimeout(async () => {
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, rol, activo, created_at')
+        .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, reclutador_codigo, rol, activo, created_at')
         .in('rol', ['vendedor', 'distribuidor'])
         .eq('activo', true)
         .or(
@@ -267,7 +271,8 @@ export function UsuariosPage() {
         (u.apellido?.toLowerCase().includes(term) ?? false) ||
         (u.email?.toLowerCase().includes(term) ?? false) ||
         (u.codigo_vendedor?.toLowerCase().includes(term) ?? false) ||
-        (u.codigo_distribuidor?.toLowerCase().includes(term) ?? false)
+        (u.codigo_distribuidor?.toLowerCase().includes(term) ?? false) ||
+        (u.reclutador_codigo?.toLowerCase().includes(term) ?? false)
         : true
       const matchRole = roleFilter !== 'all' ? u.rol === roleFilter : true
       const matchStatus =
@@ -289,6 +294,7 @@ export function UsuariosPage() {
         email: usuario.email ?? '',
         codigo_vendedor: usuario.codigo_vendedor ?? '',
         codigo_distribuidor: usuario.codigo_distribuidor ?? '',
+        reclutador_codigo: usuario.reclutador_codigo ?? '',
         rol: usuario.rol ?? 'vendedor',
         activo: usuario.activo ?? true,
       })
@@ -386,6 +392,7 @@ export function UsuariosPage() {
           { label: t('usuarios.fields.email'), value: usuario.email ?? '-' },
           { label: t('usuarios.fields.codigoVendedor'), value: usuario.codigo_vendedor ?? '-' },
           { label: t('usuarios.fields.codigoDistribuidor'), value: usuario.codigo_distribuidor ?? '-' },
+          { label: t('usuarios.fields.codigoReclutador'), value: usuario.reclutador_codigo ?? '-' },
           { label: t('usuarios.fields.rol'), value: usuario.rol ? t(`usuarios.roles.${usuario.rol}`) : '-' },
           { label: t('usuarios.fields.activo'), value: estadoLabel },
         ]
@@ -418,6 +425,7 @@ export function UsuariosPage() {
         apellido: toNull(formValues.apellido),
         codigo_vendedor: toNull(formValues.codigo_vendedor),
         codigo_distribuidor: toNull(formValues.codigo_distribuidor),
+        reclutador_codigo: toNull(formValues.reclutador_codigo),
         rol: formValues.rol,
         activo: formValues.activo,
       }
@@ -449,6 +457,7 @@ export function UsuariosPage() {
         email: toNull(formValues.email),
         codigo_vendedor: toNull(formValues.codigo_vendedor),
         codigo_distribuidor: toNull(formValues.codigo_distribuidor),
+        reclutador_codigo: toNull(formValues.reclutador_codigo),
         rol: formValues.rol,
         activo: formValues.activo,
         organizacion: getOrganizationName(activeSession.user?.user_metadata),
@@ -487,7 +496,7 @@ export function UsuariosPage() {
     <div className="page-stack">
       {roleLoading ? (
         <div className="page">Cargando...</div>
-      ) : role && role !== 'admin' && role !== 'distribuidor' ? (
+      ) : viewMode === 'seller' || (role && role !== 'admin' && role !== 'distribuidor') ? (
         <div>
           <SectionHeader
             title={t('usuarios.title')}
@@ -531,6 +540,7 @@ export function UsuariosPage() {
               <option value="distribuidor">{t('usuarios.roles.distribuidor')}</option>
               <option value="vendedor">{t('usuarios.roles.vendedor')}</option>
               <option value="telemercadeo">{t('usuarios.roles.telemercadeo')}</option>
+              <option value="supervisor_telemercadeo">{t('usuarios.roles.supervisor_telemercadeo')}</option>
             </select>
             <select
               style={{ width: 'auto', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
@@ -606,6 +616,12 @@ export function UsuariosPage() {
                 <span>{t('usuarios.fields.codigoDistribuidor')}</span>
                 <input value={formValues.codigo_distribuidor} onChange={handleChange('codigo_distribuidor')} />
               </label>
+              {(role === 'admin' || role === 'distribuidor') && formValues.rol === 'vendedor' && (
+                <label className="form-field">
+                  <span>{t('usuarios.fields.codigoReclutador')}</span>
+                  <input value={formValues.reclutador_codigo} onChange={handleChange('reclutador_codigo')} />
+                </label>
+              )}
               <label className="form-field">
                 <span>{t('usuarios.fields.rol')}</span>
                 <select value={formValues.rol} onChange={handleChange('rol')}>
@@ -613,6 +629,7 @@ export function UsuariosPage() {
                   <option value="distribuidor">{t('usuarios.roles.distribuidor')}</option>
                   <option value="vendedor">{t('usuarios.roles.vendedor')}</option>
                   <option value="telemercadeo">{t('usuarios.roles.telemercadeo')}</option>
+                  <option value="supervisor_telemercadeo">{t('usuarios.roles.supervisor_telemercadeo')}</option>
                 </select>
               </label>
               <label className="form-field checkbox-field">

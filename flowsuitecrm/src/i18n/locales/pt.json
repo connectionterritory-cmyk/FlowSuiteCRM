@@ -21,6 +21,7 @@
     "page": "Pagina",
     "of": "de",
     "select": "Selecione",
+    "clearFilters": "Limpar filtros",
     "yes": "Sim",
     "no": "Nao",
     "save": "Salvar",
@@ -40,7 +41,12 @@
     "newVenta": "Nova venda",
     "newProducto": "Novo produto",
     "newUsuario": "Novo usuario",
-    "verModulo": "Ver modulo"
+    "verModulo": "Ver modulo",
+    "modeLabel": "Modo",
+    "modeSeller": "Vendedor",
+    "modeDistributor": "Distribuidor",
+    "delete": "Excluir",
+    "edit": "Editar"
   },
   "messaging": {
     "title": "Enviar mensagem por {{channel}}",
@@ -253,7 +259,7 @@
       "fuenteOtro": "Especifique a fonte",
       "programaId": "Programa ID",
       "embajadorId": "Embaixador ID",
-      "ownerId": "Owner ID",
+      "ownerId": "Vendedor",
       "estadoPipeline": "Status do pipeline",
       "nextAction": "Proxima acao",
       "nextActionDate": "Data proxima acao"
@@ -317,7 +323,7 @@
       "nombre": "Nome",
       "telefono": "Telefone",
       "fuente": "Fonte",
-      "owner": "Responsavel",
+      "owner": "Vendedor",
       "estado": "Status",
       "nextAction": "Proxima acao"
     }
@@ -421,6 +427,7 @@
       "nombre": "Nome",
       "categoria": "Categoria",
       "precio": "Preco",
+      "foto": "Foto",
       "activo": "Ativo"
     },
     "estado": {
@@ -428,6 +435,7 @@
       "inactivo": "Inativo"
     },
     "columns": {
+      "foto": "Foto",
       "codigo": "Codigo",
       "nombre": "Nome",
       "categoria": "Categoria",
@@ -494,8 +502,8 @@
       },
       "scope": {
         "title": "Escopo",
-        "mine": "Minhas ativacoes",
-        "distribution": "Minha distribuicao",
+        "mine": "Como vendedor",
+        "distribution": "Como distribuidor",
         "mineHelp": "Voce ve apenas suas ativacoes.",
         "distributionHelp": "Voce ve ativacoes da sua rede.",
         "hint": "Altere o escopo na secao acima."
@@ -744,7 +752,15 @@
       "newRefRequired": "Nome e telefone sao obrigatorios",
       "calificar": "Ver / Qualificar prospecto",
       "leadDone": "✓ Ativo",
-      "ownerInfoToggle": "Ver info do dono"
+      "ownerInfoToggle": "Ver info do dono",
+      "management": {
+        "telemercadeo": "Telemarketing",
+        "vendedorDirecto": "Vendedor direto"
+      },
+      "actions": {
+        "take": "Assumir indicado",
+        "return": "Devolver ao telemarketing"
+      }
     },
     "relaciones": {
       "familiar": "Familiar",
@@ -985,7 +1001,11 @@
     "fields": {
       "name": "Nome",
       "email": "Email",
-      "role": "Papel"
+      "role": "Papel",
+      "avatar": "Foto"
+    },
+    "actions": {
+      "savePhoto": "Salvar foto"
     }
   },
   "usuarios": {
@@ -1001,6 +1021,7 @@
       "email": "Email",
       "codigoVendedor": "Codigo vendedor",
       "codigoDistribuidor": "Codigo distribuidor",
+      "codigoReclutador": "Codigo recrutador",
       "rol": "Papel",
       "activo": "Ativo"
     },
@@ -1008,7 +1029,8 @@
       "admin": "Admin",
       "distribuidor": "Distribuidor",
       "vendedor": "Vendedor",
-      "telemercadeo": "Telemarketing"
+      "telemercadeo": "Telemarketing",
+      "supervisor_telemercadeo": "Supervisor de Telemarketing"
     },
     "estado": {
       "activo": "Ativo",

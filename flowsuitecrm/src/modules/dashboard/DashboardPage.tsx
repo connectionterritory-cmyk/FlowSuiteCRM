@@ -63,24 +63,24 @@ export function DashboardPage() {
           label={t('dashboard.metrics.embajadoresSilver')}
           value={loading ? t('common.loading') : formatValue(metrics.ambassadorsSilver)}
           accent="gold"
-          onClick={() => navigate('/programas/conexiones-infinitas')}
+          onClick={() => navigate('/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.embajadoresGold')}
           value={loading ? t('common.loading') : formatValue(metrics.ambassadorsGold)}
           accent="gold"
-          onClick={() => navigate('/programas/conexiones-infinitas')}
+          onClick={() => navigate('/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.volumenAnual')}
           value={loading ? t('common.loading') : formatValue(metrics.ambassadorsVolumeAnnual)}
           accent="gold"
-          onClick={() => navigate('/programas/conexiones-infinitas')}
+          onClick={() => navigate('/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.ciclosActivos')}
           value={loading ? t('common.loading') : formatValue(metrics.cyclesActive)}
-          onClick={() => navigate('/programas/4en14')}
+          onClick={() => navigate('/4en14')}
         />
         <StatCard
           label={t('dashboard.metrics.serviciosVencidos')}

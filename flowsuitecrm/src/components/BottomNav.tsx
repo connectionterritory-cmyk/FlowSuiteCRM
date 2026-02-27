@@ -1,10 +1,20 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { IconConnections, IconCustomers, IconDashboard, IconUsers } from './icons'
+import { useViewMode } from '../data/ViewModeProvider'
+import { useUsers } from '../data/UsersProvider'
 
 export function BottomNav() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { viewMode } = useViewMode()
+  const { currentRole } = useUsers()
+  const canTelemercadeo =
+    currentRole === 'admin' ||
+    currentRole === 'distribuidor' ||
+    currentRole === 'telemercadeo' ||
+    currentRole === 'supervisor_telemercadeo'
+  const showTelemercadeo = viewMode === 'distributor' && canTelemercadeo
 
   return (
     <nav className="bottom-nav" aria-label="Mobile">
@@ -26,23 +36,27 @@ export function BottomNav() {
         <IconCustomers className="bottom-nav-icon" />
         <span>{t('nav.clientes')}</span>
       </NavLink>
-      <button
-        type="button"
-        className="bottom-nav-create"
-        aria-label={t('telemercadeo.actions.newActivation')}
-        onClick={() => navigate('/telemercadeo?new=1')}
-      >
-        +
-      </button>
-      <NavLink
-        to="/telemercadeo"
-        className={({ isActive }) =>
-          `bottom-nav-link ${isActive ? 'active' : ''}`
-        }
-      >
-        <IconConnections className="bottom-nav-icon" />
-        <span>{t('nav.telemercadeo')}</span>
-      </NavLink>
+      {showTelemercadeo && (
+        <>
+          <button
+            type="button"
+            className="bottom-nav-create"
+            aria-label={t('telemercadeo.actions.newActivation')}
+            onClick={() => navigate('/telemercadeo?new=1')}
+          >
+            +
+          </button>
+          <NavLink
+            to="/telemercadeo"
+            className={({ isActive }) =>
+              `bottom-nav-link ${isActive ? 'active' : ''}`
+            }
+          >
+            <IconConnections className="bottom-nav-icon" />
+            <span>{t('nav.telemercadeo')}</span>
+          </NavLink>
+        </>
+      )}
       <NavLink
         to="/perfil"
         className={({ isActive }) =>

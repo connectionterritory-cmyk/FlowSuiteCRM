@@ -9,6 +9,7 @@ import { IconWhatsapp } from '../../components/icons'
 import { useToast } from '../../components/Toast'
 import { useUsers } from '../../data/UsersProvider'
 import { useAuth } from '../../auth/AuthProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 import { EmptyState } from '../../components/EmptyState'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useMessaging } from '../../hooks/useMessaging'
@@ -81,8 +82,9 @@ const stageColors: Record<string, string> = {
 export function PipelinePage() {
   const { t } = useTranslation()
   const configured = isSupabaseConfigured
-  const { usersById } = useUsers()
+  const { usersById, currentRole } = useUsers()
   const { session } = useAuth()
+  const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
 
   const [leads, setLeads] = useState<LeadCard[]>([])
@@ -174,10 +176,15 @@ export function PipelinePage() {
     if (!configured) return
     setLoading(true)
     setError(null)
-    const { data, error: fetchError } = await supabase
-      .from('leads')
-      .select('*')
-      .is('deleted_at', null)
+    let query = supabase.from('leads').select('*').is('deleted_at', null)
+    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
+      query = query.or(`owner_id.eq.${session.user.id},vendedor_id.eq.${session.user.id}`)
+    }
+    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+      const ids = distributionUserIds.join(',')
+      query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
+    }
+    const { data, error: fetchError } = await query
     if (fetchError) {
       setError(fetchError.message)
       setLeads([])

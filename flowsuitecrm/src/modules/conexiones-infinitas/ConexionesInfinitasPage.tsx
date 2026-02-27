@@ -15,6 +15,7 @@ import { CONEXIONES_INFINITAS_DIFUSION, replaceTemplateVariables } from '../../l
 import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 import { useMessaging } from '../../hooks/useMessaging'
 import {
   CI_REFERIDO_ESTADOS,
@@ -380,17 +381,17 @@ export function ConexionesActivacionesTabLegacy() {
   )
   const detailEstadoValue = selectedActivation
     ? getActivationState({
-        referidosCount: selectedReferidosCount,
-        photoPath: detailPhotoPath || selectedActivation.foto_url || null,
-        whatsappAt: detailWhatsappSentAt ?? selectedActivation.whatsapp_mensaje_enviado_at ?? null,
-      })
+      referidosCount: selectedReferidosCount,
+      photoPath: detailPhotoPath || selectedActivation.foto_url || null,
+      whatsappAt: detailWhatsappSentAt ?? selectedActivation.whatsapp_mensaje_enviado_at ?? null,
+    })
     : null
   const detailEstadoLabel = detailEstadoValue
     ? (() => {
-        const key = `conexiones.activaciones.states.${detailEstadoValue}`
-        const label = t(key)
-        return label === key ? detailEstadoValue : label
-      })()
+      const key = `conexiones.activaciones.states.${detailEstadoValue}`
+      const label = t(key)
+      return label === key ? detailEstadoValue : label
+    })()
     : '-'
 
   useEffect(() => {
@@ -407,13 +408,13 @@ export function ConexionesActivacionesTabLegacy() {
     }
 
     createSignedPhotoUrl(fotoPath).then(({ data, error }) => {
-        if (!active) return
-        if (error) {
-          setSelectedPhotoUrl(null)
-          return
-        }
-        setSelectedPhotoUrl(data ?? null)
-      })
+      if (!active) return
+      if (error) {
+        setSelectedPhotoUrl(null)
+        return
+      }
+      setSelectedPhotoUrl(data ?? null)
+    })
 
     return () => {
       active = false
@@ -749,10 +750,10 @@ export function ConexionesActivacionesTabLegacy() {
 
     const visitGiftPayload = visitGiftEnabled
       ? {
-          regaloVisitaId: selectedVisitGiftId || null,
-          regaloVisitaCantidad: visitGiftQty.trim() ? Number(visitGiftQty) : null,
-          regaloVisitaEntregadoAt: visitGiftDeliveredAt,
-        }
+        regaloVisitaId: selectedVisitGiftId || null,
+        regaloVisitaCantidad: visitGiftQty.trim() ? Number(visitGiftQty) : null,
+        regaloVisitaEntregadoAt: visitGiftDeliveredAt,
+      }
       : { regaloVisitaId: null, regaloVisitaCantidad: null, regaloVisitaEntregadoAt: null }
 
     const { data: activationResult, error: activationError } = await createActivacion({
@@ -793,14 +794,14 @@ export function ConexionesActivacionesTabLegacy() {
 
   const handleReferidoDraftChange =
     (referidoId: string, field: keyof ReferidoFormRow) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      const value = field === 'telefono' ? formatPhone(event.target.value) : event.target.value
-      const nextValue = field === 'relacion' ? (value as CiRelacion) : value
-      setReferidoDrafts((prev) => ({
-        ...prev,
-        [referidoId]: { ...(prev[referidoId] ?? {}), [field]: nextValue } as ReferidoFormRow,
-      }))
-    }
+      (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const value = field === 'telefono' ? formatPhone(event.target.value) : event.target.value
+        const nextValue = field === 'relacion' ? (value as CiRelacion) : value
+        setReferidoDrafts((prev) => ({
+          ...prev,
+          [referidoId]: { ...(prev[referidoId] ?? {}), [field]: nextValue } as ReferidoFormRow,
+        }))
+      }
 
   const handleSaveReferido = async (referido: CiReferido) => {
     if (!configured) return
@@ -1107,13 +1108,13 @@ export function ConexionesActivacionesTabLegacy() {
 
   const selectedActivationTitle = selectedActivation
     ? t('conexiones.activaciones.detailTitle', {
-        name:
-          selectedActivation.cliente_id
-            ? clientesMap.get(selectedActivation.cliente_id) ?? selectedActivation.cliente_id
-            : selectedActivation.lead_id
-              ? leadsMap.get(selectedActivation.lead_id) ?? selectedActivation.lead_id
-              : selectedActivation.id,
-      })
+      name:
+        selectedActivation.cliente_id
+          ? clientesMap.get(selectedActivation.cliente_id) ?? selectedActivation.cliente_id
+          : selectedActivation.lead_id
+            ? leadsMap.get(selectedActivation.lead_id) ?? selectedActivation.lead_id
+            : selectedActivation.id,
+    })
     : ''
 
   const getReferidoDraftValue = useCallback(
@@ -1668,7 +1669,7 @@ export function ConexionesActivacionesTabLegacy() {
                     <dd>
                       {selectedActivation.regalo_visita_id
                         ? giftMap.get(selectedActivation.regalo_visita_id) ??
-                          selectedActivation.regalo_visita_id
+                        selectedActivation.regalo_visita_id
                         : '-'}
                     </dd>
                   </div>
@@ -2457,8 +2458,8 @@ export function ConexionesActivacionesTabLegacy2() {
         </div>
 
         {activation && (
-            <div className="card">
-              <h4>{t('conexiones.activaciones.referidos.title')}</h4>
+          <div className="card">
+            <h4>{t('conexiones.activaciones.referidos.title')}</h4>
             <div className="ci-activation-progress">
               <div className="ci-counter">
                 <strong>{t('conexiones.activaciones.counter', { count: referidosCount })}</strong>
@@ -2543,12 +2544,12 @@ export function ConexionesActivacionesTabLegacy2() {
               </table>
             </div>
           </div>
-          )}
+        )}
 
         {activation && (
-            <div className="card">
-              <h4>{t('conexiones.activaciones.steps.regalo')}</h4>
-              <div className="ci-gift-visit">
+          <div className="card">
+            <h4>{t('conexiones.activaciones.steps.regalo')}</h4>
+            <div className="ci-gift-visit">
               <h5>Regalo de visita</h5>
               <label className="form-field">
                 <span>Buscar por codigo o nombre</span>
@@ -2594,9 +2595,9 @@ export function ConexionesActivacionesTabLegacy2() {
                   </span>
                 )}
               </div>
-              </div>
+            </div>
 
-              <div className={`ci-gift-premium ${premiumUnlocked ? '' : 'disabled'}`.trim()}>
+            <div className={`ci-gift-premium ${premiumUnlocked ? '' : 'disabled'}`.trim()}>
               <h5>Regalo premium</h5>
               {!premiumUnlocked && (
                 <p className="template-warning">
@@ -2653,8 +2654,8 @@ export function ConexionesActivacionesTabLegacy2() {
                   </span>
                 )}
               </div>
-              </div>
             </div>
+          </div>
         )}
       </>
     </div>
@@ -2668,6 +2669,9 @@ function ConexionesActivacionesTab() {
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
+  const [hasDistribuidorScope, setHasDistribuidorScope] = useState(false)
+  const { viewMode, distributionUserIds } = useViewMode()
+  const { currentUser } = useUsers()
   const [currentUserLabel, setCurrentUserLabel] = useState<string | null>(null)
   const [programId, setProgramId] = useState<string | null>(null)
   const [activaciones, setActivaciones] = useState<CiActivacion[]>([])
@@ -2676,7 +2680,6 @@ function ConexionesActivacionesTab() {
   const [representanteMap, setRepresentanteMap] = useState<Record<string, string>>({})
   const [referidosCount, setReferidosCount] = useState<Record<string, number>>({})
   const [tab, setTab] = useState<'activa' | 'cerrada'>('activa')
-  const [viewScope, setViewScope] = useState<'mine' | 'distribution'>('mine')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -2763,11 +2766,18 @@ function ConexionesActivacionesTab() {
     return () => query.removeEventListener('change', update)
   }, [])
 
+  const effectiveScope: 'mine' | 'distribution' =
+    hasDistribuidorScope && viewMode === 'distributor' ? 'distribution' : 'mine'
+
   const loadRoleAndProgram = useCallback(async () => {
     if (!configured || !session?.user.id) return
     setError(null)
     const [roleResult, programResult] = await Promise.all([
-      supabase.from('usuarios').select('rol, nombre, apellido').eq('id', session.user.id).maybeSingle(),
+      supabase
+        .from('usuarios')
+        .select('rol, nombre, apellido, codigo_distribuidor')
+        .eq('id', session.user.id)
+        .maybeSingle(),
       supabase
         .from('programas')
         .select('id')
@@ -2781,9 +2791,12 @@ function ConexionesActivacionesTab() {
       setError(roleResult.error.message)
       return
     }
-    setRole(roleResult.data?.rol ?? null)
+    const nextRole = roleResult.data?.rol ?? null
+    setRole(nextRole)
     const nameLabel = [roleResult.data?.nombre, roleResult.data?.apellido].filter(Boolean).join(' ').trim()
     setCurrentUserLabel(nameLabel || session.user.id)
+    const nextDistribuidorCode = roleResult.data?.codigo_distribuidor ?? null
+    setHasDistribuidorScope(nextRole === 'admin' || nextRole === 'distribuidor' || Boolean(nextDistribuidorCode))
 
     if (programResult.error || !programResult.data?.id) {
       setError(t('conexiones.activaciones.errors.programMissing'))
@@ -2793,26 +2806,8 @@ function ConexionesActivacionesTab() {
     setProgramId(programResult.data.id)
   }, [configured, session?.user.id, t])
 
-  const loadDistributionUsers = useCallback(async () => {
-    if (!configured || !session?.user.id) return []
-    const { data, error: distError } = await supabase
-      .from('usuarios')
-      .select('id')
-      .eq('distribuidor_padre_id', session.user.id)
-    if (distError) {
-      setError(distError.message)
-      return []
-    }
-    return (data ?? []).map((row) => row.id)
-  }, [configured, session?.user.id])
-
   const loadActivaciones = useCallback(async () => {
     if (!configured || !session?.user.id || !programId) return
-    if (role === 'telemercadeo') {
-      setActivaciones([])
-      setReferidosCount({})
-      return
-    }
     setLoading(true)
     setError(null)
 
@@ -2821,13 +2816,13 @@ function ConexionesActivacionesTab() {
       .select('id, representante_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
       .eq('programa_id', programId)
 
-    if (role === 'vendedor' || (role === 'distribuidor' && viewScope === 'mine')) {
-      query = query.eq('representante_id', session.user.id)
-    }
+    if (role === 'telemercadeo' || role === 'supervisor_telemercadeo') {
+      const { data: assignments } = await supabase
+        .from('tele_vendedor_assignments')
+        .select('vendedor_id')
+        .eq('tele_id', session.user.id)
+      const ids = (assignments ?? []).map((a) => a.vendedor_id)
 
-    if (role === 'distribuidor' && viewScope === 'distribution') {
-      const ids = distributionIds.length > 0 ? distributionIds : await loadDistributionUsers()
-      setDistributionIds(ids)
       if (ids.length === 0) {
         setActivaciones([])
         setReferidosCount({})
@@ -2835,6 +2830,40 @@ function ConexionesActivacionesTab() {
         return
       }
       query = query.in('representante_id', ids)
+    } else if (role === 'vendedor' || (hasDistribuidorScope && effectiveScope === 'mine')) {
+      query = query.eq('representante_id', session.user.id)
+    } else if (hasDistribuidorScope && effectiveScope === 'distribution') {
+      let distIds = distributionUserIds
+      let codigoDistribuidor = currentUser?.codigo_distribuidor ?? null
+      if (!codigoDistribuidor) {
+        const { data } = await supabase
+          .from('usuarios')
+          .select('codigo_distribuidor')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        codigoDistribuidor = (data as { codigo_distribuidor?: string | null } | null)?.codigo_distribuidor ?? null
+      }
+      if (distIds.length === 0 && codigoDistribuidor) {
+        const { data, error: distError } = await supabase
+          .from('usuarios')
+          .select('id')
+          .eq('codigo_distribuidor', codigoDistribuidor)
+          .eq('activo', true)
+        if (distError) {
+          setError(distError.message)
+        } else {
+          distIds = (data ?? []).map((row) => row.id)
+        }
+      }
+      if (session.user.id && !distIds.includes(session.user.id)) distIds.push(session.user.id)
+      setDistributionIds(distIds)
+      if (distIds.length === 0) {
+        setActivaciones([])
+        setReferidosCount({})
+        setLoading(false)
+        return
+      }
+      query = query.in('representante_id', distIds)
     }
 
     const cutoffIso = cutoffDate.toISOString()
@@ -2843,9 +2872,13 @@ function ConexionesActivacionesTab() {
         `estado.eq.cerrado,updated_at.lt.${cutoffIso},and(updated_at.is.null,created_at.lt.${cutoffIso})`,
       )
     } else {
-      query = query
-        .neq('estado', 'cerrado')
-        .or(`updated_at.gte.${cutoffIso},and(updated_at.is.null,created_at.gte.${cutoffIso})`)
+      query = query.neq('estado', 'cerrado')
+
+      // Relaxed cutoff for distribution/admin/tele views to ensure they see data even if inactive
+      const isTeamView = effectiveScope === 'distribution' || role === 'admin' || role === 'telemercadeo' || role === 'supervisor_telemercadeo'
+      if (!isTeamView) {
+        query = query.or(`updated_at.gte.${cutoffIso},and(updated_at.is.null,created_at.gte.${cutoffIso})`)
+      }
     }
 
     const { data, error: fetchError } = await query.order('updated_at', { ascending: false }).limit(limit)
@@ -2908,32 +2941,32 @@ function ConexionesActivacionesTab() {
     }
 
     const representanteNameMap: Record<string, string> = {}
-    ;((representantesResult.data ?? []) as UsuarioRecord[]).forEach((user) => {
-      const label = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
-      representanteNameMap[user.id] = label || user.id
-    })
+      ; ((representantesResult.data ?? []) as UsuarioRecord[]).forEach((user) => {
+        const label = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
+        representanteNameMap[user.id] = label || user.id
+      })
 
     const clienteNameMap: Record<string, string> = {}
-    ;((clientesResult.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach(
-      (cliente) => {
-        const label = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ').trim()
-        clienteNameMap[cliente.id] = label || cliente.id
-      },
-    )
+      ; ((clientesResult.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach(
+        (cliente) => {
+          const label = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ').trim()
+          clienteNameMap[cliente.id] = label || cliente.id
+        },
+      )
 
     const leadNameMap: Record<string, string> = {}
-    ;((leadsResult.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach(
-      (lead) => {
-        const label = [lead.nombre, lead.apellido].filter(Boolean).join(' ').trim()
-        leadNameMap[lead.id] = label || lead.id
-      },
-    )
+      ; ((leadsResult.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach(
+        (lead) => {
+          const label = [lead.nombre, lead.apellido].filter(Boolean).join(' ').trim()
+          leadNameMap[lead.id] = label || lead.id
+        },
+      )
 
     const counts: Record<string, number> = {}
-    ;((referidosResult.data ?? []) as { activacion_id: string | null }[]).forEach((row) => {
-      if (!row.activacion_id) return
-      counts[row.activacion_id] = (counts[row.activacion_id] ?? 0) + 1
-    })
+      ; ((referidosResult.data ?? []) as { activacion_id: string | null }[]).forEach((row) => {
+        if (!row.activacion_id) return
+        counts[row.activacion_id] = (counts[row.activacion_id] ?? 0) + 1
+      })
 
     setOwnerClienteMap(clienteNameMap)
     setOwnerLeadMap(leadNameMap)
@@ -2945,12 +2978,13 @@ function ConexionesActivacionesTab() {
     session?.user.id,
     programId,
     role,
-    viewScope,
+    effectiveScope,
     tab,
     limit,
     cutoffDate,
     distributionIds,
-    loadDistributionUsers,
+    distributionUserIds,
+    currentUser?.codigo_distribuidor,
   ])
 
   useEffect(() => {
@@ -2960,7 +2994,7 @@ function ConexionesActivacionesTab() {
   useEffect(() => {
     if (!programId || !role) return
     loadActivaciones()
-  }, [loadActivaciones, programId, role])
+  }, [loadActivaciones, programId, role, distributionUserIds])
 
   useEffect(() => {
     if (!wizardOpen) {
@@ -3127,7 +3161,9 @@ function ConexionesActivacionesTab() {
   }, [filteredActivaciones, sortColAct, sortDirAct, referidosCount])
 
   const exportarCSVActivaciones = () => {
-    const headers = ['Cliente/Prospecto', 'Referidos', 'Ultima actividad', 'Estado']
+    const headers = effectiveScope === 'distribution'
+      ? ['Cliente/Prospecto', 'Referidos', 'Ultima actividad', 'Estado', 'Vendedor']
+      : ['Cliente/Prospecto', 'Referidos', 'Ultima actividad', 'Estado']
     const csvRows = filteredActivaciones.map((row) => {
       const ownerLabel = getOwnerLabel(row)
       const refs = referidosCount[row.id] ?? 0
@@ -3135,7 +3171,11 @@ function ConexionesActivacionesTab() {
       const estado = isClosed(row)
         ? t('conexiones.activaciones.status.closed')
         : t('conexiones.activaciones.status.active')
-      return [ownerLabel, refs, lastActivity, estado]
+      const repLabel = row.representante_id ? representanteMap[row.representante_id] ?? '-' : '-'
+      const values = effectiveScope === 'distribution'
+        ? [ownerLabel, refs, lastActivity, estado, repLabel]
+        : [ownerLabel, refs, lastActivity, estado]
+      return values
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
     })
@@ -3152,9 +3192,9 @@ function ConexionesActivacionesTab() {
   const filtersCount = useMemo(() => {
     let count = 0
     if (search.trim()) count += 1
-    if (role === 'distribuidor' && viewScope === 'distribution') count += 1
+    if (hasDistribuidorScope && effectiveScope === 'distribution') count += 1
     return count
-  }, [role, search, viewScope])
+  }, [hasDistribuidorScope, search, effectiveScope])
 
   const selectedOwnerLabel = useMemo(() => {
     if (!wizardOwnerId) return '-'
@@ -3209,7 +3249,8 @@ function ConexionesActivacionesTab() {
     await loadActivaciones()
   }
 
-  const canEditOwner = role === 'admin' || role === 'distribuidor'
+  const canEditOwner = false
+  const canCreateActivation = role === 'admin' || role === 'distribuidor' || role === 'vendedor'
 
   const handleSaveOwnerEdit = async () => {
     if (!configured || !selectedActivation) return
@@ -3301,6 +3342,7 @@ function ConexionesActivacionesTab() {
   const listRows = useMemo<DataTableRow[]>(() => {
     return sortedActivaciones.map((row) => {
       const ownerLabel = getOwnerLabel(row)
+      const repLabel = row.representante_id ? representanteMap[row.representante_id] ?? '-' : '-'
       const lastActivityValue = row.updated_at ?? row.created_at
       const lastActivityLabel = formatRelativeTime(lastActivityValue)
       const lastActivityFull = formatDateTime(lastActivityValue)
@@ -3342,11 +3384,12 @@ function ConexionesActivacionesTab() {
             {lastActivityLabel}
           </span>,
           statusLabel,
+          ...(effectiveScope === 'distribution' ? [repLabel] : []),
           actions,
         ],
       }
     })
-  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, t])
+  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, representanteMap, effectiveScope, t])
 
   const canAccess = role !== 'telemercadeo'
 
@@ -3366,7 +3409,7 @@ function ConexionesActivacionesTab() {
             >
               Exportar CSV
             </Button>
-            <Button type="button" onClick={() => setWizardOpen(true)} disabled={!canAccess}>
+            <Button type="button" onClick={() => setWizardOpen(true)} disabled={!canCreateActivation}>
               {t('conexiones.activaciones.actions.new')}
             </Button>
           </div>
@@ -3408,35 +3451,6 @@ function ConexionesActivacionesTab() {
             </button>
           </div>
 
-          {role === 'distribuidor' && (
-            <div className="card">
-              <div className="filters-header">
-                <span style={{ fontWeight: 600 }}>{t('conexiones.activaciones.scope.title')}</span>
-              </div>
-              <div className="segmented" style={{ marginTop: '0.75rem' }}>
-                <button
-                  type="button"
-                  className={viewScope === 'mine' ? 'active' : ''}
-                  onClick={() => setViewScope('mine')}
-                >
-                  {t('conexiones.activaciones.scope.mine')}
-                </button>
-                <button
-                  type="button"
-                  className={viewScope === 'distribution' ? 'active' : ''}
-                  onClick={() => setViewScope('distribution')}
-                >
-                  {t('conexiones.activaciones.scope.distribution')}
-                </button>
-              </div>
-              <p className="form-hint" style={{ marginTop: '0.5rem' }}>
-                {viewScope === 'mine'
-                  ? t('conexiones.activaciones.scope.mineHelp')
-                  : t('conexiones.activaciones.scope.distributionHelp')}
-              </p>
-            </div>
-          )}
-
           <div className="card">
             <div className="stat-grid">
               <StatCard
@@ -3467,9 +3481,6 @@ function ConexionesActivacionesTab() {
                   <span>{t('conexiones.activaciones.labels.search')}</span>
                   <input value={search} onChange={(event) => setSearch(event.target.value)} />
                 </label>
-                {role === 'distribuidor' && (
-                  <div className="form-hint">{t('conexiones.activaciones.scope.hint')}</div>
-                )}
               </div>
             )}
           </div>
@@ -3490,7 +3501,7 @@ function ConexionesActivacionesTab() {
                     : t('conexiones.activaciones.emptyClosedDescription')
                 }
               />
-              {tab === 'activa' && (
+              {tab === 'activa' && canCreateActivation && (
                 <div>
                   <Button type="button" onClick={() => setWizardOpen(true)}>
                     {t('conexiones.activaciones.actions.new')}
@@ -3512,6 +3523,11 @@ function ConexionesActivacionesTab() {
                           : t('conexiones.activaciones.status.active')}
                       </span>
                     </div>
+                    {effectiveScope === 'distribution' && row.representante_id && (
+                      <p className="form-hint">
+                        {t('conexiones.activaciones.labels.representante')}: {representanteMap[row.representante_id] ?? '-'}
+                      </p>
+                    )}
                     <p className="form-hint">
                       {t('conexiones.activaciones.labels.referidos')}: {referidosCount[row.id] ?? 0}
                     </p>
@@ -3553,6 +3569,7 @@ function ConexionesActivacionesTab() {
                 t('conexiones.activaciones.labels.referidos'),
                 t('conexiones.activaciones.labels.lastActivity'),
                 t('conexiones.activaciones.labels.estado'),
+                ...(effectiveScope === 'distribution' ? [t('conexiones.activaciones.labels.representante')] : []),
                 t('conexiones.activaciones.labels.actions'),
               ]}
               rows={listRows}
@@ -3584,6 +3601,7 @@ function ConexionesActivacionesTab() {
         ownerLabel={selectedActivation ? getOwnerLabel(selectedActivation) : ''}
         ownerClienteId={selectedActivation?.cliente_id ?? null}
         currentUserId={session?.user.id ?? null}
+        currentRole={role}
         canEditOwner={canEditOwner}
         isClosed={selectedActivation ? isClosed(selectedActivation) : false}
         onClose={() => setDetailOpen(false)}
@@ -3672,9 +3690,8 @@ function ConexionesActivacionesTab() {
                     <button
                       key={`${owner.type}-${owner.id}`}
                       type="button"
-                      className={`ci-owner-option ${
-                        ownerEditId === owner.id && ownerEditType === owner.type ? 'active' : ''
-                      }`.trim()}
+                      className={`ci-owner-option ${ownerEditId === owner.id && ownerEditType === owner.type ? 'active' : ''
+                        }`.trim()}
                       onClick={() => {
                         setOwnerEditType(owner.type)
                         setOwnerEditId(owner.id)
@@ -3775,9 +3792,8 @@ function ConexionesActivacionesTab() {
                       <button
                         key={`${owner.type}-${owner.id}`}
                         type="button"
-                        className={`ci-owner-option ${
-                          wizardOwnerId === owner.id && wizardOwnerType === owner.type ? 'active' : ''
-                        }`.trim()}
+                        className={`ci-owner-option ${wizardOwnerId === owner.id && wizardOwnerType === owner.type ? 'active' : ''
+                          }`.trim()}
                         onClick={() => {
                           setWizardOwnerType(owner.type)
                           setWizardOwnerId(owner.id)
@@ -3812,9 +3828,9 @@ function ConexionesActivacionesTab() {
                 <span>
                   {session?.user.id
                     ? usersById[session.user.id] ??
-                      currentUserLabel ??
-                      representanteMap[session.user.id] ??
-                      session.user.id
+                    currentUserLabel ??
+                    representanteMap[session.user.id] ??
+                    session.user.id
                     : '-'}
                 </span>
               </div>

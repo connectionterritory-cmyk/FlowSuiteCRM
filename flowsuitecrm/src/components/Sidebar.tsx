@@ -6,6 +6,7 @@ import logoFull from '../assets/FlowSuiteCRM_Vector_Antigravity.svg'
 import logoMark from '../assets/FlowSuiteCRM_Isotype_48px.png'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useAuth } from '../auth/AuthProvider'
+import { useViewMode } from '../data/ViewModeProvider'
 
 type SidebarProps = {
   collapsed: boolean
@@ -16,6 +17,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { t } = useTranslation()
   const location = useLocation()
   const { session } = useAuth()
+  const { viewMode } = useViewMode()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
   const isProgramRoute =
@@ -88,8 +90,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <nav className="sidebar-nav">
         {navItems
           .filter((item) => {
+            if (viewMode !== 'seller') return true
+            return item.key !== 'usuarios' && item.key !== 'importaciones'
+          })
+          .filter((item) => {
             if (item.key !== 'telemercadeo') return true
-            return role === 'admin' || role === 'distribuidor' || role === 'telemercadeo'
+            if (viewMode === 'seller') {
+              return role === 'telemercadeo' || role === 'supervisor_telemercadeo'
+            }
+            return role === 'admin' || role === 'distribuidor' || role === 'telemercadeo' || role === 'supervisor_telemercadeo'
           })
           .filter((item) => {
             if (item.key !== 'importaciones') return true

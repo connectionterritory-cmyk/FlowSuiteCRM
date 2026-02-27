@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
+import { useViewMode } from '../data/ViewModeProvider'
+import { useAuth } from '../auth/AuthProvider'
+import { useUsers } from '../data/UsersProvider'
 
 type SalesPoint = {
   label: string
@@ -27,6 +30,9 @@ const stageColors: Record<string, string> = {
 export function useDashboardCharts() {
   const { t, i18n } = useTranslation()
   const configured = isSupabaseConfigured
+  const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
+  const { session } = useAuth()
+  const { currentRole } = useUsers()
   const [salesSeries, setSalesSeries] = useState<SalesPoint[]>([])
   const [pipelineSeries, setPipelineSeries] = useState<PipelineSlice[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,10 +79,16 @@ export function useDashboardCharts() {
       startDate.setMonth(startDate.getMonth() - 11)
       startDate.setDate(1)
 
-      const { data: ventasData } = await supabase
+      let ventasQuery = supabase
         .from('ventas')
-        .select('fecha_venta, monto')
+        .select('fecha_venta, monto, vendedor_id')
         .gte('fecha_venta', startDate.toISOString().slice(0, 10))
+      if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
+        ventasQuery = ventasQuery.eq('vendedor_id', session.user.id)
+      } else if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+        ventasQuery = ventasQuery.in('vendedor_id', distributionUserIds)
+      }
+      const { data: ventasData } = await ventasQuery
 
       const totals = new Map<string, number>()
       ;(ventasData ?? []).forEach((row) => {
@@ -94,7 +106,14 @@ export function useDashboardCharts() {
         }))
       )
 
-      const { data: leadsData } = await supabase.from('leads').select('estado_pipeline')
+      let leadsQuery = supabase.from('leads').select('estado_pipeline, owner_id, vendedor_id')
+      if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
+        leadsQuery = leadsQuery.or(`owner_id.eq.${session.user.id},vendedor_id.eq.${session.user.id}`)
+      } else if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+        const ids = distributionUserIds.join(',')
+        leadsQuery = leadsQuery.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
+      }
+      const { data: leadsData } = await leadsQuery
       const stageTotals: Record<string, number> = {
         nuevo: 0,
         contactado: 0,
@@ -124,7 +143,7 @@ export function useDashboardCharts() {
     }
 
     fetchCharts()
-  }, [configured, months, t])
+  }, [configured, months, t, viewMode, hasDistribuidorScope, distributionUserIds, session?.user.id, currentRole])
 
   return { salesSeries, pipelineSeries, loading, configured }
 }
