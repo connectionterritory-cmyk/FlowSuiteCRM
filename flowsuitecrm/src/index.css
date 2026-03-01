@@ -2857,6 +2857,17 @@ body.theme-light .ci-owner-selected strong {
   box-shadow: 0 12px 30px rgba(239, 68, 68, 0.15);
 }
 
+.seller-lead.birthday { border-left: 4px solid #a855f7; }
+.seller-lead.cobranza { border-left: 4px solid #f97316; }
+.seller-lead.mantenimiento { border-left: 4px solid #eab308; }
+.seller-lead.reactivacion { border-left: 4px solid #3b82f6; }
+
+.seller-section-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: -6px 0 0;
+}
+
 .seller-lead-main {
   display: flex;
   align-items: flex-start;

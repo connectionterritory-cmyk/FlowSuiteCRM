@@ -245,7 +245,19 @@
     "allClearSub": "No pending tasks today. Great time to prospect.",
     "statsActions": "Actions",
     "statsLeads": "New leads",
-    "statsClosing": "Closings"
+    "statsClosing": "Closings",
+    "statsCobranzas": "Collections",
+    "birthdays": "Birthdays today",
+    "birthdayToday": "Birthday",
+    "cobranzas": "Collections",
+    "diasAtraso": "{{count}}d overdue",
+    "moroso": "Overdue",
+    "mantenimientos": "Overdue maintenance",
+    "cicloMeses": "Every {{count}} months",
+    "reactivacion": "No recent order",
+    "reactivacionSub": "Customers without orders in 90+ days",
+    "ultimoPedido": "Last order",
+    "sinPedido": "No orders"
   },
   "quickActions": {
     "title": "Create",

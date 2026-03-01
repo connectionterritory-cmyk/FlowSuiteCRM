@@ -41,6 +41,48 @@ type SalesSummary = {
   count: number
 }
 
+type ClienteCobranzaRow = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  monto_moroso: number | null
+  dias_atraso: number | null
+  estado_morosidad: string | null
+}
+
+type ClienteBirthdayRow = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  fecha_nacimiento: string | null
+}
+
+type ClienteReactivacionRow = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  fecha_ultimo_pedido: string | null
+}
+
+type MantenimientoRow = {
+  id: string
+  nombre_componente: string | null
+  fecha_proximo_cambio: string | null
+  ciclo_meses: number | null
+  equipo: {
+    cliente: {
+      id: string
+      nombre: string | null
+      apellido: string | null
+      telefono: string | null
+      vendedor_id: string | null
+    } | null
+  } | null
+}
+
 const NOTE_DEFAULT = 'seguimiento'
 
 export function HoyPage() {
@@ -52,6 +94,8 @@ export function HoyPage() {
   const configured = isSupabaseConfigured
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Lead sections
   const [overdueLeads, setOverdueLeads] = useState<LeadRow[]>([])
   const [todayLeads, setTodayLeads] = useState<LeadRow[]>([])
   const [newLeads, setNewLeads] = useState<LeadRow[]>([])
@@ -59,11 +103,19 @@ export function HoyPage() {
   const [salesSummary, setSalesSummary] = useState<SalesSummary>({ total: 0, count: 0 })
   const [lastActivityMap, setLastActivityMap] = useState<Record<string, string | null>>({})
 
+  // Client sections
+  const [cobranzas, setCobranzas] = useState<ClienteCobranzaRow[]>([])
+  const [birthdays, setBirthdays] = useState<ClienteBirthdayRow[]>([])
+  const [reactivacion, setReactivacion] = useState<ClienteReactivacionRow[]>([])
+  const [mantenimientos, setMantenimientos] = useState<MantenimientoRow[]>([])
+
+  // Note modal
   const [noteOpen, setNoteOpen] = useState(false)
   const [noteLead, setNoteLead] = useState<LeadRow | null>(null)
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
 
+  // Reschedule modal
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [rescheduleLead, setRescheduleLead] = useState<LeadRow | null>(null)
   const [rescheduleAction, setRescheduleAction] = useState('')
@@ -94,8 +146,10 @@ export function HoyPage() {
       overdueLeads.length === 0 &&
       todayLeads.length === 0 &&
       closingOpps.length === 0 &&
-      newLeads.length === 0,
-    [loading, overdueLeads, todayLeads, closingOpps, newLeads]
+      newLeads.length === 0 &&
+      cobranzas.length === 0 &&
+      birthdays.length === 0,
+    [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays]
   )
 
   const threeDaysAgo = useMemo(() => {
@@ -117,6 +171,12 @@ export function HoyPage() {
     (lead: LeadRow) => {
       return [lead.nombre, lead.apellido].filter(Boolean).join(' ').trim() || t('common.noData')
     },
+    [t]
+  )
+
+  const getClientName = useCallback(
+    (row: { nombre: string | null; apellido: string | null }) =>
+      [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || t('common.noData'),
     [t]
   )
 
@@ -202,7 +262,28 @@ export function HoyPage() {
     todayPlus7.setDate(todayPlus7.getDate() + 7)
     const todayPlus7Iso = todayPlus7.toISOString().split('T')[0]
 
-    const [overdueRes, todayRes, newRes, oppsRes, salesRes] = await Promise.all([
+    // Birthday date pattern: match %-MM-DD across any year
+    const birthMonth = String(today.getMonth() + 1).padStart(2, '0')
+    const birthDay = String(today.getDate()).padStart(2, '0')
+    const birthPattern = `%-${birthMonth}-${birthDay}`
+
+    // 90 days ago for reactivation
+    const ninetyDaysAgo = new Date(today)
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+    const ninetyDaysAgoIso = ninetyDaysAgo.toISOString().split('T')[0]
+
+    const [
+      overdueRes,
+      todayRes,
+      newRes,
+      oppsRes,
+      salesRes,
+      cobranzasRes,
+      birthdaysRes,
+      reactivacionRes,
+      mantenimientosRes,
+    ] = await Promise.all([
+      // ── Leads ─────────────────────────────────────────────
       supabase
         .from('leads')
         .select(baseLeadSelect)
@@ -239,6 +320,34 @@ export function HoyPage() {
         .eq('vendedor_id', vendedorId)
         .gte('fecha_venta', start)
         .lte('fecha_venta', end),
+      // ── Clients ───────────────────────────────────────────
+      supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, monto_moroso, dias_atraso, estado_morosidad')
+        .eq('vendedor_id', vendedorId)
+        .or('monto_moroso.gt.0,dias_atraso.gt.0')
+        .order('dias_atraso', { ascending: false, nullsFirst: false })
+        .limit(10),
+      supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, fecha_nacimiento')
+        .eq('vendedor_id', vendedorId)
+        .like('fecha_nacimiento', birthPattern),
+      supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, fecha_ultimo_pedido')
+        .eq('vendedor_id', vendedorId)
+        .eq('activo', true)
+        .or(`fecha_ultimo_pedido.is.null,fecha_ultimo_pedido.lt.${ninetyDaysAgoIso}`)
+        .order('fecha_ultimo_pedido', { ascending: true, nullsFirst: true })
+        .limit(8),
+      supabase
+        .from('componentes_equipo')
+        .select('id, nombre_componente, fecha_proximo_cambio, ciclo_meses, equipo:equipos_instalados(cliente:clientes(id, nombre, apellido, telefono, vendedor_id))')
+        .eq('activo', true)
+        .lte('fecha_proximo_cambio', todayIso)
+        .order('fecha_proximo_cambio', { ascending: true })
+        .limit(50),
     ])
 
     if (overdueRes.error || todayRes.error || newRes.error || oppsRes.error || salesRes.error) {
@@ -269,6 +378,21 @@ export function HoyPage() {
       count: ventasRows.length,
     })
 
+    // Client sections — silent fail if not available
+    setCobranzas((cobranzasRes.data as ClienteCobranzaRow[] | null) ?? [])
+    setBirthdays((birthdaysRes.data as ClienteBirthdayRow[] | null) ?? [])
+    setReactivacion((reactivacionRes.data as ClienteReactivacionRow[] | null) ?? [])
+
+    const mantRaw = (mantenimientosRes.data as MantenimientoRow[] | null) ?? []
+    const mantFiltered = mantRaw
+      .filter((row) => {
+        const cliente = Array.isArray(row.equipo) ? row.equipo[0]?.cliente : row.equipo?.cliente
+        const c = Array.isArray(cliente) ? cliente[0] : cliente
+        return c?.vendedor_id === vendedorId
+      })
+      .slice(0, 8)
+    setMantenimientos(mantFiltered)
+
     const leadIds = [...overdue, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
     setLoading(false)
@@ -296,6 +420,17 @@ export function HoyPage() {
       telefono: lead.telefono,
     })
   }
+
+  const handleWhatsappCliente = useCallback(
+    (nombre: string, telefono: string | null) => {
+      if (!telefono) {
+        showToast(t('messaging.phoneMissing'), 'error')
+        return
+      }
+      openWhatsapp({ nombre, telefono })
+    },
+    [openWhatsapp, showToast, t]
+  )
 
   const openNote = (lead: LeadRow) => {
     setNoteLead(lead)
@@ -457,9 +592,9 @@ export function HoyPage() {
           <span className="hoy-stat-value">{overdueLeads.length + todayLeads.length}</span>
           <span className="hoy-stat-label">{t('hoy.statsActions')}</span>
         </div>
-        <div className="hoy-stat">
-          <span className="hoy-stat-value">{newLeads.length}</span>
-          <span className="hoy-stat-label">{t('hoy.statsLeads')}</span>
+        <div className={`hoy-stat ${cobranzas.length > 0 ? 'alert' : ''}`.trim()}>
+          <span className="hoy-stat-value">{cobranzas.length}</span>
+          <span className="hoy-stat-label">{t('hoy.statsCobranzas')}</span>
         </div>
         <div className="hoy-stat">
           <span className="hoy-stat-value">{closingOpps.length}</span>
@@ -512,7 +647,83 @@ export function HoyPage() {
         </div>
       )}
 
-      {/* ── Overdue ───────────────────────────────────────── */}
+      {/* ── Cumpleaños hoy ────────────────────────────────── */}
+      {!loading && birthdays.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>{t('hoy.birthdays')}</h3>
+            <span className="seller-count">{birthdays.length}</span>
+          </div>
+          {birthdays.map((c) => {
+            const name = getClientName(c)
+            return (
+              <div key={c.id} className="seller-card seller-lead birthday">
+                <div className="seller-lead-main">
+                  <div>
+                    <div className="seller-lead-name">{name}</div>
+                    <div className="seller-lead-meta">
+                      <span className="seller-pill variant-info">{t('hoy.birthdayToday')}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="seller-lead-actions">
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
+                    {t('hoy.call')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>
+                    {t('hoy.whatsapp')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {/* ── Cobranzas ─────────────────────────────────────── */}
+      {!loading && cobranzas.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>{t('hoy.cobranzas')}</h3>
+            <span className="seller-count alert">{cobranzas.length}</span>
+          </div>
+          {cobranzas.map((c) => {
+            const name = getClientName(c)
+            return (
+              <div key={c.id} className="seller-card seller-lead cobranza">
+                <div className="seller-lead-main">
+                  <div>
+                    <div className="seller-lead-name">{name}</div>
+                    <div className="seller-lead-meta">
+                      {c.dias_atraso != null && c.dias_atraso > 0 && (
+                        <span className="seller-pill variant-danger">
+                          {t('hoy.diasAtraso', { count: c.dias_atraso })}
+                        </span>
+                      )}
+                      {c.monto_moroso != null && c.monto_moroso > 0 && (
+                        <span>{formatCurrency(c.monto_moroso)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="seller-lead-dates">
+                    <span className="seller-badge danger">{t('hoy.moroso')}</span>
+                  </div>
+                </div>
+                <div className="seller-lead-actions">
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
+                    {t('hoy.call')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>
+                    {t('hoy.whatsapp')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {/* ── Overdue leads ─────────────────────────────────── */}
       {!loading && overdueLeads.length > 0 && (
         <section className="seller-section">
           <div className="seller-section-header">
@@ -563,6 +774,47 @@ export function HoyPage() {
         </section>
       )}
 
+      {/* ── Mantenimientos vencidos ───────────────────────── */}
+      {!loading && mantenimientos.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>{t('hoy.mantenimientos')}</h3>
+            <span className="seller-count alert">{mantenimientos.length}</span>
+          </div>
+          {mantenimientos.map((m) => {
+            const clienteRaw = Array.isArray(m.equipo) ? m.equipo[0]?.cliente : m.equipo?.cliente
+            const cliente = Array.isArray(clienteRaw) ? clienteRaw[0] : clienteRaw
+            const name = cliente ? getClientName(cliente) : t('common.noData')
+            return (
+              <div key={m.id} className="seller-card seller-lead mantenimiento">
+                <div className="seller-lead-main">
+                  <div>
+                    <div className="seller-lead-name">{name}</div>
+                    <div className="seller-lead-meta">
+                      <span className="seller-pill variant-warning">{m.nombre_componente ?? '-'}</span>
+                      {m.ciclo_meses != null && (
+                        <span>{t('hoy.cicloMeses', { count: m.ciclo_meses })}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="seller-lead-dates">
+                    <span className="seller-date">{relativeDayLabel(m.fecha_proximo_cambio)}</span>
+                  </div>
+                </div>
+                <div className="seller-lead-actions">
+                  <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}>
+                    {t('hoy.call')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, cliente?.telefono ?? null)}>
+                    {t('hoy.whatsapp')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      )}
+
       {/* ── New leads ─────────────────────────────────────── */}
       {!loading && newLeads.length > 0 && (
         <section className="seller-section">
@@ -571,6 +823,44 @@ export function HoyPage() {
             <span className="seller-count">{newLeads.length}</span>
           </div>
           {newLeads.map((lead) => renderLeadCard(lead, 'new'))}
+        </section>
+      )}
+
+      {/* ── Sin pedido reciente (reactivación) ───────────── */}
+      {!loading && reactivacion.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>{t('hoy.reactivacion')}</h3>
+            <span className="seller-count">{reactivacion.length}</span>
+          </div>
+          <p className="seller-section-sub">{t('hoy.reactivacionSub')}</p>
+          {reactivacion.map((c) => {
+            const name = getClientName(c)
+            return (
+              <div key={c.id} className="seller-card seller-lead reactivacion">
+                <div className="seller-lead-main">
+                  <div>
+                    <div className="seller-lead-name">{name}</div>
+                    <div className="seller-lead-meta">
+                      <span className="seller-pill variant-neutral">
+                        {c.fecha_ultimo_pedido
+                          ? `${t('hoy.ultimoPedido')} ${relativeDayLabel(c.fecha_ultimo_pedido)}`
+                          : t('hoy.sinPedido')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="seller-lead-actions">
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
+                    {t('hoy.call')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>
+                    {t('hoy.whatsapp')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
         </section>
       )}
 

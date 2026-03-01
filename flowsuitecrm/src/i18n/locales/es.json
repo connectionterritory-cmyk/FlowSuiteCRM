@@ -245,7 +245,19 @@
     "allClearSub": "Sin pendientes hoy. Buen momento para prospectar.",
     "statsActions": "Acciones",
     "statsLeads": "Leads nuevos",
-    "statsClosing": "Cierres"
+    "statsClosing": "Cierres",
+    "statsCobranzas": "Cobranzas",
+    "birthdays": "Cumpleaños hoy",
+    "birthdayToday": "Cumpleaños",
+    "cobranzas": "Cobranzas",
+    "diasAtraso": "{{count}}d de atraso",
+    "moroso": "Moroso",
+    "mantenimientos": "Mantenimientos vencidos",
+    "cicloMeses": "Cada {{count}} meses",
+    "reactivacion": "Sin pedido reciente",
+    "reactivacionSub": "Clientes sin pedido en 90+ días",
+    "ultimoPedido": "Último pedido",
+    "sinPedido": "Sin pedidos"
   },
   "quickActions": {
     "title": "Crear",

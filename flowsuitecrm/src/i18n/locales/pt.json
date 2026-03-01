@@ -245,7 +245,19 @@
     "allClearSub": "Sem pendencias hoje. Otimo momento para prospectar.",
     "statsActions": "Acoes",
     "statsLeads": "Leads novos",
-    "statsClosing": "Fechamentos"
+    "statsClosing": "Fechamentos",
+    "statsCobranzas": "Cobrancas",
+    "birthdays": "Aniversarios hoje",
+    "birthdayToday": "Aniversario",
+    "cobranzas": "Cobrancas",
+    "diasAtraso": "{{count}}d de atraso",
+    "moroso": "Inadimplente",
+    "mantenimientos": "Manutencoes vencidas",
+    "cicloMeses": "A cada {{count}} meses",
+    "reactivacion": "Sem pedido recente",
+    "reactivacionSub": "Clientes sem pedido em 90+ dias",
+    "ultimoPedido": "Ultimo pedido",
+    "sinPedido": "Sem pedidos"
   },
   "quickActions": {
     "title": "Criar",
