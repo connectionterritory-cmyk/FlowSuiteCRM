@@ -3387,6 +3387,29 @@ body.theme-light .ci-owner-selected strong {
     flex-direction: row;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .topbar-hamburger {
+    order: 1;
+  }
+
+  .topbar > div {
+    order: 2;
+    flex: 1 1 100%;
+  }
+
+  .topbar-actions {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .topbar-segment {
+    flex: 1 1 auto;
+    justify-content: flex-start;
   }
 
   .topbar-kicker {
