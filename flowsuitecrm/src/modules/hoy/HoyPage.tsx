@@ -109,6 +109,11 @@ export function HoyPage() {
   const [reactivacion, setReactivacion] = useState<ClienteReactivacionRow[]>([])
   const [mantenimientos, setMantenimientos] = useState<MantenimientoRow[]>([])
 
+  // Collapsible modals
+  const [cobranzasOpen, setCobranzasOpen] = useState(false)
+  const [mantenimientosOpen, setMantenimientosOpen] = useState(false)
+  const [reactivacionOpen, setReactivacionOpen] = useState(false)
+
   // Note modal
   const [noteOpen, setNoteOpen] = useState(false)
   const [noteLead, setNoteLead] = useState<LeadRow | null>(null)
@@ -150,6 +155,11 @@ export function HoyPage() {
       cobranzas.length === 0 &&
       birthdays.length === 0,
     [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays]
+  )
+
+  const totalMoroso = useMemo(
+    () => cobranzas.reduce((sum, c) => sum + (c.monto_moroso ?? 0), 0),
+    [cobranzas]
   )
 
   const threeDaysAgo = useMemo(() => {
@@ -680,47 +690,24 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Cobranzas ─────────────────────────────────────── */}
+      {/* ── Cobranzas banner ──────────────────────────────── */}
       {!loading && cobranzas.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
-            <h3>{t('hoy.cobranzas')}</h3>
-            <span className="seller-count alert">{cobranzas.length}</span>
-          </div>
-          {cobranzas.map((c) => {
-            const name = getClientName(c)
-            return (
-              <div key={c.id} className="seller-card seller-lead cobranza">
-                <div className="seller-lead-main">
-                  <div>
-                    <div className="seller-lead-name">{name}</div>
-                    <div className="seller-lead-meta">
-                      {c.dias_atraso != null && c.dias_atraso > 0 && (
-                        <span className="seller-pill variant-danger">
-                          {t('hoy.diasAtraso', { count: c.dias_atraso })}
-                        </span>
-                      )}
-                      {c.monto_moroso != null && c.monto_moroso > 0 && (
-                        <span>{formatCurrency(c.monto_moroso)}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="seller-lead-dates">
-                    <span className="seller-badge danger">{t('hoy.moroso')}</span>
-                  </div>
-                </div>
-                <div className="seller-lead-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
-                    {t('hoy.call')}
-                  </Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>
-                    {t('hoy.whatsapp')}
-                  </Button>
-                </div>
+        <button type="button" className="hoy-alert-banner cobranza" onClick={() => setCobranzasOpen(true)}>
+          <div className="hoy-alert-banner-left">
+            <span className="hoy-alert-banner-icon">💸</span>
+            <div>
+              <div className="hoy-alert-banner-title">{t('hoy.cobranzas')}</div>
+              <div className="hoy-alert-banner-sub">
+                {cobranzas.length} {t('hoy.statsCobranzas')}
+                {totalMoroso > 0 && ` · ${formatCurrency(totalMoroso)}`}
               </div>
-            )
-          })}
-        </section>
+            </div>
+          </div>
+          <div className="hoy-alert-banner-right">
+            <span className="seller-count alert">{cobranzas.length}</span>
+            <span className="hoy-alert-banner-chevron">›</span>
+          </div>
+        </button>
       )}
 
       {/* ── Overdue leads ─────────────────────────────────── */}
@@ -774,45 +761,23 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Mantenimientos vencidos ───────────────────────── */}
+      {/* ── Mantenimientos banner ─────────────────────────── */}
       {!loading && mantenimientos.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
-            <h3>{t('hoy.mantenimientos')}</h3>
-            <span className="seller-count alert">{mantenimientos.length}</span>
-          </div>
-          {mantenimientos.map((m) => {
-            const clienteRaw = Array.isArray(m.equipo) ? m.equipo[0]?.cliente : m.equipo?.cliente
-            const cliente = Array.isArray(clienteRaw) ? clienteRaw[0] : clienteRaw
-            const name = cliente ? getClientName(cliente) : t('common.noData')
-            return (
-              <div key={m.id} className="seller-card seller-lead mantenimiento">
-                <div className="seller-lead-main">
-                  <div>
-                    <div className="seller-lead-name">{name}</div>
-                    <div className="seller-lead-meta">
-                      <span className="seller-pill variant-warning">{m.nombre_componente ?? '-'}</span>
-                      {m.ciclo_meses != null && (
-                        <span>{t('hoy.cicloMeses', { count: m.ciclo_meses })}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="seller-lead-dates">
-                    <span className="seller-date">{relativeDayLabel(m.fecha_proximo_cambio)}</span>
-                  </div>
-                </div>
-                <div className="seller-lead-actions">
-                  <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}>
-                    {t('hoy.call')}
-                  </Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, cliente?.telefono ?? null)}>
-                    {t('hoy.whatsapp')}
-                  </Button>
-                </div>
+        <button type="button" className="hoy-alert-banner mantenimiento" onClick={() => setMantenimientosOpen(true)}>
+          <div className="hoy-alert-banner-left">
+            <span className="hoy-alert-banner-icon">🔧</span>
+            <div>
+              <div className="hoy-alert-banner-title">{t('hoy.mantenimientos')}</div>
+              <div className="hoy-alert-banner-sub">
+                {mantenimientos.length} {t('hoy.mantenimientos').toLowerCase()}
               </div>
-            )
-          })}
-        </section>
+            </div>
+          </div>
+          <div className="hoy-alert-banner-right">
+            <span className="seller-count alert">{mantenimientos.length}</span>
+            <span className="hoy-alert-banner-chevron">›</span>
+          </div>
+        </button>
       )}
 
       {/* ── New leads ─────────────────────────────────────── */}
@@ -826,43 +791,132 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Sin pedido reciente (reactivación) ───────────── */}
+      {/* ── Reactivación banner ───────────────────────────── */}
       {!loading && reactivacion.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
-            <h3>{t('hoy.reactivacion')}</h3>
-            <span className="seller-count">{reactivacion.length}</span>
+        <button type="button" className="hoy-alert-banner reactivacion" onClick={() => setReactivacionOpen(true)}>
+          <div className="hoy-alert-banner-left">
+            <span className="hoy-alert-banner-icon">🔁</span>
+            <div>
+              <div className="hoy-alert-banner-title">{t('hoy.reactivacion')}</div>
+              <div className="hoy-alert-banner-sub">{t('hoy.reactivacionSub')}</div>
+            </div>
           </div>
-          <p className="seller-section-sub">{t('hoy.reactivacionSub')}</p>
-          {reactivacion.map((c) => {
+          <div className="hoy-alert-banner-right">
+            <span className="seller-count">{reactivacion.length}</span>
+            <span className="hoy-alert-banner-chevron">›</span>
+          </div>
+        </button>
+      )}
+
+      {/* ── Cobranzas modal ───────────────────────────────── */}
+      <Modal
+        open={cobranzasOpen}
+        title={`${t('hoy.cobranzas')} (${cobranzas.length})`}
+        onClose={() => setCobranzasOpen(false)}
+        actions={
+          <Button variant="ghost" type="button" onClick={() => setCobranzasOpen(false)}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        <div className="hoy-modal-list">
+          {cobranzas.map((c) => {
             const name = getClientName(c)
             return (
-              <div key={c.id} className="seller-card seller-lead reactivacion">
-                <div className="seller-lead-main">
-                  <div>
-                    <div className="seller-lead-name">{name}</div>
-                    <div className="seller-lead-meta">
-                      <span className="seller-pill variant-neutral">
-                        {c.fecha_ultimo_pedido
-                          ? `${t('hoy.ultimoPedido')} ${relativeDayLabel(c.fecha_ultimo_pedido)}`
-                          : t('hoy.sinPedido')}
+              <div key={c.id} className="hoy-modal-row cobranza">
+                <div className="hoy-modal-row-info">
+                  <div className="hoy-modal-row-name">{name}</div>
+                  <div className="hoy-modal-row-meta">
+                    {c.dias_atraso != null && c.dias_atraso > 0 && (
+                      <span className="seller-pill variant-danger">
+                        {t('hoy.diasAtraso', { count: c.dias_atraso })}
                       </span>
-                    </div>
+                    )}
+                    {c.monto_moroso != null && c.monto_moroso > 0 && (
+                      <span className="hoy-modal-row-amount">{formatCurrency(c.monto_moroso)}</span>
+                    )}
                   </div>
                 </div>
-                <div className="seller-lead-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
-                    {t('hoy.call')}
-                  </Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>
-                    {t('hoy.whatsapp')}
-                  </Button>
+                <div className="hoy-modal-row-actions">
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>💬</Button>
                 </div>
               </div>
             )
           })}
-        </section>
-      )}
+        </div>
+      </Modal>
+
+      {/* ── Mantenimientos modal ──────────────────────────── */}
+      <Modal
+        open={mantenimientosOpen}
+        title={`${t('hoy.mantenimientos')} (${mantenimientos.length})`}
+        onClose={() => setMantenimientosOpen(false)}
+        actions={
+          <Button variant="ghost" type="button" onClick={() => setMantenimientosOpen(false)}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        <div className="hoy-modal-list">
+          {mantenimientos.map((m) => {
+            const clienteRaw = Array.isArray(m.equipo) ? m.equipo[0]?.cliente : m.equipo?.cliente
+            const cliente = Array.isArray(clienteRaw) ? clienteRaw[0] : clienteRaw
+            const name = cliente ? getClientName(cliente) : t('common.noData')
+            return (
+              <div key={m.id} className="hoy-modal-row mantenimiento">
+                <div className="hoy-modal-row-info">
+                  <div className="hoy-modal-row-name">{name}</div>
+                  <div className="hoy-modal-row-meta">
+                    <span className="seller-pill variant-warning">{m.nombre_componente ?? '-'}</span>
+                    <span className="hoy-modal-row-date">{relativeDayLabel(m.fecha_proximo_cambio)}</span>
+                  </div>
+                </div>
+                <div className="hoy-modal-row-actions">
+                  <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}>📞</Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, cliente?.telefono ?? null)}>💬</Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Modal>
+
+      {/* ── Reactivación modal ────────────────────────────── */}
+      <Modal
+        open={reactivacionOpen}
+        title={`${t('hoy.reactivacion')} (${reactivacion.length})`}
+        onClose={() => setReactivacionOpen(false)}
+        actions={
+          <Button variant="ghost" type="button" onClick={() => setReactivacionOpen(false)}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        <div className="hoy-modal-list">
+          {reactivacion.map((c) => {
+            const name = getClientName(c)
+            return (
+              <div key={c.id} className="hoy-modal-row reactivacion">
+                <div className="hoy-modal-row-info">
+                  <div className="hoy-modal-row-name">{name}</div>
+                  <div className="hoy-modal-row-meta">
+                    <span className="seller-pill variant-neutral">
+                      {c.fecha_ultimo_pedido
+                        ? `${t('hoy.ultimoPedido')} ${relativeDayLabel(c.fecha_ultimo_pedido)}`
+                        : t('hoy.sinPedido')}
+                    </span>
+                  </div>
+                </div>
+                <div className="hoy-modal-row-actions">
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>💬</Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Modal>
 
       <ModalRenderer />
 
