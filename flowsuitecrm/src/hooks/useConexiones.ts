@@ -368,6 +368,8 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
 
       const activationPayload = {
         representante_id: session.user.id,
+        owner_id: session.user.id,
+        programa_id: programaId,
         cliente_id: input.clienteId,
         lead_id: input.leadId,
         regalo_id: input.regaloId,
@@ -416,7 +418,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       }
       return { data: { activacion: activationData as CiActivacion, referidos: referidosData }, error: null }
     },
-    [configured, session?.user.id],
+    [configured, session?.user.id, programaId],
   )
 
   const updateActivacion = useCallback(
