@@ -14,9 +14,10 @@ type TopbarProps = {
   title: string
   theme: 'dark' | 'light'
   onToggleTheme: () => void
+  onMobileNavToggle: () => void
 }
 
-export function Topbar({ title, theme, onToggleTheme }: TopbarProps) {
+export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: TopbarProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { session } = useAuth()
@@ -76,6 +77,14 @@ export function Topbar({ title, theme, onToggleTheme }: TopbarProps) {
 
   return (
     <header className="topbar">
+      <button
+        type="button"
+        className="icon-button topbar-hamburger"
+        onClick={onMobileNavToggle}
+        aria-label={t('sidebar.expand')}
+      >
+        ☰
+      </button>
       <div>
         <p className="topbar-kicker">{t('app.tagline')}</p>
         <h1 className="topbar-title">{title}</h1>

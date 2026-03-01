@@ -11,9 +11,12 @@ import { useViewMode } from '../data/ViewModeProvider'
 type SidebarProps = {
   collapsed: boolean
   onToggle: () => void
+  mobileOpen: boolean
+  onMobileClose: () => void
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
+  const isNavExpanded = !collapsed || mobileOpen
   const { t } = useTranslation()
   const location = useLocation()
   const { session } = useAuth()
@@ -69,22 +72,26 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   }
 
   return (
-    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+    <>
+      {mobileOpen && (
+        <div className="sidebar-backdrop" onClick={onMobileClose} aria-hidden="true" />
+      )}
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="sidebar-top">
         <div className="sidebar-brand">
           <img
-            src={collapsed ? logoMark : logoFull}
+            src={isNavExpanded ? logoFull : logoMark}
             alt={t('app.name')}
-            className={collapsed ? 'logo-mark' : 'logo-full'}
+            className={isNavExpanded ? 'logo-full' : 'logo-mark'}
           />
         </div>
         <button
           type="button"
           className="sidebar-toggle"
-          onClick={onToggle}
+          onClick={mobileOpen ? onMobileClose : onToggle}
           aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
         >
-          ☰
+          {mobileOpen ? '✕' : '☰'}
         </button>
       </div>
       <nav className="sidebar-nav">
@@ -92,6 +99,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           .filter((item) => {
             if (viewMode !== 'seller') return true
             return item.key !== 'usuarios' && item.key !== 'importaciones'
+          })
+          .filter((item) => {
+            if (item.key !== 'hoy') return true
+            return viewMode === 'seller'
           })
           .filter((item) => {
             if (item.key !== 'telemercadeo') return true
@@ -121,16 +132,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   aria-expanded={programsOpen}
                 >
                   <Icon className="nav-icon" />
-                  {!collapsed && (
+                  {isNavExpanded && (
                     <span className="nav-label">{t(item.labelKey)}</span>
                   )}
-                  {!collapsed && (
+                  {isNavExpanded && (
                     <span className={`nav-arrow ${programsOpen ? 'open' : ''}`}>
                       ▸
                     </span>
                   )}
                 </button>
-                {!collapsed && programsOpen && (
+                {isNavExpanded && programsOpen && (
                   <div className="nav-subnav">
                     {programSubItems.map((subItem) => (
                       <NavLink
@@ -159,16 +170,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   aria-expanded={telemercadeoOpen}
                 >
                   <Icon className="nav-icon" />
-                  {!collapsed && (
+                  {isNavExpanded && (
                     <span className="nav-label">{t(item.labelKey)}</span>
                   )}
-                  {!collapsed && (
+                  {isNavExpanded && (
                     <span className={`nav-arrow ${telemercadeoOpen ? 'open' : ''}`}>
                       ▸
                     </span>
                   )}
                 </button>
-                {!collapsed && telemercadeoOpen && (
+                {isNavExpanded && telemercadeoOpen && (
                   <div className="nav-subnav">
                     {telemercadeoSubItems.map((subItem) => (
                       <NavLink
@@ -197,7 +208,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               }
             >
               <Icon className="nav-icon" />
-              {!collapsed && (
+              {isNavExpanded && (
                 <span className="nav-label">{t(item.labelKey)}</span>
               )}
             </NavLink>
@@ -205,5 +216,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         })}
       </nav>
     </aside>
+    </>
   )
 }

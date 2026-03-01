@@ -1094,7 +1094,18 @@ export function ClientesPage() {
 
       {isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {clientesFiltrados.length === 0 ? (
+          {loading && (
+            <div className="seller-skeleton-grid">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="seller-card skeleton-card">
+                  <div className="skeleton-line wide" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line" />
+                </div>
+              ))}
+            </div>
+          )}
+          {!loading && clientesFiltrados.length === 0 ? (
             <div
               style={{
                 textAlign: 'center',
@@ -1105,7 +1116,15 @@ export function ClientesPage() {
                 border: '1px solid var(--card-border, rgba(255,255,255,0.08))',
               }}
             >
-              {emptyLabel}
+              <p>{emptyLabel}</p>
+              <div className="empty-actions">
+                <Button variant="ghost" type="button" onClick={() => window.location.assign('/leads')}>
+                  {t('clientes.emptyViewLeads')}
+                </Button>
+                <Button variant="ghost" type="button" onClick={() => setFiltrosVisible(true)}>
+                  {t('clientes.emptySearch')}
+                </Button>
+              </div>
             </div>
           ) : (
             clientesFiltrados.map((cliente) => {

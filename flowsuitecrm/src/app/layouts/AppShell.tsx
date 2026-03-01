@@ -14,6 +14,7 @@ export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem(THEME_KEY)
     return saved === 'light' ? 'light' : 'dark'
@@ -31,6 +32,10 @@ export function AppShell() {
     document.body.classList.toggle('theme-dark', theme === 'dark')
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
+
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
 
   const handleToggle = () => {
     setCollapsed((prev) => {
@@ -67,9 +72,19 @@ export function AppShell() {
       }
     >
       <ViewModeProvider>
-        <Sidebar collapsed={collapsed} onToggle={handleToggle} />
+        <Sidebar
+          collapsed={collapsed}
+          onToggle={handleToggle}
+          mobileOpen={mobileNavOpen}
+          onMobileClose={() => setMobileNavOpen(false)}
+        />
         <div className="app-main">
-          <Topbar title={currentTitle} theme={theme} onToggleTheme={handleThemeToggle} />
+          <Topbar
+            title={currentTitle}
+            theme={theme}
+            onToggleTheme={handleThemeToggle}
+            onMobileNavToggle={() => setMobileNavOpen(true)}
+          />
           <main className="page">
             <Outlet />
           </main>

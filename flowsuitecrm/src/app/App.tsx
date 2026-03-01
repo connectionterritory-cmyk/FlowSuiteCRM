@@ -8,6 +8,8 @@ import { ClientesPage } from '../modules/clientes/ClientesPage'
 import { VentasPage } from '../modules/ventas/VentasPage'
 import { ProductosPage } from '../modules/productos/ProductosPage'
 import { ProgramasPage } from '../modules/programas/ProgramasPage'
+import { HoyPage } from '../modules/hoy/HoyPage'
+import { CierresPage } from '../modules/cierres/CierresPage'
 import { ConexionesInfinitasPage } from '../modules/conexiones-infinitas/ConexionesInfinitasPage'
 import { Programa4en14Page } from '../modules/4en14/Programa4en14Page'
 import { ServicioClientePage } from '../modules/servicio-cliente/ServicioClientePage'
@@ -53,6 +55,8 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/hoy" element={<HoyPage />} />
+          <Route path="/cierres" element={<CierresPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/leads" element={<LeadsPage />} />
           <Route path="/clientes" element={<ClientesPage />} />

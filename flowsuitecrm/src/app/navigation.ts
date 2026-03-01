@@ -32,6 +32,18 @@ export const navItems: NavItem[] = [
     icon: IconDashboard,
   },
   {
+    key: 'hoy',
+    labelKey: 'nav.hoy',
+    path: '/hoy',
+    icon: IconDashboard,
+  },
+  {
+    key: 'cierres',
+    labelKey: 'nav.cierres',
+    path: '/cierres',
+    icon: IconSales,
+  },
+  {
     key: 'pipeline',
     labelKey: 'nav.oportunidades',
     path: '/pipeline',

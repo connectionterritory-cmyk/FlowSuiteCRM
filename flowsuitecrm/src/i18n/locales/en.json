@@ -121,6 +121,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "hoy": "Today",
+    "cierres": "Closings",
     "pipeline": "Pipeline",
     "oportunidades": "Opportunities",
     "leads": "Leads",
@@ -144,6 +146,9 @@
     "title": "Opportunities",
     "subtitle": "Manage opportunities and progress.",
     "new": "New opportunity",
+    "stage": {
+      "other": "Other"
+    },
     "form": {
       "title": "New opportunity",
       "lead": "Lead (optional)",
@@ -195,6 +200,84 @@
       "ciclos": "Active cycles"
     }
   },
+  "hoy": {
+    "title": "Today",
+    "subtitle": "Daily execution summary",
+    "overdue": "Overdue",
+    "today": "Due today",
+    "closingSoon": "Closing soon",
+    "newLeads": "New leads",
+    "monthlyProduction": "Monthly production",
+    "lastActivity": "Last activity",
+    "call": "Call",
+    "whatsapp": "WhatsApp",
+    "note": "Note",
+    "reschedule": "Reschedule",
+    "noAction": "No action",
+    "todayLabel": "Today",
+    "yesterday": "Yesterday",
+    "tomorrow": "Tomorrow",
+    "inDays": "In {{count}} days",
+    "daysAgo": "{{count}} days ago",
+    "timeAgoDays": "{{count}}d ago",
+    "timeAgoHours": "{{count}}h ago",
+    "urgentBadge": "Urgent",
+    "overdueBadge": "Overdue",
+    "todayBadge": "Today",
+    "saved": "Saved",
+    "rescheduled": "Rescheduled",
+    "updated": "Updated",
+    "emptyNewLead": "New lead",
+    "emptyViewLeads": "View leads",
+    "emptyOverdue": "No overdue follow-ups.",
+    "emptyToday": "No actions for today.",
+    "emptyClosing": "No closings in the next 7 days.",
+    "emptyNew": "No new leads.",
+    "salesCount": "{{count}} sales this month",
+    "refresh": "Refresh",
+    "noteTitle": "New note",
+    "noteLabel": "Note",
+    "rescheduleTitle": "Reschedule action",
+    "nextAction": "Next action",
+    "nextDate": "Date",
+    "probability": "Prob.",
+    "allClear": "All clear",
+    "allClearSub": "No pending tasks today. Great time to prospect.",
+    "statsActions": "Actions",
+    "statsLeads": "New leads",
+    "statsClosing": "Closings"
+  },
+  "quickActions": {
+    "title": "Create",
+    "subtitle": "Fast actions for today",
+    "newLead": "New lead",
+    "newLeadDesc": "Capture a prospect in seconds.",
+    "note": "Quick note",
+    "noteDesc": "Log a follow-up instantly.",
+    "nextAction": "Schedule next action",
+    "nextActionDesc": "Update the next step.",
+    "opportunity": "Create opportunity",
+    "opportunityDesc": "Register an in-progress close.",
+    "venta": "Register sale",
+    "ventaDesc": "Close a sale on the spot.",
+    "create": "Save",
+    "requiredLead": "Name and phone are required.",
+    "requiredNote": "Select a lead and enter a note.",
+    "requiredNextAction": "Select a lead and date.",
+    "requiredOpportunity": "Select a lead or customer.",
+    "requiredVenta": "Select customer, date, and amount."
+  },
+  "cierres": {
+    "title": "Closings",
+    "subtitle": "Opportunities nearing close.",
+    "empty": "No closings in progress.",
+    "fallbackTitle": "Advanced leads",
+    "lastActivity": "Last activity",
+    "create": "Create opportunity",
+    "viewLeads": "View leads",
+    "update": "Update",
+    "updateTitle": "Update opportunity"
+  },
   "auth": {
     "loginSubtitle": "Sign in to continue.",
     "email": "Email",
@@ -239,13 +322,25 @@
       "cita": "Appointment",
       "demo": "Demo",
       "cierre": "Closure",
-      "descartado": "Discarded"
+      "descartado": "Discarded",
+      "otro": "Other"
     },
     "cardPlaceholder": "Drag a lead here"
   },
   "leads": {
     "title": "Leads",
     "subtitle": "Centralize prospects and follow-ups.",
+    "empty": "No leads to show.",
+    "filters": {
+      "mine": "My leads",
+      "new": "New",
+      "followup": "Follow-up",
+      "appointment": "With appointment",
+      "urgent": "Urgent"
+    },
+    "stage": {
+      "other": "Other"
+    },
     "detailsTitle": "Lead details",
     "form": {
       "title": "New lead"
@@ -255,6 +350,7 @@
       "apellido": "Last name",
       "email": "Email",
       "telefono": "Phone",
+      "referidoPor": "Referred by",
       "fuente": "Source",
       "fuenteOtro": "Specify source",
       "programaId": "Program ID",
@@ -331,6 +427,8 @@
   "clientes": {
     "title": "Customers",
     "subtitle": "Manage relationships and active accounts.",
+    "emptyViewLeads": "View leads",
+    "emptySearch": "Search",
     "detailsTitle": "Customer details",
     "form": {
       "title": "New customer"

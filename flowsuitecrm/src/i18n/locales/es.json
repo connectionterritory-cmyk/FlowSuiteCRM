@@ -121,6 +121,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "hoy": "Hoy",
+    "cierres": "Cierres",
     "pipeline": "Pipeline",
     "oportunidades": "Oportunidades",
     "leads": "Leads",
@@ -144,6 +146,9 @@
     "title": "Oportunidades",
     "subtitle": "Gestiona oportunidades y su avance.",
     "new": "Nueva oportunidad",
+    "stage": {
+      "other": "Otro"
+    },
     "form": {
       "title": "Nueva oportunidad",
       "lead": "Lead (opcional)",
@@ -195,6 +200,84 @@
       "ciclos": "Ciclos activos"
     }
   },
+  "hoy": {
+    "title": "Hoy",
+    "subtitle": "Resumen operativo del dia",
+    "overdue": "Vencidos",
+    "today": "Para hoy",
+    "closingSoon": "Cierres proximos",
+    "newLeads": "Nuevos leads",
+    "monthlyProduction": "Produccion del mes",
+    "lastActivity": "Ultima actividad",
+    "call": "Llamar",
+    "whatsapp": "WhatsApp",
+    "note": "Nota",
+    "reschedule": "Reagendar",
+    "noAction": "Sin accion",
+    "todayLabel": "Hoy",
+    "yesterday": "Ayer",
+    "tomorrow": "Mañana",
+    "inDays": "En {{count}} dias",
+    "daysAgo": "Hace {{count}} dias",
+    "timeAgoDays": "hace {{count}}d",
+    "timeAgoHours": "hace {{count}}h",
+    "urgentBadge": "Urgente",
+    "overdueBadge": "Vencido",
+    "todayBadge": "Hoy",
+    "saved": "Guardado",
+    "rescheduled": "Reagendado",
+    "updated": "Actualizado",
+    "emptyNewLead": "Nuevo lead",
+    "emptyViewLeads": "Ver leads",
+    "emptyOverdue": "No tienes seguimientos vencidos.",
+    "emptyToday": "No hay acciones para hoy.",
+    "emptyClosing": "Sin cierres en los proximos 7 dias.",
+    "emptyNew": "Sin leads nuevos.",
+    "salesCount": "{{count}} ventas este mes",
+    "refresh": "Actualizar",
+    "noteTitle": "Nueva nota",
+    "noteLabel": "Nota",
+    "rescheduleTitle": "Reagendar accion",
+    "nextAction": "Proxima accion",
+    "nextDate": "Fecha",
+    "probability": "Prob.",
+    "allClear": "Todo bajo control",
+    "allClearSub": "Sin pendientes hoy. Buen momento para prospectar.",
+    "statsActions": "Acciones",
+    "statsLeads": "Leads nuevos",
+    "statsClosing": "Cierres"
+  },
+  "quickActions": {
+    "title": "Crear",
+    "subtitle": "Acciones rapidas para el dia",
+    "newLead": "Nuevo lead",
+    "newLeadDesc": "Captura un prospecto en segundos.",
+    "note": "Nota rapida",
+    "noteDesc": "Registra un seguimiento al instante.",
+    "nextAction": "Agendar proxima accion",
+    "nextActionDesc": "Actualiza el siguiente paso.",
+    "opportunity": "Crear oportunidad",
+    "opportunityDesc": "Registra un cierre en proceso.",
+    "venta": "Registrar venta",
+    "ventaDesc": "Cierra una venta en el momento.",
+    "create": "Guardar",
+    "requiredLead": "Nombre y telefono son requeridos.",
+    "requiredNote": "Selecciona un lead y escribe la nota.",
+    "requiredNextAction": "Selecciona lead y fecha.",
+    "requiredOpportunity": "Selecciona lead o cliente.",
+    "requiredVenta": "Selecciona cliente, fecha y monto."
+  },
+  "cierres": {
+    "title": "Cierres",
+    "subtitle": "Oportunidades cercanas a cierre.",
+    "empty": "Sin cierres en progreso.",
+    "fallbackTitle": "Leads avanzados",
+    "lastActivity": "Ultima actividad",
+    "create": "Crear oportunidad",
+    "viewLeads": "Ver leads",
+    "update": "Actualizar",
+    "updateTitle": "Actualizar oportunidad"
+  },
   "auth": {
     "loginSubtitle": "Accede con tu cuenta para continuar.",
     "email": "Email",
@@ -239,13 +322,25 @@
       "cita": "Cita",
       "demo": "Demo",
       "cierre": "Cierre",
-      "descartado": "Descartado"
+      "descartado": "Descartado",
+      "otro": "Otro"
     },
     "cardPlaceholder": "Arrastra un lead aqui"
   },
   "leads": {
     "title": "Leads",
     "subtitle": "Centraliza prospectos y su seguimiento.",
+    "empty": "Sin leads para mostrar.",
+    "filters": {
+      "mine": "Mis leads",
+      "new": "Nuevos",
+      "followup": "Seguimiento",
+      "appointment": "Con cita",
+      "urgent": "Urgentes"
+    },
+    "stage": {
+      "other": "Otro"
+    },
     "detailsTitle": "Detalle del lead",
     "form": {
       "title": "Registrar nuevo prospecto"
@@ -255,6 +350,7 @@
       "apellido": "Apellido",
       "email": "Correo electrónico",
       "telefono": "Telefono",
+      "referidoPor": "Quien lo refirio",
       "fuente": "¿Cómo nos conoció?",
       "fuenteOtro": "¿De dónde exactamente?",
       "programaId": "Programa",
@@ -331,6 +427,8 @@
   "clientes": {
     "title": "Clientes",
     "subtitle": "Gestiona relaciones y cuentas activas.",
+    "emptyViewLeads": "Ver leads",
+    "emptySearch": "Buscar",
     "detailsTitle": "Detalle del cliente",
     "form": {
       "title": "Nuevo cliente"

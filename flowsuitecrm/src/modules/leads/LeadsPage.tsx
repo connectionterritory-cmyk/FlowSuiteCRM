@@ -13,6 +13,13 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
 import { useMessaging } from '../../hooks/useMessaging'
+import {
+  LEAD_PIPELINE_FOLLOWUP_STAGES,
+  LEAD_PIPELINE_NEW_STAGES,
+  getLeadStageBadgeVariant,
+  getLeadStageLabel,
+  normalizeLeadStage,
+} from '../../constants/pipeline'
 
 type LeadRecord = {
   id: string
@@ -44,9 +51,34 @@ type LeadRecord = {
   tiene_productos_rp: boolean | null
   tipo_vivienda: string | null
   created_at: string | null
+  updated_at?: string | null
   deleted_at?: string | null
   deleted_by?: string | null
   deleted_reason?: string | null
+}
+
+type LeadMobileRecord = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  estado_pipeline: string | null
+  next_action: string | null
+  next_action_date: string | null
+  updated_at: string | null
+  created_at: string | null
+  deleted_at: string | null
+}
+
+type LeadLike = Pick<
+  LeadMobileRecord,
+  'id' | 'nombre' | 'apellido' | 'telefono' | 'estado_pipeline' | 'next_action' | 'next_action_date'
+>
+ & { updated_at?: string | null }
+
+type LastActivityRow = {
+  lead_id: string
+  last_activity_at: string | null
 }
 
 type OwnerOption = {
@@ -80,7 +112,7 @@ const sourceOptions = [
   { value: 'otro', labelKey: 'leads.sources.otro' },
 ]
 
-const EN_PROCESO_STAGES = ['contactado', 'cita', 'demo', 'cierre']
+const EN_PROCESO_STAGES: string[] = [...LEAD_PIPELINE_FOLLOWUP_STAGES, 'cierre']
 
 function stageBadgeColor(stage: string): string {
   const map: Record<string, string> = {
@@ -113,6 +145,7 @@ export function LeadsPage() {
   const { viewMode: scopeMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
   const [leads, setLeads] = useState<LeadRecord[]>([])
+  const [mobileLeadsData, setMobileLeadsData] = useState<LeadMobileRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [role, setRole] = useState<string | null>(null)
@@ -159,6 +192,17 @@ export function LeadsPage() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [sortCol, setSortCol] = useState<number | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [lastActivityMap, setLastActivityMap] = useState<Record<string, string | null>>({})
+  const [mobileFilter, setMobileFilter] = useState<'mine' | 'new' | 'followup' | 'appointment' | 'urgent'>('mine')
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteLead, setNoteLead] = useState<LeadLike | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [rescheduleOpen, setRescheduleOpen] = useState(false)
+  const [rescheduleLead, setRescheduleLead] = useState<LeadLike | null>(null)
+  const [rescheduleAction, setRescheduleAction] = useState('')
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleSaving, setRescheduleSaving] = useState(false)
 
   const loadRole = useCallback(async () => {
     if (!configured || !session?.user.id) {
@@ -202,10 +246,55 @@ export function LeadsPage() {
     setOwnersLoading(false)
   }, [configured, session?.user.id, canReassignLeads])
 
+  const loadLastActivity = useCallback(
+    async (leadIds: string[]) => {
+      if (!configured || leadIds.length === 0) {
+        setLastActivityMap({})
+        return
+      }
+      const { data, error: activityError } = await supabase
+        .from('v_lead_last_activity')
+        .select('lead_id, last_activity_at')
+        .in('lead_id', leadIds)
+      if (activityError) {
+        setLastActivityMap({})
+        return
+      }
+      const nextMap: Record<string, string | null> = {}
+      ;(data as LastActivityRow[] | null)?.forEach((row) => {
+        nextMap[row.lead_id] = row.last_activity_at
+      })
+      setLastActivityMap(nextMap)
+    },
+    [configured]
+  )
+
   const loadLeads = useCallback(async () => {
     if (!configured) return
     setLoading(true)
     setError(null)
+    if (isMobile && session?.user.id) {
+      const { data, error: fetchError } = await supabase
+        .from('leads')
+        .select('id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, deleted_at')
+        .or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+        .is('deleted_at', null)
+        .order('next_action_date', { ascending: true, nullsFirst: false })
+        .order('updated_at', { ascending: false })
+
+      if (fetchError) {
+        setError(fetchError.message)
+        setMobileLeadsData([])
+      } else {
+        const rows = (data as LeadMobileRecord[] | null) ?? []
+        setMobileLeadsData(rows)
+        const ids = rows.map((lead) => lead.id)
+        await loadLastActivity(ids)
+      }
+      setLoading(false)
+      return
+    }
+
     let query = supabase.from('leads').select('*').order('created_at', { ascending: false })
     if (viewMode === 'trash') {
       query = query.not('deleted_at', 'is', null)
@@ -231,7 +320,7 @@ export function LeadsPage() {
       setLeads(data ?? [])
     }
     setLoading(false)
-  }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id])
+  }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id, isMobile, loadLastActivity])
 
   useEffect(() => {
     if (!configured || leads.length === 0) {
@@ -320,11 +409,162 @@ export function LeadsPage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  const normalizeStage = useCallback((stage: string | null) => {
-    if (stage === 'calificado') return 'cita'
-    if (stage === 'demostracion') return 'demo'
-    return stage ?? 'nuevo'
+  const normalizeStage = useCallback((stage: string | null) => normalizeLeadStage(stage), [])
+
+  const timeZone = 'America/Los_Angeles'
+  const today = useMemo(() => new Date(), [])
+  const threeDaysAgo = useMemo(() => {
+    const date = new Date(today)
+    date.setDate(date.getDate() - 3)
+    return date
+  }, [today])
+
+  const formatDateKey = useCallback(
+    (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(date),
+    [timeZone]
+  )
+
+  const dateKeyToUtc = useCallback((dateKey: string) => {
+    const [year, month, day] = dateKey.split('-').map(Number)
+    return Date.UTC(year, month - 1, day)
   }, [])
+
+  const relativeDayLabel = useCallback(
+    (value?: string | null) => {
+      if (!value) return '-'
+      const todayKey = formatDateKey(new Date())
+      const diffDays = Math.round((dateKeyToUtc(value) - dateKeyToUtc(todayKey)) / 86400000)
+      if (diffDays === 0) return t('hoy.todayLabel')
+      if (diffDays === -1) return t('hoy.yesterday')
+      if (diffDays === 1) return t('hoy.tomorrow')
+      if (diffDays > 1) return t('hoy.inDays', { count: diffDays })
+      return t('hoy.daysAgo', { count: Math.abs(diffDays) })
+    },
+    [dateKeyToUtc, formatDateKey, t]
+  )
+
+  const timeAgo = useCallback(
+    (value?: string | null) => {
+      if (!value) return '-'
+      const now = Date.now()
+      const date = new Date(value).getTime()
+      const diff = Math.max(0, now - date)
+      const hours = Math.floor(diff / 3600000)
+      const days = Math.floor(diff / 86400000)
+      if (days >= 1) return t('hoy.timeAgoDays', { count: days })
+      return t('hoy.timeAgoHours', { count: Math.max(1, hours) })
+    },
+    [t]
+  )
+
+  const getLeadName = useCallback((lead: LeadLike) => {
+    return [lead.nombre, lead.apellido].filter(Boolean).join(' ').trim() || t('common.noData')
+  }, [t])
+
+  const isUrgent = useCallback(
+    (lastActivityAt?: string | null) => {
+      if (!lastActivityAt) return true
+      const activity = new Date(lastActivityAt)
+      return activity.getTime() <= threeDaysAgo.getTime()
+    },
+    [threeDaysAgo]
+  )
+
+  const handleCall = useCallback((telefono?: string | null) => {
+    if (!telefono) {
+      showToast(t('messaging.phoneMissing'), 'error')
+      return
+    }
+    window.location.href = `tel:${telefono}`
+  }, [showToast, t])
+
+  const handleWhatsapp = useCallback(
+    (lead: LeadLike) => {
+      if (!lead.telefono) {
+        showToast(t('messaging.phoneMissing'), 'error')
+        return
+      }
+      openWhatsapp({
+        nombre: getLeadName(lead),
+        telefono: lead.telefono,
+      })
+    },
+    [openWhatsapp, getLeadName, showToast, t]
+  )
+
+  const openNote = (lead: LeadLike) => {
+    setNoteLead(lead)
+    setNoteText('')
+    setNoteOpen(true)
+  }
+
+  const openReschedule = (lead: LeadLike) => {
+    setRescheduleLead(lead)
+    setRescheduleAction(lead.next_action ?? '')
+    setRescheduleDate(lead.next_action_date ?? '')
+    setRescheduleOpen(true)
+  }
+
+  const submitNote = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!noteLead || !session?.user.id) return
+    if (!noteText.trim()) {
+      showToast(t('common.noData'), 'error')
+      return
+    }
+    setNoteSaving(true)
+    const previousMap = { ...lastActivityMap }
+    const optimisticTime = new Date().toISOString()
+    setLastActivityMap((prev) => ({ ...prev, [noteLead.id]: optimisticTime }))
+    const { error: insertError } = await supabase.from('lead_notas').insert({
+      lead_id: noteLead.id,
+      usuario_id: session.user.id,
+      nota: noteText.trim(),
+      tipo: 'seguimiento',
+    })
+    if (insertError) {
+      setLastActivityMap(previousMap)
+      showToast(insertError.message, 'error')
+    } else {
+      showToast(t('hoy.saved'))
+      setNoteOpen(false)
+      loadLeads()
+    }
+    setNoteSaving(false)
+  }
+
+  const submitReschedule = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!rescheduleLead) return
+    if (!rescheduleDate) {
+      showToast(t('common.noData'), 'error')
+      return
+    }
+    setRescheduleSaving(true)
+    const previousLeads = mobileLeadsData
+    const updatedLead = {
+      ...rescheduleLead,
+      next_action: rescheduleAction.trim() || null,
+      next_action_date: rescheduleDate,
+    }
+    setMobileLeadsData((prev) => prev.map((lead) => (lead.id === rescheduleLead.id ? { ...lead, ...updatedLead } : lead)))
+    const { error: updateError } = await supabase
+      .from('leads')
+      .update({
+        next_action: rescheduleAction.trim() || null,
+        next_action_date: rescheduleDate,
+      })
+      .eq('id', rescheduleLead.id)
+    if (updateError) {
+      setMobileLeadsData(previousLeads)
+      showToast(updateError.message, 'error')
+    } else {
+      showToast(t('hoy.rescheduled'))
+      setRescheduleOpen(false)
+      loadLeads()
+    }
+    setRescheduleSaving(false)
+  }
 
   const getFuenteLabel = useCallback(
     (fuente: string | null) => {
@@ -452,6 +692,29 @@ export function LeadsPage() {
       ).length,
     }
   }, [leads, normalizeStage])
+
+  const mobileLeads = useMemo(() => {
+    const filtered = mobileLeadsData.filter((lead) => {
+      const stage = normalizeStage(lead.estado_pipeline)
+      if (mobileFilter === 'new') return LEAD_PIPELINE_NEW_STAGES.includes(stage as typeof LEAD_PIPELINE_NEW_STAGES[number])
+      if (mobileFilter === 'followup') return LEAD_PIPELINE_FOLLOWUP_STAGES.includes(stage as typeof LEAD_PIPELINE_FOLLOWUP_STAGES[number])
+      if (mobileFilter === 'appointment') return Boolean(lead.next_action_date)
+      if (mobileFilter === 'urgent') {
+        const lastActivityAt = lastActivityMap[lead.id] ?? lead.updated_at
+        return isUrgent(lastActivityAt)
+      }
+      return true
+    })
+
+    return [...filtered].sort((a, b) => {
+      const dateA = a.next_action_date ? new Date(a.next_action_date).getTime() : Number.POSITIVE_INFINITY
+      const dateB = b.next_action_date ? new Date(b.next_action_date).getTime() : Number.POSITIVE_INFINITY
+      if (dateA !== dateB) return dateA - dateB
+      const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0
+      const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0
+      return updatedB - updatedA
+    })
+  }, [mobileLeadsData, mobileFilter, lastActivityMap, normalizeStage, isUrgent])
 
   const openManageModal = useCallback(
     (lead: LeadRecord, mode: 'delete' | 'reassign' | 'restore') => {
@@ -781,6 +1044,172 @@ export function LeadsPage() {
 
   if (!configured) {
     return <EmptyState title={t('dashboard.missingConfigTitle')} description={t('dashboard.missingConfigDescription')} />
+  }
+
+  if (isMobile) {
+    const chips = [
+      { key: 'mine', label: t('leads.filters.mine') },
+      { key: 'new', label: t('leads.filters.new') },
+      { key: 'followup', label: t('leads.filters.followup') },
+      { key: 'appointment', label: t('leads.filters.appointment') },
+      { key: 'urgent', label: t('leads.filters.urgent') },
+    ] as const
+
+    return (
+      <div className="page-stack seller-leads">
+        <SectionHeader title={t('leads.title')} subtitle={t('leads.subtitle')} />
+
+        {error && <div className="form-error">{error}</div>}
+
+        <div className="seller-chips">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              className={`seller-chip ${mobileFilter === chip.key ? 'active' : ''}`.trim()}
+              onClick={() => setMobileFilter(chip.key)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {loading && (
+          <div className="seller-skeleton-grid">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="seller-card skeleton-card">
+                <div className="skeleton-line wide" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line" />
+              </div>
+            ))}
+          </div>
+        )}
+        {!loading && mobileLeads.length === 0 && (
+          <div className="empty-mini">
+            <p>{t('leads.empty')}</p>
+            <div className="empty-actions">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent('quick-actions:open', { detail: { action: 'newLead' } }))
+                }
+              >
+                {t('common.newLead')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="seller-lead-list">
+          {mobileLeads.map((lead) => {
+            const lastActivityAt = lastActivityMap[lead.id] ?? lead.updated_at
+            const urgent = isUrgent(lastActivityAt)
+            const todayKey = formatDateKey(new Date())
+            const statusLabel = lead.next_action_date
+              ? lead.next_action_date < todayKey
+                ? t('hoy.overdueBadge')
+                : lead.next_action_date === todayKey
+                ? t('hoy.todayBadge')
+                : null
+              : null
+
+            return (
+              <div key={lead.id} className={`seller-card seller-lead ${urgent ? 'urgent' : ''}`.trim()}>
+                <div className="seller-lead-main">
+                  <div>
+                    <div className="seller-lead-name">{getLeadName(lead)}</div>
+                    <div className="seller-lead-meta">
+                      <span className={`seller-pill variant-${getLeadStageBadgeVariant(lead.estado_pipeline)}`.trim()}>
+                        {getLeadStageLabel(lead.estado_pipeline, t)}
+                      </span>
+                      <span>{lead.next_action || t('hoy.noAction')}</span>
+                    </div>
+                    <div className="seller-lead-status">
+                      {statusLabel && <span className="seller-badge">{statusLabel}</span>}
+                      {urgent && <span className="seller-badge danger">{t('hoy.urgentBadge')}</span>}
+                    </div>
+                  </div>
+                  <div className="seller-lead-dates">
+                    <span className="seller-date">{relativeDayLabel(lead.next_action_date)}</span>
+                    <span className="seller-last">
+                      {t('hoy.lastActivity')} {timeAgo(lastActivityAt)}
+                    </span>
+                  </div>
+                </div>
+                <div className="seller-lead-actions">
+                  <Button variant="ghost" onClick={() => handleCall(lead.telefono)}>
+                    {t('hoy.call')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleWhatsapp(lead)}>
+                    {t('hoy.whatsapp')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => openNote(lead)}>
+                    {t('hoy.note')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => openReschedule(lead)}>
+                    {t('hoy.reschedule')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <ModalRenderer />
+
+        <Modal
+          open={noteOpen}
+          title={t('hoy.noteTitle')}
+          onClose={() => setNoteOpen(false)}
+          actions={
+            <>
+              <Button variant="ghost" type="button" onClick={() => setNoteOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" form="leads-note-form" disabled={noteSaving}>
+                {noteSaving ? t('common.saving') : t('common.save')}
+              </Button>
+            </>
+          }
+        >
+          <form id="leads-note-form" className="form-grid" onSubmit={submitNote}>
+            <label className="form-field">
+              <span>{t('hoy.noteLabel')}</span>
+              <textarea rows={4} value={noteText} onChange={(event) => setNoteText(event.target.value)} />
+            </label>
+          </form>
+        </Modal>
+
+        <Modal
+          open={rescheduleOpen}
+          title={t('hoy.rescheduleTitle')}
+          onClose={() => setRescheduleOpen(false)}
+          actions={
+            <>
+              <Button variant="ghost" type="button" onClick={() => setRescheduleOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" form="leads-reschedule-form" disabled={rescheduleSaving}>
+                {rescheduleSaving ? t('common.saving') : t('common.save')}
+              </Button>
+            </>
+          }
+        >
+          <form id="leads-reschedule-form" className="form-grid" onSubmit={submitReschedule}>
+            <label className="form-field">
+              <span>{t('hoy.nextAction')}</span>
+              <input value={rescheduleAction} onChange={(event) => setRescheduleAction(event.target.value)} />
+            </label>
+            <label className="form-field">
+              <span>{t('hoy.nextDate')}</span>
+              <input type="date" value={rescheduleDate} onChange={(event) => setRescheduleDate(event.target.value)} />
+            </label>
+          </form>
+        </Modal>
+      </div>
+    )
   }
 
   return (
