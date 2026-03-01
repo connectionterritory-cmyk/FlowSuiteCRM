@@ -9,6 +9,7 @@ import { useMessaging } from '../../hooks/useMessaging'
 import { useUsers } from '../../data/UsersProvider'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { getLeadStageBadgeVariant, getLeadStageLabel } from '../../constants/pipeline'
+import { buildMapsNavUrl } from '../../lib/addressUtils'
 
 type LeadRow = {
   id: string
@@ -19,6 +20,10 @@ type LeadRow = {
   next_action: string | null
   next_action_date: string | null
   updated_at: string | null
+  direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
 }
 
 type OpportunityRow = {
@@ -252,9 +257,9 @@ export function HoyPage() {
       }
 
       const nextMap: Record<string, string | null> = {}
-      ;(data as LastActivityRow[] | null)?.forEach((row) => {
-        nextMap[row.lead_id] = row.last_activity_at
-      })
+        ; (data as LastActivityRow[] | null)?.forEach((row) => {
+          nextMap[row.lead_id] = row.last_activity_at
+        })
       setLastActivityMap(nextMap)
     },
     [configured]
@@ -265,8 +270,9 @@ export function HoyPage() {
     setLoading(true)
     setError(null)
 
-    const baseLeadSelect = 'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at'
+    const baseLeadSelect = 'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, direccion, ciudad, estado_region, codigo_postal'
     const vendedorId = session.user.id
+
     const { start, end } = getMonthRange()
     const todayPlus7 = new Date(today)
     todayPlus7.setDate(todayPlus7.getDate() + 7)
@@ -363,11 +369,11 @@ export function HoyPage() {
     if (overdueRes.error || todayRes.error || newRes.error || oppsRes.error || salesRes.error) {
       setError(
         overdueRes.error?.message ||
-          todayRes.error?.message ||
-          newRes.error?.message ||
-          oppsRes.error?.message ||
-          salesRes.error?.message ||
-          t('common.noData')
+        todayRes.error?.message ||
+        newRes.error?.message ||
+        oppsRes.error?.message ||
+        salesRes.error?.message ||
+        t('common.noData')
       )
       setLoading(false)
       return
@@ -418,6 +424,40 @@ export function HoyPage() {
       return
     }
     window.location.href = `tel:${telefono}`
+  }
+
+  const handleNavigate = (row: { direccion?: string | null; ciudad?: string | null; estado_region?: string | null; codigo_postal?: string | null }) => {
+    const url = buildMapsNavUrl(row)
+    if (!url) {
+      showToast(t('hoy.addressMissing'), 'error')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleCheckIn = async (lead: LeadRow) => {
+    try {
+      if (!session) return
+
+      const now = new Date()
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      const note = `📍 Check-in: ${timeStr}`
+
+      const { error } = await supabase
+        .from('seguimientos')
+        .insert({
+          prospecto_id: lead.id,
+          vendedor_id: session.user.id,
+          notas: note,
+          tipo_accion: 'seguimiento'
+        })
+
+      if (error) throw error
+      showToast(t('hoy.checkinSuccess'), 'success')
+    } catch (err) {
+      console.error('Error in check-in:', err)
+      showToast(t('toast.error'), 'error')
+    }
   }
 
   const handleWhatsapp = (lead: LeadRow) => {
@@ -552,6 +592,9 @@ export function HoyPage() {
         <div className="seller-lead-actions">
           <Button variant="ghost" onClick={() => handleCall(lead.telefono)}>
             {t('hoy.call')}
+          </Button>
+          <Button variant="ghost" onClick={() => handleCheckIn(lead)}>
+            📍 {t('hoy.checkin')}
           </Button>
           <Button variant="ghost" onClick={() => handleWhatsapp(lead)}>
             {t('hoy.whatsapp')}
@@ -874,6 +917,7 @@ export function HoyPage() {
                 </div>
                 <div className="hoy-modal-row-actions">
                   <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}>📞</Button>
+                  <Button variant="ghost" onClick={() => handleNavigate(cliente ?? {})}>🗺️</Button>
                   <Button variant="ghost" onClick={() => handleWhatsappCliente(name, cliente?.telefono ?? null)}>💬</Button>
                 </div>
               </div>
