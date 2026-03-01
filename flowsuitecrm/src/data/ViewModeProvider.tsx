@@ -54,8 +54,12 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
   }, [hasDistribuidorScope, viewMode])
 
   useEffect(() => {
+    if (!session?.user.id) {
+      setDistributionUserIds([])
+      return
+    }
     if (!isSupabaseConfigured || !hasDistribuidorScope || !currentUser?.codigo_distribuidor) {
-      setDistributionUserIds(session?.user.id ? [session.user.id] : [])
+      setDistributionUserIds([session.user.id])
       return
     }
     let active = true
@@ -77,7 +81,7 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await query
       if (!active) return
       if (error) {
-        setDistributionUserIds(session?.user.id ? [session.user.id] : [])
+        setDistributionUserIds([session.user.id])
         setDistributionLoading(false)
         return
       }
