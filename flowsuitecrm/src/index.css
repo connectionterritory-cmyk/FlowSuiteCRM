@@ -2851,14 +2851,15 @@ body.theme-light .ci-owner-selected strong {
 
 /* ── Premium Mobile Dashboard Overhaul ──────────────── */
 .hoy-premium-header {
-  background: linear-gradient(145deg, #f8fafc 0%, #eef2ff 100%);
-  padding: 20px 20px 32px;
-  margin: -24px -20px 0;
+  background: linear-gradient(180deg, #121c27 0%, #0f1822 100%);
+  border: 1px solid var(--card-border);
+  padding: 20px 20px 28px;
+  margin: -8px -20px 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   border-radius: 0 0 24px 24px;
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
 }
 
 .hoy-premium-header h2 {
@@ -2866,18 +2867,17 @@ body.theme-light .ci-owner-selected strong {
   font-size: 1.35rem;
   font-weight: 800;
   letter-spacing: -0.3px;
-  color: var(--text-primary);
 }
 
 .hoy-premium-header p {
   margin: 5px 0 0;
   font-size: 0.88rem;
-  color: var(--text-muted);
+  color: var(--text-muted-strong);
 }
 
 .hoy-notification-bell {
-  background: rgba(148, 163, 184, 0.15);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--color-surface);
+  border: 1px solid var(--card-border);
   border-radius: 50%;
   width: 36px;
   height: 36px;
@@ -2897,33 +2897,35 @@ body.theme-light .ci-owner-selected strong {
 }
 
 .hoy-action-card {
-  padding: 14px 6px 12px;
-  border-radius: 18px;
+  padding: 14px 10px 12px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   text-align: center;
-  color: white;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 10px 18px rgba(2, 6, 23, 0.35);
   transition: transform 0.15s, box-shadow 0.15s;
 }
 
 .hoy-action-card:active {
   transform: scale(0.94);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 6px 12px rgba(2, 6, 23, 0.45);
 }
 
 .hoy-action-card.orange {
-  background: linear-gradient(135deg, #f97316, #ea580c);
+  border-top: 3px solid var(--accent);
 }
 
 .hoy-action-card.green {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border-top: 3px solid var(--accent);
 }
 
 .hoy-action-card.blue {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-top: 3px solid var(--accent);
 }
 
 .hoy-action-card-icon {
@@ -2934,13 +2936,14 @@ body.theme-light .ci-owner-selected strong {
   font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.2;
-  opacity: 0.92;
+  color: var(--text-muted);
 }
 
 .hoy-action-card-count {
-  font-size: 1.7rem;
+  font-size: 1.6rem;
   font-weight: 800;
   line-height: 1;
+  color: var(--text-primary);
 }
 
 .hoy-premium-kpi-row {
@@ -3134,19 +3137,37 @@ body.theme-light .ci-owner-selected strong {
 }
 
 .hoy-action-card-icon-wrapper {
-  background: rgba(255, 255, 255, 0.2);
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  margin-bottom: 2px;
+  border: 1px solid var(--card-border);
 }
 
 .hoy-action-card-icon {
-  font-size: 1.4rem;
+  font-size: 1.2rem;
+  color: var(--accent);
+}
+
+body.theme-light .hoy-premium-header {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f6 100%);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.08);
+}
+
+body.theme-light .hoy-action-card {
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.12);
+}
+
+body.theme-light .hoy-action-card:active {
+  box-shadow: 0 4px 10px rgba(2, 6, 23, 0.18);
+}
+
+body.theme-light .hoy-action-card-icon-wrapper {
+  background: var(--color-surface-strong);
 }
 
 .hoy-kpi-trend-pill {
