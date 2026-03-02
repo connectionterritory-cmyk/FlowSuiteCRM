@@ -51,6 +51,30 @@ type ClienteRecord = {
   created_at: string | null
 }
 
+const CLIENTES_LIST_SELECT = [
+  'id',
+  'nombre',
+  'apellido',
+  'email',
+  'telefono',
+  'telefono_casa',
+  'direccion',
+  'ciudad',
+  'estado_region',
+  'codigo_postal',
+  'nivel',
+  'vendedor_id',
+  'distribuidor_id',
+  'fecha_nacimiento',
+  'fecha_ultimo_pedido',
+  'activo',
+  'estado_cuenta',  // account status (not financial — required for filtroEstado and stats)
+  'origen',
+  'created_at',
+  // Excluded (financial / sensitive): saldo_actual, monto_moroso, dias_atraso,
+  // estado_morosidad, numero_cuenta_financiera, hycite_id, codigo_vendedor_hycite
+].join(', ')
+
 const initialForm = {
   nombre: '',
   apellido: '',
@@ -183,15 +207,27 @@ export function ClientesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const loadClientes = useCallback(async () => {
-    if (!configured) return
-    setLoading(true)
+    if (!configured || !session?.user.id || !currentRole) return
+    const userId = session.user.id
     setError(null)
-    let query = supabase.from('clientes').select('*').order('created_at', { ascending: false })
-    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
-      query = query.eq('vendedor_id', session.user.id)
-    }
-    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
-      query = query.in('vendedor_id', distributionUserIds)
+    setLoading(true)
+    let query = supabase
+      .from('clientes')
+      .select(CLIENTES_LIST_SELECT)
+      .order('created_at', { ascending: false })
+    if (currentRole === 'vendedor') {
+      query = query.eq('vendedor_id', userId)
+    } else if (currentRole === 'admin') {
+      // ADMIN_SCOPE: ALL | SELF
+      // Default (single-tenant): admin sees ALL clients — no vendedor_id filter applied.
+      // To restrict admin to their distributor scope, replace with:
+      // const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
+      // query = query.in('vendedor_id', teamIds)
+    } else if (hasDistribuidorScope && viewMode === 'seller') {
+      query = query.eq('vendedor_id', userId)
+    } else if (hasDistribuidorScope && viewMode === 'distributor') {
+      const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
+      query = query.in('vendedor_id', teamIds)
     }
     const { data, error: fetchError } = await query
 
@@ -199,10 +235,10 @@ export function ClientesPage() {
       setError(fetchError.message)
       setClientes([])
     } else {
-      setClientes((data ?? []) as ClienteRecord[])
+      setClientes((data ?? []) as unknown as ClienteRecord[])
     }
     setLoading(false)
-  }, [configured, currentRole, session?.user.id])
+  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, session?.user.id, viewMode])
 
   useEffect(() => {
     if (configured) loadClientes()

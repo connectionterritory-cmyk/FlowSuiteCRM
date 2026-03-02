@@ -125,7 +125,7 @@
     "cierres": "Cierres",
     "pipeline": "Pipeline",
     "oportunidades": "Oportunidades",
-    "leads": "Leads",
+    "leads": "Prospectos",
     "clientes": "Clientes",
     "ventas": "Ventas",
     "productos": "Productos",
@@ -151,7 +151,7 @@
     },
     "form": {
       "title": "Nueva oportunidad",
-      "lead": "Lead (opcional)",
+      "lead": "Prospecto (opcional)",
       "cliente": "Cliente (opcional)",
       "etapa": "Etapa",
       "valor": "Valor estimado",
@@ -174,7 +174,7 @@
       "pipelineBadge": "Pipeline"
     },
     "metrics": {
-      "leadsNuevos": "Leads nuevos",
+      "leadsNuevos": "Prospectos nuevos",
       "oportunidadesActivas": "Oportunidades activas",
       "demos": "Demos",
       "ventasMes": "Ventas del mes",
@@ -196,7 +196,7 @@
     "nextSteps": {
       "title": "Proximos pasos",
       "description": "Acciones recomendadas para el equipo.",
-      "leads": "Leads nuevos",
+      "leads": "Prospectos nuevos",
       "ciclos": "Ciclos activos"
     }
   },
@@ -206,14 +206,21 @@
     "overdue": "Vencidos",
     "today": "Para hoy",
     "closingSoon": "Cierres proximos",
-    "newLeads": "Nuevos leads",
+    "newLeads": "Nuevos prospectos",
+    "upcomingCitas": "Próximas Citas",
+    "pendingTasks": "Tareas Pendientes",
     "monthlyProduction": "Produccion del mes",
+    "referidosActivos": "Referidos Activos",
     "lastActivity": "Ultima actividad",
     "call": "Llamar",
     "whatsapp": "WhatsApp",
     "note": "Nota",
     "reschedule": "Reagendar",
     "noAction": "Sin accion",
+    "navigate": "Navegar",
+    "addressMissing": "Falta la direccion",
+    "checkin": "Check-in",
+    "checkinSuccess": "Check-in registrado",
     "todayLabel": "Hoy",
     "yesterday": "Ayer",
     "tomorrow": "Mañana",
@@ -227,12 +234,12 @@
     "saved": "Guardado",
     "rescheduled": "Reagendado",
     "updated": "Actualizado",
-    "emptyNewLead": "Nuevo lead",
-    "emptyViewLeads": "Ver leads",
+    "emptyNewLead": "Nuevo prospecto",
+    "emptyViewLeads": "Ver prospectos",
     "emptyOverdue": "No tienes seguimientos vencidos.",
     "emptyToday": "No hay acciones para hoy.",
     "emptyClosing": "Sin cierres en los proximos 7 dias.",
-    "emptyNew": "Sin leads nuevos.",
+    "emptyNew": "Sin prospectos nuevos.",
     "salesCount": "{{count}} ventas este mes",
     "refresh": "Actualizar",
     "noteTitle": "Nueva nota",
@@ -244,7 +251,7 @@
     "allClear": "Todo bajo control",
     "allClearSub": "Sin pendientes hoy. Buen momento para prospectar.",
     "statsActions": "Acciones",
-    "statsLeads": "Leads nuevos",
+    "statsLeads": "Prospectos nuevos",
     "statsClosing": "Cierres",
     "statsCobranzas": "Cobranzas",
     "birthdays": "Cumpleaños hoy",
@@ -262,7 +269,7 @@
   "quickActions": {
     "title": "Crear",
     "subtitle": "Acciones rapidas para el dia",
-    "newLead": "Nuevo lead",
+    "newLead": "Nuevo prospecto",
     "newLeadDesc": "Captura un prospecto en segundos.",
     "note": "Nota rapida",
     "noteDesc": "Registra un seguimiento al instante.",
@@ -274,19 +281,19 @@
     "ventaDesc": "Cierra una venta en el momento.",
     "create": "Guardar",
     "requiredLead": "Nombre y telefono son requeridos.",
-    "requiredNote": "Selecciona un lead y escribe la nota.",
-    "requiredNextAction": "Selecciona lead y fecha.",
-    "requiredOpportunity": "Selecciona lead o cliente.",
+    "requiredNote": "Selecciona un prospecto y escribe la nota.",
+    "requiredNextAction": "Selecciona prospecto y fecha.",
+    "requiredOpportunity": "Selecciona prospecto o cliente.",
     "requiredVenta": "Selecciona cliente, fecha y monto."
   },
   "cierres": {
     "title": "Cierres",
     "subtitle": "Oportunidades cercanas a cierre.",
     "empty": "Sin cierres en progreso.",
-    "fallbackTitle": "Leads avanzados",
+    "fallbackTitle": "Prospectos avanzados",
     "lastActivity": "Ultima actividad",
     "create": "Crear oportunidad",
-    "viewLeads": "Ver leads",
+    "viewLeads": "Ver prospectos",
     "update": "Actualizar",
     "updateTitle": "Actualizar oportunidad"
   },
@@ -318,7 +325,7 @@
   "pipeline": {
     "title": "Pipeline",
     "subtitle": "Gestiona el avance de tus oportunidades.",
-    "emptyColumn": "Sin leads en esta etapa",
+    "emptyColumn": "Sin prospectos en esta etapa",
     "nextAction": "Proxima accion",
     "noAction": "Sin accion definida",
     "overdue": "Vencido",
@@ -337,14 +344,14 @@
       "descartado": "Descartado",
       "otro": "Otro"
     },
-    "cardPlaceholder": "Arrastra un lead aqui"
+    "cardPlaceholder": "Arrastra un prospecto aqui"
   },
   "leads": {
-    "title": "Leads",
+    "title": "Prospectos",
     "subtitle": "Centraliza prospectos y su seguimiento.",
-    "empty": "Sin leads para mostrar.",
+    "empty": "Sin prospectos para mostrar.",
     "filters": {
-      "mine": "Mis leads",
+      "mine": "Mis prospectos",
       "new": "Nuevos",
       "followup": "Seguimiento",
       "appointment": "Con cita",
@@ -353,7 +360,7 @@
     "stage": {
       "other": "Otro"
     },
-    "detailsTitle": "Detalle del lead",
+    "detailsTitle": "Detalle del prospecto",
     "form": {
       "title": "Registrar nuevo prospecto"
     },
@@ -439,7 +446,7 @@
   "clientes": {
     "title": "Clientes",
     "subtitle": "Gestiona relaciones y cuentas activas.",
-    "emptyViewLeads": "Ver leads",
+    "emptyViewLeads": "Ver prospectos",
     "emptySearch": "Buscar",
     "detailsTitle": "Detalle del cliente",
     "form": {
@@ -470,8 +477,8 @@
     "morosidad": {
       "0-30": "0-30",
       "31-60": "31-60",
-      "61-90": "61-90",
-      "91+": "91+"
+      "61-90": "60+",
+      "91+": "60+"
     },
     "columns": {
       "nombre": "Nombre",
@@ -751,8 +758,8 @@
         "save": "Guardar",
         "actions": {
           "whatsapp": "WhatsApp",
-          "createLead": "Crear lead",
-          "leadCreated": "Lead creado"
+          "createLead": "Crear prospecto",
+          "leadCreated": "Prospecto creado"
         },
         "states": {
           "pendiente": "Pendiente",
@@ -901,7 +908,7 @@
       "giftCategoryUncategorized": "Sin categoria",
       "ownerTypes": {
         "cliente": "Cliente",
-        "lead": "Lead",
+        "lead": "Prospecto",
         "vendedor": "Vendedor",
         "embajador": "Embajador"
       }

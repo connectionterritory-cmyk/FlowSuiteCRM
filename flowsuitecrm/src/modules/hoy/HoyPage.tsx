@@ -8,7 +8,6 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useMessaging } from '../../hooks/useMessaging'
 import { useUsers } from '../../data/UsersProvider'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { getLeadStageBadgeVariant, getLeadStageLabel } from '../../constants/pipeline'
 
 type LeadRow = {
   id: string
@@ -19,6 +18,7 @@ type LeadRow = {
   next_action: string | null
   next_action_date: string | null
   updated_at: string | null
+  created_at: string | null
 }
 
 type OpportunityRow = {
@@ -35,6 +35,7 @@ type LastActivityRow = {
   lead_id: string
   last_activity_at: string | null
 }
+
 
 type SalesSummary = {
   total: number
@@ -83,10 +84,12 @@ type MantenimientoRow = {
   } | null
 }
 
-const NOTE_DEFAULT = 'seguimiento'
+const REFERIDOS_ACTIVOS_ESTADOS = ['contactado', 'cita_agendada', 'presentacion_hecha']
+const REFERIDOS_EN_PROCESO_ESTADOS = ['cita_agendada', 'presentacion_hecha']
+
 
 export function HoyPage() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { session } = useAuth()
   const { showToast } = useToast()
   const { openWhatsapp, ModalRenderer } = useMessaging()
@@ -101,7 +104,11 @@ export function HoyPage() {
   const [newLeads, setNewLeads] = useState<LeadRow[]>([])
   const [closingOpps, setClosingOpps] = useState<OpportunityRow[]>([])
   const [salesSummary, setSalesSummary] = useState<SalesSummary>({ total: 0, count: 0 })
+  const [referidosStats, setReferidosStats] = useState({ activos: 0, enProceso: 0 })
   const [lastActivityMap, setLastActivityMap] = useState<Record<string, string | null>>({})
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [actionsLead, setActionsLead] = useState<LeadRow | null>(null)
+  const [checkinSaving, setCheckinSaving] = useState(false)
 
   // Client sections
   const [cobranzas, setCobranzas] = useState<ClienteCobranzaRow[]>([])
@@ -115,10 +122,6 @@ export function HoyPage() {
   const [reactivacionOpen, setReactivacionOpen] = useState(false)
 
   // Note modal
-  const [noteOpen, setNoteOpen] = useState(false)
-  const [noteLead, setNoteLead] = useState<LeadRow | null>(null)
-  const [noteText, setNoteText] = useState('')
-  const [noteSaving, setNoteSaving] = useState(false)
 
   // Reschedule modal
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
@@ -135,15 +138,6 @@ export function HoyPage() {
     [currentUser, session]
   )
 
-  const dateLabel = useMemo(
-    () =>
-      new Intl.DateTimeFormat(i18n.language || 'es', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-      }).format(today),
-    [today, i18n.language]
-  )
 
   const allClear = useMemo(
     () =>
@@ -216,27 +210,25 @@ export function HoyPage() {
     [dateKeyToUtc, formatDateKey, t]
   )
 
-  const timeAgo = useCallback(
-    (value?: string | null) => {
-      if (!value) return '-'
-      const now = Date.now()
-      const date = new Date(value).getTime()
-      const diff = Math.max(0, now - date)
-      const hours = Math.floor(diff / 3600000)
-      const days = Math.floor(diff / 86400000)
-      if (days >= 1) return t('hoy.timeAgoDays', { count: days })
-      return t('hoy.timeAgoHours', { count: Math.max(1, hours) })
-    },
-    [t]
-  )
+  const getAtrasoBucket = useCallback((dias?: number | null) => {
+    if (dias == null) return null
+    if (dias <= 30) return '0-30'
+    if (dias <= 60) return '31-60'
+    return '60+'
+  }, [])
 
   const isUrgent = useCallback(
     (lastActivityAt?: string | null) => {
-      if (!lastActivityAt) return true
+      if (!lastActivityAt) return false
       const activity = new Date(lastActivityAt)
       return activity.getTime() <= threeDaysAgo.getTime()
     },
     [threeDaysAgo]
+  )
+
+  const resolveLastActivityAt = useCallback(
+    (lead: LeadRow) => lastActivityMap[lead.id] ?? lead.updated_at ?? lead.created_at ?? null,
+    [lastActivityMap]
   )
 
   const loadLastActivity = useCallback(
@@ -248,24 +240,27 @@ export function HoyPage() {
         .in('lead_id', leadIds)
 
       if (activityError) {
+        console.error('Error loading last activity:', activityError.message)
+        setLastActivityMap({})
         return
       }
 
       const nextMap: Record<string, string | null> = {}
-        ; (data as LastActivityRow[] | null)?.forEach((row) => {
-          nextMap[row.lead_id] = row.last_activity_at
-        })
+      ;(data as LastActivityRow[] | null)?.forEach((row) => {
+        nextMap[row.lead_id] = row.last_activity_at
+      })
       setLastActivityMap(nextMap)
     },
     [configured]
   )
+
 
   const loadData = useCallback(async () => {
     if (!configured || !session?.user.id) return
     setLoading(true)
     setError(null)
 
-    const baseLeadSelect = 'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at'
+    const baseLeadSelect = 'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at'
     const vendedorId = session.user.id
 
     const { start, end } = getMonthRange()
@@ -289,6 +284,7 @@ export function HoyPage() {
       newRes,
       oppsRes,
       salesRes,
+      referidosRes,
       cobranzasRes,
       birthdaysRes,
       reactivacionRes,
@@ -331,6 +327,10 @@ export function HoyPage() {
         .eq('vendedor_id', vendedorId)
         .gte('fecha_venta', start)
         .lte('fecha_venta', end),
+      supabase
+        .from('ci_referidos')
+        .select('estado, activacion:ci_activaciones!inner(representante_id)')
+        .eq('activacion.representante_id', vendedorId),
       // ── Clients ───────────────────────────────────────────
       supabase
         .from('clientes')
@@ -374,6 +374,15 @@ export function HoyPage() {
       return
     }
 
+    if (referidosRes.error) {
+      setReferidosStats({ activos: 0, enProceso: 0 })
+    } else {
+      const referidosRows = (referidosRes.data as { estado: string | null }[] | null) ?? []
+      const activosCount = referidosRows.filter((row) => row.estado && REFERIDOS_ACTIVOS_ESTADOS.includes(row.estado)).length
+      const enProcesoCount = referidosRows.filter((row) => row.estado && REFERIDOS_EN_PROCESO_ESTADOS.includes(row.estado)).length
+      setReferidosStats({ activos: activosCount, enProceso: enProcesoCount })
+    }
+
     const overdue = (overdueRes.data as LeadRow[] | null) ?? []
     const todayLeadsData = (todayRes.data as LeadRow[] | null) ?? []
     const newLeadsData = (newRes.data as LeadRow[] | null) ?? []
@@ -406,6 +415,7 @@ export function HoyPage() {
 
     const leadIds = [...overdue, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
+
     setLoading(false)
   }, [configured, session?.user.id, getMonthRange, today, todayIso, loadLastActivity, t])
 
@@ -420,32 +430,6 @@ export function HoyPage() {
     }
     window.location.href = `tel:${telefono}`
   }
-
-  const handleCheckIn = async (lead: LeadRow) => {
-    try {
-      if (!session) return
-
-      const now = new Date()
-      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      const note = `📍 Check-in: ${timeStr}`
-
-      const { error } = await supabase
-        .from('seguimientos')
-        .insert({
-          prospecto_id: lead.id,
-          vendedor_id: session.user.id,
-          notas: note,
-          tipo_accion: 'seguimiento'
-        })
-
-      if (error) throw error
-      showToast(t('hoy.checkinSuccess'), 'success')
-    } catch (err) {
-      console.error('Error in check-in:', err)
-      showToast(t('toast.error'), 'error')
-    }
-  }
-
   const handleWhatsapp = (lead: LeadRow) => {
     if (!lead.telefono) {
       showToast(t('messaging.phoneMissing'), 'error')
@@ -468,10 +452,37 @@ export function HoyPage() {
     [openWhatsapp, showToast, t]
   )
 
-  const openNote = (lead: LeadRow) => {
-    setNoteLead(lead)
-    setNoteText('')
-    setNoteOpen(true)
+  const openActions = (lead: LeadRow) => {
+    setActionsLead(lead)
+    setActionsOpen(true)
+  }
+
+  const closeActions = () => {
+    setActionsOpen(false)
+    setActionsLead(null)
+  }
+
+  const handleCheckIn = async (lead: LeadRow) => {
+    if (!session?.user.id) {
+      showToast(t('common.noData'), 'error')
+      return
+    }
+    setCheckinSaving(true)
+    const { error } = await supabase.from('lead_notas').insert({
+      lead_id: lead.id,
+      usuario_id: session.user.id,
+      nota: `📍 Check-in — ${new Date().toLocaleString()}`,
+      tipo: 'checkin',
+    })
+    if (error) {
+      showToast(error.message, 'error')
+    } else {
+      showToast('Check-in guardado')
+      const nowIso = new Date().toISOString()
+      setLastActivityMap((prev) => ({ ...prev, [lead.id]: nowIso }))
+      closeActions()
+    }
+    setCheckinSaving(false)
   }
 
   const openReschedule = (lead: LeadRow) => {
@@ -481,33 +492,6 @@ export function HoyPage() {
     setRescheduleOpen(true)
   }
 
-  const submitNote = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!noteLead || !session?.user.id) return
-    if (!noteText.trim()) {
-      showToast(t('common.noData'), 'error')
-      return
-    }
-    setNoteSaving(true)
-    const previousMap = { ...lastActivityMap }
-    const optimisticTime = new Date().toISOString()
-    setLastActivityMap((prev) => ({ ...prev, [noteLead.id]: optimisticTime }))
-    const { error: insertError } = await supabase.from('lead_notas').insert({
-      lead_id: noteLead.id,
-      usuario_id: session.user.id,
-      nota: noteText.trim(),
-      tipo: NOTE_DEFAULT,
-    })
-    if (insertError) {
-      setLastActivityMap(previousMap)
-      showToast(insertError.message, 'error')
-    } else {
-      showToast(t('hoy.saved'))
-      setNoteOpen(false)
-      await loadData()
-    }
-    setNoteSaving(false)
-  }
 
   const submitReschedule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -548,49 +532,35 @@ export function HoyPage() {
     setRescheduleSaving(false)
   }
 
-  const renderLeadCard = (lead: LeadRow, variant: 'overdue' | 'today' | 'new') => {
-    const lastActivityAt = lastActivityMap[lead.id] ?? lead.updated_at
+  const renderLeadListItem = (lead: LeadRow, icon: string, iconClass: string) => {
+    const lastActivityAt = resolveLastActivityAt(lead)
     const urgent = isUrgent(lastActivityAt)
-    const statusLabel = variant === 'overdue' ? t('hoy.overdueBadge') : variant === 'today' ? t('hoy.todayBadge') : null
     return (
-      <div key={lead.id} className={`seller-card seller-lead ${variant} ${urgent ? 'urgent' : ''}`.trim()}>
-        <div className="seller-lead-main">
-          <div>
-            <div className="seller-lead-name">{getLeadName(lead)}</div>
-            <div className="seller-lead-meta">
-              <span className={`seller-pill variant-${getLeadStageBadgeVariant(lead.estado_pipeline)}`.trim()}>
-                {getLeadStageLabel(lead.estado_pipeline, t)}
-              </span>
-              <span>{lead.next_action || t('hoy.noAction')}</span>
-            </div>
-            <div className="seller-lead-status">
-              {statusLabel && <span className="seller-badge">{statusLabel}</span>}
-              {urgent && <span className="seller-badge danger">{t('hoy.urgentBadge')}</span>}
-            </div>
-          </div>
-          <div className="seller-lead-dates">
-            <span className="seller-date">{relativeDayLabel(lead.next_action_date)}</span>
-            <span className="seller-last">
-              {t('hoy.lastActivity')} {timeAgo(lastActivityAt)}
-            </span>
+      <div key={lead.id} className={`hoy-list-item ${urgent ? 'alert' : ''}`.trim()} onClick={() => openActions(lead)}>
+        <div className={`hoy-item-avatar ${iconClass}`}>{icon}</div>
+        <div className="hoy-item-content">
+          <div className="hoy-item-title">{getLeadName(lead)}</div>
+          <div className="hoy-item-subtitle">
+            {lead.next_action || t('hoy.noAction')} - {relativeDayLabel(lead.next_action_date)}
           </div>
         </div>
-        <div className="seller-lead-actions">
-          <Button variant="ghost" onClick={() => handleCall(lead.telefono)}>
-            {t('hoy.call')}
-          </Button>
-          <Button variant="ghost" onClick={() => handleCheckIn(lead)}>
-            📍 {t('hoy.checkin')}
-          </Button>
-          <Button variant="ghost" onClick={() => handleWhatsapp(lead)}>
-            {t('hoy.whatsapp')}
-          </Button>
-          <Button variant="ghost" onClick={() => openNote(lead)}>
-            {t('hoy.note')}
-          </Button>
-          <Button variant="ghost" onClick={() => openReschedule(lead)}>
-            {t('hoy.reschedule')}
-          </Button>
+        <div className="hoy-item-chevron">›</div>
+      </div>
+    )
+  }
+
+  const renderTaskItem = (lead: LeadRow) => {
+    const lastActivityAt = resolveLastActivityAt(lead)
+    const urgent = isUrgent(lastActivityAt)
+    return (
+      <div key={lead.id} className={`hoy-task-item ${urgent ? 'alert' : ''}`.trim()} onClick={() => openActions(lead)}>
+        <div className={`hoy-task-checkbox ${lead.estado_pipeline === 'cierre' ? 'checked' : ''}`} />
+        <div className="hoy-item-content">
+          <div className="hoy-item-title">{getLeadName(lead)}</div>
+          <div className="hoy-item-subtitle">{lead.next_action || t('hoy.noAction')}</div>
+        </div>
+        <div className="hoy-item-chevron">
+          <input type="checkbox" checked={lead.estado_pipeline === 'cierre'} readOnly style={{ opacity: 0, position: 'absolute' }} />
         </div>
       </div>
     )
@@ -612,45 +582,58 @@ export function HoyPage() {
         />
       )}
 
-      {/* ── Greeting ─────────────────────────────────────── */}
-      <div className="hoy-greeting">
+      {/* ── Premium Header ───────────────────────────────── */}
+      <header className="hoy-premium-header">
         <div>
-          <div className="hoy-greeting-name">
-            {greetingName ? `${t('hoy.title')}, ${greetingName}` : t('hoy.title')}
-          </div>
-          <div className="hoy-greeting-date">{dateLabel}</div>
+          <h2>{greetingName ? `Hola, ${greetingName}` : t('hoy.title')}</h2>
+          <p>{t('hoy.subtitle') || 'Resumen de Hoy'}</p>
         </div>
-        <Button variant="ghost" type="button" onClick={loadData}>
-          {t('hoy.refresh')}
-        </Button>
+        <div className="hoy-notification-bell" onClick={loadData} style={{ cursor: 'pointer' }}>
+          🔔
+        </div>
+      </header>
+
+      {/* ── Hero Action Grid ─────────────────────────────── */}
+      <div className="hoy-hero-grid">
+        <div className="hoy-action-card orange">
+          <div className="hoy-action-card-icon-wrapper">
+            <span className="hoy-action-card-icon">📅</span>
+          </div>
+          <span className="hoy-action-card-count">{todayLeads.length}</span>
+          <span className="hoy-action-card-label">{t('hoy.statsActions') || 'Acciones'}</span>
+        </div>
+        <div className="hoy-action-card green">
+          <div className="hoy-action-card-icon-wrapper">
+            <span className="hoy-action-card-icon">👥</span>
+          </div>
+          <span className="hoy-action-card-count">{newLeads.length}</span>
+          <span className="hoy-action-card-label">{t('hoy.newLeads') || 'Nuevos prospectos'}</span>
+        </div>
+        <div className="hoy-action-card blue">
+          <div className="hoy-action-card-icon-wrapper">
+            <span className="hoy-action-card-icon">🚩</span>
+          </div>
+          <span className="hoy-action-card-count">{closingOpps.length}</span>
+          <span className="hoy-action-card-label">{t('hoy.statsClosing') || 'Cierres'}</span>
+        </div>
       </div>
 
-      {/* ── Quick stats ───────────────────────────────────── */}
-      <div className="hoy-stats">
-        <div className={`hoy-stat ${overdueLeads.length > 0 ? 'alert' : ''}`.trim()}>
-          <span className="hoy-stat-value">{overdueLeads.length + todayLeads.length}</span>
-          <span className="hoy-stat-label">{t('hoy.statsActions')}</span>
-        </div>
-        <div className={`hoy-stat ${cobranzas.length > 0 ? 'alert' : ''}`.trim()}>
-          <span className="hoy-stat-value">{cobranzas.length}</span>
-          <span className="hoy-stat-label">{t('hoy.statsCobranzas')}</span>
-        </div>
-        <div className="hoy-stat">
-          <span className="hoy-stat-value">{closingOpps.length}</span>
-          <span className="hoy-stat-label">{t('hoy.statsClosing')}</span>
-        </div>
-      </div>
-
-      {/* ── Monthly production ───────────────────────────── */}
-      <div className="seller-card seller-production">
-        <div>
-          <div className="seller-summary-meta">{t('hoy.monthlyProduction')}</div>
-          <div className="seller-summary-value">{formatCurrency(salesSummary.total)}</div>
-          <div className="seller-summary-meta">
-            {t('hoy.salesCount', { count: salesSummary.count })}
+      {/* ── KPI Row ──────────────────────────────────────── */}
+      <div className="hoy-premium-kpi-row">
+        <div className="hoy-premium-kpi-card">
+          <span className="hoy-kpi-label">{t('hoy.monthlyProduction') || 'Produccion del mes'}</span>
+          <span className="hoy-kpi-value">{formatCurrency(salesSummary.total)}</span>
+          <div className="hoy-kpi-trend">
+            <div style={{ marginLeft: 'auto', opacity: 0.5 }}>📈</div>
           </div>
         </div>
-        <div className="seller-production-icon">💰</div>
+        <div className="hoy-premium-kpi-card">
+          <span className="hoy-kpi-label">{t('hoy.referidosActivos') || 'Referidos Activos'}</span>
+          <span className="hoy-kpi-value">{loading ? '...' : referidosStats.activos}</span>
+          <div className="hoy-item-subtitle" style={{ fontSize: '0.7rem' }}>
+            <span style={{ color: '#2563eb', fontWeight: 700 }}>{loading ? '...' : referidosStats.enProceso}</span> en Proceso
+          </div>
+        </div>
       </div>
 
       {error && <div className="form-error">{error}</div>}
@@ -719,45 +702,56 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Cobranzas banner ──────────────────────────────── */}
+      {/* ── Cobranzas List Item ──────────────────────────── */}
       {!loading && cobranzas.length > 0 && (
-        <button type="button" className="hoy-alert-banner cobranza" onClick={() => setCobranzasOpen(true)}>
-          <div className="hoy-alert-banner-left">
-            <span className="hoy-alert-banner-icon">💸</span>
-            <div>
-              <div className="hoy-alert-banner-title">{t('hoy.cobranzas')}</div>
-              <div className="hoy-alert-banner-sub">
-                {cobranzas.length} {t('hoy.statsCobranzas')}
-                {totalMoroso > 0 && ` · ${formatCurrency(totalMoroso)}`}
-              </div>
+        <div className="hoy-list-item" onClick={() => setCobranzasOpen(true)} style={{ marginTop: '16px' }}>
+          <div className="hoy-list-item-icon orange">💸</div>
+          <div className="hoy-item-content">
+            <div className="hoy-item-title">{t('hoy.cobranzas')}</div>
+            <div className="hoy-item-subtitle">
+              {cobranzas.length} {t('hoy.statsCobranzas')} · {formatCurrency(totalMoroso || 0)}
             </div>
           </div>
-          <div className="hoy-alert-banner-right">
-            <span className="seller-count alert">{cobranzas.length}</span>
-            <span className="hoy-alert-banner-chevron">›</span>
-          </div>
-        </button>
+          <div className="hoy-item-badge pink">{cobranzas.length}</div>
+          <div className="hoy-item-chevron">›</div>
+        </div>
       )}
 
-      {/* ── Overdue leads ─────────────────────────────────── */}
-      {!loading && overdueLeads.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
-            <h3>{t('hoy.overdue')}</h3>
-            <span className="seller-count alert">{overdueLeads.length}</span>
+      {/* ── Reactivación List Item ────────────────────────── */}
+      {!loading && reactivacion.length > 0 && (
+        <div className="hoy-list-item" onClick={() => setReactivacionOpen(true)}>
+          <div className="hoy-list-item-icon blue">🔁</div>
+          <div className="hoy-item-content">
+            <div className="hoy-item-title">{t('hoy.reactivacion') || 'Sin pedido reciente'}</div>
+            <div className="hoy-item-subtitle">{t('hoy.reactivacionSub') || 'Clientes sin pedido en 90+ días'}</div>
           </div>
-          {overdueLeads.map((lead) => renderLeadCard(lead, 'overdue'))}
+          <div className="hoy-item-badge">{reactivacion.length}</div>
+          <div className="hoy-item-chevron">›</div>
+        </div>
+      )}
+
+      {/* ── Próximas Citas ────────────────────────────────── */}
+      {!loading && todayLeads.length > 0 && (
+        <section className="hoy-list-section">
+          <div className="hoy-list-header">
+            <h3>{t('hoy.upcomingCitas') || 'Próximas Citas'}</h3>
+            <span className="hoy-view-all">{t('common.viewAll') || 'Ver Todas'} ›</span>
+          </div>
+          <div className="hoy-list-container">
+            {todayLeads.map((lead) => renderLeadListItem(lead, '👤', 'blue'))}
+          </div>
         </section>
       )}
 
-      {/* ── Due today ─────────────────────────────────────── */}
-      {!loading && todayLeads.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
-            <h3>{t('hoy.today')}</h3>
-            <span className="seller-count">{todayLeads.length}</span>
+      {/* ── Tareas Pendientes ─────────────────────────────── */}
+      {!loading && overdueLeads.length > 0 && (
+        <section className="hoy-list-section">
+          <div className="hoy-list-header">
+            <h3>{t('hoy.pendingTasks') || 'Tareas Pendientes'}</h3>
           </div>
-          {todayLeads.map((lead) => renderLeadCard(lead, 'today'))}
+          <div className="hoy-list-container">
+            {overdueLeads.map(renderTaskItem)}
+          </div>
         </section>
       )}
 
@@ -790,52 +784,33 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Mantenimientos banner ─────────────────────────── */}
+      {/* ── Mantenimientos List Item ─────────────────────── */}
       {!loading && mantenimientos.length > 0 && (
-        <button type="button" className="hoy-alert-banner mantenimiento" onClick={() => setMantenimientosOpen(true)}>
-          <div className="hoy-alert-banner-left">
-            <span className="hoy-alert-banner-icon">🔧</span>
-            <div>
-              <div className="hoy-alert-banner-title">{t('hoy.mantenimientos')}</div>
-              <div className="hoy-alert-banner-sub">
-                {mantenimientos.length} {t('hoy.mantenimientos').toLowerCase()}
-              </div>
+        <div className="hoy-list-item" onClick={() => setMantenimientosOpen(true)}>
+          <div className="hoy-list-item-icon yellow">🔧</div>
+          <div className="hoy-item-content">
+            <div className="hoy-item-title">{t('hoy.mantenimientos')}</div>
+            <div className="hoy-item-subtitle">
+              {mantenimientos.length} {t('hoy.mantenimientos').toLowerCase()}
             </div>
           </div>
-          <div className="hoy-alert-banner-right">
-            <span className="seller-count alert">{mantenimientos.length}</span>
-            <span className="hoy-alert-banner-chevron">›</span>
-          </div>
-        </button>
+          <div className="hoy-item-badge">{mantenimientos.length}</div>
+          <div className="hoy-item-chevron">›</div>
+        </div>
       )}
 
       {/* ── New leads ─────────────────────────────────────── */}
       {!loading && newLeads.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
+        <section className="hoy-list-section">
+          <div className="hoy-list-header">
             <h3>{t('hoy.newLeads')}</h3>
-            <span className="seller-count">{newLeads.length}</span>
           </div>
-          {newLeads.map((lead) => renderLeadCard(lead, 'new'))}
+          <div className="hoy-list-container">
+            {newLeads.map((lead) => renderLeadListItem(lead, '✨', 'green'))}
+          </div>
         </section>
       )}
 
-      {/* ── Reactivación banner ───────────────────────────── */}
-      {!loading && reactivacion.length > 0 && (
-        <button type="button" className="hoy-alert-banner reactivacion" onClick={() => setReactivacionOpen(true)}>
-          <div className="hoy-alert-banner-left">
-            <span className="hoy-alert-banner-icon">🔁</span>
-            <div>
-              <div className="hoy-alert-banner-title">{t('hoy.reactivacion')}</div>
-              <div className="hoy-alert-banner-sub">{t('hoy.reactivacionSub')}</div>
-            </div>
-          </div>
-          <div className="hoy-alert-banner-right">
-            <span className="seller-count">{reactivacion.length}</span>
-            <span className="hoy-alert-banner-chevron">›</span>
-          </div>
-        </button>
-      )}
 
       {/* ── Cobranzas modal ───────────────────────────────── */}
       <Modal
@@ -858,7 +833,7 @@ export function HoyPage() {
                   <div className="hoy-modal-row-meta">
                     {c.dias_atraso != null && c.dias_atraso > 0 && (
                       <span className="seller-pill variant-danger">
-                        {t('hoy.diasAtraso', { count: c.dias_atraso })}
+                        {`${getAtrasoBucket(c.dias_atraso)} de atraso`}
                       </span>
                     )}
                     {c.monto_moroso != null && c.monto_moroso > 0 && (
@@ -949,28 +924,58 @@ export function HoyPage() {
 
       <ModalRenderer />
 
-      <Modal
-        open={noteOpen}
-        title={t('hoy.noteTitle')}
-        onClose={() => setNoteOpen(false)}
-        actions={
-          <>
-            <Button variant="ghost" type="button" onClick={() => setNoteOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" form="hoy-note-form" disabled={noteSaving}>
-              {noteSaving ? t('common.saving') : t('common.save')}
-            </Button>
-          </>
-        }
-      >
-        <form id="hoy-note-form" className="form-grid" onSubmit={submitNote}>
-          <label className="form-field">
-            <span>{t('hoy.noteLabel')}</span>
-            <textarea rows={4} value={noteText} onChange={(event) => setNoteText(event.target.value)} />
-          </label>
-        </form>
-      </Modal>
+      {actionsOpen && actionsLead && (
+        <div className="drawer-backdrop" onClick={closeActions} role="presentation">
+          <div
+            className="hoy-actions-sheet"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="hoy-actions-header">
+              <div>
+                <h3>{getLeadName(actionsLead)}</h3>
+                <p>{actionsLead.next_action || t('hoy.noAction')}</p>
+              </div>
+              <button type="button" className="icon-button" onClick={closeActions} aria-label="Close">
+                x
+              </button>
+            </header>
+            <div className="hoy-actions-body">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  handleCall(actionsLead.telefono)
+                  closeActions()
+                }}
+              >
+                📞 {t('hoy.call')}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  handleWhatsapp(actionsLead)
+                  closeActions()
+                }}
+              >
+                💬 {t('hoy.whatsapp')}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  openReschedule(actionsLead)
+                  closeActions()
+                }}
+              >
+                🗓️ {t('hoy.reschedule')}
+              </Button>
+              <Button variant="primary" onClick={() => handleCheckIn(actionsLead)} disabled={checkinSaving}>
+                📍 {checkinSaving ? t('common.saving') : 'Check-in'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Modal
         open={rescheduleOpen}
