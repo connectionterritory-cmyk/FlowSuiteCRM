@@ -2776,7 +2776,11 @@ function ConexionesActivacionesTab() {
   }, [])
 
   const effectiveScope: 'mine' | 'distribution' =
-    hasDistribuidorScope && viewMode === 'distributor' ? 'distribution' : 'mine'
+    role === 'admin' || role === 'distribuidor'
+      ? 'distribution'
+      : hasDistribuidorScope && viewMode === 'distributor'
+        ? 'distribution'
+        : 'mine'
 
   const loadRoleAndProgram = useCallback(async () => {
     if (!configured || !session?.user.id) return
@@ -2842,6 +2846,10 @@ function ConexionesActivacionesTab() {
     } else if (role === 'vendedor' || (hasDistribuidorScope && effectiveScope === 'mine')) {
       query = query.eq('representante_id', session.user.id)
     } else if (hasDistribuidorScope && effectiveScope === 'distribution') {
+      if (role === 'admin') {
+        // Admin: see all activaciones (no representante filter)
+        // Keep query scoped only by programa_id
+      } else {
       let distIds = distributionUserIds
       let codigoDistribuidor = currentUser?.codigo_distribuidor ?? null
       if (!codigoDistribuidor) {
@@ -2852,12 +2860,19 @@ function ConexionesActivacionesTab() {
           .maybeSingle()
         codigoDistribuidor = (data as { codigo_distribuidor?: string | null } | null)?.codigo_distribuidor ?? null
       }
-      if (distIds.length === 0 && codigoDistribuidor) {
-        const { data, error: distError } = await supabase
+      if (distIds.length === 0) {
+        let distQuery = supabase
           .from('usuarios')
           .select('id')
-          .eq('codigo_distribuidor', codigoDistribuidor)
           .eq('activo', true)
+        if (codigoDistribuidor) {
+          distQuery = distQuery.or(
+            `codigo_distribuidor.eq.${codigoDistribuidor},distribuidor_padre_id.eq.${session.user.id}`,
+          )
+        } else {
+          distQuery = distQuery.eq('distribuidor_padre_id', session.user.id)
+        }
+        const { data, error: distError } = await distQuery
         if (distError) {
           setError(distError.message)
         } else {
@@ -2873,6 +2888,7 @@ function ConexionesActivacionesTab() {
         return
       }
       query = query.in('representante_id', distIds)
+      }
     }
 
     const cutoffIso = cutoffDate.toISOString()
