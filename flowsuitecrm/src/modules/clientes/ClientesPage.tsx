@@ -190,8 +190,9 @@ export function ClientesPage() {
       ''
     return name || usersById[session.user.id] || session.user.email || null
   }, [session?.user, usersById])
-  const canManageClientes = currentRole === 'admin' || currentRole === 'distribuidor'
-  const canDelete = currentRole === 'admin' || currentRole === 'distribuidor'
+  const isSellerView = hasDistribuidorScope && viewMode === 'seller'
+  const canManageClientes = (currentRole === 'admin' || currentRole === 'distribuidor') && !isSellerView
+  const canDelete = (currentRole === 'admin' || currentRole === 'distribuidor') && !isSellerView
   const { showToast } = useToast()
   const [clientes, setClientes] = useState<ClienteRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -232,7 +233,7 @@ export function ClientesPage() {
       .from('clientes')
       .select(CLIENTES_LIST_SELECT)
       .order('created_at', { ascending: false })
-    if (currentRole === 'vendedor') {
+    if (isSellerView || currentRole === 'vendedor') {
       query = query.eq('vendedor_id', userId)
     } else if (currentRole === 'admin') {
       // ADMIN_SCOPE: ALL | SELF
@@ -240,8 +241,6 @@ export function ClientesPage() {
       // To restrict admin to their distributor scope, replace with:
       // const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
       // query = query.in('vendedor_id', teamIds)
-    } else if (hasDistribuidorScope && viewMode === 'seller') {
-      query = query.eq('vendedor_id', userId)
     } else if (hasDistribuidorScope && viewMode === 'distributor') {
       const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
       query = query.in('vendedor_id', teamIds)
@@ -820,6 +819,14 @@ export function ClientesPage() {
     filtroCodigoPostal,
   ].filter(Boolean).length
 
+  const handleOpenDuplicados = () => {
+    if (!canManageClientes) {
+      showToast('Solo Admin/Distribuidor puede gestionar duplicados.', 'error')
+      return
+    }
+    setShowDuplicados(true)
+  }
+
   if (!configured) {
     return <EmptyState title={t('dashboard.missingConfigTitle')} description={t('dashboard.missingConfigDescription')} />
   }
@@ -830,29 +837,29 @@ export function ClientesPage() {
         title={t('clientes.title')}
         subtitle={t('clientes.subtitle')}
         action={
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {duplicateGroups.length > 0 && (
+          canManageClientes ? (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {duplicateGroups.length > 0 && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={handleOpenDuplicados}
+                  style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                >
+                  ⚠ Duplicados ({duplicateGroups.length})
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 type="button"
-                onClick={() => setShowDuplicados(true)}
-                style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                onClick={exportarCSV}
+                disabled={clientesFiltrados.length === 0}
               >
-                ⚠ Duplicados ({duplicateGroups.length})
+                Exportar CSV
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={exportarCSV}
-              disabled={clientesFiltrados.length === 0}
-            >
-              Exportar CSV
-            </Button>
-            {canManageClientes && (
               <Button onClick={handleOpenForm}>{t('common.newCliente')}</Button>
-            )}
-          </div>
+            </div>
+          ) : undefined
         }
       />
 
@@ -1145,38 +1152,40 @@ export function ClientesPage() {
             </div>
 
             {/* Filtro vendedor */}
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                VENDEDOR
-              </label>
-              <select
-                value={filtroVendedor}
-                onChange={(e) => setFiltroVendedor(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                {vendedoresUnicos.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {currentRole !== 'vendedor' && !isSellerView && (
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    marginBottom: '0.3rem',
+                    color: 'var(--color-text-muted, #6b7280)',
+                  }}
+                >
+                  VENDEDOR
+                </label>
+                <select
+                  value={filtroVendedor}
+                  onChange={(e) => setFiltroVendedor(e.target.value)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.375rem',
+                    border: '1px solid var(--color-border, #e5e7eb)',
+                    fontSize: '0.875rem',
+                    background: 'var(--color-input)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  <option value="todos">Todos</option>
+                  {vendedoresUnicos.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Limpiar filtros */}
             {hayFiltros && (
@@ -1625,7 +1634,7 @@ export function ClientesPage() {
 
       {/* MODAL DUPLICADOS */}
       <Modal
-        open={showDuplicados}
+        open={canManageClientes && showDuplicados}
         title={`Clientes duplicados (${duplicateGroups.length} grupos)`}
         onClose={() => setShowDuplicados(false)}
         actions={
@@ -1666,27 +1675,65 @@ export function ClientesPage() {
                     key={c.id}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
+                      alignItems: 'flex-start',
                       justifyContent: 'space-between',
-                      padding: '0.5rem 0.75rem',
+                      padding: '0.65rem 0.85rem',
                       borderTop: idx > 0 ? '1px solid #fee2e2' : undefined,
                       background: idx === 0 ? '#fff7ed' : 'white',
-                      gap: '0.5rem',
+                      gap: '0.75rem',
                       flexWrap: 'wrap',
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                         {idx === 0 && (
-                          <span style={{ fontSize: '0.7rem', background: '#d1fae5', color: '#065f46', padding: '0.1rem 0.4rem', borderRadius: '9999px', marginRight: '0.4rem' }}>
+                          <span style={{ fontSize: '0.7rem', background: '#d1fae5', color: '#065f46', padding: '0.12rem 0.45rem', borderRadius: '9999px', fontWeight: 700 }}>
                             Original
                           </span>
                         )}
-                        {name}
+                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111827' }}>{name}</span>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                        {vendorName} · {c.created_at ? new Date(c.created_at).toLocaleDateString('es') : '-'}
-                        {c.direccion ? ` · ${c.direccion}` : ''}
+                      <div
+                        style={{
+                          marginTop: '0.25rem',
+                          display: 'grid',
+                          gap: '0.2rem',
+                          fontSize: '0.78rem',
+                          color: '#4b5563',
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontWeight: 600, color: '#374151' }}>Vendedor:</span> {vendorName}
+                        </div>
+                        <div>
+                          <span style={{ fontWeight: 600, color: '#374151' }}>Fecha:</span>{' '}
+                          {c.created_at ? new Date(c.created_at).toLocaleDateString('es') : '-'}
+                          {c.estado_cuenta ? ` · ${c.estado_cuenta === 'cancelacion_total' ? 'Cancelado' : 'Actual'}` : ''}
+                        </div>
+                        {(c.hycite_id || c.numero_cuenta_financiera) && (
+                          <div>
+                            <span style={{ fontWeight: 600, color: '#374151' }}>Cuenta:</span>{' '}
+                            {c.hycite_id || c.numero_cuenta_financiera}
+                          </div>
+                        )}
+                        {c.direccion && (
+                          <div>
+                            <span style={{ fontWeight: 600, color: '#374151' }}>Direccion:</span>{' '}
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '0.05rem 0.4rem',
+                                borderRadius: '0.4rem',
+                                background: '#f3f4f6',
+                                color: '#1f2937',
+                              }}
+                            >
+                              {c.direccion}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     {canDelete && idx > 0 && (
