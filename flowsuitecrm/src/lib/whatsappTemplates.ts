@@ -33,6 +33,12 @@ export type WhatsappTemplateCategory =
   | '4en14'
   | 'conexiones'
   | 'custom'
+  | 'general'
+  | 'seguimiento'
+  | 'cartera'
+  | 'referidos'
+  | 'cumpleanos'
+  | 'citas'
 
 export type SystemTemplateSeed = {
   key: string

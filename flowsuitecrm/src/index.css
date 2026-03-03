@@ -27,7 +27,8 @@
 
   --color-card: var(--card-bg);
   --color-border: rgba(148, 163, 184, 0.22);
-  --color-input: rgba(15, 23, 42, 0.28);
+  --color-input: rgba(255, 255, 255, 0.08);
+  --color-input-border: rgba(148, 163, 184, 0.3);
   --color-surface: rgba(15, 23, 42, 0.12);
   --color-surface-strong: rgba(30, 41, 59, 0.6);
   --color-text: var(--text-primary);
@@ -48,6 +49,7 @@ body.theme-light {
   --color-card: #ffffff;
   --color-border: rgba(15, 23, 42, 0.12);
   --color-input: #ffffff;
+  --color-input-border: rgba(15, 23, 42, 0.15);
   --color-surface: #f8fafb;
   --color-surface-strong: #eef2f6;
   --color-text: #111827;
@@ -138,12 +140,20 @@ input {
 .modal select,
 .modal textarea {
   background: var(--color-input);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
+  color: var(--text-primary);
+  border: 1px solid var(--color-input-border);
   border-radius: 10px;
   padding: 9px 12px;
   min-height: 36px;
   box-shadow: none;
+}
+
+.page input:not([type='checkbox'])::placeholder,
+.page textarea::placeholder,
+.modal input:not([type='checkbox'])::placeholder,
+.modal textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 .page input:not([type='checkbox'])::placeholder,
@@ -1335,8 +1345,8 @@ body.theme-light .pipeline-card {
 .form-field input,
 .form-field select,
 .form-field textarea {
-  background: rgba(15, 23, 42, 0.28);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--color-input);
+  border: 1px solid var(--color-input-border);
   border-radius: 10px;
   padding: 9px 12px;
   color: var(--text-primary);
@@ -1347,14 +1357,8 @@ body.theme-light .pipeline-card {
 
 .form-field input::placeholder,
 .form-field textarea::placeholder {
-  color: var(--text-muted-strong);
-}
-
-body.theme-light .form-field input,
-body.theme-light .form-field select,
-body.theme-light .form-field textarea {
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 .form-field.checkbox-field {
@@ -2476,12 +2480,12 @@ body.theme-light .ci-owner-selected strong {
 
 .conexion-input,
 .conexion-select {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: var(--color-input);
+  border: 1px solid var(--color-input-border);
   border-radius: 10px;
   padding: 8px 10px;
   font-size: 0.95rem;
-  color: #111827;
+  color: var(--text-primary);
   min-width: 0;
 }
 
@@ -4118,6 +4122,12 @@ body.theme-light .hoy-action-card-icon-wrapper {
   -webkit-appearance: none;
 }
 
+/* Dark mode: inline hardcoded colors are too dark — force readable colors */
+body:not(.theme-light) .arp-estado-select {
+  color: var(--text-primary) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
 .arp-row-info {
   flex: 1;
   display: flex;
@@ -4226,6 +4236,11 @@ body.theme-light .arp-notas {
   background: #f1f5f9;
   border-color: #cbd5e1;
   color: #1e293b;
+}
+
+.arp-notas::placeholder {
+  color: var(--text-muted);
+  opacity: 0.75;
 }
 
 .arp-notas:focus {

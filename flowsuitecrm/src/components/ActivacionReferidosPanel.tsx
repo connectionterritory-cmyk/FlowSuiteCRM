@@ -4,7 +4,9 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { Button } from './Button'
 import { CalificacionPanel } from './CalificacionPanel'
 import { useMessaging } from '../hooks/useMessaging'
+import { useToast } from './Toast'
 import {
+  MIN_REFERIDOS_CI,
   CI_REFERIDO_ESTADOS,
   CI_RELACIONES,
   formatPhone,
@@ -45,6 +47,25 @@ type CalificacionLead = {
   nombre: string | null
   apellido: string | null
   telefono: string | null
+  email?: string | null
+  direccion?: string | null
+  apartamento?: string | null
+  ciudad?: string | null
+  estado_region?: string | null
+  codigo_postal?: string | null
+  fecha_nacimiento?: string | null
+  fuente?: string | null
+  owner_id?: string | null
+  estado_civil?: string | null
+  nombre_conyuge?: string | null
+  telefono_conyuge?: string | null
+  situacion_laboral?: string | null
+  ninos_en_casa?: boolean | null
+  cantidad_ninos?: number | null
+  tiene_productos_rp?: boolean | null
+  tipo_vivienda?: string | null
+  deleted_at?: string | null
+  deleted_reason?: string | null
 }
 
 type OwnerInfo = {
@@ -74,6 +95,13 @@ const EMPTY_NEW_REF: NewRefForm = {
   relacion: 'familiar',
   saving: false,
   error: null,
+}
+
+const splitNombreApellido = (value?: string | null) => {
+  const parts = (value ?? '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return { nombre: '', apellido: '' }
+  const [nombre, ...apellidoParts] = parts
+  return { nombre, apellido: apellidoParts.join(' ') }
 }
 
 // ── Star Rating ───────────────────────────────────────────────
@@ -123,6 +151,7 @@ export function ActivacionReferidosPanel({
 }: Props) {
   const { t } = useTranslation()
   const { openWhatsapp, openSms, ModalRenderer } = useMessaging()
+  const { showToast } = useToast()
   const configured = isSupabaseConfigured
 
   const [referidos, setReferidos] = useState<CiReferidoRow[]>([])
@@ -257,8 +286,10 @@ export function ActivacionReferidosPanel({
     }
 
     if (!resolvedLead) {
+      const nameSplit = splitNombreApellido(ref.nombre)
       const leadPayload: Record<string, unknown> = {
-        nombre: ref.nombre,
+        nombre: nameSplit.nombre || ref.nombre,
+        apellido: nameSplit.apellido || null,
         telefono: ref.telefono,
         fuente: 'conexiones_infinitas',
         estado_pipeline: 'nuevo',
@@ -302,6 +333,33 @@ export function ActivacionReferidosPanel({
     })
   }
 
+  const openCalificacion = useCallback(
+    async (ref: CiReferidoRow) => {
+      if (!ref.lead_id) return
+      if (!configured) return
+      const { data, error: fetchError } = await supabase
+        .from('leads')
+        .select(
+          'id, nombre, apellido, email, telefono, fuente, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda',
+        )
+        .eq('id', ref.lead_id)
+        .maybeSingle()
+      if (fetchError || !data) {
+        showToast(fetchError?.message ?? t('toast.error'), 'error')
+        const nameSplit = splitNombreApellido(ref.nombre)
+        setCalificacionLead({
+          id: ref.lead_id,
+          nombre: nameSplit.nombre || ref.nombre,
+          apellido: nameSplit.apellido || null,
+          telefono: ref.telefono,
+        })
+        return
+      }
+      setCalificacionLead(data as CalificacionLead)
+    },
+    [configured, showToast, t],
+  )
+
   const handleAddNewReferido = async () => {
     if (!configured || !activation || !currentUserId) return
     const nombre = newRef.nombre.trim()
@@ -343,6 +401,15 @@ export function ActivacionReferidosPanel({
     cerrados: referidos.filter((r) => r.estado === 'regalo_entregado').length,
     tele: referidos.filter((r) => r.estado === 'telemercadeo').length,
   }
+  const metaCount = MIN_REFERIDOS_CI
+  const progresoColor =
+    stats.total >= metaCount
+      ? stats.total > metaCount
+        ? '#a855f7'
+        : '#22c55e'
+      : stats.total >= Math.floor(metaCount / 2)
+        ? '#3b82f6'
+        : '#94a3b8'
 
   const filtered =
     estadoFilter === 'todos'
@@ -403,6 +470,9 @@ export function ActivacionReferidosPanel({
               <div className="arp-stats">
                 <span className="arp-stat">
                   {t('conexiones.referidosPanel.total')}: <strong>{stats.total}</strong>
+                </span>
+                <span className="arp-stat" style={{ color: progresoColor }}>
+                  Referidos: <strong>{stats.total}/{metaCount}</strong>
                 </span>
                 <span className="arp-stat arp-stat--amber">
                   {t('conexiones.referidosPanel.citas')}: <strong>{stats.citas}</strong>
@@ -488,19 +558,16 @@ export function ActivacionReferidosPanel({
                 const form = leadForms[ref.id]
                 const isVendedorDirecto = ref.modo_gestion === 'vendedor_directo'
                 const isTeleReadOnly = currentRole === 'telemercadeo' && isVendedorDirecto
-                const canTakeReferido =
+                // Option A: referidos start as vendedor_directo.
+                // Representante/admin/distribuidor can send to tele or recover from tele.
+                const isRepresentante = activation?.representante_id === currentUserId
+                const canManageGestion =
                   !isClosed &&
-                  currentRole === 'vendedor' &&
-                  currentUserId != null &&
-                  !isVendedorDirecto &&
-                  (ref.asignado_a === currentUserId || activation?.representante_id === currentUserId)
-                const canReturnReferido =
-                  !isClosed &&
-                  isVendedorDirecto &&
-                  (currentRole === 'vendedor' ||
+                  (isRepresentante ||
                     currentRole === 'admin' ||
-                    currentRole === 'distribuidor' ||
-                    currentRole === 'supervisor_telemercadeo')
+                    currentRole === 'distribuidor')
+                const canSendToTele = canManageGestion && isVendedorDirecto
+                const canRecoverFromTele = canManageGestion && !isVendedorDirecto
 
                 return (
                   <div key={ref.id} className="arp-row">
@@ -531,10 +598,7 @@ export function ActivacionReferidosPanel({
                         )}
                         <span
                           className="arp-relacion-chip"
-                          style={{
-                            background: isVendedorDirecto ? '#fde68a' : 'rgba(148,163,184,0.2)',
-                            color: isVendedorDirecto ? '#92400e' : '#334155',
-                          }}
+                          style={isVendedorDirecto ? { background: '#fde68a', color: '#92400e' } : undefined}
                         >
                           {isVendedorDirecto
                             ? t('conexiones.referidosPanel.management.vendedorDirecto')
@@ -576,14 +640,7 @@ export function ActivacionReferidosPanel({
                             className="arp-icon-btn arp-icon-btn--calificar"
                             title={t('conexiones.referidosPanel.calificar')}
                             disabled={isTeleReadOnly}
-                            onClick={() =>
-                              setCalificacionLead({
-                                id: ref.lead_id!,
-                                nombre: ref.nombre,
-                                apellido: null,
-                                telefono: ref.telefono,
-                              })
-                            }
+                            onClick={() => openCalificacion(ref)}
                           >
                             {t('conexiones.referidosPanel.leadDone')}
                           </button>
@@ -607,24 +664,24 @@ export function ActivacionReferidosPanel({
                             + {t('conexiones.referidosPanel.createLead')}
                           </button>
                         )}
-                        {canTakeReferido && (
-                          <button
-                            type="button"
-                            className="arp-icon-btn arp-icon-btn--calificar"
-                            onClick={() => handleTakeReferido(ref.id)}
-                            title={t('conexiones.referidosPanel.actions.take')}
-                          >
-                            {t('conexiones.referidosPanel.actions.take')}
-                          </button>
-                        )}
-                        {canReturnReferido && (
+                        {canSendToTele && (
                           <button
                             type="button"
                             className="arp-icon-btn"
                             onClick={() => handleReturnReferido(ref.id)}
-                            title={t('conexiones.referidosPanel.actions.return')}
+                            title={t('conexiones.referidosPanel.actions.sendToTele')}
                           >
-                            {t('conexiones.referidosPanel.actions.return')}
+                            {t('conexiones.referidosPanel.actions.sendToTele')}
+                          </button>
+                        )}
+                        {canRecoverFromTele && (
+                          <button
+                            type="button"
+                            className="arp-icon-btn arp-icon-btn--calificar"
+                            onClick={() => handleTakeReferido(ref.id)}
+                            title={t('conexiones.referidosPanel.actions.recoverFromTele')}
+                          >
+                            {t('conexiones.referidosPanel.actions.recoverFromTele')}
                           </button>
                         )}
                       </div>

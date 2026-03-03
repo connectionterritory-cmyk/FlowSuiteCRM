@@ -852,7 +852,7 @@
       "telemercadeo": "Telemercadeo"
     },
     "referidosPanel": {
-      "title": "Referidos — {{owner}}",
+      "title": "Lista de referidos: {{owner}}",
       "todos": "Todos",
       "total": "Total",
       "citas": "Citas",
@@ -868,7 +868,7 @@
       "newRefRelacion": "Relacion",
       "newRefRequired": "Nombre y telefono son requeridos",
       "calificar": "Ver / Calificar prospecto",
-      "leadDone": "✓ Activo",
+      "leadDone": "Ver / Editar",
       "ownerInfoToggle": "Ver info del dueno",
       "management": {
         "telemercadeo": "Telemercadeo",
@@ -876,7 +876,9 @@
       },
       "actions": {
         "take": "Tomar referido",
-        "return": "Devolver a telemercadeo"
+        "return": "Devolver a telemercadeo",
+        "sendToTele": "Enviar a Tele ↗",
+        "recoverFromTele": "Recuperar ↩"
       }
     },
     "relaciones": {

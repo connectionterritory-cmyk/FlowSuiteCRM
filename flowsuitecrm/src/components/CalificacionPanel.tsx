@@ -84,9 +84,16 @@ export function CalificacionPanel({
 
   useEffect(() => {
     if (!lead) return
+    let nombre = lead.nombre ?? ''
+    let apellido = lead.apellido ?? ''
+    if (!apellido && nombre.trim().includes(' ')) {
+      const parts = nombre.trim().split(/\s+/)
+      nombre = parts.shift() ?? nombre
+      apellido = parts.join(' ')
+    }
     setFormValues({
-      nombre: lead.nombre ?? '',
-      apellido: lead.apellido ?? '',
+      nombre,
+      apellido,
       email: lead.email ?? '',
       telefono: lead.telefono ?? '',
       direccion: lead.direccion ?? '',

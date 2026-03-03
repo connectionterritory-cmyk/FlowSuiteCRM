@@ -1046,6 +1046,15 @@ export function ConexionesActivacionesTabLegacy() {
           ? leadsMap.get(activation.lead_id) ?? activation.lead_id
           : '-'
       const referidosCount = referidosByActivacion.get(activation.id)?.length ?? 0
+      const progresoValue = `${referidosCount}/${MIN_REFERIDOS_CI}`
+      const progresoColor =
+        referidosCount >= MIN_REFERIDOS_CI
+          ? referidosCount > MIN_REFERIDOS_CI
+            ? '#a855f7'
+            : '#22c55e'
+          : referidosCount >= Math.floor(MIN_REFERIDOS_CI / 2)
+            ? '#3b82f6'
+            : '#94a3b8'
       const giftName = activation.regalo_id ? giftMap.get(activation.regalo_id) ?? activation.regalo_id : '-'
       const dateValue = activation.fecha_activacion ?? activation.created_at
       const whatsappLabel = activation.whatsapp_mensaje_enviado_at
@@ -1075,6 +1084,7 @@ export function ConexionesActivacionesTabLegacy() {
           repName,
           ownerName,
           numberFormat.format(referidosCount),
+          <span style={{ color: progresoColor, fontWeight: 600 }}>{progresoValue}</span>,
           giftName,
           activation.foto_url ? t('common.yes') : t('common.no'),
           whatsappLabel,
@@ -1165,6 +1175,7 @@ export function ConexionesActivacionesTabLegacy() {
           t('conexiones.activaciones.columns.representante'),
           t('conexiones.activaciones.columns.cliente'),
           t('conexiones.activaciones.columns.referidos'),
+          'Progreso',
           t('conexiones.activaciones.columns.regalo'),
           t('conexiones.activaciones.columns.foto'),
           t('conexiones.activaciones.columns.whatsapp'),
@@ -3175,7 +3186,7 @@ function ConexionesActivacionesTab() {
       if (sortColAct === 1) {
         valA = referidosCount[a.id] ?? 0
         valB = referidosCount[b.id] ?? 0
-      } else if (sortColAct === 2) {
+      } else if (sortColAct === 3) {
         valA = a.updated_at ?? a.created_at ?? ''
         valB = b.updated_at ?? b.created_at ?? ''
       }
@@ -3187,19 +3198,20 @@ function ConexionesActivacionesTab() {
 
   const exportarCSVActivaciones = () => {
     const headers = effectiveScope === 'distribution'
-      ? ['Cliente/Prospecto', 'Referidos', 'Ultima actividad', 'Estado', 'Vendedor']
-      : ['Cliente/Prospecto', 'Referidos', 'Ultima actividad', 'Estado']
+      ? ['Cliente/Prospecto', 'Referidos', 'Progreso', 'Ultima actividad', 'Estado', 'Vendedor']
+      : ['Cliente/Prospecto', 'Referidos', 'Progreso', 'Ultima actividad', 'Estado']
     const csvRows = filteredActivaciones.map((row) => {
       const ownerLabel = getOwnerLabel(row)
       const refs = referidosCount[row.id] ?? 0
+      const progreso = `${refs}/${MIN_REFERIDOS_CI}`
       const lastActivity = formatDateTime(row.updated_at ?? row.created_at)
       const estado = isClosed(row)
         ? t('conexiones.activaciones.status.closed')
         : t('conexiones.activaciones.status.active')
       const repLabel = row.representante_id ? representanteMap[row.representante_id] ?? '-' : '-'
       const values = effectiveScope === 'distribution'
-        ? [ownerLabel, refs, lastActivity, estado, repLabel]
-        : [ownerLabel, refs, lastActivity, estado]
+        ? [ownerLabel, refs, progreso, lastActivity, estado, repLabel]
+        : [ownerLabel, refs, progreso, lastActivity, estado]
       return values
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -3371,6 +3383,16 @@ function ConexionesActivacionesTab() {
       const lastActivityValue = row.updated_at ?? row.created_at
       const lastActivityLabel = formatRelativeTime(lastActivityValue)
       const lastActivityFull = formatDateTime(lastActivityValue)
+      const referidosTotal = referidosCount[row.id] ?? 0
+      const progresoValue = `${referidosTotal}/${MIN_REFERIDOS_CI}`
+      const progresoColor =
+        referidosTotal >= MIN_REFERIDOS_CI
+          ? referidosTotal > MIN_REFERIDOS_CI
+            ? '#a855f7'
+            : '#22c55e'
+          : referidosTotal >= Math.floor(MIN_REFERIDOS_CI / 2)
+            ? '#3b82f6'
+            : '#94a3b8'
       const statusLabel = isClosed(row)
         ? t('conexiones.activaciones.status.closed')
         : t('conexiones.activaciones.status.active')
@@ -3404,7 +3426,8 @@ function ConexionesActivacionesTab() {
         id: row.id,
         cells: [
           ownerLabel,
-          referidosCount[row.id] ?? 0,
+          referidosTotal,
+          <span style={{ color: progresoColor, fontWeight: 600 }}>{progresoValue}</span>,
           <span key="activity" title={lastActivityFull}>
             {lastActivityLabel}
           </span>,
@@ -3538,6 +3561,16 @@ function ConexionesActivacionesTab() {
             <div className="card-grid">
               {sortedActivaciones.map((row) => {
                 const lastActivityValue = row.updated_at ?? row.created_at
+                const referidosTotal = referidosCount[row.id] ?? 0
+                const progresoValue = `${referidosTotal}/${MIN_REFERIDOS_CI}`
+                const progresoColor =
+                  referidosTotal >= MIN_REFERIDOS_CI
+                    ? referidosTotal > MIN_REFERIDOS_CI
+                      ? '#a855f7'
+                      : '#22c55e'
+                    : referidosTotal >= Math.floor(MIN_REFERIDOS_CI / 2)
+                      ? '#3b82f6'
+                      : '#94a3b8'
                 return (
                   <div key={row.id} className="card" onClick={() => handleOpenDetail(row)}>
                     <div className="card-header">
@@ -3555,6 +3588,9 @@ function ConexionesActivacionesTab() {
                     )}
                     <p className="form-hint">
                       {t('conexiones.activaciones.labels.referidos')}: {referidosCount[row.id] ?? 0}
+                    </p>
+                    <p className="form-hint" style={{ color: progresoColor, fontWeight: 600 }}>
+                      Progreso: {progresoValue}
                     </p>
                     <p className="form-hint" title={formatDateTime(lastActivityValue)}>
                       {t('conexiones.activaciones.labels.lastActivity')}: {formatRelativeTime(lastActivityValue)}
@@ -3592,6 +3628,7 @@ function ConexionesActivacionesTab() {
               columns={[
                 t('conexiones.activaciones.labels.owner'),
                 t('conexiones.activaciones.labels.referidos'),
+                'Progreso',
                 t('conexiones.activaciones.labels.lastActivity'),
                 t('conexiones.activaciones.labels.estado'),
                 ...(effectiveScope === 'distribution' ? [t('conexiones.activaciones.labels.representante')] : []),
@@ -3599,7 +3636,7 @@ function ConexionesActivacionesTab() {
               ]}
               rows={listRows}
               emptyLabel={t('conexiones.activaciones.emptyTable')}
-              sortableColumns={[1, 2]}
+              sortableColumns={[1, 3]}
               sortColIndex={sortColAct ?? undefined}
               sortDir={sortDirAct}
               onSort={handleSortAct}

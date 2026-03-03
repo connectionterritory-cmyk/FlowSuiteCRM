@@ -62,7 +62,12 @@ const CLIENTES_LIST_SELECT = [
   'ciudad',
   'estado_region',
   'codigo_postal',
+  'hycite_id',
   'nivel',
+  'saldo_actual',
+  'monto_moroso',
+  'dias_atraso',
+  'estado_morosidad',
   'vendedor_id',
   'distribuidor_id',
   'fecha_nacimiento',
@@ -133,7 +138,7 @@ const buildBirthDate = (month: string, day: string) => {
 // Segmento de atraso basado en dias_atraso
 function segmentoAtraso(dias: number | null, moroso: number | null): string {
   if (!moroso || moroso === 0) return 'Al día'
-  if (!dias) return 'Al día'
+  if (!dias) return '0-30 días'
   if (dias >= 91) return '+90 días'
   if (dias >= 61) return '61-90 días'
   if (dias >= 31) return '31-60 días'
@@ -205,6 +210,8 @@ export function ClientesPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [sortCol, setSortCol] = useState<number | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [detailCliente, setDetailCliente] = useState<ClienteRecord | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
 
   const loadClientes = useCallback(async () => {
     if (!configured || !session?.user.id || !currentRole) return
@@ -553,7 +560,37 @@ export function ClientesPage() {
   }, [clientesOrdenados, openWhatsapp, usersById])
 
   const selectedCliente = selectedRow ? clientes.find((c) => c.id === selectedRow.id) ?? null : null
+  const selectedClienteDetail = detailCliente ?? selectedCliente
   const editingCliente = editingId ? clientes.find((c) => c.id === editingId) ?? null : null
+
+  useEffect(() => {
+    if (!configured || !selectedRow?.id) {
+      setDetailCliente(null)
+      return
+    }
+    let active = true
+    setDetailLoading(true)
+    const loadDetail = async () => {
+      const { data, error: fetchError } = await supabase
+        .from('clientes')
+        .select(
+          'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen',
+        )
+        .eq('id', selectedRow.id)
+        .maybeSingle()
+      if (!active) return
+      if (fetchError) {
+        setDetailCliente(null)
+      } else {
+        setDetailCliente((data as ClienteRecord | null) ?? null)
+      }
+      setDetailLoading(false)
+    }
+    loadDetail()
+    return () => {
+      active = false
+    }
+  }, [configured, selectedRow?.id])
 
   const emptyLabel = loading ? t('common.loading') : 'Sin resultados'
 
@@ -1404,10 +1441,123 @@ export function ClientesPage() {
       <DetailPanel
         open={Boolean(selectedRow)}
         title="Detalle del cliente"
-        items={selectedRow?.detail ?? []}
+        items={
+          selectedClienteDetail
+            ? [
+                { label: 'Nombre', value: selectedClienteDetail.nombre ?? '-' },
+                { label: 'Apellido', value: selectedClienteDetail.apellido ?? '-' },
+                { label: 'Email', value: selectedClienteDetail.email ?? '-' },
+                {
+                  label: 'Telefono movil',
+                  value: selectedClienteDetail.telefono ? (
+                    <a
+                      href={buildTelUrl(selectedClienteDetail.telefono)}
+                      style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
+                    >
+                      📞 {selectedClienteDetail.telefono}
+                    </a>
+                  ) : (
+                    '-'
+                  ),
+                },
+                {
+                  label: 'Telefono casa',
+                  value: selectedClienteDetail.telefono_casa ? (
+                    <a
+                      href={buildTelUrl(selectedClienteDetail.telefono_casa)}
+                      style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
+                    >
+                      📞 {selectedClienteDetail.telefono_casa}
+                    </a>
+                  ) : (
+                    '-'
+                  ),
+                },
+                {
+                  label: 'Direccion',
+                  value: (() => {
+                    const mapsUrl = buildMapsNavUrl({
+                      direccion: selectedClienteDetail.direccion,
+                      ciudad: selectedClienteDetail.ciudad,
+                      estado_region: selectedClienteDetail.estado_region,
+                      codigo_postal: selectedClienteDetail.codigo_postal,
+                    })
+                    const addr = formatAddressLabel({
+                      direccion: selectedClienteDetail.direccion,
+                      ciudad: selectedClienteDetail.ciudad,
+                      estado_region: selectedClienteDetail.estado_region,
+                      codigo_postal: selectedClienteDetail.codigo_postal,
+                    })
+                    return addr ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span>{addr}</span>
+                        {mapsUrl && (
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              fontSize: '0.75rem',
+                              color: '#10b981',
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap',
+                              textDecoration: 'none',
+                              padding: '0.1rem 0.5rem',
+                              border: '1px solid #10b98133',
+                              borderRadius: '9999px',
+                              background: '#10b98111',
+                            }}
+                          >
+                            🗺 Navegar
+                          </a>
+                        )}
+                      </span>
+                    ) : (
+                      '-'
+                    )
+                  })(),
+                },
+                { label: 'Ciudad', value: selectedClienteDetail.ciudad ?? '-' },
+                { label: 'Estado', value: selectedClienteDetail.estado_region ?? '-' },
+                { label: 'Codigo postal', value: selectedClienteDetail.codigo_postal ?? '-' },
+                { label: 'Cuenta Hycite', value: selectedClienteDetail.hycite_id ?? '-' },
+                { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
+                {
+                  label: 'Saldo actual',
+                  value: selectedClienteDetail.saldo_actual
+                    ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
+                    : '-',
+                },
+                {
+                  label: 'Monto moroso',
+                  value: selectedClienteDetail.monto_moroso
+                    ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
+                    : '-',
+                },
+                {
+                  label: 'Dias de atraso',
+                  value: segmentoAtraso(
+                    selectedClienteDetail.dias_atraso,
+                    selectedClienteDetail.monto_moroso,
+                  ),
+                },
+                { label: 'Nivel', value: selectedClienteDetail.nivel ? String(selectedClienteDetail.nivel) : '-' },
+                { label: 'Estado', value: selectedClienteDetail.estado_cuenta ?? '-' },
+                { label: 'Ultimo pedido', value: selectedClienteDetail.fecha_ultimo_pedido ?? '-' },
+                {
+                  label: 'Vendedor',
+                  value: selectedClienteDetail.vendedor_id
+                    ? usersById[selectedClienteDetail.vendedor_id] ?? ''
+                    : '-',
+                },
+                { label: 'Codigo vendedor', value: selectedClienteDetail.codigo_vendedor_hycite ?? '-' },
+                { label: 'Origen', value: selectedClienteDetail.origen ?? '-' },
+              ]
+            : selectedRow?.detail ?? []
+        }
         onClose={() => setSelectedRow(null)}
         action={
-          selectedCliente ? (
+          selectedClienteDetail ? (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <button
                 type="button"
@@ -1415,15 +1565,18 @@ export function ClientesPage() {
                 aria-label="WhatsApp"
                 onClick={() =>
                   openWhatsapp({
-                    nombre: [selectedCliente.nombre, selectedCliente.apellido].filter(Boolean).join(' '),
-                    telefono: selectedCliente.telefono ?? '',
-                    email: selectedCliente.email ?? '',
-                    vendedor: selectedCliente.vendedor_id ? (usersById[selectedCliente.vendedor_id] ?? '') : '',
-                    cuentaHycite: selectedCliente.hycite_id ?? selectedCliente.numero_cuenta_financiera ?? '',
-                    saldoActual: selectedCliente.saldo_actual,
-                    montoMoroso: selectedCliente.monto_moroso,
-                    diasAtraso: selectedCliente.dias_atraso,
-                    estadoMorosidad: selectedCliente.estado_morosidad,
+                    nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' '),
+                    telefono: selectedClienteDetail.telefono ?? '',
+                    email: selectedClienteDetail.email ?? '',
+                    vendedor: selectedClienteDetail.vendedor_id
+                      ? (usersById[selectedClienteDetail.vendedor_id] ?? '')
+                      : '',
+                    cuentaHycite:
+                      selectedClienteDetail.hycite_id ?? selectedClienteDetail.numero_cuenta_financiera ?? '',
+                    saldoActual: selectedClienteDetail.saldo_actual,
+                    montoMoroso: selectedClienteDetail.monto_moroso,
+                    diasAtraso: selectedClienteDetail.dias_atraso,
+                    estadoMorosidad: selectedClienteDetail.estado_morosidad,
                   })
                 }
               >
@@ -1433,7 +1586,8 @@ export function ClientesPage() {
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() => handleOpenEditForm(selectedCliente)}
+                  onClick={() => handleOpenEditForm(selectedClienteDetail)}
+                  disabled={detailLoading}
                 >
                   Editar
                 </Button>

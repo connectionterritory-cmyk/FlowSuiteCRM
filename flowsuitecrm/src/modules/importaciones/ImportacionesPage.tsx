@@ -23,6 +23,7 @@ interface ClienteImport {
   saldo_actual: number
   monto_moroso: number
   dias_atraso: number
+  estado_morosidad: string | null
   nivel: number
   estado_cuenta: EstadoCuenta
   elegible_addon: boolean
@@ -32,6 +33,7 @@ interface ClienteImport {
   codigo_vendedor_hycite: string | null
   codigo_dist_hycite: string | null
   updated_at: string
+  fecha_nacimiento?: string | null
 }
 
 interface Importacion {
@@ -44,8 +46,24 @@ interface Importacion {
 }
 
 type Step = 'idle' | 'preview' | 'importing' | 'done'
+type ReportType = 'customer_list' | 'birthday_report'
+
+const MONTH_MAP: Record<string, string> = {
+  'JANUARY': '01', 'FEBRUARY': '02', 'MARCH': '03', 'APRIL': '04',
+  'MAY': '05', 'JUNE': '06', 'JULY': '07', 'AUGUST': '08',
+  'SEPTEMBER': '09', 'OCTOBER': '10', 'NOVEMBER': '11', 'DECEMBER': '12',
+  'ENERO': '01', 'FEBRERO': '02', 'MARZO': '03', 'ABRIL': '04',
+  'MAYO': '05', 'JUNIO': '06', 'JULIO': '07', 'AGOSTO': '08',
+  'SEPTIEMBRE': '09', 'OCTUBRE': '10', 'NOVIEMBRE': '11', 'DICIEMBRE': '12'
+}
 
 function limpiarTelefono(raw?: string): string | null {
+  if (!raw) return null
+  const d = raw.replace(/\D/g, '')
+  return d.length >= 7 ? d : null
+}
+
+function normalizarTelefono(raw?: string | null): string | null {
   if (!raw) return null
   const d = raw.replace(/\D/g, '')
   return d.length >= 7 ? d : null
@@ -60,21 +78,40 @@ function limpiarEmail(raw?: string): string | null {
 function parsearFecha(raw?: string): string | null {
   if (!raw) return null
   const s = raw.trim()
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  // MM/DD/YYYY or M/D/YYYY (US format from Numbers/Excel)
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (slash) {
+    const [, m, d, y] = slash
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  // DD-MM-YYYY
+  const dash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (dash) {
+    const [, d, m, y] = dash
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  return null
 }
 
 function parsearMonto(raw?: string): number {
   if (!raw) return 0
-  const n = parseFloat(raw.replace(/[$,\s]/g, ''))
-  return isNaN(n) ? 0 : Math.abs(n)
+  // Eliminar todo excepto números y punto decimal
+  const clean = raw.replace(/[^0-9.]/g, '')
+  const n = parseFloat(clean)
+  return isNaN(n) ? 0 : n
 }
 
 function normalizarHeader(value: string): string {
   return value
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/[º°]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, ' ')
     .trim()
     .toUpperCase()
+    .replace(/\s+/g, ' ')
 }
 
 function buildNormalizedRow(row: Record<string, string>): Record<string, string> {
@@ -102,7 +139,11 @@ function obtenerCampo(
   return ''
 }
 
-function calcularMoroso(row: Record<string, string>): number {
+function calcularMoroso(row: Record<string, string>, normalizedRow: Record<string, string>): number {
+  // Primero intentamos el campo directo de "Delinquent" (portal search)
+  const delinquentDirect = parsearMonto(obtenerCampo(row, normalizedRow, ['DELINQUENT', 'DELINCUENCIA', 'MOROSO', 'MOROSIDAD']))
+  if (delinquentDirect > 0) return delinquentDirect
+
   return (
     parsearMonto(row['0-30 DÍAS DE MOROSIDAD']) +
     parsearMonto(row['31-60 DÍAS DE MOROSIDAD']) +
@@ -111,18 +152,82 @@ function calcularMoroso(row: Record<string, string>): number {
   )
 }
 
-function calcularAtraso(row: Record<string, string>): number {
+function calcularAtraso(row: Record<string, string>, normalizedRow: Record<string, string>): number {
+  // Primero revisamos si vienen los campos de morosidad individuales
   if (parsearMonto(row['SOBRE 90 DÍAS DE MOROSIDAD']) > 0) return 91
   if (parsearMonto(row['61-90 DÍAS DE MOROSIDAD']) > 0) return 61
   if (parsearMonto(row['31-60 DÍAS DE MOROSIDAD']) > 0) return 31
   if (parsearMonto(row['0-30 DÍAS DE MOROSIDAD']) > 0) return 1
+
+  // Si no, intentamos parsear el campo "Estado" para el portal de búsqueda
+  const estado = obtenerCampo(row, normalizedRow, ['STATUS', 'ESTADO', 'Status', 'Estado']).toUpperCase()
+  if (estado.includes('90')) return 91
+  if (estado.includes('61')) return 61
+  if (estado.includes('31')) return 31
+  if (estado.includes('0 A 30') || estado.includes('0-30')) return 1
+  if (estado.includes('ATRASO') || estado.includes('MOR') || estado.includes('DELINQUENT')) return 1
+
   return 0
+}
+
+function mapearEstadoMorosidad(
+  row: Record<string, string>,
+  normalizedRow: Record<string, string>,
+  dias: number,
+  moroso: number,
+): string | null {
+  const estadoRaw = obtenerCampo(row, normalizedRow, [
+    'STATUS MOROSIDAD',
+    'ESTADO MOROSIDAD',
+    'ESTADO DE MOROSIDAD',
+    'ESTADO ATRASO',
+    'MOROSIDAD',
+    'STATUS',
+    'ESTADO',
+  ]).trim()
+  const u = estadoRaw.toUpperCase()
+  const hasMorosidadKeyword =
+    u.includes('DIAS') ||
+    u.includes('ATRASO') ||
+    u.includes('DELINQUENT') ||
+    u.includes('MORO') ||
+    u.includes('PURG') ||
+    u.includes('0-30') ||
+    u.includes('31-60') ||
+    u.includes('61-90') ||
+    u.includes('90+') ||
+    u.includes('SOBRE 90')
+  if (!hasMorosidadKeyword) {
+    if (moroso <= 0) return null
+    if (dias >= 91) return '91+'
+    if (dias >= 61) return '61-90'
+    if (dias >= 31) return '31-60'
+    if (dias >= 1) return '0-30'
+    return null
+  }
+  if (u.includes('PURG')) return null
+  if (u.includes('ACTUAL')) return null
+  if (u.includes('0 A 30') || u.includes('0-30')) return '0-30'
+  if (u.includes('31 A 60') || u.includes('31-60')) return '31-60'
+  if (u.includes('61 A 90') || u.includes('61-90')) return '61-90'
+  if (u.includes('+90') || u.includes('90+') || u.includes('MAS DE 90') || u.includes('SOBRE 90')) {
+    return '91+'
+  }
+
+  if (moroso <= 0) return null
+  if (dias >= 91) return '91+'
+  if (dias >= 61) return '61-90'
+  if (dias >= 31) return '31-60'
+  if (dias >= 1) return '0-30'
+  return null
 }
 
 function mapearEstado(s?: string): EstadoCuenta {
   const u = (s ?? '').toUpperCase()
-  if (u === 'PURGED') return 'cancelacion_total'
-  if (u === 'INACTIVE') return 'inactivo'
+  if (u.includes('PURGED') || u.includes('CANCELACIÓN TOTAL') || u.includes('CANCELACION TOTAL') || u.includes('PURGADO')) return 'cancelacion_total'
+  if (u.includes('INACTIVE') || u.includes('INACTIVO')) return 'inactivo'
+  if (u.includes('DELINQUENT') || u.includes('ATRASO') || u.includes('DIAS') || u.includes('MORA')) return 'actual'
+  if (u.includes('PAID IN FULL') || u.includes('PAGADO') || u.includes('ACTUAL')) return 'actual'
   return 'actual'
 }
 
@@ -134,50 +239,108 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     'Numero de cuenta',
     'Cuenta',
     'Hycite ID',
+    'HYCITE_ID',
+    'HYCITEID',
+    'Cuenta Hycite',
+    'Cuenta Financiera',
+    'CUSTOMER NO',
+    'Customer #',
+    'CUSTOMER#',
+    'N.º DE CLIENTE',
+    'N° DE CLIENTE',
+    'Nº DE CLIENTE',
+    'N. DE CLIENTE',
+    'NO. DE CLIENTE',
+    'NUMERO DE CLIENTE',
+    'N.º DE CLIEN',
+    'Nº DE CLIEN',
+    'N° DE CLIEN',
+    'N.º DE CLIE',
+    'N.º DE CLI',
+    'CLIENTE #',
+    'CLIENTE'
   ]).trim()
   if (!hyciteId) return null
-  const nivel = parseInt(obtenerCampo(row, normalizedRow, ['NIVEL']) || '1')
-  const nombreRaw = obtenerCampo(row, normalizedRow, ['NOMBRE_1', 'NOMBRE', 'Nombre']).trim()
-  const ap1 = obtenerCampo(row, normalizedRow, ['APELLIDO PATERNO', 'Apellido', 'Apellidos']).trim()
-  const ap2 = obtenerCampo(row, normalizedRow, ['APELLIDO MATERNO']).trim()
-  const apellidoRaw = [ap1, ap2].filter(Boolean).join(' ').trim()
-  let nombre = nombreRaw || null
-  let apellido = apellidoRaw || null
-  if (!nombre && apellido) {
-    nombre = apellido
-    apellido = null
+  const nivel = parseInt(obtenerCampo(row, normalizedRow, ['NIVEL', 'Nivel']).trim() || '1')
+
+  // Nombres
+  const fullNombre = obtenerCampo(row, normalizedRow, ['CUSTOMER NAME', 'NOMBRE COMPLETO']).trim()
+  let nombre = obtenerCampo(row, normalizedRow, ['NOMBRE_1', 'NOMBRE', 'Nombre', 'First Name', 'FIRST NAME']).trim() || null
+  let apellido = obtenerCampo(row, normalizedRow, ['APELLIDO PATERNO', 'Apellido', 'Apellidos', 'Last Name', 'LAST NAME']).trim() || null
+
+  if (fullNombre && !nombre) {
+    const parts = fullNombre.split(' ')
+    if (parts.length > 1) {
+      nombre = parts[0]
+      apellido = parts.slice(1).join(' ')
+    } else {
+      nombre = fullNombre
+    }
   }
+
+  const ap2 = obtenerCampo(row, normalizedRow, ['APELLIDO MATERNO']).trim()
+  if (ap2) apellido = [apellido, ap2].filter(Boolean).join(' ')
+
   const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad']).trim() || null
-  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO', 'Estado', 'Estado / Provincia']).trim() || null
+  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO', 'Estado', 'Estado / Provincia', 'STATE']).trim() || null
   const codigoPostal = obtenerCampo(row, normalizedRow, ['ZIP CODE', 'ZIP', 'Codigo Postal', 'Codigo postal']).trim() || null
   const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Dirección']).replace(/\n/g, ', ').trim()
   const direccion = direccionRaw || [ciudad, estadoRegion, codigoPostal].filter(Boolean).join(', ') || null
+
+  // Fecha de Nacimiento (Cumpleaños)
+  let fechaNacimiento: string | null = null
+  const bdayRaw = obtenerCampo(row, normalizedRow, ['BIRTH DAY', 'CUMPLEAÑOS', 'FECHA NACIMIENTO']).trim()
+  if (bdayRaw) {
+    const parts = bdayRaw.split(/\s+/)
+    if (parts.length === 2) {
+      const mes = MONTH_MAP[parts[0].toUpperCase()]
+      const dia = parts[1].padStart(2, '0')
+      if (mes && dia) {
+        fechaNacimiento = `2000-${mes}-${dia}`
+      }
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(bdayRaw)) {
+      fechaNacimiento = bdayRaw
+    }
+  }
+
+  const montoMoroso = parsearMonto(obtenerCampo(row, normalizedRow, ['MONTO MOROSO', 'MOROSO'])) ||
+    calcularMoroso(row, normalizedRow)
+  const diasAtrasoRaw = parseInt(obtenerCampo(row, normalizedRow, ['DIAS ATRASO', 'DIAS DE ATRASO']).trim() || '0')
+  const diasAtraso = diasAtrasoRaw > 0 ? diasAtrasoRaw : calcularAtraso(row, normalizedRow)
+
   return {
     hycite_id: hyciteId,
     tipo_cliente: obtenerCampo(row, normalizedRow, ['CLIENTE']).trim() || 'HC',
     nombre,
     apellido,
-    email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Correo', 'Email', 'email', 'E-mail'])),
-    telefono: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Telefono', 'Teléfono', 'Celular', 'Móvil'])),
-    telefono_casa: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO DE CASA'])),
+    email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Correo', 'Email', 'email', 'E-mail', 'CORREO ELECTRONICO'])),
+    telefono: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Telefono', 'Teléfono', 'Celular', 'Móvil', 'HOME PHONE', 'Mobile Phone', 'MOBILE PHONE', 'TELEFONO MOVIL'])),
+    telefono_casa: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO DE CASA', 'WORK PHONE', 'Home Phone', 'HOME PHONE', 'TELEFONO DE CASA'])),
     direccion,
     ciudad,
     estado_region: estadoRegion,
     codigo_postal: codigoPostal,
-    saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL'])),
-    monto_moroso: calcularMoroso(row),
-    dias_atraso: calcularAtraso(row),
+    saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL', 'CUSTOMER BALANCE', 'Balance', 'BALANCE', 'SALDO'])),
+    monto_moroso: montoMoroso,
+    dias_atraso: diasAtraso,
+    estado_morosidad: mapearEstadoMorosidad(row, normalizedRow, diasAtraso, montoMoroso),
     nivel: isNaN(nivel) || nivel < 1 ? 1 : Math.min(nivel, 9),
-    estado_cuenta: mapearEstado(obtenerCampo(row, normalizedRow, ['STATUS'])),
-    elegible_addon: true,
-    fecha_ultimo_pedido: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE COMPRA'])),
+    estado_cuenta: mapearEstado(obtenerCampo(row, normalizedRow, ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO', 'Estado'])),
+    elegible_addon: (() => {
+      const v = obtenerCampo(row, normalizedRow, ['ISELIGIBLEFORADDON', 'IS ELIGIBLE FOR ADD ON', 'ELEGIBLE ADDON', 'ELEGIBLE']).trim().toUpperCase()
+      if (v === 'NO' || v === 'FALSE' || v === '0') return false
+      if (v === 'YES' || v === 'TRUE' || v === '1') return true
+      return true // default when column absent
+    })(),
+    fecha_ultimo_pedido: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE COMPRA', 'FECHA DEL ÚLTIMO PEDIDO', 'FECHA DEL ULTIMO PEDIDO', 'FECHA DEL', 'FECHA DEL ÚLTI'])),
     ultima_fecha_pago: parsearFecha(
-      obtenerCampo(row, normalizedRow, ['ULTIMA FECHA DE PAGO', 'ÚLTIMA FECHA DE PAGO', 'ultima fecha de pago']),
+      obtenerCampo(row, normalizedRow, ['ULTIMA FECHA DE PAGO', 'ÚLTIMA FECHA DE PAGO', 'ultima fecha de pago', 'ULTIMA FECHA PAGO']),
     ),
     origen: 'hycite_import',
-    codigo_vendedor_hycite: obtenerCampo(row, normalizedRow, ['VENDEDOR']).trim() || null,
+    codigo_vendedor_hycite: obtenerCampo(row, normalizedRow, ['VENDEDOR', 'Entrepreneur', 'ENTREPRENEUR', 'EMPRENDEDORES', 'Vendedor']).trim() || null,
     codigo_dist_hycite: obtenerCampo(row, normalizedRow, ['DISTRIBUIDOR']).trim() || null,
     updated_at: new Date().toISOString(),
+    fecha_nacimiento: fechaNacimiento
   }
 }
 
@@ -199,11 +362,13 @@ export function ImportacionesPage() {
   const [roleLoading, setRoleLoading] = useState(false)
 
   const [step, setStep] = useState<Step>('idle')
+  const [reportType, setReportType] = useState<ReportType>('customer_list')
   const [fileName, setFileName] = useState('')
   const [clientes, setClientes] = useState<ClienteImport[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
   const [importados, setImportados] = useState(0)
+  const [actualizados, setActualizados] = useState(0)
   const [errores, setErrores] = useState(0)
   const [historial, setHistorial] = useState<Importacion[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
@@ -264,15 +429,62 @@ export function ImportacionesPage() {
       try {
         const wb = XLSX.read(e.target?.result, { type: 'binary', raw: false, cellDates: false })
         const ws = wb.Sheets[wb.SheetNames[0]]
-        const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '', raw: false })
-        if (raw.length < 2) { setParseError('El archivo no tiene datos.'); return }
+
+        // Detección automática de tipo de reporte
+        const initialRaw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, range: 0, defval: '', raw: false }).slice(0, 10)
+        const isBirthdayReport = initialRaw.some(row => row.some(cell => String(cell).toUpperCase().includes('CUSTOMER BIRTHDAYS')))
+
+        const effectiveReportType = isBirthdayReport ? 'birthday_report' : 'customer_list'
+        setReportType(effectiveReportType)
+
+        // Búsqueda robusta de la fila de encabezados
+        const allRows = XLSX.utils.sheet_to_json<any[][]>(ws, { header: 1, defval: '', raw: false })
+        let headerIndex = -1
+
+        // Palabras clave que identifican la fila de encabezados
+        const keywords = [
+          'HYCITE',
+          'HYCITE ID',
+          'CLIENTE',
+          'N DE CLIENTE',
+          'CUSTOMER',
+          'NOMBRE',
+          'NAME',
+          'APELLIDO',
+          'LAST NAME',
+          'CORREO ELECTRONICO',
+          'ELECTRONICO',
+          'EMAIL',
+          'TELEFONO',
+        ]
+
+        for (let i = 0; i < Math.min(allRows.length, 25); i++) {
+          const row = allRows[i]
+          if (!row || row.length < 2) continue
+          const rowStr = row.map(cell => normalizarHeader(String(cell ?? ''))).join('|')
+          if (keywords.some(k => rowStr.includes(k))) {
+            headerIndex = i
+            break
+          }
+        }
+
+        // Fallback para reporte de cumpleaños si la búsqueda por palabras clave falla
+        if (headerIndex === -1 && isBirthdayReport) {
+          headerIndex = 7
+        }
+
+        const raw: any[][] = headerIndex === -1 ? allRows : allRows.slice(headerIndex)
+
+        if (raw.length < 2) { setParseError('No se pudo detectar el formato de los datos.'); return }
+
         const seen = new Map<string, number>()
-        const headers = (raw[0] as string[]).map(h => {
-          const c = seen.get(h) ?? 0; seen.set(h, c + 1)
-          return c === 0 ? h : `${h}_${c}`
+        const headers = (raw[0] as any[]).map(h => {
+          const s = String(h || '').trim()
+          const c = seen.get(s) ?? 0; seen.set(s, c + 1)
+          return c === 0 ? s : `${s}_${c}`
         })
         const rows: Record<string, string>[] = raw.slice(1).map(row =>
-          Object.fromEntries(headers.map((h, i) => [h, String((row as string[])[i] ?? '').trim()]))
+          Object.fromEntries(headers.map((h, i) => [h, String((row as any[])[i] ?? '').trim()]))
         )
         const validos = rows.map(parsearFila).filter((c): c is ClienteImport => c !== null)
         if (validos.length === 0) { setParseError('No se encontraron registros válidos.'); return }
@@ -298,39 +510,108 @@ export function ImportacionesPage() {
   const handleImportar = async () => {
     if (!session?.user.id || clientes.length === 0) return
     setStep('importing')
-    let imp = 0, err = 0
+    let imp = 0, up = 0, err = 0
+
+    // Smart Update / Upsert logic
     for (let i = 0; i < clientes.length; i += 50) {
       const lote = clientes.slice(i, i + 50)
-      const { data, error } = await supabase.from('clientes').upsert(lote, { onConflict: 'hycite_id' }).select('id')
+      const idsLote = lote.map(c => c.hycite_id)
+      const cuentasLote = lote.map(c => c.hycite_id)
+      const telsLote = lote
+        .map(c => normalizarTelefono(c.telefono))
+        .filter(Boolean) as string[]
+
+      // Obtener datos existentes para Smart Update (por ID o por Teléfono)
+      const { data: existentes } = await supabase
+        .from('clientes')
+        .select('id, hycite_id, numero_cuenta_financiera, fecha_nacimiento, nombre, apellido, telefono, vendedor_id')
+        .or(`hycite_id.in.(${idsLote.join(',')}),numero_cuenta_financiera.in.(${cuentasLote.join(',')}),telefono.in.(${telsLote.join(',')})`)
+
+      // Mapas para búsqueda rápida
+      const mapId = new Map(existentes?.filter(e => e.hycite_id).map(e => [e.hycite_id, e]) || [])
+      const mapCuenta = new Map(
+        existentes?.filter(e => e.numero_cuenta_financiera).map(e => [e.numero_cuenta_financiera, e]) || [],
+      )
+      const mapTel = new Map(
+        existentes?.filter(e => e.telefono).map(e => [normalizarTelefono(e.telefono), e]) || [],
+      )
+
+      const buildPayload = (c: ClienteImport) => {
+        const telMatch = c.telefono ? mapTel.get(normalizarTelefono(c.telefono)) : null
+        const exById = mapId.get(c.hycite_id) || mapCuenta.get(c.hycite_id) || null
+        const exByTel = telMatch && !telMatch.hycite_id ? telMatch : null
+        const ex = exById || exByTel
+
+        if (ex) {
+          return {
+            ...c, // Nuevos datos de Hycite (incluye saldo, moroso, atraso)
+            id: ex.id, // ID real de Supabase
+            // Smart Update: Mantener lo de CRM si ya existe, enriquecer con lo nuevo si falta
+            fecha_nacimiento: ex.fecha_nacimiento || c.fecha_nacimiento,
+            nombre: ex.nombre || c.nombre,
+            apellido: ex.apellido || c.apellido,
+            telefono: ex.telefono || c.telefono,
+            vendedor_id: ex.vendedor_id || session.user.id,
+            numero_cuenta_financiera: ex.numero_cuenta_financiera || c.hycite_id,
+          }
+        }
+        return { ...c, vendedor_id: session.user.id, numero_cuenta_financiera: c.hycite_id }
+      }
+
+      const payload = lote.map(buildPayload)
+
+      // onConflict:'hycite_id' ensures re-imports update instead of duplicating.
+      // For records where we already resolved the Supabase id (ex.id), the PK
+      // takes precedence; for new records, the hycite_id unique constraint resolves.
+      const { error } = await supabase
+        .from('clientes')
+        .upsert(payload, { onConflict: 'hycite_id' })
+        .select('id, created_at, updated_at')
+
       if (error) {
-        for (const row of lote) {
-          const { error: rowError } = await supabase
+        console.error('Batch Upsert Error:', error)
+        // Retry one-by-one to avoid losing the whole batch on a single bad row
+        for (const item of payload) {
+          const { data: singleData, error: singleError } = await supabase
             .from('clientes')
-            .upsert([row], { onConflict: 'hycite_id' })
-            .select('id')
-          if (rowError) {
+            .upsert([item], { onConflict: 'hycite_id' })
+            .select('id, created_at, updated_at')
+          if (singleError) {
+            console.error('Single Upsert Error:', singleError)
             err += 1
           } else {
-            imp += 1
+            const isNew = singleData?.[0]?.created_at === singleData?.[0]?.updated_at
+            if (isNew) imp += 1
+            else up += 1
           }
         }
       } else {
-        imp += data?.length ?? 0
+        // Conteo del lote exitoso
+        lote.forEach(c => {
+          const matched =
+            mapId.has(c.hycite_id) ||
+            mapCuenta.has(c.hycite_id) ||
+            (c.telefono && mapTel.has(normalizarTelefono(c.telefono)))
+          if (matched) up += 1
+          else imp += 1
+        })
       }
     }
+
     await supabase.from('importaciones_hycite').insert({
       importado_por: session.user.id,
-      tipo_cuenta: 'customer_list',
+      tipo_cuenta: reportType === 'birthday_report' ? 'birthday_list' : 'customer_list',
       total_registros: clientes.length,
       registros_nuevos: imp,
-      registros_actualizados: 0,
+      registros_actualizados: up,
       registros_error: err,
       archivo_nombre: fileName,
     })
-    setImportados(imp); setErrores(err); setStep('done')
-    if (err === 0) showToast(`✅ ${imp} clientes importados`)
-    else showToast(`⚠️ ${imp} importados, ${err} errores`, 'error')
-    cargarHistorial()
+
+    setImportados(imp); setActualizados(up); setErrores(err); setStep('done')
+    if (err === 0) showToast(`✅ ${imp} nuevos, ${up} actualizados`)
+    else showToast(`⚠️ ${imp} nuevos, ${up} actualizados, ${err} errores`, 'error')
+    cargarHistorial() // Refetch history
   }
 
   const resetear = () => { setStep('idle'); setClientes([]); setFileName(''); setParseError(null) }
@@ -352,12 +633,15 @@ export function ImportacionesPage() {
         </div>
       ) : (
         <>
-          <SectionHeader title="Importaciones Hy-Cite" subtitle="Importa tu cartera de clientes desde el archivo CustomerList de Hy-Cite" />
+          <SectionHeader
+            title="Importaciones Hy-Cite"
+            subtitle={reportType === 'birthday_report' ? "Importando Reporte de Cumpleaños" : "Importa tu cartera de clientes desde el archivo CustomerList de Hy-Cite"}
+          />
           <div className="card" style={{ padding: '1.5rem' }}>
             {step === 'idle' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                  Exporta desde <strong>Hy-Cite → Búsqueda de Cuenta → Exportar → Excel</strong> y sube el archivo aquí.
+                  Soporta <strong>Customer List</strong> y <strong>Customer Birthdays</strong>. El sistema detectará el formato automáticamente.
                 </p>
                 <div onDrop={handleDrop} onDragOver={(e) => { e.preventDefault(); setDragOver(true) }} onDragLeave={() => setDragOver(false)} onClick={() => fileInputRef.current?.click()}
                   style={{ border: `2px dashed ${dragOver ? 'var(--color-primary, #3b82f6)' : 'var(--color-border, #374151)'}`, borderRadius: '0.75rem', padding: '3rem', textAlign: 'center', cursor: 'pointer', background: dragOver ? 'rgba(59,130,246,0.05)' : 'var(--color-surface)', transition: 'all 0.2s' }}>
@@ -414,7 +698,7 @@ export function ImportacionesPage() {
                   <p style={{ fontWeight: 700, fontSize: '1.1rem', margin: 0 }}>{errores === 0 ? 'Importación exitosa' : 'Completado con errores'}</p>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
-                  {[{ label: 'Total', value: clientes.length, color: '#3b82f6' }, { label: 'Importados', value: importados, color: '#10b981' }, { label: 'Errores', value: errores, color: errores > 0 ? '#dc2626' : '#6b7280' }].map(s => (
+                  {[{ label: 'Total', value: clientes.length, color: '#3b82f6' }, { label: 'Importados', value: importados, color: '#10b981' }, { label: 'Actualizados', value: actualizados, color: '#3b82f6' }, { label: 'Errores', value: errores, color: errores > 0 ? '#dc2626' : '#6b7280' }].map(s => (
                     <div key={s.label} style={{ padding: '1rem', background: 'var(--color-surface)', borderRadius: '0.5rem', textAlign: 'center', border: '1px solid var(--color-border)' }}>
                       <div style={{ fontSize: '1.75rem', fontWeight: 700, color: s.color }}>{s.value}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{s.label}</div>
