@@ -164,6 +164,16 @@ function badgeTextColor(segmento: string): string {
   return '#374151'
 }
 
+const getClientesPermissionError = (error: { code?: string | null; message?: string | null } | null) => {
+  if (!error) return null
+  if (error.code === '42501') return 'Acción no permitida: solo Admin/Distribuidor puede editar clientes.'
+  const message = error.message?.toLowerCase() ?? ''
+  if (message.includes('row level security') || message.includes('permission denied')) {
+    return 'Acción no permitida: solo Admin/Distribuidor puede editar clientes.'
+  }
+  return null
+}
+
 export function ClientesPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
@@ -391,11 +401,14 @@ export function ClientesPage() {
   }, [clientes])
 
   const handleDeleteCliente = async (id: string) => {
-    if (!canDelete) return
+    if (!canDelete) {
+      showToast('Solo Admin/Distribuidor puede eliminar clientes.', 'error')
+      return
+    }
     setDeletingId(id)
     const { error: delError } = await supabase.from('clientes').delete().eq('id', id)
     if (delError) {
-      showToast(delError.message, 'error')
+      showToast(getClientesPermissionError(delError) ?? delError.message, 'error')
     } else {
       showToast('Cliente eliminado')
       await loadClientes()
@@ -595,7 +608,10 @@ export function ClientesPage() {
   const emptyLabel = loading ? t('common.loading') : 'Sin resultados'
 
   const handleOpenForm = () => {
-    if (!canManageClientes) return
+    if (!canManageClientes) {
+      showToast('Solo Admin/Distribuidor puede crear clientes.', 'error')
+      return
+    }
     setEditingId(null)
     setFormValues({ ...initialForm, vendedor_id: session?.user.id ?? '' })
     setBirthMonth('')
@@ -605,7 +621,10 @@ export function ClientesPage() {
   }
 
   const handleOpenEditForm = (cliente: ClienteRecord) => {
-    if (!canManageClientes) return
+    if (!canManageClientes) {
+      showToast('Solo Admin/Distribuidor puede editar clientes.', 'error')
+      return
+    }
     const birth = splitBirthDate(cliente.fecha_nacimiento ?? null)
     setEditingId(cliente.id)
     setFormValues({
@@ -645,6 +664,10 @@ export function ClientesPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canManageClientes) {
+      showToast('Solo Admin/Distribuidor puede editar clientes.', 'error')
+      return
+    }
     if (!configured) {
       setFormError(t('common.supabaseRequired'))
       return
@@ -696,8 +719,10 @@ export function ClientesPage() {
       ? await supabase.from('clientes').update(basePayload).eq('id', editingId)
       : await supabase.from('clientes').insert({ ...basePayload, vendedor_id: session?.user.id ?? null, origen: 'manual' })
     if (opError) {
-      setFormError(opError.message)
-      showToast(opError.message, 'error')
+      const permissionMessage = getClientesPermissionError(opError)
+      const errorMessage = permissionMessage ?? opError.message
+      setFormError(errorMessage)
+      showToast(errorMessage, 'error')
     } else {
       handleCloseForm()
       await loadClientes()
