@@ -536,13 +536,23 @@
     "title": "Productos",
     "subtitle": "Catalogo y disponibilidad.",
     "detailsTitle": "Detalle del producto",
+    "editingLabel": "Modo edicion",
+    "editingHelp": "Ajusta los campos y guarda los cambios.",
     "form": {
       "title": "Nuevo producto"
     },
     "fields": {
       "codigo": "Codigo",
       "nombre": "Nombre",
-      "categoria": "Categoria",
+      "categoria": "Categoria principal",
+      "linea": "Linea",
+      "categoriaCompra": "Categoria de compra",
+      "subcategoria": "Subcategoria",
+      "costoN1": "Costo N1",
+      "costoN2": "Costo N2",
+      "costoN3": "Costo N3",
+      "costoN4": "Costo N4",
+      "recargo": "Recargo arancelario",
       "precio": "Precio",
       "foto": "Foto",
       "activo": "Activo"
@@ -556,8 +566,22 @@
       "codigo": "Codigo",
       "nombre": "Nombre",
       "categoria": "Categoria",
+      "subcategoria": "Subcategoria",
+      "categoriaCompra": "Categoria compra",
+      "linea": "Linea",
+      "costoN3": "Costo N3",
+      "recargo": "Recargo",
       "precio": "Precio",
       "activo": "Activo"
+    },
+    "import": {
+      "action": "Importar lista",
+      "title": "Importar lista de precios",
+      "subtitle": "Carga la lista de precios N3 en formato CSV/XLSX.",
+      "upload": "Seleccionar archivo",
+      "instructions": "Se detectan bloques dobles y se calculan costos por nivel segun categoria de compra.",
+      "summaryTitle": "Resumen de importacion",
+      "summary": "Total: {{total}} · Procesados: {{procesados}} · Errores: {{errores}}"
     }
   },
   "programas": {

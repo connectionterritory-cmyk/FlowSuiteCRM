@@ -119,6 +119,11 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
             if (item.key !== 'usuarios') return true
             return role === 'admin' || role === 'distribuidor'
           })
+          .filter((item) => {
+            if (item.key !== 'productos') return true
+            if (viewMode === 'seller') return false
+            return role === 'admin' || role === 'distribuidor'
+          })
           .map((item) => {
           const Icon = item.icon
 

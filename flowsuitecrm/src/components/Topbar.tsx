@@ -90,7 +90,7 @@ export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: Topba
         <h1 className="topbar-title">{title}</h1>
       </div>
       <div className="topbar-actions">
-        {hasDistribuidorScope && (
+        {hasDistribuidorScope && (currentUser?.rol === 'admin' || currentUser?.rol === 'distribuidor') && (
           <div className="topbar-segment" role="group" aria-label={t('common.modeLabel')}>
             <button
               type="button"
