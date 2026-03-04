@@ -8,6 +8,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
+import { useUsers } from '../../data/UsersProvider'
 
 type ClienteOption = {
   id: string
@@ -82,6 +83,7 @@ const initialServiceForm = {
 export function ServicioClientePage() {
   const { t } = useTranslation()
   const { session } = useAuth()
+  const { currentUser, usersById } = useUsers()
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
   const [clientes, setClientes] = useState<ClienteOption[]>([])
@@ -313,10 +315,19 @@ export function ServicioClientePage() {
         rol: user.rol,
       }))
 
-    if (base.length > 0) return base
+    const byId = new Map(base.map((item) => [item.id, item]))
+
+    if (currentUser?.id) {
+      if (!byId.has(currentUser.id)) {
+        const label = [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ').trim() || currentUser.id
+        byId.set(currentUser.id, { id: currentUser.id, label, rol: currentUser.rol })
+      }
+    }
+
+    if (byId.size > 0) return Array.from(byId.values())
 
     if (assignedVendedorIds.length > 0) {
-      return assignedVendedorIds.map((id) => ({ id, label: id, rol: null }))
+      return assignedVendedorIds.map((id) => ({ id, label: usersById[id] || id, rol: null }))
     }
 
     const ids = new Set<string>()
@@ -324,8 +335,8 @@ export function ServicioClientePage() {
       if (cliente.vendedor_id) ids.add(cliente.vendedor_id)
       if (cliente.distribuidor_id) ids.add(cliente.distribuidor_id)
     })
-    return [...ids].map((id) => ({ id, label: id, rol: null }))
-  }, [assignedVendedorIds, clientes, usuarios])
+    return [...ids].map((id) => ({ id, label: usersById[id] || id, rol: null }))
+  }, [assignedVendedorIds, clientes, currentUser, usuarios, usersById])
 
   const handleOpenForm = () => {
     setFormValues({
