@@ -21,6 +21,10 @@ import { TelemercadeoFiltrosPage } from '../modules/telemercadeo/TelemercadeoFil
 import { TelemercadeoReferidosPage } from '../modules/telemercadeo/TelemercadeoReferidosPage'
 import { ImportacionesPage } from '../modules/importaciones/ImportacionesPage'
 import { PerfilPage } from '../modules/perfil/PerfilPage'
+import { MarketingFlowPage } from '../modules/marketing-flow/MarketingFlowPage'
+import { SegmentosPage } from '../modules/marketing-flow/SegmentosPage'
+import { CampanasPage } from '../modules/marketing-flow/CampanasPage'
+import { EnviosPage } from '../modules/marketing-flow/EnviosPage'
 import { LoginPage } from '../modules/auth/LoginPage'
 import { ResetPasswordPage } from '../modules/auth/ResetPasswordPage'
 import { useAuth } from '../auth/AuthProvider'
@@ -59,6 +63,12 @@ export default function App() {
           <Route path="/cierres" element={<CierresPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/leads" element={<LeadsPage />} />
+          <Route path="/marketing-flow" element={<MarketingFlowPage />}>
+            <Route index element={<Navigate to="/marketing-flow/segmentos" replace />} />
+            <Route path="segmentos" element={<SegmentosPage />} />
+            <Route path="campanas" element={<CampanasPage />} />
+            <Route path="envios" element={<EnviosPage />} />
+          </Route>
           <Route path="/clientes" element={<ClientesPage />} />
           <Route path="/ventas" element={<VentasPage />} />
           <Route path="/productos" element={<ProductosPage />} />

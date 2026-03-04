@@ -1301,10 +1301,10 @@ export function ClientesPage() {
             </div>
           ) : (
             clientesFiltrados.map((cliente) => {
-              const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
-              const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
               const cardVendedor = getClienteVendedorLabel(getClienteResponsableId(cliente))
               const matchingRow = rows.find((r) => r.id === cliente.id)
+              const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
+              const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
               return (
                 <div
                   key={cliente.id}
@@ -1345,7 +1345,9 @@ export function ClientesPage() {
                     }}
                   >
                     <span>{cliente.telefono ?? '-'}</span>
-                    <span>{cardVendedor}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }} title={`ID: ${getClienteResponsableId(cliente)}`}>
+                      👤 {cardVendedor}
+                    </span>
                   </div>
                   {((cliente.saldo_actual ?? 0) > 0 || (cliente.monto_moroso ?? 0) > 0) && (
                     <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem' }}>

@@ -56,6 +56,12 @@ export const navItems: NavItem[] = [
     icon: IconLeads,
   },
   {
+    key: 'marketing-flow',
+    labelKey: 'nav.marketingFlow',
+    path: '/marketing-flow',
+    icon: IconLeads,
+  },
+  {
     key: 'clientes',
     labelKey: 'nav.clientes',
     path: '/clientes',

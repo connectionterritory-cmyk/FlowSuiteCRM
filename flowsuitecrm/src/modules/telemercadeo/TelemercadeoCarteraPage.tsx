@@ -12,6 +12,7 @@ import {
 import { TelemercadeoCallModal } from './TelemercadeoCallModal'
 import { useTelemercadeoClientes } from './telemercadeoData'
 import { supabase } from '../../lib/supabase/client'
+import { useUsers } from '../../data/UsersProvider'
 
 type LastCall = {
   resultado: string
@@ -21,6 +22,7 @@ type LastCall = {
 
 export function TelemercadeoCarteraPage() {
   const { openWhatsapp, ModalRenderer } = useMessaging()
+  const { usersById } = useUsers()
   const { clientes, loading } = useTelemercadeoClientes({ balanceOnly: true })
   const [segmento, setSegmento] = useState<SegmentoTab>('todos')
   const [modalOpen, setModalOpen] = useState(false)
@@ -305,6 +307,7 @@ export function TelemercadeoCarteraPage() {
               <ClienteCard
                 key={c.id}
                 cliente={c}
+                vendedor={c.vendedor_id ? usersById[c.vendedor_id] : null}
                 extra={
                   last ? (
                     <p

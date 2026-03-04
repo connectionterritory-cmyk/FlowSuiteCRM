@@ -126,6 +126,7 @@
     "pipeline": "Pipeline",
     "oportunidades": "Opportunities",
     "leads": "Leads",
+    "marketingFlow": "MarketingFlow",
     "clientes": "Customers",
     "ventas": "Sales",
     "productos": "Products",
@@ -1010,15 +1011,34 @@
     "title": "Customer service",
     "subtitle": "Equipment, components, and services in one place.",
     "newService": "New service",
+    "newCita": "New appointment",
+    "newNote": "New note",
+    "search": {
+      "label": "Search customer",
+      "placeholder": "Name, last name, phone, or account",
+      "helper": "Type at least 2 characters to see results."
+    },
     "form": {
       "title": "New service",
+      "citaTitle": "New appointment",
       "fields": {
         "cliente": "Customer",
+        "asignado": "Assign to",
         "equipo": "Installed equipment",
         "fecha": "Service date",
         "tipo": "Service type",
         "observaciones": "Notes",
         "venta": "Link to sale"
+      }
+    },
+    "note": {
+      "title": "New note",
+      "fields": {
+        "cliente": "Customer",
+        "nota": "Note"
+      },
+      "errors": {
+        "required": "Select a customer and write the note."
       }
     },
     "types": {

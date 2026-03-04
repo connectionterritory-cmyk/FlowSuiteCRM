@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase/client'
 import { buildTelUrl } from '../../lib/addressUtils'
 import { useAuth } from '../../auth/AuthProvider'
 import { IconPhone } from '../../components/icons'
+import { useUsers } from '../../data/UsersProvider'
 import {
   type Cliente,
   type ResultadoLlamada,
@@ -120,7 +121,9 @@ export function TelemercadeoCallModal({
   const guardarLlamada = async () => {
     if (!session?.user.id) return
     setGuardando(true)
-    const { error } = await supabase.from('llamadas_telemercadeo').insert({
+
+    // 1. Registrar la llamada en el historial de telemercadeo
+    const { error: errorLlamada } = await supabase.from('llamadas_telemercadeo').insert({
       cliente_id: cliente.id,
       telemercadista_id: session.user.id,
       resultado,
@@ -128,20 +131,54 @@ export function TelemercadeoCallModal({
       followup_at: fechaFollowup || null,
       monto_prometido: montoProme ? parseFloat(montoProme) : null,
     })
-    if (error) {
-      showToast(error.message, 'error')
-    } else {
-      showToast('Llamada registrada')
-      onClose()
+
+    if (errorLlamada) {
+      showToast(errorLlamada.message, 'error')
+      setGuardando(false)
+      return
     }
+
+    // 2. Si es cita agendada, actualizar el cliente para que aparezca en el Dashboard
+    if (resultado === 'cita_agendada' && fechaFollowup) {
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({
+          next_action_date: fechaFollowup,
+          next_action: 'Cita agendada',
+        })
+        .eq('id', cliente.id)
+
+      if (errorCliente) {
+        showToast('Llamada guardada, pero no se pudo agendar la cita: ' + errorCliente.message, 'error')
+      }
+    }
+
+    // 3. Guardar como nota global persistente en el sistema
+    if (notas.trim()) {
+      await supabase.from('notasrp').insert({
+        cliente_id: cliente.id,
+        contenido: notas.trim(),
+        mensaje: notas.trim(),
+        canal: 'telemercadeo',
+        tipo_mensaje: 'nota',
+        enviado_por: session.user.id,
+        enviado_en: new Date().toISOString(),
+      })
+    }
+
+    showToast('Gestión registrada correctamente')
+    onClose()
     setGuardando(false)
   }
+
+  const { usersById } = useUsers()
+  const vendorName = cliente.vendedor_id ? usersById[cliente.vendedor_id] : null
 
   return (
     <Modal
       open={open}
       title="Registrar llamada"
-      description={`${cliente.nombre ?? ''} ${cliente.apellido ?? ''}`.trim()}
+      description={`${cliente.nombre ?? ''} ${cliente.apellido ?? ''}${vendorName ? ` · 👤 ${vendorName}` : ''}`.trim()}
       onClose={onClose}
       actions={
         <>

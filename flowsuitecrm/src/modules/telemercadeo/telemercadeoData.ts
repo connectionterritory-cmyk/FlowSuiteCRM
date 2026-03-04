@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import type { Cliente, EquipoInstalado } from './TelemercadeoShared'
 
 const CLIENTE_FIELDS =
-  'id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, ultima_fecha_pago, hycite_id, estado_cuenta, nivel'
+  'id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, ultima_fecha_pago, hycite_id, estado_cuenta, nivel, next_action, next_action_date, vendedor_id'
 
 /**
  * Returns the list of vendedor_ids assigned to a telemercadeo user.

@@ -67,7 +67,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
         const currentUserRow = rows.find((user) => user.id === currentUserId) ?? null
         rows.forEach((user) => {
           const fullName = [user.nombre, user.apellido].filter(Boolean).join(' ').trim()
-          map[user.id] = fullName || user.email || 'Sin nombre'
+          map[user.id] = fullName || user.email || user.codigo_vendedor || user.codigo_distribuidor || 'Sin nombre'
         })
 
         if (currentUserId) {

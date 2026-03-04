@@ -19,6 +19,9 @@ type LeadRow = {
   next_action_date: string | null
   updated_at: string | null
   created_at: string | null
+  is_cliente?: boolean
+  vendedor_id: string | null
+  owner_id?: string | null
 }
 
 type OpportunityRow = {
@@ -93,7 +96,7 @@ export function HoyPage() {
   const { session } = useAuth()
   const { showToast } = useToast()
   const { openWhatsapp, ModalRenderer } = useMessaging()
-  const { currentUser } = useUsers()
+  const { currentUser, usersById } = useUsers()
   const configured = isSupabaseConfigured
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -246,9 +249,9 @@ export function HoyPage() {
       }
 
       const nextMap: Record<string, string | null> = {}
-      ;(data as LastActivityRow[] | null)?.forEach((row) => {
-        nextMap[row.lead_id] = row.last_activity_at
-      })
+        ; (data as LastActivityRow[] | null)?.forEach((row) => {
+          nextMap[row.lead_id] = row.last_activity_at
+        })
       setLastActivityMap(nextMap)
     },
     [configured]
@@ -260,7 +263,7 @@ export function HoyPage() {
     setLoading(true)
     setError(null)
 
-    const baseLeadSelect = 'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at'
+    const baseLeadSelect = 'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, vendedor_id, owner_id'
     const vendedorId = session.user.id
 
     const { start, end } = getMonthRange()
@@ -289,6 +292,8 @@ export function HoyPage() {
       birthdaysRes,
       reactivacionRes,
       mantenimientosRes,
+      overdueClientsRes,
+      todayClientsRes,
     ] = await Promise.all([
       // ── Leads ─────────────────────────────────────────────
       supabase
@@ -334,19 +339,19 @@ export function HoyPage() {
       // ── Clients ───────────────────────────────────────────
       supabase
         .from('clientes')
-        .select('id, nombre, apellido, telefono, monto_moroso, dias_atraso, estado_morosidad')
+        .select('id, nombre, apellido, telefono, monto_moroso, dias_atraso, estado_morosidad, vendedor_id')
         .eq('vendedor_id', vendedorId)
         .or('monto_moroso.gt.0,dias_atraso.gt.0')
         .order('dias_atraso', { ascending: false, nullsFirst: false })
         .limit(10),
       supabase
         .from('clientes')
-        .select('id, nombre, apellido, telefono, fecha_nacimiento')
+        .select('id, nombre, apellido, telefono, fecha_nacimiento, vendedor_id')
         .eq('vendedor_id', vendedorId)
         .like('fecha_nacimiento', birthPattern),
       supabase
         .from('clientes')
-        .select('id, nombre, apellido, telefono, fecha_ultimo_pedido')
+        .select('id, nombre, apellido, telefono, fecha_ultimo_pedido, vendedor_id')
         .eq('vendedor_id', vendedorId)
         .eq('activo', true)
         .or(`fecha_ultimo_pedido.is.null,fecha_ultimo_pedido.lt.${ninetyDaysAgoIso}`)
@@ -359,6 +364,20 @@ export function HoyPage() {
         .lte('fecha_proximo_cambio', todayIso)
         .order('fecha_proximo_cambio', { ascending: true })
         .limit(50),
+      // ── Client Appointments ──────────────────────────────
+      supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, next_action, next_action_date, vendedor_id')
+        .eq('vendedor_id', vendedorId)
+        .not('next_action_date', 'is', null)
+        .lt('next_action_date', todayIso)
+        .order('next_action_date', { ascending: true }),
+      supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, next_action, next_action_date, vendedor_id')
+        .eq('vendedor_id', vendedorId)
+        .eq('next_action_date', todayIso)
+        .order('next_action_date', { ascending: true }),
     ])
 
     if (overdueRes.error || todayRes.error || newRes.error || oppsRes.error || salesRes.error) {
@@ -383,18 +402,30 @@ export function HoyPage() {
       setReferidosStats({ activos: activosCount, enProceso: enProcesoCount })
     }
 
-    const overdue = (overdueRes.data as LeadRow[] | null) ?? []
-    const todayLeadsData = (todayRes.data as LeadRow[] | null) ?? []
-    const newLeadsData = (newRes.data as LeadRow[] | null) ?? []
+    const overdueLeadsData = ((overdueRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
+    const overdueClientsData = ((overdueClientsRes.data as any[] | null) ?? []).map(c => ({ ...c, is_cliente: true }))
+
+    const todayLeadsData = ((todayRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
+    const todayClientsData = ((todayClientsRes.data as any[] | null) ?? []).map(c => ({ ...c, is_cliente: true }))
+
+    const newLeadsData = ((newRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
     const oppsData = (oppsRes.data as OpportunityRow[] | null) ?? []
     const ventasRows = (salesRes.data as { monto: number }[] | null) ?? []
 
-    setOverdueLeads(overdue)
-    setTodayLeads(todayLeadsData)
+    // Merge and sort
+    const allOverdue = [...overdueLeadsData, ...overdueClientsData].sort((a, b) =>
+      (a.next_action_date ?? '').localeCompare(b.next_action_date ?? '')
+    )
+    const allToday = [...todayLeadsData, ...todayClientsData].sort((a, b) =>
+      (a.next_action_date ?? '').localeCompare(b.next_action_date ?? '')
+    )
+
+    setOverdueLeads(allOverdue)
+    setTodayLeads(allToday)
     setNewLeads(newLeadsData)
     setClosingOpps(oppsData)
     setSalesSummary({
-      total: ventasRows.reduce((acc, row) => acc + (row.monto ?? 0), 0),
+      total: ventasRows.reduce((acc: number, row: { monto: number }) => acc + (row.monto ?? 0), 0),
       count: ventasRows.length,
     })
 
@@ -413,7 +444,7 @@ export function HoyPage() {
       .slice(0, 8)
     setMantenimientos(mantFiltered)
 
-    const leadIds = [...overdue, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
+    const leadIds = [...overdueLeadsData, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
 
     setLoading(false)
@@ -469,12 +500,27 @@ export function HoyPage() {
       return
     }
     setCheckinSaving(true)
-    const { error } = await supabase.from('lead_notas').insert({
-      lead_id: lead.id,
-      usuario_id: session.user.id,
-      nota: `📍 Check-in — ${new Date().toLocaleString()}`,
-      tipo: 'checkin',
-    })
+    const table = lead.is_cliente ? 'notasrp' : 'lead_notas'
+    const idField = lead.is_cliente ? 'cliente_id' : 'lead_id'
+    const contentField = lead.is_cliente ? 'contenido' : 'nota'
+    const typeField = lead.is_cliente ? 'tipo_mensaje' : 'tipo'
+
+    const payload: any = {
+      [idField]: lead.id,
+      [contentField]: `📍 Check-in — ${new Date().toLocaleString()}`,
+      [typeField]: 'checkin',
+    }
+
+    if (!lead.is_cliente) {
+      payload.usuario_id = session.user.id
+    } else {
+      payload.enviado_por = session.user.id
+      payload.enviado_en = new Date().toISOString()
+      payload.mensaje = payload.contenido
+      payload.canal = 'presencial'
+    }
+
+    const { error } = await supabase.from(table).insert(payload)
     if (error) {
       showToast(error.message, 'error')
     } else {
@@ -513,8 +559,9 @@ export function HoyPage() {
     setOverdueLeads((prev) => prev.filter((l) => l.id !== rescheduleLead.id))
     setTodayLeads((prev) => prev.filter((l) => l.id !== rescheduleLead.id))
     setNewLeads((prev) => prev.map((l) => (l.id === rescheduleLead.id ? updatedLead : l)))
+    const table = rescheduleLead.is_cliente ? 'clientes' : 'leads'
     const { error: updateError } = await supabase
-      .from('leads')
+      .from(table)
       .update({
         next_action: rescheduleAction.trim() || null,
         next_action_date: rescheduleDate,
@@ -536,6 +583,7 @@ export function HoyPage() {
   const renderLeadListItem = (lead: LeadRow, icon: string, iconClass: string) => {
     const lastActivityAt = resolveLastActivityAt(lead)
     const urgent = isUrgent(lastActivityAt)
+    const managerName = usersById[lead.vendedor_id || lead.owner_id || ''] || ''
     return (
       <div key={lead.id} className={`hoy-list-item ${urgent ? 'alert' : ''}`.trim()} onClick={() => openActions(lead)}>
         <div className={`hoy-item-avatar ${iconClass}`}>{icon}</div>
@@ -543,6 +591,7 @@ export function HoyPage() {
           <div className="hoy-item-title">{getLeadName(lead)}</div>
           <div className="hoy-item-subtitle">
             {lead.next_action || t('hoy.noAction')} - {relativeDayLabel(lead.next_action_date)}
+            {managerName && <span style={{ opacity: 0.7 }}> · {managerName}</span>}
           </div>
         </div>
         <div className="hoy-item-chevron">›</div>
@@ -553,12 +602,16 @@ export function HoyPage() {
   const renderTaskItem = (lead: LeadRow) => {
     const lastActivityAt = resolveLastActivityAt(lead)
     const urgent = isUrgent(lastActivityAt)
+    const managerName = usersById[lead.vendedor_id || lead.owner_id || ''] || ''
     return (
       <div key={lead.id} className={`hoy-task-item ${urgent ? 'alert' : ''}`.trim()} onClick={() => openActions(lead)}>
         <div className={`hoy-task-checkbox ${lead.estado_pipeline === 'cierre' ? 'checked' : ''}`} />
         <div className="hoy-item-content">
           <div className="hoy-item-title">{getLeadName(lead)}</div>
-          <div className="hoy-item-subtitle">{lead.next_action || t('hoy.noAction')}</div>
+          <div className="hoy-item-subtitle">
+            {lead.next_action || t('hoy.noAction')}
+            {managerName && <span style={{ opacity: 0.7 }}> · {managerName}</span>}
+          </div>
         </div>
         <div className="hoy-item-chevron">
           <input type="checkbox" checked={lead.estado_pipeline === 'cierre'} readOnly style={{ opacity: 0, position: 'absolute' }} />
@@ -942,7 +995,12 @@ export function HoyPage() {
             <header className="hoy-actions-header">
               <div>
                 <h3>{getLeadName(actionsLead)}</h3>
-                <p>{actionsLead.next_action || t('hoy.noAction')}</p>
+                <p>
+                  {actionsLead.next_action || t('hoy.noAction')}
+                  {usersById[actionsLead.vendedor_id || actionsLead.owner_id || ''] && (
+                    <> · {usersById[actionsLead.vendedor_id || actionsLead.owner_id || '']}</>
+                  )}
+                </p>
               </div>
               <button type="button" className="icon-button" onClick={closeActions} aria-label="Close">
                 x

@@ -13,6 +13,12 @@ type ClienteOption = {
   id: string
   nombre: string | null
   apellido: string | null
+  telefono: string | null
+  telefono_casa?: string | null
+  hycite_id: string | null
+  numero_cuenta_financiera: string | null
+  vendedor_id?: string | null
+  distribuidor_id?: string | null
 }
 
 type ProductoOption = {
@@ -46,6 +52,7 @@ type ServicioRecord = {
   tipo: string | null
   observaciones: string | null
   venta_id: string | null
+  vendedor_id?: string | null
 }
 
 type VentaOption = {
@@ -54,9 +61,18 @@ type VentaOption = {
   numero_nota_pedido: string | null
 }
 
+type UsuarioOption = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  rol: string | null
+  activo?: boolean | null
+}
+
 const initialServiceForm = {
   cliente_id: '',
   equipo_instalado_id: '',
+  vendedor_id: '',
   fecha_servicio: '',
   tipo: 'cambio_repuesto',
   observaciones: '',
@@ -74,20 +90,37 @@ export function ServicioClientePage() {
   const [componentes, setComponentes] = useState<ComponenteEquipo[]>([])
   const [servicios, setServicios] = useState<ServicioRecord[]>([])
   const [ventas, setVentas] = useState<VentaOption[]>([])
+  const [usuarios, setUsuarios] = useState<UsuarioOption[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [formValues, setFormValues] = useState(initialServiceForm)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [formMode, setFormMode] = useState<'servicio' | 'cita'>('servicio')
+  const [formClienteSearch, setFormClienteSearch] = useState('')
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteValues, setNoteValues] = useState({ cliente_id: '', nota: '' })
+  const [noteError, setNoteError] = useState<string | null>(null)
+  const [noteSubmitting, setNoteSubmitting] = useState(false)
+  const [noteClienteSearch, setNoteClienteSearch] = useState('')
+  const maxModalResultados = 50
+  const [formClientesRemote, setFormClientesRemote] = useState<ClienteOption[]>([])
+  const [noteClientesRemote, setNoteClientesRemote] = useState<ClienteOption[]>([])
+  const [assignedVendedorIds, setAssignedVendedorIds] = useState<string[]>([])
 
   const loadData = useCallback(async () => {
     if (!configured) return
     setLoading(true)
     setError(null)
-    const [clientesResult, productosResult, equiposResult, componentesResult, serviciosResult, ventasResult] =
+    const [clientesResult, productosResult, equiposResult, componentesResult, serviciosResult, ventasResult, usuariosResult] =
       await Promise.all([
-        supabase.from('clientes').select('id, nombre, apellido'),
+        supabase
+          .from('clientes')
+          .select(
+            'id, nombre, apellido, telefono, telefono_casa, hycite_id, numero_cuenta_financiera, vendedor_id, distribuidor_id'
+          ),
         supabase.from('productos').select('id, nombre'),
         supabase
           .from('equipos_instalados')
@@ -97,11 +130,20 @@ export function ServicioClientePage() {
           .select('id, equipo_instalado_id, nombre_componente, ciclo_meses, fecha_proximo_cambio, activo'),
         supabase
           .from('servicios')
-          .select('id, cliente_id, equipo_instalado_id, fecha_servicio, tipo, observaciones, venta_id'),
+          .select('id, cliente_id, equipo_instalado_id, fecha_servicio, tipo, observaciones, venta_id, vendedor_id'),
         supabase.from('ventas').select('id, cliente_id, numero_nota_pedido'),
+        supabase.from('usuarios').select('id, nombre, apellido, rol, activo'),
       ])
 
-    if (clientesResult.error || productosResult.error || equiposResult.error || componentesResult.error || serviciosResult.error || ventasResult.error) {
+    if (
+      clientesResult.error ||
+      productosResult.error ||
+      equiposResult.error ||
+      componentesResult.error ||
+      serviciosResult.error ||
+      ventasResult.error ||
+      usuariosResult.error
+    ) {
       setError(
         clientesResult.error?.message ||
           productosResult.error?.message ||
@@ -109,6 +151,7 @@ export function ServicioClientePage() {
           componentesResult.error?.message ||
           serviciosResult.error?.message ||
           ventasResult.error?.message ||
+          usuariosResult.error?.message ||
           t('common.noData')
       )
     }
@@ -119,6 +162,7 @@ export function ServicioClientePage() {
     setComponentes((componentesResult.data as ComponenteEquipo[]) ?? [])
     setServicios((serviciosResult.data as ServicioRecord[]) ?? [])
     setVentas((ventasResult.data as VentaOption[]) ?? [])
+    setUsuarios((usuariosResult.data as UsuarioOption[]) ?? [])
     setLoading(false)
   }, [configured, t])
 
@@ -136,6 +180,31 @@ export function ServicioClientePage() {
       ])
     )
   }, [clientes])
+
+  const clienteById = useMemo(() => {
+    return new Map(clientes.map((cliente) => [cliente.id, cliente]))
+  }, [clientes])
+
+  const clientesFiltrados = useMemo(() => {
+    const search = clienteSearch.trim().toLowerCase()
+    if (!search) return clientes
+    return clientes.filter((cliente) => {
+      const fullName = `${cliente.nombre ?? ''} ${cliente.apellido ?? ''}`.trim().toLowerCase()
+      const phone = (cliente.telefono ?? '').toLowerCase()
+      const hycite = (cliente.hycite_id ?? '').toLowerCase()
+      const cuenta = (cliente.numero_cuenta_financiera ?? '').toLowerCase()
+      return (
+        fullName.includes(search) ||
+        phone.includes(search) ||
+        hycite.includes(search) ||
+        cuenta.includes(search)
+      )
+    })
+  }, [clienteSearch, clientes])
+
+  const clientesFiltradosIds = useMemo(() => {
+    return new Set(clientesFiltrados.map((cliente) => cliente.id))
+  }, [clientesFiltrados])
 
   const productoMap = useMemo(() => {
     return new Map(productos.map((producto) => [producto.id, producto.nombre ?? producto.id]))
@@ -161,8 +230,13 @@ export function ServicioClientePage() {
     )
   }, [ventas])
 
+  const equiposFiltrados = useMemo(() => {
+    if (!clienteSearch.trim()) return equipos
+    return equipos.filter((equipo) => (equipo.cliente_id ? clientesFiltradosIds.has(equipo.cliente_id) : false))
+  }, [clienteSearch, clientesFiltradosIds, equipos])
+
   const equiposRows = useMemo<DataTableRow[]>(() => {
-    return equipos.map((equipo) => {
+    return equiposFiltrados.map((equipo) => {
       const clienteLabel = equipo.cliente_id ? clienteMap.get(equipo.cliente_id) ?? equipo.cliente_id : '-'
       const productoLabel = equipo.producto_id ? productoMap.get(equipo.producto_id) ?? equipo.producto_id : '-'
       const estadoLabel = equipo.activo ? t('clientes.estado.activo') : t('clientes.estado.inactivo')
@@ -171,10 +245,16 @@ export function ServicioClientePage() {
         cells: [clienteLabel, productoLabel, equipo.fecha_instalacion ?? '-', equipo.numero_serie ?? '-', estadoLabel],
       }
     })
-  }, [clienteMap, equipos, productoMap, t])
+  }, [clienteMap, equiposFiltrados, productoMap, t])
+
+  const componentesFiltrados = useMemo(() => {
+    if (!clienteSearch.trim()) return componentes
+    const equiposIds = new Set(equiposFiltrados.map((equipo) => equipo.id))
+    return componentes.filter((componente) => (componente.equipo_instalado_id ? equiposIds.has(componente.equipo_instalado_id) : false))
+  }, [clienteSearch, componentes, equiposFiltrados])
 
   const componentesRows = useMemo<DataTableRow[]>(() => {
-    return componentes.map((componente) => {
+    return componentesFiltrados.map((componente) => {
       const equipoLabel = componente.equipo_instalado_id
         ? equipoMap.get(componente.equipo_instalado_id) ?? componente.equipo_instalado_id
         : '-'
@@ -190,10 +270,15 @@ export function ServicioClientePage() {
         ],
       }
     })
-  }, [componentes, equipoMap, t])
+  }, [componentesFiltrados, equipoMap, t])
+
+  const serviciosFiltrados = useMemo(() => {
+    if (!clienteSearch.trim()) return servicios
+    return servicios.filter((servicio) => (servicio.cliente_id ? clientesFiltradosIds.has(servicio.cliente_id) : false))
+  }, [clienteSearch, clientesFiltradosIds, servicios])
 
   const serviciosRows = useMemo<DataTableRow[]>(() => {
-    return servicios.map((servicio) => {
+    return serviciosFiltrados.map((servicio) => {
       const clienteLabel = servicio.cliente_id ? clienteMap.get(servicio.cliente_id) ?? servicio.cliente_id : '-'
       const ventaLabel = servicio.venta_id ? ventasMap.get(servicio.venta_id) ?? servicio.venta_id : '-'
       const tipoLabel = servicio.tipo ? t(`servicio.types.${servicio.tipo}`) : '-'
@@ -208,7 +293,7 @@ export function ServicioClientePage() {
         ],
       }
     })
-  }, [clienteMap, servicios, t, ventasMap])
+  }, [clienteMap, serviciosFiltrados, t, ventasMap])
 
   const equiposOptions = useMemo(() => {
     return equipos.filter((equipo) => equipo.cliente_id === formValues.cliente_id)
@@ -218,26 +303,184 @@ export function ServicioClientePage() {
     return ventas.filter((venta) => venta.cliente_id === formValues.cliente_id)
   }, [formValues.cliente_id, ventas])
 
+  const usuariosAsignables = useMemo(() => {
+    const base = usuarios
+      .filter((user) => user.rol === 'vendedor' || user.rol === 'distribuidor')
+      .filter((user) => user.activo !== false)
+      .map((user) => ({
+        id: user.id,
+        label: [user.nombre, user.apellido].filter(Boolean).join(' ').trim() || user.id,
+        rol: user.rol,
+      }))
+
+    if (base.length > 0) return base
+
+    if (assignedVendedorIds.length > 0) {
+      return assignedVendedorIds.map((id) => ({ id, label: id, rol: null }))
+    }
+
+    const ids = new Set<string>()
+    clientes.forEach((cliente) => {
+      if (cliente.vendedor_id) ids.add(cliente.vendedor_id)
+      if (cliente.distribuidor_id) ids.add(cliente.distribuidor_id)
+    })
+    return [...ids].map((id) => ({ id, label: id, rol: null }))
+  }, [assignedVendedorIds, clientes, usuarios])
+
   const handleOpenForm = () => {
-    setFormValues(initialServiceForm)
+    setFormValues({
+      ...initialServiceForm,
+      vendedor_id: session?.user.id ?? '',
+    })
     setFormError(null)
+    setFormMode('servicio')
+    setFormClienteSearch('')
     setFormOpen(true)
+  }
+
+  const handleOpenCitaForm = () => {
+    setFormValues({
+      ...initialServiceForm,
+      vendedor_id: session?.user.id ?? '',
+      tipo: 'revision',
+    })
+    setFormError(null)
+    setFormMode('cita')
+    setFormClienteSearch('')
+    setFormOpen(true)
+  }
+
+  const handleOpenNoteForm = () => {
+    setNoteValues({ cliente_id: '', nota: '' })
+    setNoteError(null)
+    setNoteClienteSearch('')
+    setNoteOpen(true)
   }
 
   const handleChange = (field: keyof typeof initialServiceForm) =>
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       const value = event.target.value
       if (field === 'cliente_id') {
+        const cliente = clienteById.get(value)
         setFormValues((prev) => ({
           ...prev,
           cliente_id: value,
           equipo_instalado_id: '',
           venta_id: '',
+          vendedor_id: cliente?.vendedor_id ?? cliente?.distribuidor_id ?? prev.vendedor_id,
         }))
         return
       }
       setFormValues((prev) => ({ ...prev, [field]: value }))
     }
+
+  const handleNoteChange = (field: keyof typeof noteValues) =>
+    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+      const value = event.target.value
+      setNoteValues((prev) => ({ ...prev, [field]: value }))
+    }
+
+  const fetchClientesForModal = useCallback(
+    async (searchValue: string) => {
+      if (!configured) return []
+      const search = searchValue.trim()
+      if (!search) return []
+      const pattern = `%${search}%`
+      const { data, error } = await supabase
+        .from('clientes')
+        .select(
+          'id, nombre, apellido, telefono, telefono_casa, hycite_id, numero_cuenta_financiera, vendedor_id, distribuidor_id'
+        )
+        .or(
+          `nombre.ilike.${pattern},apellido.ilike.${pattern},telefono.ilike.${pattern},telefono_casa.ilike.${pattern},hycite_id.ilike.${pattern},numero_cuenta_financiera.ilike.${pattern}`
+        )
+        .limit(maxModalResultados)
+      if (error) {
+        showToast(error.message, 'error')
+        return []
+      }
+      const rows = (data as ClienteOption[]) ?? []
+      if (rows.length > 0) return rows
+      if (clientes.length === 0) return []
+      const localSearch = search.toLowerCase()
+      return clientes
+        .filter((cliente) => {
+          const fullName = `${cliente.nombre ?? ''} ${cliente.apellido ?? ''}`.trim().toLowerCase()
+          const phone = (cliente.telefono ?? '').toLowerCase()
+          const phoneCasa = (cliente.telefono_casa ?? '').toLowerCase()
+          const hycite = (cliente.hycite_id ?? '').toLowerCase()
+          const cuenta = (cliente.numero_cuenta_financiera ?? '').toLowerCase()
+          return (
+            fullName.includes(localSearch) ||
+            phone.includes(localSearch) ||
+            phoneCasa.includes(localSearch) ||
+            hycite.includes(localSearch) ||
+            cuenta.includes(localSearch)
+          )
+        })
+        .slice(0, maxModalResultados)
+    },
+    [clientes, configured, maxModalResultados, showToast]
+  )
+
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      if (!configured || !session?.user.id) return
+      const { data, error } = await supabase
+        .from('tele_vendedor_assignments')
+        .select('vendedor_id')
+        .eq('tele_id', session.user.id)
+      if (!active) return
+      if (error) {
+        setAssignedVendedorIds([])
+        return
+      }
+      const ids = ((data ?? []) as { vendedor_id: string }[]).map((row) => row.vendedor_id)
+      setAssignedVendedorIds(ids)
+    }
+    run()
+    return () => {
+      active = false
+    }
+  }, [configured, session?.user.id])
+
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      if (formClienteSearch.trim().length < 2) {
+        setFormClientesRemote([])
+        return
+      }
+      const results = await fetchClientesForModal(formClienteSearch)
+      if (!active) return
+      setFormClientesRemote(results)
+    }
+    run()
+    return () => {
+      active = false
+    }
+  }, [fetchClientesForModal, formClienteSearch])
+
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      if (noteClienteSearch.trim().length < 2) {
+        setNoteClientesRemote([])
+        return
+      }
+      const results = await fetchClientesForModal(noteClienteSearch)
+      if (!active) return
+      setNoteClientesRemote(results)
+    }
+    run()
+    return () => {
+      active = false
+    }
+  }, [fetchClientesForModal, noteClienteSearch])
+
+  const formSearchActive = formClienteSearch.trim().length >= 2
+  const noteSearchActive = noteClienteSearch.trim().length >= 2
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -248,7 +491,7 @@ export function ServicioClientePage() {
     setSubmitting(true)
     setFormError(null)
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
-    const vendedorId = session?.user.id ?? null
+    const vendedorId = toNull(formValues.vendedor_id) ?? session?.user.id ?? null
     const payload = {
       cliente_id: toNull(formValues.cliente_id),
       equipo_instalado_id: toNull(formValues.equipo_instalado_id),
@@ -272,6 +515,38 @@ export function ServicioClientePage() {
     setSubmitting(false)
   }
 
+  const handleSubmitNote = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!configured) {
+      setNoteError(t('common.supabaseRequired'))
+      return
+    }
+    if (!noteValues.cliente_id || !noteValues.nota.trim()) {
+      setNoteError(t('servicio.note.errors.required'))
+      return
+    }
+    setNoteSubmitting(true)
+    setNoteError(null)
+    const { error: insertError } = await supabase.from('notasrp').insert({
+      cliente_id: noteValues.cliente_id,
+      contenido: noteValues.nota.trim(),
+      mensaje: noteValues.nota.trim(),
+      canal: 'nota',
+      tipo_mensaje: 'nota',
+      enviado_por: session?.user.id ?? null,
+      enviado_en: new Date().toISOString(),
+    })
+
+    if (insertError) {
+      setNoteError(insertError.message)
+      showToast(insertError.message, 'error')
+    } else {
+      setNoteOpen(false)
+      showToast(t('toast.success'))
+    }
+    setNoteSubmitting(false)
+  }
+
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
 
   return (
@@ -279,7 +554,17 @@ export function ServicioClientePage() {
       <SectionHeader
         title={t('servicio.title')}
         subtitle={t('servicio.subtitle')}
-        action={<Button onClick={handleOpenForm}>{t('servicio.newService')}</Button>}
+        action={(
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Button variant="ghost" onClick={handleOpenNoteForm}>
+              {t('servicio.newNote')}
+            </Button>
+            <Button variant="ghost" onClick={handleOpenCitaForm}>
+              {t('servicio.newCita')}
+            </Button>
+            <Button onClick={handleOpenForm}>{t('servicio.newService')}</Button>
+          </div>
+        )}
       />
 
       {!configured && (
@@ -289,6 +574,18 @@ export function ServicioClientePage() {
         />
       )}
       {error && <div className="form-error">{error}</div>}
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <label className="form-field" style={{ flex: 1 }}>
+          <span>{t('servicio.search.label')}</span>
+          <input
+            type="search"
+            placeholder={t('servicio.search.placeholder')}
+            value={clienteSearch}
+            onChange={(event) => setClienteSearch(event.target.value)}
+          />
+        </label>
+      </div>
 
       <DataTable
         columns={[
@@ -328,7 +625,7 @@ export function ServicioClientePage() {
 
       <Modal
         open={formOpen}
-        title={t('servicio.form.title')}
+        title={formMode === 'cita' ? t('servicio.form.citaTitle') : t('servicio.form.title')}
         onClose={() => setFormOpen(false)}
         actions={
           <>
@@ -343,12 +640,44 @@ export function ServicioClientePage() {
       >
         <form id="servicio-form" className="form-grid" onSubmit={handleSubmit}>
           <label className="form-field">
-            <span>{t('servicio.form.fields.cliente')}</span>
-            <select value={formValues.cliente_id} onChange={handleChange('cliente_id')}>
+            <span>{t('servicio.search.label')}</span>
+            <input
+              type="search"
+              placeholder={t('servicio.search.placeholder')}
+              value={formClienteSearch}
+              onChange={(event) => setFormClienteSearch(event.target.value)}
+            />
+          </label>
+          {formSearchActive ? (
+            <label className="form-field">
+              <span>{t('servicio.form.fields.cliente')}</span>
+              <select value={formValues.cliente_id} onChange={handleChange('cliente_id')}>
+                <option value="">{t('common.select')}</option>
+                {formClientesRemote.map((cliente) => (
+                  <option key={cliente.id} value={cliente.id}>
+                    {[
+                      [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id,
+                      cliente.telefono ? `Tel: ${cliente.telefono}` : null,
+                      cliente.hycite_id || cliente.numero_cuenta_financiera
+                        ? `Cuenta: ${cliente.hycite_id ?? cliente.numero_cuenta_financiera}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="form-hint">{t('servicio.search.helper')}</div>
+          )}
+          <label className="form-field">
+            <span>{t('servicio.form.fields.asignado')}</span>
+            <select value={formValues.vendedor_id} onChange={handleChange('vendedor_id')}>
               <option value="">{t('common.select')}</option>
-              {clientes.map((cliente) => (
-                <option key={cliente.id} value={cliente.id}>
-                  {[cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id}
+              {usuariosAsignables.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.label} {user.rol === 'distribuidor' ? `(${t('usuarios.roles.distribuidor')})` : ''}
                 </option>
               ))}
             </select>
@@ -393,6 +722,62 @@ export function ServicioClientePage() {
             </select>
           </label>
           {formError && <div className="form-error">{formError}</div>}
+        </form>
+      </Modal>
+
+      <Modal
+        open={noteOpen}
+        title={t('servicio.note.title')}
+        onClose={() => setNoteOpen(false)}
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setNoteOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" form="servicio-nota-form" disabled={noteSubmitting}>
+              {noteSubmitting ? t('common.saving') : t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <form id="servicio-nota-form" className="form-grid" onSubmit={handleSubmitNote}>
+          <label className="form-field">
+            <span>{t('servicio.search.label')}</span>
+            <input
+              type="search"
+              placeholder={t('servicio.search.placeholder')}
+              value={noteClienteSearch}
+              onChange={(event) => setNoteClienteSearch(event.target.value)}
+            />
+          </label>
+          {noteSearchActive ? (
+            <label className="form-field">
+              <span>{t('servicio.note.fields.cliente')}</span>
+              <select value={noteValues.cliente_id} onChange={handleNoteChange('cliente_id')}>
+                <option value="">{t('common.select')}</option>
+                {noteClientesRemote.map((cliente) => (
+                  <option key={cliente.id} value={cliente.id}>
+                    {[
+                      [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id,
+                      cliente.telefono ? `Tel: ${cliente.telefono}` : null,
+                      cliente.hycite_id || cliente.numero_cuenta_financiera
+                        ? `Cuenta: ${cliente.hycite_id ?? cliente.numero_cuenta_financiera}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="form-hint">{t('servicio.search.helper')}</div>
+          )}
+          <label className="form-field">
+            <span>{t('servicio.note.fields.nota')}</span>
+            <textarea rows={4} value={noteValues.nota} onChange={handleNoteChange('nota')} />
+          </label>
+          {noteError && <div className="form-error">{noteError}</div>}
         </form>
       </Modal>
     </div>

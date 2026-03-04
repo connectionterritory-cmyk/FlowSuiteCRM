@@ -126,6 +126,7 @@
     "pipeline": "Pipeline",
     "oportunidades": "Oportunidades",
     "leads": "Leads",
+    "marketingFlow": "MarketingFlow",
     "clientes": "Clientes",
     "ventas": "Vendas",
     "productos": "Produtos",
@@ -1010,15 +1011,34 @@
     "title": "Atendimento ao cliente",
     "subtitle": "Equipamentos, componentes e servicos em um so lugar.",
     "newService": "Novo servico",
+    "newCita": "Nova consulta",
+    "newNote": "Nova nota",
+    "search": {
+      "label": "Buscar cliente",
+      "placeholder": "Nome, sobrenome, telefone ou conta",
+      "helper": "Digite pelo menos 2 caracteres para ver resultados."
+    },
     "form": {
       "title": "Novo servico",
+      "citaTitle": "Nova consulta",
       "fields": {
         "cliente": "Cliente",
+        "asignado": "Atribuir a",
         "equipo": "Equipamento instalado",
         "fecha": "Data do servico",
         "tipo": "Tipo de servico",
         "observaciones": "Observacoes",
         "venta": "Vincular a venda"
+      }
+    },
+    "note": {
+      "title": "Nova nota",
+      "fields": {
+        "cliente": "Cliente",
+        "nota": "Nota"
+      },
+      "errors": {
+        "required": "Selecione um cliente e escreva a nota."
       }
     },
     "types": {

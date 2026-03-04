@@ -17,6 +17,9 @@ export type Cliente = {
   hycite_id: string | null
   estado_cuenta: string | null
   nivel: number | null
+  next_action: string | null
+  next_action_date: string | null
+  vendedor_id: string | null
 }
 
 export type EquipoInstalado = {
@@ -103,11 +106,13 @@ export function diasParaCumple(fechaNacimiento: string | null): number {
 
 export function ClienteCard({
   cliente,
+  vendedor,
   extra,
   onLlamar,
   onWhatsApp,
 }: {
   cliente: Cliente
+  vendedor?: string | null
   extra?: ReactNode
   onLlamar: () => void
   onWhatsApp: () => void
@@ -150,6 +155,7 @@ export function ClienteCard({
         >
           {cliente.telefono ?? cliente.telefono_casa ?? 'Sin teléfono'}
           {cliente.hycite_id && ` · #${cliente.hycite_id}`}
+          {vendedor && <span style={{ opacity: 0.8 }}> · 👤 {vendedor}</span>}
         </p>
         {extra}
       </div>
