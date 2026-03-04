@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { StatCard } from '../../components/StatCard'
+import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
 import { MessageModal } from '../../components/MessageModal'
@@ -104,7 +106,15 @@ export function EnviosPage() {
     loadCampaigns()
   }, [loadCampaigns])
 
+  const selectedCampaign = useMemo(
+    () => campaigns.find((camp) => camp.id === campaignId) ?? null,
+    [campaignId, campaigns]
+  )
+
+  const canSend = Boolean(campaignId) && selectedCampaign?.estado === 'activa'
+
   const handleOpenMessage = (lead: LeadRow) => {
+    if (!canSend) return
     setActiveLead(lead)
     setMessageOpen(true)
   }
@@ -112,6 +122,11 @@ export function EnviosPage() {
   const handleCloseMessage = async () => {
     setMessageOpen(false)
     if (!configured || !activeLead) {
+      setActiveLead(null)
+      return
+    }
+    if (!canSend) {
+      showToast('Selecciona una campana activa para enviar.', 'error')
       setActiveLead(null)
       return
     }
@@ -137,7 +152,7 @@ export function EnviosPage() {
   }
 
   const handleMarkSent = async (lead: LeadRow) => {
-    if (!configured) return
+    if (!configured || !canSend) return
     const payload = {
       campaign_id: campaignId || null,
       target_tipo: 'lead',
@@ -160,6 +175,11 @@ export function EnviosPage() {
     showToast('Envio registrado')
   }
 
+  const totalLeads = leads.length
+  const sentCount = sentLeadIds.size
+  const pendingCount = Math.max(0, totalLeads - sentCount)
+  const hasResults = totalLeads > 0
+
   const rows = useMemo<DataTableRow[]>(() => {
     return leads.map((lead) => {
       const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
@@ -174,10 +194,10 @@ export function EnviosPage() {
           lead.next_action ?? '-',
           lead.next_action_date ?? '-',
           <div key={`${lead.id}-send`} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-            <Button variant="ghost" onClick={() => handleOpenMessage(lead)} disabled={alreadySent}>
+            <Button variant="ghost" onClick={() => handleOpenMessage(lead)} disabled={alreadySent || !canSend}>
               Enviar
             </Button>
-            <Button variant="ghost" onClick={() => handleMarkSent(lead)} disabled={alreadySent}>
+            <Button variant="ghost" onClick={() => handleMarkSent(lead)} disabled={alreadySent || !canSend}>
               Marcar enviado
             </Button>
             {alreadySent && <Badge label="Enviado" tone="blue" />}
@@ -185,13 +205,13 @@ export function EnviosPage() {
         ],
       }
     })
-  }, [handleOpenMessage, handleMarkSent, leads, sentLeadIds])
+  }, [canSend, handleOpenMessage, handleMarkSent, leads, sentLeadIds])
 
   return (
     <div className="page-stack">
       <SectionHeader title="Envios" subtitle="Lista por segmento" />
 
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         {SEGMENTS.map((item) => (
           <Button
             key={item.key}
@@ -215,22 +235,42 @@ export function EnviosPage() {
             fontSize: '0.85rem',
           }}
         >
-          <option value="">Campana (opcional)</option>
+          <option value="">Selecciona campana</option>
           {campaigns.map((camp) => (
             <option key={camp.id} value={camp.id}>
               {camp.nombre ?? camp.id}
             </option>
           ))}
         </select>
+        {selectedCampaign && (
+          <Badge label={`Campana ${selectedCampaign.estado ?? 'borrador'}`} tone="blue" />
+        )}
+        {!canSend && (
+          <Badge label={campaignId ? 'Campana no activa' : 'Campana requerida'} tone="gold" />
+        )}
       </div>
 
       {error && <div className="form-error">{error}</div>}
 
-      <DataTable
-        columns={['Nombre', 'Telefono', 'Estado', 'Proxima accion', 'Fecha', 'Acciones']}
-        rows={rows}
-        emptyLabel={loading ? 'Cargando...' : 'Sin resultados'}
-      />
+      <div className="stat-grid">
+        <StatCard label="Total" value={String(totalLeads)} accent="blue" />
+        <StatCard label="Enviados" value={String(sentCount)} accent="gold" />
+        <StatCard label="Pendientes" value={String(pendingCount)} accent="blue" />
+      </div>
+
+      {loading && <div className="card" style={{ padding: '1rem' }}>Cargando envios...</div>}
+      {!loading && !hasResults && (
+        <EmptyState
+          title="Sin resultados"
+          description="No hay leads para este segmento."
+        />
+      )}
+      {hasResults && (
+        <DataTable
+          columns={['Nombre', 'Telefono', 'Estado', 'Proxima accion', 'Fecha', 'Acciones']}
+          rows={rows}
+        />
+      )}
 
       <MessageModal
         open={messageOpen}

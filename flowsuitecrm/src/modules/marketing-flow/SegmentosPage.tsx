@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { SectionHeader } from '../../components/SectionHeader'
 import { StatCard } from '../../components/StatCard'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { EmptyState } from '../../components/EmptyState'
 import { Badge } from '../../components/Badge'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
@@ -102,6 +103,8 @@ export function SegmentosPage() {
     })
   }, [leads])
 
+  const hasResults = rows.length > 0
+
   return (
     <div className="page-stack">
       <SectionHeader title="Segmentos" subtitle="Leads (fase 1)" />
@@ -121,11 +124,19 @@ export function SegmentosPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      <DataTable
-        columns={['Nombre', 'Telefono', 'Estado', 'Proxima accion', 'Fecha']}
-        rows={rows}
-        emptyLabel={loading ? 'Cargando...' : 'Sin resultados'}
-      />
+      {loading && <div className="card" style={{ padding: '1rem' }}>Cargando segmentos...</div>}
+      {!loading && !hasResults && (
+        <EmptyState
+          title="Sin resultados"
+          description="No hay leads para este segmento."
+        />
+      )}
+      {hasResults && (
+        <DataTable
+          columns={['Nombre', 'Telefono', 'Estado', 'Proxima accion', 'Fecha']}
+          rows={rows}
+        />
+      )}
     </div>
   )
 }

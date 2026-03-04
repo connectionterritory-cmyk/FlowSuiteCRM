@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { EmptyState } from '../../components/EmptyState'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
@@ -12,19 +13,21 @@ import { SEGMENTS, type SegmentKey } from './leadSegments'
 type CampaignRecord = {
   id: string
   nombre: string | null
-  tipo: string | null
   canal: string | null
   segmento_key: string | null
   estado: string | null
   created_at: string | null
   owner_id: string | null
+  template_key: string | null
+  descripcion: string | null
 }
 
 const initialForm = {
   nombre: '',
-  tipo: 'broadcast',
   canal: 'whatsapp',
   segmento_key: 'nuevos' as SegmentKey,
+  template_key: '',
+  descripcion: '',
 }
 
 export function CampanasPage() {
@@ -46,7 +49,7 @@ export function CampanasPage() {
     setError(null)
     const { data, error: fetchError } = await supabase
       .from('mk_campaigns')
-      .select('id, nombre, tipo, canal, segmento_key, estado, created_at, owner_id')
+      .select('id, nombre, canal, segmento_key, estado, created_at, owner_id, template_key, descripcion')
       .order('created_at', { ascending: false })
       .limit(200)
     if (fetchError) {
@@ -78,13 +81,18 @@ export function CampanasPage() {
       setFormError('Nombre requerido.')
       return
     }
+    if (!SEGMENTS.some((segment) => segment.key === formValues.segmento_key)) {
+      setFormError('Segmento invalido.')
+      return
+    }
     setSubmitting(true)
     setFormError(null)
     const payload = {
       nombre: formValues.nombre.trim(),
-      tipo: formValues.tipo,
       canal: formValues.canal,
       segmento_key: formValues.segmento_key,
+      template_key: formValues.template_key.trim() || null,
+      descripcion: formValues.descripcion.trim() || null,
       estado: 'borrador',
       owner_id: session?.user.id ?? null,
     }
@@ -125,9 +133,9 @@ export function CampanasPage() {
       id: row.id,
       cells: [
         row.nombre ?? '-',
-        row.tipo ?? '-',
         row.canal ?? '-',
         row.segmento_key ?? '-',
+        row.template_key ?? '-',
         <Badge key={`${row.id}-estado`} label={row.estado ?? 'borrador'} />,
         row.created_at ? new Date(row.created_at).toLocaleDateString('es') : '-',
         <div key={`${row.id}-actions`} style={{ display: 'flex', gap: '0.35rem' }}>
@@ -150,6 +158,8 @@ export function CampanasPage() {
       ],
     }))
   }, [campaigns, estadoFilter, updateCampaignState])
+
+  const hasResults = rows.length > 0
 
   return (
     <div className="page-stack">
@@ -186,11 +196,19 @@ export function CampanasPage() {
         </select>
       </div>
 
-      <DataTable
-        columns={['Nombre', 'Tipo', 'Canal', 'Segmento', 'Estado', 'Creada', 'Acciones']}
+      {loading && <div className="card" style={{ padding: '1rem' }}>Cargando campanas...</div>}
+      {!loading && !hasResults && (
+        <EmptyState
+          title="Sin campanas"
+          description="Crea tu primera campana para comenzar los envios."
+        />
+      )}
+      {hasResults && (
+        <DataTable
+        columns={['Nombre', 'Canal', 'Segmento', 'Template', 'Estado', 'Creada', 'Acciones']}
         rows={rows}
-        emptyLabel={loading ? 'Cargando...' : 'Sin campanas'}
       />
+      )}
 
       <Modal
         open={formOpen}
@@ -216,16 +234,6 @@ export function CampanasPage() {
             />
           </label>
           <label className="form-field">
-            <span>Tipo</span>
-            <select
-              value={formValues.tipo}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, tipo: e.target.value }))}
-            >
-              <option value="broadcast">Broadcast</option>
-              <option value="drip">Drip</option>
-            </select>
-          </label>
-          <label className="form-field">
             <span>Canal</span>
             <select
               value={formValues.canal}
@@ -235,6 +243,23 @@ export function CampanasPage() {
               <option value="sms">SMS</option>
               <option value="email">Email</option>
             </select>
+          </label>
+          <label className="form-field">
+            <span>Template key</span>
+            <input
+              value={formValues.template_key}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, template_key: e.target.value }))}
+              placeholder="template_key"
+            />
+          </label>
+          <label className="form-field">
+            <span>Descripcion</span>
+            <textarea
+              rows={3}
+              value={formValues.descripcion}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, descripcion: e.target.value }))}
+              placeholder="Notas de la campana"
+            />
           </label>
           <label className="form-field">
             <span>Segmento</span>
