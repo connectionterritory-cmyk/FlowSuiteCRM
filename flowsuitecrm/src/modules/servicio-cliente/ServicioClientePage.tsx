@@ -341,7 +341,7 @@ export function ServicioClientePage() {
   const handleOpenForm = () => {
     setFormValues({
       ...initialServiceForm,
-      vendedor_id: session?.user.id ?? '',
+      vendedor_id: '',
     })
     setFormError(null)
     setFormMode('servicio')
@@ -352,7 +352,7 @@ export function ServicioClientePage() {
   const handleOpenCitaForm = () => {
     setFormValues({
       ...initialServiceForm,
-      vendedor_id: session?.user.id ?? '',
+      vendedor_id: '',
       tipo: 'revision',
     })
     setFormError(null)
