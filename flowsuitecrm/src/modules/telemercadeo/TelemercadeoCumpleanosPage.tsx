@@ -132,7 +132,7 @@ export function TelemercadeoCumpleanosPage() {
                 </p>
               }
               onLlamar={() => abrirModal(c)}
-              onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(c), telefono: c.telefono ?? '' }, 'client.cumpleanos')}
+              onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(c), telefono: c.telefono ?? '', clienteId: c.id }, 'client.cumpleanos')}
             />
           )
         })

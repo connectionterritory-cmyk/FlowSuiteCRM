@@ -438,16 +438,17 @@ export function HoyPage() {
     openWhatsapp({
       nombre: getLeadName(lead),
       telefono: lead.telefono,
+      leadId: lead.id,
     })
   }
 
   const handleWhatsappCliente = useCallback(
-    (nombre: string, telefono: string | null) => {
-      if (!telefono) {
+    (cliente: { id: string; nombre: string; telefono: string | null }) => {
+      if (!cliente.telefono) {
         showToast(t('messaging.phoneMissing'), 'error')
         return
       }
-      openWhatsapp({ nombre, telefono })
+      openWhatsapp({ nombre: cliente.nombre, telefono: cliente.telefono, clienteId: cliente.id })
     },
     [openWhatsapp, showToast, t]
   )
@@ -692,7 +693,7 @@ export function HoyPage() {
                   <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
                     {t('hoy.call')}
                   </Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>
                     {t('hoy.whatsapp')}
                   </Button>
                 </div>
@@ -843,7 +844,7 @@ export function HoyPage() {
                 </div>
                 <div className="hoy-modal-row-actions">
                   <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>💬</Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>💬</Button>
                 </div>
               </div>
             )
@@ -878,7 +879,13 @@ export function HoyPage() {
                 </div>
                 <div className="hoy-modal-row-actions">
                   <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}>📞</Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, cliente?.telefono ?? null)}>💬</Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleWhatsappCliente({ id: cliente?.id ?? '', nombre: name, telefono: cliente?.telefono ?? null })}
+                    disabled={!cliente?.id}
+                  >
+                    💬
+                  </Button>
                 </div>
               </div>
             )
@@ -914,7 +921,7 @@ export function HoyPage() {
                 </div>
                 <div className="hoy-modal-row-actions">
                   <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente(name, c.telefono)}>💬</Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>💬</Button>
                 </div>
               </div>
             )

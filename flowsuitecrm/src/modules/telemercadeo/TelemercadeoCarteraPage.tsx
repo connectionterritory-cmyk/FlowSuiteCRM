@@ -352,6 +352,7 @@ export function TelemercadeoCarteraPage() {
                     montoMoroso: c.monto_moroso,
                     diasAtraso: c.dias_atraso,
                     estadoMorosidad: null,
+                    clienteId: c.id,
                   })
                 }
               />

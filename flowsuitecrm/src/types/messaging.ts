@@ -9,6 +9,7 @@ export type MessagingContact = {
   montoMoroso?: number | null
   diasAtraso?: number | null
   estadoMorosidad?: string | null
+  clienteId?: string | null
   leadId?: string | null
 }
 

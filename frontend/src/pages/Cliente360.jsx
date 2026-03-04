@@ -45,7 +45,11 @@ export default function Cliente360() {
         supabase.from('servicios').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
         supabase.from('cliente_sistemas').select('*, cliente_componentes(*)').eq('org_id', orgId).eq('cliente_id', clienteId),
         supabase.from('transaccionesrp').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
-        supabase.from('notasrp').select('*').eq('org_id', orgId).eq('cliente_id', clienteId),
+        supabase
+          .from('notasrp')
+          .select('id, contenido, created_at, canal, tipo_mensaje, enviado_en, mensaje, enviado_por, usuarios:enviado_por (nombre, apellido)')
+          .eq('org_id', orgId)
+          .eq('cliente_id', clienteId),
       ])
 
       setOportunidades(oppRes.data ?? [])
@@ -167,14 +171,25 @@ export default function Cliente360() {
         </TabsContent>
 
         <TabsContent value="notas" className="space-y-3">
-          {notas.map((nota) => (
-            <Card key={nota.id}>
-              <CardContent>
-                <p className="text-sm">{nota.contenido}</p>
-                <p className="text-xs text-slate-600">{nota.created_at}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {notas.map((nota) => {
+            const senderName = nota.usuarios
+              ? `${nota.usuarios.nombre ?? ''} ${nota.usuarios.apellido ?? ''}`.trim()
+              : ''
+            const when = nota.enviado_en || nota.created_at
+            const labelType = nota.tipo_mensaje ? nota.tipo_mensaje.replace(/_/g, ' ') : 'general'
+            return (
+              <Card key={nota.id}>
+                <CardContent className="space-y-2">
+                  <div className="text-xs text-slate-600">
+                    {nota.canal ? nota.canal.toUpperCase() : 'MENSAJE'} · {labelType}
+                    {senderName ? ` · ${senderName}` : ''}
+                    {when ? ` · ${new Date(when).toLocaleString('es')}` : ''}
+                  </div>
+                  <p className="text-sm">{nota.mensaje || nota.contenido}</p>
+                </CardContent>
+              </Card>
+            )
+          })}
           {notas.length === 0 && <p className="text-sm text-slate-600">Sin notas</p>}
         </TabsContent>
       </Tabs>

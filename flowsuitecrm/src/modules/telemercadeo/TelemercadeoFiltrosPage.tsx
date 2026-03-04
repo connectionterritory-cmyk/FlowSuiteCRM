@@ -57,7 +57,7 @@ export function TelemercadeoFiltrosPage() {
                 </p>
               }
               onLlamar={() => abrirModal(cliente)}
-              onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(cliente), telefono: cliente.telefono ?? '' })}
+              onWhatsApp={() => openWhatsapp({ nombre: nombreCompleto(cliente), telefono: cliente.telefono ?? '', clienteId: cliente.id })}
             />
           )
         })

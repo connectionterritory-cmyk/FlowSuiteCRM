@@ -40,6 +40,9 @@ create table if not exists public.importaciones_hycite (
 
 alter table public.importaciones_hycite enable row level security;
 
+drop policy if exists importaciones_hycite_select on public.importaciones_hycite;
+drop policy if exists importaciones_hycite_insert on public.importaciones_hycite;
+
 -- Only admin/distribuidor can read import history
 create policy importaciones_hycite_select on public.importaciones_hycite
   for select to authenticated

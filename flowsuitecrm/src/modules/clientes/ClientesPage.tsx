@@ -51,6 +51,17 @@ type ClienteRecord = {
   created_at: string | null
 }
 
+type ClienteNota = {
+  id: string
+  contenido: string | null
+  created_at: string | null
+  canal: string | null
+  tipo_mensaje: string | null
+  enviado_en: string | null
+  mensaje: string | null
+  enviado_por: string | null
+}
+
 const CLIENTES_LIST_SELECT = [
   'id',
   'nombre',
@@ -223,6 +234,9 @@ export function ClientesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [detailCliente, setDetailCliente] = useState<ClienteRecord | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [clienteNotas, setClienteNotas] = useState<ClienteNota[]>([])
+  const [notasLoading, setNotasLoading] = useState(false)
+  const [detailTab, setDetailTab] = useState<'info' | 'notas'>('info')
 
   const loadClientes = useCallback(async () => {
     if (!configured || !session?.user.id || !currentRole) return
@@ -485,6 +499,7 @@ export function ClientesPage() {
               montoMoroso: cliente.monto_moroso,
               diasAtraso: cliente.dias_atraso,
               estadoMorosidad: cliente.estado_morosidad,
+              clienteId: cliente.id,
             })
           }}
         >
@@ -578,25 +593,42 @@ export function ClientesPage() {
   useEffect(() => {
     if (!configured || !selectedRow?.id) {
       setDetailCliente(null)
+      setClienteNotas([])
       return
     }
     let active = true
     setDetailLoading(true)
+    setNotasLoading(true)
+    setDetailTab('info')
     const loadDetail = async () => {
-      const { data, error: fetchError } = await supabase
-        .from('clientes')
-        .select(
-          'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen',
-        )
-        .eq('id', selectedRow.id)
-        .maybeSingle()
+      const [detailRes, notasRes] = await Promise.all([
+        supabase
+          .from('clientes')
+          .select(
+            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen',
+          )
+          .eq('id', selectedRow.id)
+          .maybeSingle(),
+        supabase
+          .from('notasrp')
+          .select('id, contenido, created_at, canal, tipo_mensaje, enviado_en, mensaje, enviado_por')
+          .eq('cliente_id', selectedRow.id)
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ])
       if (!active) return
-      if (fetchError) {
+      if (detailRes.error) {
         setDetailCliente(null)
       } else {
-        setDetailCliente((data as ClienteRecord | null) ?? null)
+        setDetailCliente((detailRes.data as ClienteRecord | null) ?? null)
+      }
+      if (notasRes.error) {
+        setClienteNotas([])
+      } else {
+        setClienteNotas((notasRes.data as ClienteNota[]) ?? [])
       }
       setDetailLoading(false)
+      setNotasLoading(false)
     }
     loadDetail()
     return () => {
@@ -605,6 +637,40 @@ export function ClientesPage() {
   }, [configured, selectedRow?.id])
 
   const emptyLabel = loading ? t('common.loading') : 'Sin resultados'
+
+  const notasContent = notasLoading ? (
+    <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Cargando...</span>
+  ) : clienteNotas.length === 0 ? (
+    <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Sin notas</span>
+  ) : (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {clienteNotas.map((nota) => {
+        const senderName = nota.enviado_por ? usersById[nota.enviado_por] ?? '' : ''
+        const when = nota.enviado_en || nota.created_at
+        const typeLabel = nota.tipo_mensaje ? nota.tipo_mensaje.replace(/_/g, ' ') : 'general'
+        return (
+          <div
+            key={nota.id}
+            style={{
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.6rem',
+              background: 'rgba(15,23,42,0.04)',
+            }}
+          >
+            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
+              {(nota.canal || 'mensaje').toString().toUpperCase()} · {typeLabel}
+              {senderName ? ` · ${senderName}` : ''}
+              {when ? ` · ${new Date(when).toLocaleString('es')}` : ''}
+            </div>
+            <div style={{ marginTop: '0.2rem', fontSize: '0.8rem' }}>
+              {nota.mensaje || nota.contenido || '-'}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 
   const handleOpenForm = () => {
     if (!canManageClientes) {
@@ -1310,6 +1376,7 @@ export function ClientesPage() {
                           montoMoroso: cliente.monto_moroso,
                           diasAtraso: cliente.dias_atraso,
                           estadoMorosidad: cliente.estado_morosidad,
+                          clienteId: cliente.id,
                         })
                       }}
                     >
@@ -1475,120 +1542,128 @@ export function ClientesPage() {
       <DetailPanel
         open={Boolean(selectedRow)}
         title="Detalle del cliente"
-        items={
-          selectedClienteDetail
-            ? [
-                { label: 'Nombre', value: selectedClienteDetail.nombre ?? '-' },
-                { label: 'Apellido', value: selectedClienteDetail.apellido ?? '-' },
-                { label: 'Email', value: selectedClienteDetail.email ?? '-' },
-                {
-                  label: 'Telefono movil',
-                  value: selectedClienteDetail.telefono ? (
-                    <a
-                      href={buildTelUrl(selectedClienteDetail.telefono)}
-                      style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
-                    >
-                      📞 {selectedClienteDetail.telefono}
-                    </a>
-                  ) : (
-                    '-'
-                  ),
-                },
-                {
-                  label: 'Telefono casa',
-                  value: selectedClienteDetail.telefono_casa ? (
-                    <a
-                      href={buildTelUrl(selectedClienteDetail.telefono_casa)}
-                      style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
-                    >
-                      📞 {selectedClienteDetail.telefono_casa}
-                    </a>
-                  ) : (
-                    '-'
-                  ),
-                },
-                {
-                  label: 'Direccion',
-                  value: (() => {
-                    const mapsUrl = buildMapsNavUrl({
-                      direccion: selectedClienteDetail.direccion,
-                      ciudad: selectedClienteDetail.ciudad,
-                      estado_region: selectedClienteDetail.estado_region,
-                      codigo_postal: selectedClienteDetail.codigo_postal,
-                    })
-                    const addr = formatAddressLabel({
-                      direccion: selectedClienteDetail.direccion,
-                      ciudad: selectedClienteDetail.ciudad,
-                      estado_region: selectedClienteDetail.estado_region,
-                      codigo_postal: selectedClienteDetail.codigo_postal,
-                    })
-                    return addr ? (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span>{addr}</span>
-                        {mapsUrl && (
-                          <a
-                            href={mapsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              fontSize: '0.75rem',
-                              color: '#10b981',
-                              fontWeight: 700,
-                              whiteSpace: 'nowrap',
-                              textDecoration: 'none',
-                              padding: '0.1rem 0.5rem',
-                              border: '1px solid #10b98133',
-                              borderRadius: '9999px',
-                              background: '#10b98111',
-                            }}
-                          >
-                            🗺 Navegar
-                          </a>
-                        )}
-                      </span>
-                    ) : (
-                      '-'
-                    )
-                  })(),
-                },
-                { label: 'Ciudad', value: selectedClienteDetail.ciudad ?? '-' },
-                { label: 'Estado', value: selectedClienteDetail.estado_region ?? '-' },
-                { label: 'Codigo postal', value: selectedClienteDetail.codigo_postal ?? '-' },
-                { label: 'Cuenta Hycite', value: selectedClienteDetail.hycite_id ?? '-' },
-                { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
-                {
-                  label: 'Saldo actual',
-                  value: selectedClienteDetail.saldo_actual
-                    ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
-                    : '-',
-                },
-                {
-                  label: 'Monto moroso',
-                  value: selectedClienteDetail.monto_moroso
-                    ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
-                    : '-',
-                },
-                {
-                  label: 'Dias de atraso',
-                  value: segmentoAtraso(
-                    selectedClienteDetail.dias_atraso,
-                    selectedClienteDetail.monto_moroso,
-                  ),
-                },
-                { label: 'Nivel', value: selectedClienteDetail.nivel ? String(selectedClienteDetail.nivel) : '-' },
-                { label: 'Estado', value: selectedClienteDetail.estado_cuenta ?? '-' },
-                { label: 'Ultimo pedido', value: selectedClienteDetail.fecha_ultimo_pedido ?? '-' },
-                {
-                  label: 'Vendedor',
-                  value: selectedClienteDetail.vendedor_id
-                    ? usersById[selectedClienteDetail.vendedor_id] ?? ''
-                    : '-',
-                },
-                { label: 'Codigo vendedor', value: selectedClienteDetail.codigo_vendedor_hycite ?? '-' },
-                { label: 'Origen', value: selectedClienteDetail.origen ?? '-' },
-              ]
-            : selectedRow?.detail ?? []
-        }
+        items={(() => {
+          if (!selectedClienteDetail) return selectedRow?.detail ?? []
+          if (detailTab === 'notas') {
+            return [{ label: 'Notas', value: notasContent }]
+          }
+          return [
+            { label: 'Nombre', value: selectedClienteDetail.nombre ?? '-' },
+            { label: 'Apellido', value: selectedClienteDetail.apellido ?? '-' },
+            { label: 'Email', value: selectedClienteDetail.email ?? '-' },
+            {
+              label: 'Telefono movil',
+              value: selectedClienteDetail.telefono ? (
+                <a
+                  href={buildTelUrl(selectedClienteDetail.telefono)}
+                  style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
+                >
+                  📞 {selectedClienteDetail.telefono}
+                </a>
+              ) : (
+                '-'
+              ),
+            },
+            {
+              label: 'Telefono casa',
+              value: selectedClienteDetail.telefono_casa ? (
+                <a
+                  href={buildTelUrl(selectedClienteDetail.telefono_casa)}
+                  style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
+                >
+                  📞 {selectedClienteDetail.telefono_casa}
+                </a>
+              ) : (
+                '-'
+              ),
+            },
+            {
+              label: 'Direccion',
+              value: (() => {
+                const mapsUrl = buildMapsNavUrl({
+                  direccion: selectedClienteDetail.direccion,
+                  ciudad: selectedClienteDetail.ciudad,
+                  estado_region: selectedClienteDetail.estado_region,
+                  codigo_postal: selectedClienteDetail.codigo_postal,
+                })
+                const addr = formatAddressLabel({
+                  direccion: selectedClienteDetail.direccion,
+                  ciudad: selectedClienteDetail.ciudad,
+                  estado_region: selectedClienteDetail.estado_region,
+                  codigo_postal: selectedClienteDetail.codigo_postal,
+                })
+                return addr ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span>{addr}</span>
+                    {mapsUrl && (
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#10b981',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          textDecoration: 'none',
+                          padding: '0.1rem 0.5rem',
+                          border: '1px solid #10b98133',
+                          borderRadius: '9999px',
+                          background: '#10b98111',
+                        }}
+                      >
+                        🗺 Navegar
+                      </a>
+                    )}
+                  </span>
+                ) : (
+                  '-'
+                )
+              })(),
+            },
+            { label: 'Ciudad', value: selectedClienteDetail.ciudad ?? '-' },
+            { label: 'Estado', value: selectedClienteDetail.estado_region ?? '-' },
+            { label: 'Codigo postal', value: selectedClienteDetail.codigo_postal ?? '-' },
+            { label: 'Cuenta Hycite', value: selectedClienteDetail.hycite_id ?? '-' },
+            { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
+            {
+              label: 'Saldo actual',
+              value: selectedClienteDetail.saldo_actual
+                ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
+                : '-',
+            },
+            {
+              label: 'Monto moroso',
+              value: selectedClienteDetail.monto_moroso
+                ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
+                : '-',
+            },
+            {
+              label: 'Dias de atraso',
+              value: segmentoAtraso(
+                selectedClienteDetail.dias_atraso,
+                selectedClienteDetail.monto_moroso,
+              ),
+            },
+            { label: 'Nivel', value: selectedClienteDetail.nivel ? String(selectedClienteDetail.nivel) : '-' },
+            { label: 'Estado', value: selectedClienteDetail.estado_cuenta ?? '-' },
+            { label: 'Ultimo pedido', value: selectedClienteDetail.fecha_ultimo_pedido ?? '-' },
+            {
+              label: 'Vendedor',
+              value: selectedClienteDetail.vendedor_id
+                ? usersById[selectedClienteDetail.vendedor_id] ?? ''
+                : '-',
+            },
+            { label: 'Codigo vendedor', value: selectedClienteDetail.codigo_vendedor_hycite ?? '-' },
+            { label: 'Origen', value: selectedClienteDetail.origen ?? '-' },
+          ]
+        })()}
+        tabs={selectedClienteDetail ? [
+          { key: 'info', label: 'Informacion' },
+          { key: 'notas', label: 'Notas' },
+        ] : undefined}
+        activeTab={selectedClienteDetail ? detailTab : undefined}
+        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas') : undefined}
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (
@@ -1611,6 +1686,7 @@ export function ClientesPage() {
                     montoMoroso: selectedClienteDetail.monto_moroso,
                     diasAtraso: selectedClienteDetail.dias_atraso,
                     estadoMorosidad: selectedClienteDetail.estado_morosidad,
+                    clienteId: selectedClienteDetail.id,
                   })
                 }
               >

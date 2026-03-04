@@ -14,6 +14,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useToast } from './Toast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
 import { useUsers } from '../data/UsersProvider'
+import { useAuth } from '../auth/AuthProvider'
 
 type MessageModalProps = {
   open: boolean
@@ -65,6 +66,27 @@ type SystemTemplate = {
   category: string
 }
 
+type MessageType =
+  | 'general'
+  | 'seguimiento'
+  | 'cartera'
+  | 'referidos'
+  | 'cumpleanos'
+  | 'citas'
+  | 'servicio'
+  | 'cambio_repuestos'
+
+const MESSAGE_TYPE_OPTIONS: { value: MessageType; label: string }[] = [
+  { value: 'general', label: 'General' },
+  { value: 'seguimiento', label: 'Seguimiento' },
+  { value: 'cartera', label: 'Cartera' },
+  { value: 'referidos', label: 'Referidos' },
+  { value: 'cumpleanos', label: 'Cumpleanos' },
+  { value: 'citas', label: 'Citas' },
+  { value: 'servicio', label: 'Servicio' },
+  { value: 'cambio_repuestos', label: 'Cambio de repuestos' },
+]
+
 const formatAmount = (value?: number | null) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return ''
   return Number(value).toFixed(2)
@@ -84,6 +106,30 @@ const buildSubtitle = (value: string) => {
   return compact.slice(0, 77) + '...'
 }
 
+const MESSAGE_TYPE_LABELS: Record<MessageType, string> = {
+  general: 'General',
+  seguimiento: 'Seguimiento',
+  cartera: 'Cartera',
+  referidos: 'Referidos',
+  cumpleanos: 'Cumpleanos',
+  citas: 'Citas',
+  servicio: 'Servicio',
+  cambio_repuestos: 'Cambio de repuestos',
+}
+
+const inferMessageTypeFromId = (templateId: string | null | undefined): MessageType => {
+  if (!templateId) return 'general'
+  const key = templateId.toLowerCase()
+  if (key.includes('cumple')) return 'cumpleanos'
+  if (key.includes('servicio')) return 'servicio'
+  if (key.includes('repuesto') || key.includes('repuestos')) return 'cambio_repuestos'
+  if (key.includes('cartera')) return 'cartera'
+  if (key.includes('referid')) return 'referidos'
+  if (key.includes('cita')) return 'citas'
+  if (key.includes('seguimiento')) return 'seguimiento'
+  return 'general'
+}
+
 const CATEGORY_OPTIONS: { value: WhatsappTemplateCategory; label: string }[] = [
   { value: 'general', label: 'General' },
   { value: 'seguimiento', label: 'Seguimiento' },
@@ -91,6 +137,8 @@ const CATEGORY_OPTIONS: { value: WhatsappTemplateCategory; label: string }[] = [
   { value: 'referidos', label: 'Referidos' },
   { value: 'cumpleanos', label: 'Cumpleaños' },
   { value: 'citas', label: 'Citas' },
+  { value: 'servicio', label: 'Servicio' },
+  { value: 'cambio_repuestos', label: 'Cambio de repuestos' },
 ]
 
 // --- COMPONENT ---
@@ -98,6 +146,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const { t } = useTranslation()
   const { showToast } = useToast()
   const { currentUser } = useUsers()
+  const { session } = useAuth()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
@@ -110,6 +159,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [categoryFilter, setCategoryFilter] = useState<'all' | WhatsappTemplateCategory>('all')
   const [newTemplateTitle, setNewTemplateTitle] = useState('')
   const [newTemplateCategory, setNewTemplateCategory] = useState<WhatsappTemplateCategory>('general')
+  const [messageType, setMessageType] = useState<MessageType>('general')
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
   const [editingTemplateTitle, setEditingTemplateTitle] = useState('')
@@ -222,6 +272,20 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         ? t('messaging.phoneMissing')
         : null
 
+  const inferredMessageType = useMemo<MessageType>(() => {
+    const customTemplate = customTemplates.find((template) => template.id === selectedTemplateId) ?? null
+    const category = customTemplate?.category
+    if (category && category in MESSAGE_TYPE_LABELS) {
+      return category as MessageType
+    }
+    return inferMessageTypeFromId(selectedTemplateId ?? initialTemplateId)
+  }, [customTemplates, initialTemplateId, selectedTemplateId])
+
+  useEffect(() => {
+    if (!open) return
+    setMessageType(inferredMessageType)
+  }, [inferredMessageType, open])
+
   const filteredTemplates = useMemo(() => {
     if (categoryFilter === 'all') return customTemplates
     return customTemplates.filter((template) => template.category === categoryFilter)
@@ -322,6 +386,52 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   }
 
   // --- SEND ---
+  const buildSenderName = () => {
+    const parts = [currentUser?.nombre, currentUser?.apellido].filter(Boolean)
+    return parts.join(' ').trim() || currentUser?.email || ''
+  }
+
+  const saveMessageLog = useCallback(
+    async (finalMessage: string, sentAt: string) => {
+      if (!isSupabaseConfigured) return
+      const senderId = session?.user.id ?? null
+      const senderName = buildSenderName()
+      const messageTypeLabel = MESSAGE_TYPE_LABELS[messageType]
+      const summary = `Mensaje ${channelLabel} (${messageTypeLabel})${senderName ? ` por ${senderName}` : ''}.`
+
+      if (contact?.clienteId) {
+        const { error } = await supabase.from('notasrp').insert({
+          cliente_id: contact.clienteId,
+          contenido: summary,
+          canal: activeChannel,
+          tipo_mensaje: messageType,
+          enviado_por: senderId,
+          enviado_en: sentAt,
+          mensaje: finalMessage,
+        })
+        if (error) {
+          showToast(error.message, 'error')
+        }
+      }
+
+      if (contact?.leadId && senderId) {
+        const { error } = await supabase.from('lead_notas').insert({
+          lead_id: contact.leadId,
+          usuario_id: senderId,
+          nota: summary,
+          tipo: 'mensajeria',
+          canal: activeChannel,
+          tipo_mensaje: messageType,
+          mensaje: finalMessage,
+        })
+        if (error) {
+          showToast(error.message, 'error')
+        }
+      }
+    },
+    [activeChannel, channelLabel, contact?.clienteId, contact?.leadId, messageType, session?.user.id, showToast]
+  )
+
   const updateLeadContact = useCallback(async () => {
     if (!contact.leadId) return
     const { error } = await supabase
@@ -340,6 +450,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const finalMessage = imageUrl.trim()
       ? message.trim() + '\n\n' + imageUrl.trim()
       : message
+    const sentAt = new Date().toISOString()
     if (activeChannel === 'whatsapp') {
       const url = contact.telefono ? buildWhatsappUrl(contact.telefono, finalMessage) : null
       if (url) window.open(url, '_blank', 'noopener,noreferrer')
@@ -353,6 +464,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     }
     // Save to history
     appendHistory({ contactName: contact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
+    await saveMessageLog(finalMessage, sentAt)
     await updateLeadContact()
     setSending(false)
   }
@@ -652,6 +764,27 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         {/* PANEL DERECHO — EDITOR */}
         <div className="template-preview">
           <h4>{t('messaging.editorTitle')}</h4>
+          <label className="form-field">
+            <span>Tipo de mensaje</span>
+            <select
+              value={messageType}
+              onChange={(event) => setMessageType(event.target.value as MessageType)}
+              style={{
+                padding: '0.45rem 0.65rem',
+                borderRadius: '0.5rem',
+                border: '1px solid var(--color-border, #e5e7eb)',
+                background: 'var(--color-surface, #f9fafb)',
+                color: 'var(--color-text)',
+                fontSize: '0.8rem',
+              }}
+            >
+              {MESSAGE_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="form-field template-message">
             <span>{t('messaging.messageLabel')}</span>
             <textarea

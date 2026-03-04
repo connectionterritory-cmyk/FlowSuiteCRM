@@ -39,6 +39,8 @@ export type WhatsappTemplateCategory =
   | 'referidos'
   | 'cumpleanos'
   | 'citas'
+  | 'servicio'
+  | 'cambio_repuestos'
 
 export type SystemTemplateSeed = {
   key: string
@@ -359,7 +361,9 @@ export const replaceTemplateVariables = (message: string, variables: Record<stri
 export const buildWhatsappUrl = (phone: string, message: string) => {
   const sanitizedPhone = phone.replace(/\D/g, '')
   if (!sanitizedPhone) return null
-  return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`
+  // Use api.whatsapp.com/send (no redirect) to avoid emoji corruption
+  // that can happen when wa.me does a 302 redirect through the browser.
+  return `https://api.whatsapp.com/send?phone=${sanitizedPhone}&text=${encodeURIComponent(message)}`
 }
 
 const isTemplateValid = (template: CustomWhatsappTemplate) =>

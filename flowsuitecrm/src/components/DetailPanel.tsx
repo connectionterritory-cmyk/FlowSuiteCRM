@@ -4,9 +4,12 @@ type DetailPanelProps = {
   items: { label: string; value: React.ReactNode }[]
   onClose: () => void
   action?: React.ReactNode
+  tabs?: { key: string; label: string }[]
+  activeTab?: string
+  onTabChange?: (key: string) => void
 }
 
-export function DetailPanel({ open, title, items, onClose, action }: DetailPanelProps) {
+export function DetailPanel({ open, title, items, onClose, action, tabs, activeTab, onTabChange }: DetailPanelProps) {
   if (!open) return null
 
   return (
@@ -28,6 +31,29 @@ export function DetailPanel({ open, title, items, onClose, action }: DetailPanel
           </div>
         </header>
         <div className="drawer-body">
+          {tabs && tabs.length > 0 && activeTab && onTabChange && (
+            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => onTabChange(tab.key)}
+                  style={{
+                    padding: '0.35rem 0.7rem',
+                    borderRadius: '9999px',
+                    border: '1px solid var(--color-border, #e5e7eb)',
+                    background: activeTab === tab.key ? 'var(--color-primary, #3b82f6)' : 'var(--color-surface, #f9fafb)',
+                    color: activeTab === tab.key ? 'white' : 'var(--color-text, #111827)',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
           <dl className="detail-list">
             {items.map((item) => (
               <div key={item.label} className="detail-row">
