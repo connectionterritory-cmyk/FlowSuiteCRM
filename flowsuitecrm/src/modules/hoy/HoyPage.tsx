@@ -8,6 +8,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useMessaging } from '../../hooks/useMessaging'
 import { useUsers } from '../../data/UsersProvider'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { normalizeTimeValue } from '../../lib/timeUtils'
 
 type LeadRow = {
   id: string
@@ -83,8 +84,27 @@ type MantenimientoRow = {
       apellido: string | null
       telefono: string | null
       vendedor_id: string | null
+      direccion: string | null
+      ciudad: string | null
+      estado_region: string | null
     } | null
   } | null
+}
+
+type AgendaItem = {
+  agenda_id: string
+  vendedor_id: string
+  fecha: string
+  hora: string | null
+  tipo: 'servicio' | 'demo'
+  subtipo: string
+  cliente_nombre: string
+  cliente_telefono: string | null
+  direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  notas: string | null
+  completado: boolean
 }
 
 const REFERIDOS_ACTIVOS_ESTADOS = ['contactado', 'cita_agendada', 'presentacion_hecha']
@@ -98,6 +118,9 @@ export function HoyPage() {
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { currentUser, usersById } = useUsers()
   const configured = isSupabaseConfigured
+  const isMasterAdmin = session?.user?.email === 'royalflorida@gmail.com'
+  const isAdmin = currentUser?.rol === 'admin' || isMasterAdmin
+  const isDistribuidor = currentUser?.rol === 'distribuidor'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -118,6 +141,9 @@ export function HoyPage() {
   const [birthdays, setBirthdays] = useState<ClienteBirthdayRow[]>([])
   const [reactivacion, setReactivacion] = useState<ClienteReactivacionRow[]>([])
   const [mantenimientos, setMantenimientos] = useState<MantenimientoRow[]>([])
+  const [agenda, setAgenda] = useState<AgendaItem[]>([])
+  const [mantenimientoStats, setMantenimientoStats] = useState({ rojo: 0, amarillo: 0 })
+  const [filtroMantenimiento, setFiltroMantenimiento] = useState<'todos' | 'rojo' | 'amarillo'>('todos')
 
   // Collapsible modals
   const [cobranzasOpen, setCobranzasOpen] = useState(false)
@@ -125,6 +151,13 @@ export function HoyPage() {
   const [reactivacionOpen, setReactivacionOpen] = useState(false)
 
   // Note modal
+
+  // Edit agenda (servicio) modal
+  const [editAgendaOpen, setEditAgendaOpen] = useState(false)
+  const [editAgendaItem, setEditAgendaItem] = useState<AgendaItem | null>(null)
+  const [editAgendaValues, setEditAgendaValues] = useState({ fecha: '', hora: '', tipo_servicio: '', observaciones: '' })
+  const [editAgendaSaving, setEditAgendaSaving] = useState(false)
+  const [editAgendaError, setEditAgendaError] = useState<string | null>(null)
 
   // Reschedule modal
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
@@ -134,7 +167,18 @@ export function HoyPage() {
   const [rescheduleSaving, setRescheduleSaving] = useState(false)
 
   const today = useMemo(() => new Date(), [])
-  const todayIso = useMemo(() => today.toISOString().split('T')[0], [today])
+  // Use local date (not UTC) so PST users don't lose today's agenda after 4 PM
+  const todayIso = useMemo(() => today.toLocaleDateString('en-CA'), [today])
+  const tomorrowIso = useMemo(() => {
+    const d = new Date(today)
+    d.setDate(d.getDate() + 1)
+    return d.toLocaleDateString('en-CA')
+  }, [today])
+  const todayPlus15Iso = useMemo(() => {
+    const d = new Date(today)
+    d.setDate(d.getDate() + 15)
+    return d.toLocaleDateString('en-CA')
+  }, [today])
 
   const greetingName = useMemo(
     () => currentUser?.nombre?.split(' ')[0] || session?.user.email?.split('@')[0] || '',
@@ -281,6 +325,7 @@ export function HoyPage() {
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
     const ninetyDaysAgoIso = ninetyDaysAgo.toISOString().split('T')[0]
 
+
     const [
       overdueRes,
       todayRes,
@@ -294,6 +339,7 @@ export function HoyPage() {
       mantenimientosRes,
       overdueClientsRes,
       todayClientsRes,
+      agendaRes,
     ] = await Promise.all([
       // ── Leads ─────────────────────────────────────────────
       supabase
@@ -359,11 +405,11 @@ export function HoyPage() {
         .limit(8),
       supabase
         .from('componentes_equipo')
-        .select('id, nombre_componente, fecha_proximo_cambio, ciclo_meses, equipo:equipos_instalados(cliente:clientes(id, nombre, apellido, telefono, vendedor_id))')
+        .select('id, nombre_componente, fecha_proximo_cambio, ciclo_meses, equipo:equipos_instalados(cliente:clientes(id, nombre, apellido, telefono, vendedor_id, direccion, ciudad, estado_region))')
         .eq('activo', true)
-        .lte('fecha_proximo_cambio', todayIso)
-        .order('fecha_proximo_cambio', { ascending: true })
-        .limit(50),
+        // Fetch more to allow Rojo/Amarillo filtering
+        .lte('fecha_proximo_cambio', todayPlus15Iso)
+        .order('fecha_proximo_cambio', { ascending: true }),
       // ── Client Appointments ──────────────────────────────
       supabase
         .from('clientes')
@@ -378,6 +424,22 @@ export function HoyPage() {
         .eq('vendedor_id', vendedorId)
         .eq('next_action_date', todayIso)
         .order('next_action_date', { ascending: true }),
+      // ── Unified Agenda ───────────────────────────────────
+      (() => {
+        const agendaQuery = supabase
+          .from('v_agenda_hoy')
+          .select('*')
+          .gte('fecha', todayIso)
+          .lt('fecha', tomorrowIso)
+          .order('hora', { ascending: true, nullsFirst: false })
+        if (isAdmin) return agendaQuery
+        if (isDistribuidor) {
+          agendaQuery.or(`vendedor_id.eq.${vendedorId},vendedor_id.is.null`)
+          return agendaQuery
+        }
+        agendaQuery.eq('vendedor_id', vendedorId)
+        return agendaQuery
+      })(),
     ])
 
     if (overdueRes.error || todayRes.error || newRes.error || oppsRes.error || salesRes.error) {
@@ -435,20 +497,30 @@ export function HoyPage() {
     setReactivacion((reactivacionRes.data as ClienteReactivacionRow[] | null) ?? [])
 
     const mantRaw = (mantenimientosRes.data as MantenimientoRow[] | null) ?? []
-    const mantFiltered = mantRaw
-      .filter((row) => {
-        const cliente = Array.isArray(row.equipo) ? row.equipo[0]?.cliente : row.equipo?.cliente
-        const c = Array.isArray(cliente) ? cliente[0] : cliente
-        return c?.vendedor_id === vendedorId
-      })
-      .slice(0, 8)
-    setMantenimientos(mantFiltered)
+    const mantFilteredByVendedor = mantRaw.filter((row) => {
+      const cliente = Array.isArray(row.equipo) ? row.equipo[0]?.cliente : row.equipo?.cliente
+      const c = Array.isArray(cliente) ? cliente[0] : cliente
+      return c?.vendedor_id === vendedorId
+    })
+
+    // Calculate Traffic Light counts
+    let rojo = 0
+    let amarillo = 0
+    mantFilteredByVendedor.forEach(m => {
+      if (!m.fecha_proximo_cambio) return
+      if (m.fecha_proximo_cambio < todayIso) rojo++
+      else if (m.fecha_proximo_cambio <= todayPlus15Iso) amarillo++
+    })
+    setMantenimientoStats({ rojo, amarillo })
+    setMantenimientos(mantFilteredByVendedor)
+
+    setAgenda((agendaRes.data as AgendaItem[] | null) ?? [])
 
     const leadIds = [...overdueLeadsData, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
 
     setLoading(false)
-  }, [configured, session?.user.id, getMonthRange, today, todayIso, loadLastActivity, t])
+  }, [configured, isAdmin, isDistribuidor, session?.user.id, getMonthRange, today, todayIso, tomorrowIso, loadLastActivity, t])
 
   useEffect(() => {
     loadData()
@@ -483,6 +555,87 @@ export function HoyPage() {
     },
     [openWhatsapp, showToast, t]
   )
+
+  const handleWhatsAppQuick = useCallback(
+    (telefono: string | null, message: string) => {
+      if (!telefono) {
+        showToast(t('messaging.phoneMissing'), 'error')
+        return
+      }
+      const cleanPhone = telefono.replace(/\D/g, '')
+      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
+      window.open(url, '_blank')
+    },
+    [showToast, t]
+  )
+
+  const handleMaps = useCallback(
+    (row: { direccion?: string | null; ciudad?: string | null; estado_region?: string | null; codigo_postal?: string | null }) => {
+      const addr = [row.direccion, row.ciudad, row.estado_region, row.codigo_postal].filter(Boolean).join(', ')
+      if (!addr) {
+        showToast('Dirección no disponible', 'error')
+        return
+      }
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`
+      window.open(url, '_blank')
+    },
+    [showToast]
+  )
+
+  const handleOpenEditAgenda = useCallback((item: AgendaItem) => {
+    setEditAgendaItem(item)
+    setEditAgendaValues({
+      fecha: item.fecha,
+      hora: normalizeTimeValue(item.hora),
+      tipo_servicio: item.subtipo,
+      observaciones: item.notas ?? '',
+    })
+    setEditAgendaError(null)
+    setEditAgendaOpen(true)
+  }, [])
+
+  const handleSubmitEditAgenda = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editAgendaItem) return
+    setEditAgendaSaving(true)
+    setEditAgendaError(null)
+
+    if (editAgendaValues.fecha && editAgendaValues.hora) {
+      const { data: conflicto } = await supabase
+        .from('servicios')
+        .select('id')
+        .eq('fecha_servicio', editAgendaValues.fecha)
+        .eq('hora_cita', editAgendaValues.hora)
+        .neq('id', editAgendaItem.agenda_id)
+        .limit(1)
+      if (conflicto && conflicto.length > 0) {
+        setEditAgendaError('Ya existe una cita en esa fecha y hora.')
+        setEditAgendaSaving(false)
+        return
+      }
+    }
+
+    const { error: updateErr } = await supabase
+      .from('servicios')
+      .update({
+        fecha_servicio: editAgendaValues.fecha || null,
+        hora_cita: normalizeTimeValue(editAgendaValues.hora) || null,
+        tipo_servicio: editAgendaValues.tipo_servicio || null,
+        observaciones: editAgendaValues.observaciones.trim() || null,
+      })
+      .eq('id', editAgendaItem.agenda_id)
+
+    if (updateErr) {
+      setEditAgendaError(updateErr.message)
+      showToast(updateErr.message, 'error')
+    } else {
+      setEditAgendaOpen(false)
+      setEditAgendaItem(null)
+      await loadData()
+      showToast('Cita actualizada')
+    }
+    setEditAgendaSaving(false)
+  }
 
   const openActions = (lead: LeadRow) => {
     setActionsLead(lead)
@@ -675,7 +828,7 @@ export function HoyPage() {
       {/* ── KPI Row ──────────────────────────────────────── */}
       <div className="hoy-premium-kpi-row">
         <div className="hoy-premium-kpi-card">
-          <span className="hoy-kpi-label">{t('hoy.monthlyProduction') || 'Produccion del mes'}</span>
+          <span className="hoy-kpi-label">{t('hoy.monthlyProduction') || 'Producción del mes'}</span>
           <span className="hoy-kpi-value">{formatCurrency(salesSummary.total)}</span>
           <div className="hoy-kpi-trend">
             <div style={{ marginLeft: 'auto', opacity: 0.5 }}>📈</div>
@@ -686,6 +839,30 @@ export function HoyPage() {
           <span className="hoy-kpi-value">{loading ? '...' : referidosStats.activos}</span>
           <div className="hoy-item-subtitle" style={{ fontSize: '0.7rem' }}>
             <span style={{ color: '#2563eb', fontWeight: 700 }}>{loading ? '...' : referidosStats.enProceso}</span> en Proceso
+          </div>
+        </div>
+      </div>
+
+      {/* ── Maintenance Traffic Light Widget ──────────────── */}
+      <div className="hoy-maintenance-widget">
+        <div
+          className={`hoy-traffic-card red ${filtroMantenimiento === 'rojo' ? 'active' : ''}`}
+          onClick={() => setFiltroMantenimiento(filtroMantenimiento === 'rojo' ? 'todos' : 'rojo')}
+        >
+          <span className="hoy-traffic-icon">🔴</span>
+          <div className="hoy-traffic-info">
+            <span className="hoy-traffic-count">{mantenimientoStats.rojo}</span>
+            <span className="hoy-traffic-label">Vencidos</span>
+          </div>
+        </div>
+        <div
+          className={`hoy-traffic-card yellow ${filtroMantenimiento === 'amarillo' ? 'active' : ''}`}
+          onClick={() => setFiltroMantenimiento(filtroMantenimiento === 'amarillo' ? 'todos' : 'amarillo')}
+        >
+          <span className="hoy-traffic-icon">🟡</span>
+          <div className="hoy-traffic-info">
+            <span className="hoy-traffic-count">{mantenimientoStats.amarillo}</span>
+            <span className="hoy-traffic-label">Próximos</span>
           </div>
         </div>
       </div>
@@ -784,8 +961,73 @@ export function HoyPage() {
         </div>
       )}
 
-      {/* ── Próximas Citas ────────────────────────────────── */}
-      {!loading && todayLeads.length > 0 && (
+      {/* ── Mi Agenda de Hoy (Unified) ────────────────────── */}
+      {!loading && agenda.length > 0 && (
+        <section className="hoy-list-section agenda-unificada">
+          <div className="hoy-list-header">
+            <h3>Mi Agenda de Hoy</h3>
+            <span className="hoy-view-all">{agenda.length} actividades</span>
+          </div>
+          <div className="hoy-agenda-grid">
+            {agenda.map((item) => {
+              const typeIcon = item.tipo === 'servicio' ? '🔧' : '✨'
+              const typeLabel = item.tipo === 'servicio' ? 'Servicio Técnico' : 'Demostración'
+              const colorClass = item.tipo === 'servicio' ? 'blue' : 'green'
+              const routeMsg = `Hola ${item.cliente_nombre}, soy ${greetingName}, voy en camino para tu ${item.subtipo || typeLabel} de hoy.`
+
+              return (
+                <div key={item.agenda_id} className={`hoy-agenda-card ${colorClass} ${item.completado ? 'completed' : ''}`}>
+                  <div className="hoy-agenda-time">
+                    <span className="time-badge">{item.hora ? item.hora.substring(0, 5) : '--:--'}</span>
+                    <span className={`status-dot ${item.completado ? 'green' : 'orange'}`}></span>
+                  </div>
+                  <div className="hoy-agenda-body">
+                    <div className="item-type">
+                      {typeIcon} {typeLabel} {item.completado && <span className="completed-tag">Completado</span>}
+                    </div>
+                    <div className="item-client">{item.cliente_nombre}</div>
+                    <div className="item-sub">{item.subtipo}</div>
+                    {item.direccion && (
+                      <div className="item-address" style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '2px' }}>
+                        📍 {item.direccion}{item.ciudad ? `, ${item.ciudad}` : ''}
+                      </div>
+                    )}
+                    {item.notas && <div className="item-notes">{item.notas}</div>}
+                  </div>
+                  <div className="hoy-agenda-actions">
+                    <button
+                      className="action-btn wa"
+                      onClick={() => handleWhatsAppQuick(item.cliente_telefono, routeMsg)}
+                      title="Confirmar Ruta"
+                    >
+                      💬 Ruta
+                    </button>
+                    <button
+                      className="action-btn maps"
+                      onClick={() => handleMaps(item)}
+                      title="Ver en Mapas"
+                    >
+                      📍 Mapas
+                    </button>
+                    {item.tipo === 'servicio' && (
+                      <button
+                        className="action-btn"
+                        style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}
+                        onClick={() => handleOpenEditAgenda(item)}
+                        title="Editar cita"
+                      >
+                        ✏️ Editar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {!loading && agenda.length === 0 && todayLeads.length > 0 && (
         <section className="hoy-list-section">
           <div className="hoy-list-header">
             <h3>{t('hoy.upcomingCitas') || 'Próximas Citas'}</h3>
@@ -838,19 +1080,60 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Mantenimientos List Item ─────────────────────── */}
-      {!loading && mantenimientos.length > 0 && (
-        <div className="hoy-list-item" onClick={() => setMantenimientosOpen(true)}>
-          <div className="hoy-list-item-icon yellow">🔧</div>
-          <div className="hoy-item-content">
-            <div className="hoy-item-title">{t('hoy.mantenimientos')}</div>
-            <div className="hoy-item-subtitle">
-              {mantenimientos.length} {t('hoy.mantenimientos').toLowerCase()}
-            </div>
+      {/* ── Maintenance List filtered by Traffic Light ───── */}
+      {!loading && mantenimientos.length > 0 && (filtroMantenimiento !== 'todos' || mantenimientos.length > 0) && (
+        <section className="hoy-list-section maintenance-section">
+          <div className="hoy-list-header">
+            <h3>
+              {filtroMantenimiento === 'todos' ? t('hoy.mantenimientos') : `Mantenimientos: ${filtroMantenimiento.toUpperCase()}`}
+            </h3>
+            <Button variant="ghost" onClick={() => setMantenimientosOpen(true)}>
+              Ver Todos ({mantenimientos.length})
+            </Button>
           </div>
-          <div className="hoy-item-badge">{mantenimientos.length}</div>
-          <div className="hoy-item-chevron">›</div>
-        </div>
+          <div className="hoy-maintenance-list">
+            {mantenimientos
+              .filter(m => {
+                if (filtroMantenimiento === 'todos') return true
+                if (!m.fecha_proximo_cambio) return false
+                if (filtroMantenimiento === 'rojo') return m.fecha_proximo_cambio < todayIso
+                if (filtroMantenimiento === 'amarillo') return m.fecha_proximo_cambio >= todayIso && m.fecha_proximo_cambio <= todayPlus15Iso
+                return true
+              })
+              .slice(0, 5)
+              .map((m) => {
+                const clienteRaw = Array.isArray(m.equipo) ? m.equipo[0]?.cliente : m.equipo?.cliente
+                const cliente = Array.isArray(clienteRaw) ? clienteRaw[0] : clienteRaw
+                const name = cliente ? getClientName(cliente) : t('common.noData')
+                const isRojo = m.fecha_proximo_cambio && m.fecha_proximo_cambio < todayIso
+                const alertMsg = `Hola ${name}, tu ${m.nombre_componente} ha vencido. ¿Te visito mañana para el cambio?`
+
+                return (
+                  <div key={m.id} className={`hoy-maintenance-card ${isRojo ? 'rojo' : 'amarillo'}`}>
+                    <div className="m-info">
+                      <div className="m-client">{name}</div>
+                      <div className="m-component">{m.nombre_componente}</div>
+                      <div className="m-date">Vence: {relativeDayLabel(m.fecha_proximo_cambio)}</div>
+                    </div>
+                    <div className="m-actions">
+                      <button
+                        className="action-btn wa"
+                        onClick={() => handleWhatsAppQuick(cliente?.telefono ?? null, alertMsg)}
+                      >
+                        💬 Contactar
+                      </button>
+                      <button
+                        className="action-btn maps"
+                        onClick={() => handleMaps(cliente ?? {})}
+                      >
+                        📍 Ubicar
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </section>
       )}
 
       {/* ── New leads ─────────────────────────────────────── */}
@@ -1041,6 +1324,62 @@ export function HoyPage() {
           </div>
         </div>
       )}
+
+      <Modal
+        open={editAgendaOpen}
+        title="Editar Cita de Servicio"
+        onClose={() => { setEditAgendaOpen(false); setEditAgendaItem(null) }}
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => { setEditAgendaOpen(false); setEditAgendaItem(null) }}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" form="hoy-edit-agenda-form" disabled={editAgendaSaving}>
+              {editAgendaSaving ? t('common.saving') : t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <form id="hoy-edit-agenda-form" className="form-grid" onSubmit={handleSubmitEditAgenda}>
+          <label className="form-field">
+            <span>📅 Fecha</span>
+            <input
+              type="date"
+              value={editAgendaValues.fecha}
+              onChange={(e) => setEditAgendaValues((prev) => ({ ...prev, fecha: e.target.value }))}
+            />
+          </label>
+          <label className="form-field">
+            <span>⏰ Hora</span>
+            <input
+              type="time"
+              value={normalizeTimeValue(editAgendaValues.hora)}
+              onChange={(e) => setEditAgendaValues((prev) => ({ ...prev, hora: e.target.value }))}
+            />
+          </label>
+          <label className="form-field">
+            <span>Tipo</span>
+            <select
+              value={editAgendaValues.tipo_servicio}
+              onChange={(e) => setEditAgendaValues((prev) => ({ ...prev, tipo_servicio: e.target.value }))}
+            >
+              <option value="cambio_repuesto">{t('servicio.types.cambio_repuesto')}</option>
+              <option value="revision">{t('servicio.types.revision')}</option>
+              <option value="garantia">{t('servicio.types.garantia')}</option>
+              <option value="queja">{t('servicio.types.queja')}</option>
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Observaciones</span>
+            <textarea
+              rows={3}
+              value={editAgendaValues.observaciones}
+              onChange={(e) => setEditAgendaValues((prev) => ({ ...prev, observaciones: e.target.value }))}
+            />
+          </label>
+          {editAgendaError && <div className="form-error">{editAgendaError}</div>}
+        </form>
+      </Modal>
 
       <Modal
         open={rescheduleOpen}

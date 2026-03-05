@@ -7,6 +7,7 @@ import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { normalizeTimeValue } from '../../lib/timeUtils'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 
@@ -70,6 +71,8 @@ type UsuarioOption = {
   apellido: string | null
   rol: string | null
   activo?: boolean | null
+  codigo_vendedor?: string | null
+  codigo_distribuidor?: string | null
 }
 
 const initialServiceForm = {
@@ -142,7 +145,7 @@ export function ServicioClientePage() {
           .from('servicios')
           .select('id, cliente_id, equipo_instalado_id, fecha_servicio, hora_cita, tipo_servicio, observaciones, venta_id, vendedor_id'),
         supabase.from('ventas').select('id, cliente_id, numero_nota_pedido'),
-        supabase.from('usuarios').select('id, nombre, apellido, rol, activo'),
+        supabase.from('usuarios').select('id, nombre, apellido, rol, activo, codigo_vendedor, codigo_distribuidor'),
       ])
 
     if (
@@ -156,13 +159,13 @@ export function ServicioClientePage() {
     ) {
       setError(
         clientesResult.error?.message ||
-          productosResult.error?.message ||
-          equiposResult.error?.message ||
-          componentesResult.error?.message ||
-          serviciosResult.error?.message ||
-          ventasResult.error?.message ||
-          usuariosResult.error?.message ||
-          t('common.noData')
+        productosResult.error?.message ||
+        equiposResult.error?.message ||
+        componentesResult.error?.message ||
+        serviciosResult.error?.message ||
+        ventasResult.error?.message ||
+        usuariosResult.error?.message ||
+        t('common.noData')
       )
     }
 
@@ -312,7 +315,7 @@ export function ServicioClientePage() {
       equipo_instalado_id: servicio.equipo_instalado_id ?? '',
       vendedor_id: servicio.vendedor_id ?? '',
       fecha_servicio: servicio.fecha_servicio ?? '',
-      hora_cita: servicio.hora_cita ?? '',
+      hora_cita: normalizeTimeValue(servicio.hora_cita),
       tipo_servicio: servicio.tipo_servicio ?? 'cambio_repuesto',
       observaciones: servicio.observaciones ?? '',
       venta_id: servicio.venta_id ?? '',
@@ -324,7 +327,7 @@ export function ServicioClientePage() {
     setFormMode(servicio.hora_cita ? 'cita' : 'servicio')
     setFormClienteSearch(clienteLabel || servicio.cliente_id || '')
     setFormOpen(true)
-  }, [clienteById])
+  }, [clienteById, normalizeTimeValue])
 
   const handleOpenDeleteConfirm = useCallback((servicioId: string) => {
     setDeleteServicioId(servicioId)
@@ -351,41 +354,45 @@ export function ServicioClientePage() {
       const clienteLabel = servicio.cliente_id ? clienteMap.get(servicio.cliente_id) ?? servicio.cliente_id : '-'
       const ventaLabel = servicio.venta_id ? ventasMap.get(servicio.venta_id) ?? servicio.venta_id : '-'
       const tipoLabel = servicio.tipo_servicio ? t(`servicio.types.${servicio.tipo_servicio}`) : '-'
-      const editCell = canEditServicios ? (
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            handleOpenEditForm(servicio)
-          }}
-        >
-          ✏️ {t('common.edit')}
-        </Button>
-      ) : null
-      const deleteCell = canDeleteServicios ? (
-        <Button
-          variant="ghost"
-          type="button"
-          style={{ color: '#ef4444' }}
-          onClick={(event) => {
-            event.stopPropagation()
-            handleOpenDeleteConfirm(servicio.id)
-          }}
-        >
-          🗑️
-        </Button>
-      ) : null
+      const actionsCell = (
+        <div style={{ display: 'flex', gap: '0.25rem' }}>
+          {canEditServicios && (
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                handleOpenEditForm(servicio)
+              }}
+            >
+              ✏️
+            </Button>
+          )}
+          {canDeleteServicios && (
+            <Button
+              variant="ghost"
+              type="button"
+              style={{ color: '#ef4444' }}
+              onClick={(event) => {
+                event.stopPropagation()
+                handleOpenDeleteConfirm(servicio.id)
+              }}
+            >
+              🗑️
+            </Button>
+          )}
+        </div>
+      )
       return {
         id: servicio.id,
         cells: [
           clienteLabel,
           servicio.fecha_servicio ?? '-',
+          normalizeTimeValue(servicio.hora_cita) || '-',
           tipoLabel,
           servicio.observaciones ?? '-',
           ventaLabel,
-          ...(canEditServicios ? [editCell] : []),
-          ...(canDeleteServicios ? [deleteCell] : []),
+          actionsCell,
         ],
       }
     })
@@ -401,11 +408,16 @@ export function ServicioClientePage() {
 
   const usuariosAsignables = useMemo(() => {
     const base = usuarios
-      .filter((user) => user.rol === 'vendedor' || user.rol === 'distribuidor' || user.rol === 'admin')
+      .filter((user) => user.rol === 'vendedor' || user.rol === 'distribuidor')
       .filter((user) => user.activo !== false)
       .map((user) => ({
         id: user.id,
-        label: [user.nombre, user.apellido].filter(Boolean).join(' ').trim() || user.id,
+        label: [
+          [user.nombre, user.apellido].filter(Boolean).join(' ').trim() || user.id,
+          user.codigo_vendedor || user.codigo_distribuidor || null,
+        ]
+          .filter(Boolean)
+          .join(' - '),
         rol: user.rol,
       }))
 
@@ -487,6 +499,10 @@ export function ServicioClientePage() {
           venta_id: '',
           vendedor_id: cliente?.vendedor_id ?? cliente?.distribuidor_id ?? prev.vendedor_id,
         }))
+        return
+      }
+      if (field === 'hora_cita') {
+        setFormValues((prev) => ({ ...prev, [field]: normalizeTimeValue(value) }))
         return
       }
       setFormValues((prev) => ({ ...prev, [field]: value }))
@@ -618,7 +634,7 @@ export function ServicioClientePage() {
         .select('agenda_id')
         .eq('vendedor_id', vendedorId)
         .eq('fecha', formValues.fecha_servicio)
-        .eq('hora', formValues.hora_cita)
+        .eq('hora', normalizeTimeValue(formValues.hora_cita))
         .limit(1)
       if (formAction === 'edit' && editingServiceId) {
         conflictQuery = conflictQuery.neq('agenda_id', editingServiceId)
@@ -646,7 +662,7 @@ export function ServicioClientePage() {
       equipo_instalado_id: toNull(formValues.equipo_instalado_id),
       vendedor_id: vendedorId,
       fecha_servicio: formValues.fecha_servicio || null,
-      hora_cita: toNull(formValues.hora_cita),
+      hora_cita: normalizeTimeValue(formValues.hora_cita) || null,
       tipo_servicio: formValues.tipo_servicio,
       observaciones: toNull(formValues.observaciones),
       venta_id: toNull(formValues.venta_id),
@@ -658,7 +674,7 @@ export function ServicioClientePage() {
         .select('id')
         .eq('vendedor_id', vendedorId)
         .eq('fecha_servicio', payload.fecha_servicio)
-        .eq('hora_cita', payload.hora_cita)
+        .eq('hora_cita', normalizeTimeValue(payload.hora_cita))
         .limit(1)
       if (formAction === 'edit' && editingServiceId) {
         conflictoQuery = conflictoQuery.neq('id', editingServiceId)
@@ -723,7 +739,7 @@ export function ServicioClientePage() {
 
   const formTitle =
     formAction === 'edit'
-      ? 'Editar Servicio'
+      ? (formMode === 'cita' ? t('servicio.form.editCitaTitle') : t('servicio.form.editTitle'))
       : formMode === 'cita'
         ? t('servicio.form.citaTitle')
         : t('servicio.form.title')
@@ -794,11 +810,11 @@ export function ServicioClientePage() {
         columns={[
           t('servicio.servicios.columns.cliente'),
           t('servicio.servicios.columns.fecha'),
+          t('servicio.servicios.columns.hora'),
           t('servicio.servicios.columns.tipo'),
           t('servicio.servicios.columns.observaciones'),
           t('servicio.servicios.columns.venta'),
-          ...(canEditServicios ? [''] : []),
-          ...(canDeleteServicios ? [''] : []),
+          t('servicio.servicios.columns.acciones'),
         ]}
         rows={serviciosRows}
         emptyLabel={emptyLabel}
@@ -889,7 +905,11 @@ export function ServicioClientePage() {
           </label>
           <label className="form-field">
             <span>{t('servicio.form.fields.hora') || 'Hora'}</span>
-            <input type="time" value={formValues.hora_cita} onChange={handleChange('hora_cita')} />
+            <input
+              type="time"
+              value={formValues.hora_cita ? normalizeTimeValue(formValues.hora_cita) : ''}
+              onChange={handleChange('hora_cita')}
+            />
           </label>
           <label className="form-field">
             <span>{t('servicio.form.fields.tipo')}</span>

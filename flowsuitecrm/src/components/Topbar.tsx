@@ -24,6 +24,7 @@ export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: Topba
   const { showToast } = useToast()
   const { viewMode, setViewMode, hasDistribuidorScope } = useViewMode()
   const { currentUser } = useUsers()
+  const isMasterAdmin = session?.user?.email === 'royalflorida@gmail.com'
   const [signingOut, setSigningOut] = useState(false)
   const [orgOpen, setOrgOpen] = useState(false)
   const [orgName, setOrgName] = useState('')
@@ -90,23 +91,29 @@ export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: Topba
         <h1 className="topbar-title">{title}</h1>
       </div>
       <div className="topbar-actions">
-        {hasDistribuidorScope && (currentUser?.rol === 'admin' || currentUser?.rol === 'distribuidor') && (
-          <div className="topbar-segment" role="group" aria-label={t('common.modeLabel')}>
-            <button
-              type="button"
-              className={viewMode === 'seller' ? 'active' : ''}
-              onClick={() => setViewMode('seller')}
-            >
-              {t('common.modeSeller')}
-            </button>
-            <button
-              type="button"
-              className={viewMode === 'distributor' ? 'active' : ''}
-              onClick={() => setViewMode('distributor')}
-            >
-              {t('common.modeDistributor')}
-            </button>
+        {isMasterAdmin ? (
+          <div className="topbar-segment" role="status" aria-label="Administrador master">
+            <span style={{ fontWeight: 600 }}>ADMINISTRADOR MASTER</span>
           </div>
+        ) : (
+          hasDistribuidorScope && (currentUser?.rol === 'admin' || currentUser?.rol === 'distribuidor') && (
+            <div className="topbar-segment" role="group" aria-label={t('common.modeLabel')}>
+              <button
+                type="button"
+                className={viewMode === 'seller' ? 'active' : ''}
+                onClick={() => setViewMode('seller')}
+              >
+                {t('common.modeSeller')}
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'distributor' ? 'active' : ''}
+                onClick={() => setViewMode('distributor')}
+              >
+                {t('common.modeDistributor')}
+              </button>
+            </div>
+          )
         )}
         <button
           type="button"
