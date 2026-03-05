@@ -1021,11 +1021,17 @@
     "form": {
       "title": "Novo servico",
       "citaTitle": "Nova consulta",
+      "editTitle": "Editar servico",
+      "editCitaTitle": "Editar consulta",
+      "errors": {
+        "conflict": "Ja existe uma consulta para esse vendedor na mesma data e hora."
+      },
       "fields": {
         "cliente": "Cliente",
         "asignado": "Atribuir a",
         "equipo": "Equipamento instalado",
         "fecha": "Data do servico",
+        "hora": "Hora da consulta",
         "tipo": "Tipo de servico",
         "observaciones": "Observacoes",
         "venta": "Vincular a venda"
@@ -1071,7 +1077,8 @@
         "fecha": "Data",
         "tipo": "Tipo",
         "observaciones": "Observacoes",
-        "venta": "Venda"
+        "venta": "Venda",
+        "acciones": "Acoes"
       }
     }
   },

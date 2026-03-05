@@ -1021,11 +1021,17 @@
     "form": {
       "title": "New service",
       "citaTitle": "New appointment",
+      "editTitle": "Edit service",
+      "editCitaTitle": "Edit appointment",
+      "errors": {
+        "conflict": "There is already an appointment for that seller at the same date and time."
+      },
       "fields": {
         "cliente": "Customer",
         "asignado": "Assign to",
         "equipo": "Installed equipment",
         "fecha": "Service date",
+        "hora": "Appointment time",
         "tipo": "Service type",
         "observaciones": "Notes",
         "venta": "Link to sale"
@@ -1071,7 +1077,8 @@
         "fecha": "Date",
         "tipo": "Type",
         "observaciones": "Notes",
-        "venta": "Sale"
+        "venta": "Sale",
+        "acciones": "Actions"
       }
     }
   },

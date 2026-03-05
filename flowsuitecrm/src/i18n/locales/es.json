@@ -469,7 +469,9 @@
       "vendedorId": "Asesor de ventas",
       "distribuidorId": "Distribuidor",
       "fechaNacimiento": "Fecha nacimiento",
-      "activo": "Activo"
+      "activo": "Activo",
+      "lat": "Latitud",
+      "lng": "Longitud"
     },
     "estado": {
       "activo": "Activo",
@@ -1050,11 +1052,17 @@
     "form": {
       "title": "Nuevo servicio",
       "citaTitle": "Nueva cita",
+      "editTitle": "Editar servicio",
+      "editCitaTitle": "Editar cita",
+      "errors": {
+        "conflict": "Ya existe una cita para ese vendedor en esa fecha y hora."
+      },
       "fields": {
         "cliente": "Cliente",
         "asignado": "Asignar a",
         "equipo": "Equipo instalado",
         "fecha": "Fecha de servicio",
+        "hora": "Hora de cita",
         "tipo": "Tipo de servicio",
         "observaciones": "Observaciones",
         "venta": "Vincular a venta"
@@ -1100,7 +1108,8 @@
         "fecha": "Fecha",
         "tipo": "Tipo",
         "observaciones": "Observaciones",
-        "venta": "Venta"
+        "venta": "Venta",
+        "acciones": "Acciones"
       }
     }
   },

@@ -18,6 +18,7 @@ type ClienteOption = {
   telefono_casa?: string | null
   hycite_id: string | null
   numero_cuenta_financiera: string | null
+  org_id?: string | null
   vendedor_id?: string | null
   distribuidor_id?: string | null
 }
@@ -50,7 +51,8 @@ type ServicioRecord = {
   cliente_id: string | null
   equipo_instalado_id: string | null
   fecha_servicio: string | null
-  tipo: string | null
+  hora_cita?: string | null
+  tipo_servicio: string | null
   observaciones: string | null
   venta_id: string | null
   vendedor_id?: string | null
@@ -75,7 +77,8 @@ const initialServiceForm = {
   equipo_instalado_id: '',
   vendedor_id: '',
   fecha_servicio: '',
-  tipo: 'cambio_repuesto',
+  hora_cita: '',
+  tipo_servicio: 'cambio_repuesto',
   observaciones: '',
   venta_id: '',
 }
@@ -100,6 +103,11 @@ export function ServicioClientePage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [formMode, setFormMode] = useState<'servicio' | 'cita'>('servicio')
+  const [formAction, setFormAction] = useState<'create' | 'edit'>('create')
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteServicioId, setDeleteServicioId] = useState<string | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [formClienteSearch, setFormClienteSearch] = useState('')
   const [clienteSearch, setClienteSearch] = useState('')
   const [noteOpen, setNoteOpen] = useState(false)
@@ -121,7 +129,7 @@ export function ServicioClientePage() {
         supabase
           .from('clientes')
           .select(
-            'id, nombre, apellido, telefono, telefono_casa, hycite_id, numero_cuenta_financiera, vendedor_id, distribuidor_id'
+            'id, nombre, apellido, telefono, telefono_casa, hycite_id, numero_cuenta_financiera, org_id, vendedor_id, distribuidor_id'
           ),
         supabase.from('productos').select('id, nombre'),
         supabase
@@ -132,7 +140,7 @@ export function ServicioClientePage() {
           .select('id, equipo_instalado_id, nombre_componente, ciclo_meses, fecha_proximo_cambio, activo'),
         supabase
           .from('servicios')
-          .select('id, cliente_id, equipo_instalado_id, fecha_servicio, tipo, observaciones, venta_id, vendedor_id'),
+          .select('id, cliente_id, equipo_instalado_id, fecha_servicio, hora_cita, tipo_servicio, observaciones, venta_id, vendedor_id'),
         supabase.from('ventas').select('id, cliente_id, numero_nota_pedido'),
         supabase.from('usuarios').select('id, nombre, apellido, rol, activo'),
       ])
@@ -279,11 +287,95 @@ export function ServicioClientePage() {
     return servicios.filter((servicio) => (servicio.cliente_id ? clientesFiltradosIds.has(servicio.cliente_id) : false))
   }, [clienteSearch, clientesFiltradosIds, servicios])
 
+  const canEditServicios = useMemo(() => {
+    const role = currentUser?.rol ?? null
+    return (
+      role === 'telemercadeo' ||
+      role === 'supervisor_telemercadeo' ||
+      role === 'admin' ||
+      role === 'distribuidor' ||
+      role === 'vendedor'
+    )
+  }, [currentUser?.rol])
+
+  const canDeleteServicios = useMemo(() => {
+    const role = currentUser?.rol ?? null
+    return role === 'admin' || role === 'distribuidor'
+  }, [currentUser?.rol])
+
+  // NOTE: defined before serviciosRows to avoid temporal dead zone in useMemo callback
+  const handleOpenEditForm = useCallback((servicio: ServicioRecord) => {
+    const cliente = servicio.cliente_id ? clienteById.get(servicio.cliente_id) ?? null : null
+    const clienteLabel = cliente ? [cliente.nombre, cliente.apellido].filter(Boolean).join(' ').trim() : ''
+    setFormValues({
+      cliente_id: servicio.cliente_id ?? '',
+      equipo_instalado_id: servicio.equipo_instalado_id ?? '',
+      vendedor_id: servicio.vendedor_id ?? '',
+      fecha_servicio: servicio.fecha_servicio ?? '',
+      hora_cita: servicio.hora_cita ?? '',
+      tipo_servicio: servicio.tipo_servicio ?? 'cambio_repuesto',
+      observaciones: servicio.observaciones ?? '',
+      venta_id: servicio.venta_id ?? '',
+    })
+    setFormClientesRemote(cliente ? [cliente] : [])
+    setFormError(null)
+    setFormAction('edit')
+    setEditingServiceId(servicio.id)
+    setFormMode(servicio.hora_cita ? 'cita' : 'servicio')
+    setFormClienteSearch(clienteLabel || servicio.cliente_id || '')
+    setFormOpen(true)
+  }, [clienteById])
+
+  const handleOpenDeleteConfirm = useCallback((servicioId: string) => {
+    setDeleteServicioId(servicioId)
+    setDeleteConfirmOpen(true)
+  }, [])
+
+  const handleConfirmDelete = async () => {
+    if (!deleteServicioId) return
+    setDeleteSubmitting(true)
+    const { error: deleteError } = await supabase.from('servicios').delete().eq('id', deleteServicioId)
+    if (deleteError) {
+      showToast(deleteError.message, 'error')
+    } else {
+      setDeleteConfirmOpen(false)
+      setDeleteServicioId(null)
+      await loadData()
+      showToast(t('toast.success'))
+    }
+    setDeleteSubmitting(false)
+  }
+
   const serviciosRows = useMemo<DataTableRow[]>(() => {
     return serviciosFiltrados.map((servicio) => {
       const clienteLabel = servicio.cliente_id ? clienteMap.get(servicio.cliente_id) ?? servicio.cliente_id : '-'
       const ventaLabel = servicio.venta_id ? ventasMap.get(servicio.venta_id) ?? servicio.venta_id : '-'
-      const tipoLabel = servicio.tipo ? t(`servicio.types.${servicio.tipo}`) : '-'
+      const tipoLabel = servicio.tipo_servicio ? t(`servicio.types.${servicio.tipo_servicio}`) : '-'
+      const editCell = canEditServicios ? (
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            handleOpenEditForm(servicio)
+          }}
+        >
+          ✏️ {t('common.edit')}
+        </Button>
+      ) : null
+      const deleteCell = canDeleteServicios ? (
+        <Button
+          variant="ghost"
+          type="button"
+          style={{ color: '#ef4444' }}
+          onClick={(event) => {
+            event.stopPropagation()
+            handleOpenDeleteConfirm(servicio.id)
+          }}
+        >
+          🗑️
+        </Button>
+      ) : null
       return {
         id: servicio.id,
         cells: [
@@ -292,10 +384,12 @@ export function ServicioClientePage() {
           tipoLabel,
           servicio.observaciones ?? '-',
           ventaLabel,
+          ...(canEditServicios ? [editCell] : []),
+          ...(canDeleteServicios ? [deleteCell] : []),
         ],
       }
     })
-  }, [clienteMap, serviciosFiltrados, t, ventasMap])
+  }, [canDeleteServicios, canEditServicios, clienteMap, handleOpenDeleteConfirm, handleOpenEditForm, serviciosFiltrados, t, ventasMap])
 
   const equiposOptions = useMemo(() => {
     return equipos.filter((equipo) => equipo.cliente_id === formValues.cliente_id)
@@ -307,7 +401,7 @@ export function ServicioClientePage() {
 
   const usuariosAsignables = useMemo(() => {
     const base = usuarios
-      .filter((user) => user.rol === 'vendedor' || user.rol === 'distribuidor')
+      .filter((user) => user.rol === 'vendedor' || user.rol === 'distribuidor' || user.rol === 'admin')
       .filter((user) => user.activo !== false)
       .map((user) => ({
         id: user.id,
@@ -338,12 +432,23 @@ export function ServicioClientePage() {
     return [...ids].map((id) => ({ id, label: usersById[id] || id, rol: null }))
   }, [assignedVendedorIds, clientes, currentUser, usuarios, usersById])
 
+  const defaultVendedorId = currentUser?.rol === 'vendedor' ? (currentUser.id ?? '') : ''
+
+  const closeForm = useCallback(() => {
+    setFormOpen(false)
+    setFormAction('create')
+    setEditingServiceId(null)
+    setFormError(null)
+  }, [])
+
   const handleOpenForm = () => {
     setFormValues({
       ...initialServiceForm,
-      vendedor_id: '',
+      vendedor_id: defaultVendedorId,
     })
     setFormError(null)
+    setFormAction('create')
+    setEditingServiceId(null)
     setFormMode('servicio')
     setFormClienteSearch('')
     setFormOpen(true)
@@ -352,10 +457,12 @@ export function ServicioClientePage() {
   const handleOpenCitaForm = () => {
     setFormValues({
       ...initialServiceForm,
-      vendedor_id: '',
-      tipo: 'revision',
+      vendedor_id: defaultVendedorId,
+      tipo_servicio: 'revision',
     })
     setFormError(null)
+    setFormAction('create')
+    setEditingServiceId(null)
     setFormMode('cita')
     setFormClienteSearch('')
     setFormOpen(true)
@@ -503,23 +610,77 @@ export function ServicioClientePage() {
     setFormError(null)
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
     const vendedorId = toNull(formValues.vendedor_id) ?? session?.user.id ?? null
+
+    // Conflict check — exclude the record being edited
+    if (vendedorId && formValues.fecha_servicio && formValues.hora_cita) {
+      let conflictQuery = supabase
+        .from('v_agenda_hoy')
+        .select('agenda_id')
+        .eq('vendedor_id', vendedorId)
+        .eq('fecha', formValues.fecha_servicio)
+        .eq('hora', formValues.hora_cita)
+        .limit(1)
+      if (formAction === 'edit' && editingServiceId) {
+        conflictQuery = conflictQuery.neq('agenda_id', editingServiceId)
+      }
+      const { data: conflictRows, error: conflictError } = await conflictQuery
+
+      if (conflictError) {
+        setFormError(conflictError.message)
+        showToast(conflictError.message, 'error')
+        setSubmitting(false)
+        return
+      }
+
+      if (conflictRows && conflictRows.length > 0) {
+        const conflictMessage = t('servicio.form.errors.conflict')
+        setFormError(conflictMessage)
+        showToast(conflictMessage, 'error')
+        setSubmitting(false)
+        return
+      }
+    }
+
     const payload = {
       cliente_id: toNull(formValues.cliente_id),
       equipo_instalado_id: toNull(formValues.equipo_instalado_id),
       vendedor_id: vendedorId,
       fecha_servicio: formValues.fecha_servicio || null,
-      tipo: formValues.tipo,
+      hora_cita: toNull(formValues.hora_cita),
+      tipo_servicio: formValues.tipo_servicio,
       observaciones: toNull(formValues.observaciones),
       venta_id: toNull(formValues.venta_id),
     }
 
-    const { error: insertError } = await supabase.from('servicios').insert(payload)
+    if (vendedorId && payload.fecha_servicio && payload.hora_cita) {
+      let conflictoQuery = supabase
+        .from('servicios')
+        .select('id')
+        .eq('vendedor_id', vendedorId)
+        .eq('fecha_servicio', payload.fecha_servicio)
+        .eq('hora_cita', payload.hora_cita)
+        .limit(1)
+      if (formAction === 'edit' && editingServiceId) {
+        conflictoQuery = conflictoQuery.neq('id', editingServiceId)
+      }
+      const { data: conflicto } = await conflictoQuery
+      if (conflicto && conflicto.length > 0) {
+        setFormError('Este vendedor ya tiene una cita en esa fecha y hora. Elige otro horario.')
+        setSubmitting(false)
+        return
+      }
+    }
 
-    if (insertError) {
-      setFormError(insertError.message)
-      showToast(insertError.message, 'error')
+    const { error: saveError } =
+      formAction === 'edit' && editingServiceId
+        ? await supabase.from('servicios').update(payload).eq('id', editingServiceId)
+        : await supabase.from('servicios').insert(payload)
+
+    if (saveError) {
+      setFormError(saveError.message)
+      showToast(saveError.message, 'error')
     } else {
-      setFormOpen(false)
+      closeForm()
       await loadData()
       showToast(t('toast.success'))
     }
@@ -559,6 +720,13 @@ export function ServicioClientePage() {
   }
 
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
+
+  const formTitle =
+    formAction === 'edit'
+      ? 'Editar Servicio'
+      : formMode === 'cita'
+        ? t('servicio.form.citaTitle')
+        : t('servicio.form.title')
 
   return (
     <div className="page-stack">
@@ -629,6 +797,8 @@ export function ServicioClientePage() {
           t('servicio.servicios.columns.tipo'),
           t('servicio.servicios.columns.observaciones'),
           t('servicio.servicios.columns.venta'),
+          ...(canEditServicios ? [''] : []),
+          ...(canDeleteServicios ? [''] : []),
         ]}
         rows={serviciosRows}
         emptyLabel={emptyLabel}
@@ -636,11 +806,11 @@ export function ServicioClientePage() {
 
       <Modal
         open={formOpen}
-        title={formMode === 'cita' ? t('servicio.form.citaTitle') : t('servicio.form.title')}
-        onClose={() => setFormOpen(false)}
+        title={formTitle}
+        onClose={closeForm}
         actions={
           <>
-            <Button variant="ghost" type="button" onClick={() => setFormOpen(false)}>
+            <Button variant="ghost" type="button" onClick={closeForm}>
               {t('common.cancel')}
             </Button>
             <Button type="submit" form="servicio-form" disabled={submitting}>
@@ -662,10 +832,14 @@ export function ServicioClientePage() {
           {formSearchActive ? (
             <label className="form-field">
               <span>{t('servicio.form.fields.cliente')}</span>
-              <select value={formValues.cliente_id} onChange={handleChange('cliente_id')}>
-                <option value="">{t('common.select')}</option>
+              <select
+                value={formValues.cliente_id}
+                onChange={handleChange('cliente_id')}
+                style={{ color: '#111827', background: '#ffffff' }}
+              >
+                <option value="" style={{ color: '#111827', background: '#ffffff' }}>{t('common.select')}</option>
                 {formClientesRemote.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>
+                  <option key={cliente.id} value={cliente.id} style={{ color: '#111827', background: '#ffffff' }}>
                     {[
                       [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id,
                       cliente.telefono ? `Tel: ${cliente.telefono}` : null,
@@ -684,11 +858,16 @@ export function ServicioClientePage() {
           )}
           <label className="form-field">
             <span>{t('servicio.form.fields.asignado')}</span>
-            <select value={formValues.vendedor_id} onChange={handleChange('vendedor_id')}>
-              <option value="">{t('common.select')}</option>
+            <select
+              value={formValues.vendedor_id}
+              onChange={handleChange('vendedor_id')}
+              disabled={currentUser?.rol === 'vendedor'}
+              style={{ color: '#111827', background: '#ffffff' }}
+            >
+              <option value="" style={{ color: '#111827', background: '#ffffff' }}>{t('common.select')}</option>
               {usuariosAsignables.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.label} {user.rol === 'distribuidor' ? `(${t('usuarios.roles.distribuidor')})` : ''}
+                <option key={user.id} value={user.id} style={{ color: '#111827', background: '#ffffff' }}>
+                  {user.label} ({t(`usuarios.roles.${user.rol}`, user.rol ?? '')})
                 </option>
               ))}
             </select>
@@ -709,8 +888,12 @@ export function ServicioClientePage() {
             <input type="date" value={formValues.fecha_servicio} onChange={handleChange('fecha_servicio')} />
           </label>
           <label className="form-field">
+            <span>{t('servicio.form.fields.hora') || 'Hora'}</span>
+            <input type="time" value={formValues.hora_cita} onChange={handleChange('hora_cita')} />
+          </label>
+          <label className="form-field">
             <span>{t('servicio.form.fields.tipo')}</span>
-            <select value={formValues.tipo} onChange={handleChange('tipo')}>
+            <select value={formValues.tipo_servicio} onChange={handleChange('tipo_servicio')}>
               <option value="cambio_repuesto">{t('servicio.types.cambio_repuesto')}</option>
               <option value="revision">{t('servicio.types.revision')}</option>
               <option value="garantia">{t('servicio.types.garantia')}</option>
@@ -734,6 +917,31 @@ export function ServicioClientePage() {
           </label>
           {formError && <div className="form-error">{formError}</div>}
         </form>
+      </Modal>
+
+      <Modal
+        open={deleteConfirmOpen}
+        title="Eliminar cita"
+        onClose={() => { setDeleteConfirmOpen(false); setDeleteServicioId(null) }}
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => { setDeleteConfirmOpen(false); setDeleteServicioId(null) }}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              style={{ background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}
+              disabled={deleteSubmitting}
+              onClick={handleConfirmDelete}
+            >
+              {deleteSubmitting ? t('common.saving') : '🗑️ Eliminar'}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0 }}>
+          ¿Estás seguro de eliminar esta cita? Esta acción no se puede deshacer.
+        </p>
       </Modal>
 
       <Modal
@@ -764,10 +972,14 @@ export function ServicioClientePage() {
           {noteSearchActive ? (
             <label className="form-field">
               <span>{t('servicio.note.fields.cliente')}</span>
-              <select value={noteValues.cliente_id} onChange={handleNoteChange('cliente_id')}>
-                <option value="">{t('common.select')}</option>
+              <select
+                value={noteValues.cliente_id}
+                onChange={handleNoteChange('cliente_id')}
+                style={{ color: '#111827', background: '#ffffff' }}
+              >
+                <option value="" style={{ color: '#111827', background: '#ffffff' }}>{t('common.select')}</option>
                 {noteClientesRemote.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>
+                  <option key={cliente.id} value={cliente.id} style={{ color: '#111827', background: '#ffffff' }}>
                     {[
                       [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id,
                       cliente.telefono ? `Tel: ${cliente.telefono}` : null,
