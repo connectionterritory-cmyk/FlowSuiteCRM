@@ -378,6 +378,7 @@ export function ActivacionReferidosPanel({
         relacion: newRef.relacion,
         estado: 'pendiente',
         owner_id: currentUserId,
+        gestionado_por: currentUserId,
       })
       .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
       .single()
