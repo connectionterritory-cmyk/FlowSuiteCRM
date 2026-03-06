@@ -42,7 +42,7 @@ export type CiReferido = {
   calificacion: number | null
   modo_gestion?: string | null
   asignado_a?: string | null
-  gestionado_por_usuario_id?: string | null
+  gestionado_por?: string | null
   tomado_por_vendedor_at?: string | null
   liberado_a_telemercadeo_at?: string | null
 }
@@ -402,7 +402,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
           relacion: row.relacion,
           estado: 'pendiente',
           gestionado_por: session.user.id,
-          gestionado_por_usuario_id: session.user.id,
+          gestionado_por: session.user.id,
         }))
         const { data, error: referidosError } = await supabase
           .from('ci_referidos')
@@ -500,7 +500,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const payload = normalizeReferido(row)
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
-        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id, gestionado_por: session.user.id, gestionado_por_usuario_id: session.user.id })
+        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id, gestionado_por: session.user.id })
         .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (insertError || !data) {
