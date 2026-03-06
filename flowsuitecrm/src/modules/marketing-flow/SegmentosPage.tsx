@@ -191,7 +191,6 @@ export function SegmentosPage() {
                 label={ui.label}
                 value={String(counts[segment.key] ?? 0)}
                 hint={ui.hint}
-                tooltip={ui.tooltip}
                 accent={index % 2 === 0 ? 'blue' : 'gold'}
                 onClick={() => setSelectedSegment(segment.key)}
               />
