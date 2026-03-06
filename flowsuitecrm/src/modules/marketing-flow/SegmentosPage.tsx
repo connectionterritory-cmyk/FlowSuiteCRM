@@ -97,52 +97,47 @@ export function SegmentosPage() {
     nuevos: {
       label: t('segmentos.cards.nuevos.label'),
       hint: t('segmentos.cards.nuevos.hint'),
-      tooltip: t('segmentos.cards.nuevos.tooltip'),
     },
     vencidos: {
       label: t('segmentos.cards.vencidos.label'),
       hint: t('segmentos.cards.vencidos.hint'),
-      tooltip: t('segmentos.cards.vencidos.tooltip'),
     },
     cita: {
       label: t('segmentos.cards.cita.label'),
       hint: t('segmentos.cards.cita.hint'),
-      tooltip: t('segmentos.cards.cita.tooltip'),
     },
     sin_contacto: {
       label: t('segmentos.cards.sin_contacto.label'),
       hint: t('segmentos.cards.sin_contacto.hint'),
-      tooltip: t('segmentos.cards.sin_contacto.tooltip'),
     },
     descartados: {
       label: t('segmentos.cards.descartados.label'),
       hint: t('segmentos.cards.descartados.hint'),
-      tooltip: t('segmentos.cards.descartados.tooltip'),
     },
     clientes_activos: {
       label: t('segmentos.cards.clientes_activos.label'),
       hint: t('segmentos.cards.clientes_activos.hint'),
-      tooltip: t('segmentos.cards.clientes_activos.tooltip'),
+    },
+    cumpleanos_clientes: {
+      label: t('segmentos.cards.cumpleanos_clientes.label'),
+      hint: t('segmentos.cards.cumpleanos_clientes.hint'),
     },
     clientes_miami: {
       label: t('segmentos.cards.clientes_miami.label'),
       hint: t('segmentos.cards.clientes_miami.hint'),
-      tooltip: t('segmentos.cards.clientes_miami.tooltip'),
     },
     clientes_la: {
       label: t('segmentos.cards.clientes_la.label'),
       hint: t('segmentos.cards.clientes_la.hint'),
-      tooltip: t('segmentos.cards.clientes_la.tooltip'),
     },
   }), [t])
 
   const getSegmentUi = useCallback(
     (key: string, fallbackLabel: string, fallbackHint?: string) => {
-      const entry = (segmentCopy as Record<string, { label: string; hint?: string; tooltip?: string }>)[key]
+      const entry = (segmentCopy as Record<string, { label: string; hint?: string }>)[key]
       return {
         label: entry?.label || fallbackLabel,
         hint: entry?.hint || fallbackHint,
-        tooltip: entry?.tooltip,
       }
     },
     [segmentCopy]
@@ -177,8 +172,8 @@ export function SegmentosPage() {
 
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-          <h3 style={{ margin: 0 }}>{fuente === 'leads' ? t('segmentos.sections.prospectos') : t('segmentos.sections.clientes')}</h3>
-          <span style={{ opacity: 0.7, fontSize: '0.9rem' }}>
+          <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{fuente === 'leads' ? t('segmentos.sections.prospectos') : t('segmentos.sections.clientes')}</h3>
+          <span style={{ opacity: 0.8, fontSize: '0.92rem' }}>
             {fuente === 'leads' ? t('segmentos.sections.prospectosHint') : t('segmentos.sections.clientesHint')}
           </span>
         </div>

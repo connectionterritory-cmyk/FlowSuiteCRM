@@ -127,6 +127,7 @@
     "oportunidades": "Oportunidades",
     "leads": "Leads",
     "marketingFlow": "MarketingFlow",
+    "citas": "Consultas",
     "clientes": "Clientes",
     "ventas": "Vendas",
     "productos": "Produtos",
@@ -142,6 +143,68 @@
     "importaciones": "Importaciones",
     "usuarios": "Usuarios",
     "perfil": "Perfil"
+  },
+  "segmentos": {
+    "title": "Segmentos",
+    "subtitle": "Escolha um grupo para criar campanhas",
+    "tabs": {
+      "prospectos": "Prospectos",
+      "clientes": "Clientes"
+    },
+    "sections": {
+      "prospectos": "Prospectos",
+      "prospectosHint": "Novos contatos e acompanhamento",
+      "clientes": "Clientes",
+      "clientesHint": "Ativacao e contato recorrente"
+    },
+    "cards": {
+      "nuevos": {
+        "label": "Novos",
+        "hint": "Sem contato anterior"
+      },
+      "vencidos": {
+        "label": "Vencidos",
+        "hint": "Acompanhamento atrasado"
+      },
+      "cita": {
+        "label": "Com consulta",
+        "hint": "Visita ou demo marcada"
+      },
+      "sin_contacto": {
+        "label": "Sem contato",
+        "hint": "Inativos 7+ dias"
+      },
+      "descartados": {
+        "label": "Descartados",
+        "hint": "Sem interesse"
+      },
+      "clientes_activos": {
+        "label": "Clientes ativos",
+        "hint": "Telefone disponível"
+      },
+      "cumpleanos_clientes": {
+        "label": "Aniversarios do mes",
+        "hint": "Clientes que fazem aniversario"
+      },
+      "clientes_miami": {
+        "label": "Clientes Miami",
+        "hint": "Regiao de Miami"
+      },
+      "clientes_la": {
+        "label": "Clientes Los Angeles",
+        "hint": "Regiao de Los Angeles"
+      }
+    },
+    "table": {
+      "nombre": "Nome",
+      "telefono": "Telefone",
+      "ciudad": "Cidade"
+    },
+    "loading": "Carregando segmentos...",
+    "empty": {
+      "title": "Sem resultados",
+      "description": "Nao ha contatos para este segmento."
+    }
   },
   "oportunidades": {
     "title": "Oportunidades",

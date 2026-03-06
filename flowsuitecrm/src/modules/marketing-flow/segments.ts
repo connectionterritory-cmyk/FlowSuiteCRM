@@ -25,10 +25,10 @@ export const LEAD_SEGMENTS: SegmentDefinition[] = SEGMENTS.map((segment) => ({
 }))
 
 export const CLIENTE_SEGMENTS: SegmentDefinition[] = [
-  { key: 'clientes_activos', label: 'Clientes activos', fuente: 'clientes', hint: 'Telefono disponible' },
-  { key: 'cumpleanos_clientes', label: '🎂 Cumpleanos (Clientes)', fuente: 'clientes', hint: 'Cumplen anos en el mes elegido' },
+  { key: 'clientes_activos', label: 'Clientes activos', fuente: 'clientes', hint: 'Con teléfono disponible' },
+  { key: 'cumpleanos_clientes', label: 'Cumpleaños del mes', fuente: 'clientes', hint: 'Cumplen años en el mes elegido' },
   { key: 'clientes_miami', label: 'Clientes Miami', fuente: 'clientes' },
-  { key: 'clientes_la', label: 'Clientes LA', fuente: 'clientes' },
+  { key: 'clientes_la', label: 'Clientes Los Ángeles', fuente: 'clientes' },
 ]
 
 export const ALL_SEGMENTS: SegmentDefinition[] = [...LEAD_SEGMENTS, ...CLIENTE_SEGMENTS]
