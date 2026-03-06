@@ -402,7 +402,6 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
           relacion: row.relacion,
           estado: 'pendiente',
           gestionado_por: session.user.id,
-          gestionado_por: session.user.id,
         }))
         const { data, error: referidosError } = await supabase
           .from('ci_referidos')
