@@ -1,3 +1,5 @@
+import { formatProperName } from '../textFormat'
+
 export const MIN_REFERIDOS_CI = 20
 export const MIN_REFERIDOS_DRAFT = 1
 
@@ -58,7 +60,7 @@ export const isReferidoPartial = (row: ReferidoFormRow) => {
 }
 
 export const normalizeReferido = (row: ReferidoFormRow) => ({
-  nombre: row.nombre.trim(),
+  nombre: formatProperName(row.nombre),
   telefono: stripPhone(row.telefono),
   relacion: row.relacion,
 })

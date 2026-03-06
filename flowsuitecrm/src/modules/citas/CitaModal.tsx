@@ -3,6 +3,7 @@ import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
 
 type AssignedOption = {
   id: string
@@ -120,11 +121,11 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       tipo: form.tipo.trim(),
       estado: form.estado.trim() || 'programada',
       notas: form.notas.trim() || null,
-      direccion: form.direccion.trim() || null,
-      ciudad: form.ciudad?.trim() || null,
-      estado_region: form.estado_region?.trim() || null,
+      direccion: form.direccion ? formatProperText(form.direccion) : null,
+      ciudad: form.ciudad ? formatProperText(form.ciudad) : null,
+      estado_region: form.estado_region ? formatStateRegion(form.estado_region) : null,
       assigned_to: form.assigned_to || null,
-      nombre: form.contacto_nombre.trim() || null,
+      nombre: form.contacto_nombre ? formatProperName(form.contacto_nombre) : null,
       telefono: form.contacto_telefono.trim() || null,
       contacto_tipo: form.contacto_tipo || null,
       contacto_id: form.contacto_id.trim() || null,

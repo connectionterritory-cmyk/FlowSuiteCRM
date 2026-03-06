@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { IconRestore, IconSwap, IconTrash, IconWhatsapp } from '../../components/icons'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { formatProperName } from '../../lib/textFormat'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
@@ -954,8 +955,8 @@ export function LeadsPage() {
         ? fuenteOtro.trim() || t('leads.sources.otro')
         : formValues.fuente
     const payload = {
-      nombre: toNull(formValues.nombre),
-      apellido: toNull(formValues.apellido),
+      nombre: toNull(formatProperName(formValues.nombre)),
+      apellido: toNull(formatProperName(formValues.apellido)),
       email: toNull(formValues.email),
       telefono: toNull(formValues.telefono),
       fuente: toNull(fuenteValue),

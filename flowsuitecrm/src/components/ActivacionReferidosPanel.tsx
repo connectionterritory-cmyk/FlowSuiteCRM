@@ -13,6 +13,7 @@ import {
   stripPhone,
   type CiReferidoEstado,
 } from '../lib/conexiones/validaciones'
+import { formatProperName } from '../lib/textFormat'
 import type { CiActivacion, CiReferido } from '../hooks/useConexiones'
 
 type Props = {
@@ -380,7 +381,7 @@ export function ActivacionReferidosPanel({
       }))
       return
     }
-    const nombre = newRef.nombre.trim()
+    const nombre = formatProperName(newRef.nombre)
     const telefono = stripPhone(newRef.telefono)
     if (!nombre || !telefono) {
       setNewRef((prev) => ({ ...prev, error: t('conexiones.referidosPanel.newRefRequired') }))

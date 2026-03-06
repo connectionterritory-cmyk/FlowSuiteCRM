@@ -17,10 +17,10 @@ import {
   parseUsAddress,
   buildMapsNavUrl,
   buildTelUrl,
-  capitalizeProperName,
   formatAddressLabel,
   type ParsedAddress,
 } from '../../lib/addressUtils'
+import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
 
 type ClienteRecord = {
   id: string
@@ -763,14 +763,14 @@ export function ClientesPage() {
       }
     }
     const basePayload = {
-      nombre: toNull(formValues.nombre),
-      apellido: toNull(formValues.apellido),
+      nombre: toNull(formatProperName(formValues.nombre)),
+      apellido: toNull(formatProperName(formValues.apellido)),
       email: toNull(formValues.email),
       telefono: toNull(formValues.telefono),
       telefono_casa: toNull(formValues.telefono_casa),
-      direccion: toNull(formValues.direccion),
-      ciudad: toNull(formValues.ciudad),
-      estado_region: toNull(formValues.estado_region),
+      direccion: toNull(formatProperText(formValues.direccion)),
+      ciudad: toNull(formatProperText(formValues.ciudad)),
+      estado_region: toNull(formatStateRegion(formValues.estado_region)),
       codigo_postal: toNull(formValues.codigo_postal),
       hycite_id: toNull(formValues.hycite_id),
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
@@ -803,7 +803,15 @@ export function ClientesPage() {
   }
 
   const handleCapitalize = (field: 'nombre' | 'apellido') => () => {
-    setFormValues((prev) => ({ ...prev, [field]: capitalizeProperName(prev[field] as string) }))
+    setFormValues((prev) => ({ ...prev, [field]: formatProperName(prev[field] as string) }))
+  }
+
+  const handleFormatText = (field: 'direccion' | 'ciudad') => () => {
+    setFormValues((prev) => ({ ...prev, [field]: formatProperText(prev[field] as string) }))
+  }
+
+  const handleFormatState = () => {
+    setFormValues((prev) => ({ ...prev, estado_region: formatStateRegion(prev.estado_region as string) }))
   }
 
   const handleDireccionPaste = (event: ClipboardEvent<HTMLInputElement>) => {
@@ -1445,6 +1453,7 @@ export function ClientesPage() {
             <input
               value={formValues.direccion}
               onChange={handleChange('direccion')}
+              onBlur={handleFormatText('direccion')}
               onPaste={handleDireccionPaste}
               placeholder="Pega la dirección completa aquí para auto-rellenar"
             />
@@ -1469,11 +1478,11 @@ export function ClientesPage() {
           )}
           <label className="form-field">
             <span>Ciudad</span>
-            <input value={formValues.ciudad} onChange={handleChange('ciudad')} />
+            <input value={formValues.ciudad} onChange={handleChange('ciudad')} onBlur={handleFormatText('ciudad')} />
           </label>
           <label className="form-field">
             <span>Estado</span>
-            <input value={formValues.estado_region} onChange={handleChange('estado_region')} />
+            <input value={formValues.estado_region} onChange={handleChange('estado_region')} onBlur={handleFormatState} />
           </label>
           <label className="form-field">
             <span>Código postal</span>
