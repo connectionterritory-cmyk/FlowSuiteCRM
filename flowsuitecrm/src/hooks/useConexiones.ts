@@ -42,7 +42,7 @@ export type CiReferido = {
   calificacion: number | null
   modo_gestion?: string | null
   asignado_a?: string | null
-  gestionado_por?: string | null
+  gestionado_por_usuario_id?: string | null
   tomado_por_vendedor_at?: string | null
   liberado_a_telemercadeo_at?: string | null
 }
