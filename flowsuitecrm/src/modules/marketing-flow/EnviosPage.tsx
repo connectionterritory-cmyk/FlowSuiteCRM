@@ -217,7 +217,7 @@ export function EnviosPage() {
       return
     }
     if (!canSend) {
-      showToast('Selecciona una campana activa para enviar.', 'error')
+      showToast('Selecciona una campaña activa para enviar.', 'error')
       setActiveMessage(null)
       return
     }
@@ -402,30 +402,41 @@ export function EnviosPage() {
     return list
   }, [birthDayByClienteId, daySort, isBirthdayCampaign, messages, statusFilter])
 
+  const statusLabels: Record<string, string> = {
+    pendiente: 'Pendiente',
+    enviado: 'Enviado',
+    respondido: 'Respondido',
+  }
+
   const rows = useMemo<DataTableRow[]>(() => {
     return displayedMessages.map((message) => {
       const fullName = message.nombre ?? '-'
       const telefono = message.telefono ?? '-'
       const status = message.status ?? 'pendiente'
+      const statusLabel = statusLabels[status] ?? status
       const responded = Boolean(message.response_id) || Boolean(message.responded_at) || respondedMessageIds.has(message.id)
       const alreadySent = Boolean(message.sent_at)
       const tipoLabel = message.contacto_tipo ?? '-'
       const birthDay = message.contacto_id ? birthDayByClienteId[message.contacto_id] : undefined
+      const sendLabel = alreadySent ? 'Reenviar' : 'Enviar'
+      const sendVariant = alreadySent ? 'ghost' : 'primary'
       return {
         id: message.id,
         cells: [
           fullName,
           telefono,
           tipoLabel,
-          <Badge key={`${message.id}-status`} label={status} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />,
+          <Badge key={`${message.id}-status`} label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />,
           ...(isBirthdayCampaign ? [birthDay ? String(birthDay) : '—'] : []),
-          <div key={`${message.id}-actions`} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-            <Button variant="ghost" onClick={() => handleOpenMessage(message)} disabled={alreadySent || !canSend}>
-              Enviar
+          <div key={`${message.id}-actions`} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button variant={sendVariant} onClick={() => handleOpenMessage(message)} disabled={!canSend}>
+              {sendLabel}
             </Button>
-            <Button variant="ghost" onClick={() => handleMarkSent(message)} disabled={alreadySent || !canSend}>
-              Marcar enviado
-            </Button>
+            {!alreadySent && (
+              <Button variant="ghost" onClick={() => handleMarkSent(message)} disabled={!canSend}>
+                Marcar enviado
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => openResponseModal(message)}>
               Registrar respuesta
             </Button>
@@ -435,11 +446,11 @@ export function EnviosPage() {
         ],
       }
     })
-  }, [birthDayByClienteId, canSend, displayedMessages, isBirthdayCampaign, respondedMessageIds])
+  }, [birthDayByClienteId, canSend, displayedMessages, isBirthdayCampaign, respondedMessageIds, statusLabels])
 
   return (
     <div className="page-stack">
-      <SectionHeader title="Envios" subtitle="Lista por campana" />
+      <SectionHeader title="Envíos" subtitle="Seguimiento por campaña" />
 
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <select
@@ -455,7 +466,7 @@ export function EnviosPage() {
             fontSize: '0.85rem',
           }}
         >
-          <option value="">Selecciona campana</option>
+          <option value="">Selecciona campaña</option>
           {campaigns.map((camp) => (
             <option key={camp.id} value={camp.id}>
               {camp.nombre ?? camp.id}
@@ -463,10 +474,10 @@ export function EnviosPage() {
           ))}
         </select>
         {selectedCampaign && (
-          <Badge label={`Campana ${selectedCampaign.estado ?? 'borrador'}`} tone="blue" />
+          <Badge label={`Campaña ${selectedCampaign.estado ?? 'borrador'}`} tone="blue" />
         )}
         {!canSend && (
-          <Badge label={campaignId ? 'Campana no activa' : 'Campana requerida'} tone="gold" />
+          <Badge label={campaignId ? 'Campaña no activa' : 'Selecciona una campaña'} tone="gold" />
         )}
       </div>
 
@@ -488,14 +499,14 @@ export function EnviosPage() {
       {!loading && !hasResults && (
         <EmptyState
           title="Sin resultados"
-          description={campaignId ? 'No hay envios para esta campana.' : 'Selecciona una campana para ver los envios.'}
+          description={campaignId ? 'No hay envíos para esta campaña.' : 'Selecciona una campaña para ver los envíos.'}
         />
       )}
       {hasResults && (
         <DataTable
           columns={isBirthdayCampaign
-            ? ['Nombre', 'Telefono', 'Tipo', 'Estado', 'Dia', 'Acciones']
-            : ['Nombre', 'Telefono', 'Tipo', 'Estado', 'Acciones']}
+            ? ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Día', 'Acciones']
+            : ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Acciones']}
           rows={rows}
           sortableColumns={isBirthdayCampaign && dayColumnIndex !== null ? [dayColumnIndex] : undefined}
           sortColIndex={daySort && dayColumnIndex !== null ? dayColumnIndex : undefined}
@@ -561,10 +572,11 @@ export function EnviosPage() {
               rows={3}
               value={responseForm.notas}
               onChange={(event) => setResponseForm((prev) => ({ ...prev, notas: event.target.value }))}
+              placeholder="Detalle corto de la respuesta"
             />
           </label>
           <label className="form-field">
-            <span>Followup</span>
+            <span>Seguimiento</span>
             <input
               type="date"
               value={responseForm.followup_at}
@@ -578,6 +590,7 @@ export function EnviosPage() {
               inputMode="decimal"
               value={responseForm.monto_prometido}
               onChange={(event) => setResponseForm((prev) => ({ ...prev, monto_prometido: event.target.value }))}
+              placeholder="0.00"
             />
           </label>
         </div>

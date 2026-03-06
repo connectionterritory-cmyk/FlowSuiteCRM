@@ -330,10 +330,10 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     if (embajadoresResult.error || periodosResult.error || programasResult.error || roleResult.error) {
       setErrorEmbajadores(
         embajadoresResult.error?.message ||
-          periodosResult.error?.message ||
-          programasResult.error?.message ||
-          roleResult.error?.message ||
-          'Error loading data',
+        periodosResult.error?.message ||
+        programasResult.error?.message ||
+        roleResult.error?.message ||
+        'Error loading data',
       )
     }
 
@@ -395,19 +395,27 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
 
       let referidosData: CiReferido[] = []
       if (normalizedReferidos.length > 0) {
+        if (!session.user.id) {
+          return { data: null, error: 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor' }
+        }
         const referidosPayload = normalizedReferidos.map((row) => ({
           activacion_id: activationData.id,
           nombre: row.nombre,
           telefono: row.telefono,
           relacion: row.relacion,
           estado: 'pendiente',
+          modo_gestion: 'vendedor_directo',
+          gestionado_por_usuario_id: session.user.id,
         }))
         const { data, error: referidosError } = await supabase
           .from('ci_referidos')
           .insert(referidosPayload)
           .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, modo_gestion, asignado_a')
         if (referidosError) {
-          return { data: null, error: referidosError.message }
+          const friendly = referidosError.message.includes('ci_referidos_gestionado_por_required')
+            ? 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor'
+            : referidosError.message
+          return { data: null, error: friendly }
         }
         referidosData = (data as CiReferido[]) ?? []
       }
@@ -498,11 +506,14 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const payload = normalizeReferido(row)
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
-        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id })
+        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', modo_gestion: 'vendedor_directo', owner_id: session.user.id, gestionado_por_usuario_id: session.user.id })
         .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (insertError || !data) {
-        return { data: null, error: insertError?.message ?? 'Error creating referido' }
+        const friendly = insertError?.message?.includes('ci_referidos_gestionado_por_required')
+          ? 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor'
+          : insertError?.message
+        return { data: null, error: friendly ?? 'Error creating referido' }
       }
       setReferidos((prev) => [data as CiReferido, ...prev])
       return { data: data as CiReferido, error: null }
@@ -717,11 +728,11 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const program4en14Id = program4en14Result.data?.[0]?.id ?? null
       const referidosPayload = program4en14Id
         ? validRows.map((row) => ({
-            programa_id: program4en14Id,
-            nombre: row.nombre.trim(),
-            telefono: toNull(stripPhone(row.telefono)),
-            estado_presentacion: row.estado || 'pendiente',
-          }))
+          programa_id: program4en14Id,
+          nombre: row.nombre.trim(),
+          telefono: toNull(stripPhone(row.telefono)),
+          estado_presentacion: row.estado || 'pendiente',
+        }))
         : []
 
       const currentConnections =

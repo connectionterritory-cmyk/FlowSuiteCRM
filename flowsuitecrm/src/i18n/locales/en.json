@@ -127,6 +127,7 @@
     "oportunidades": "Opportunities",
     "leads": "Leads",
     "marketingFlow": "MarketingFlow",
+    "citas": "Appointments",
     "clientes": "Customers",
     "ventas": "Sales",
     "productos": "Products",
@@ -142,6 +143,68 @@
     "importaciones": "Importaciones",
     "usuarios": "Users",
     "perfil": "Profile"
+  },
+  "segmentos": {
+    "title": "Segments",
+    "subtitle": "Pick a group to create campaigns",
+    "tabs": {
+      "prospectos": "Prospects",
+      "clientes": "Customers"
+    },
+    "sections": {
+      "prospectos": "Prospects",
+      "prospectosHint": "New contacts and follow-up",
+      "clientes": "Customers",
+      "clientesHint": "Activation and recurring outreach"
+    },
+    "cards": {
+      "nuevos": {
+        "label": "New",
+        "hint": "No prior contact"
+      },
+      "vencidos": {
+        "label": "Overdue",
+        "hint": "Follow-up past due"
+      },
+      "cita": {
+        "label": "With appointment",
+        "hint": "Visit or demo scheduled"
+      },
+      "sin_contacto": {
+        "label": "No contact",
+        "hint": "Inactive 7+ days"
+      },
+      "descartados": {
+        "label": "Discarded",
+        "hint": "Not interested"
+      },
+      "clientes_activos": {
+        "label": "Active customers",
+        "hint": "Phone available"
+      },
+      "cumpleanos_clientes": {
+        "label": "Birthdays this month",
+        "hint": "Customers with birthdays"
+      },
+      "clientes_miami": {
+        "label": "Customers Miami",
+        "hint": "Miami area"
+      },
+      "clientes_la": {
+        "label": "Customers Los Angeles",
+        "hint": "Los Angeles area"
+      }
+    },
+    "table": {
+      "nombre": "Name",
+      "telefono": "Phone",
+      "ciudad": "City"
+    },
+    "loading": "Loading segments...",
+    "empty": {
+      "title": "No results",
+      "description": "No contacts for this segment."
+    }
   },
   "oportunidades": {
     "title": "Opportunities",

@@ -167,6 +167,17 @@ export function ActivacionReferidosPanel({
   const [newRef, setNewRef] = useState<NewRefForm>(EMPTY_NEW_REF)
   // Calificacion
   const [calificacionLead, setCalificacionLead] = useState<CalificacionLead | null>(null)
+
+  const canAddReferido = Boolean(
+    activation &&
+      currentUserId &&
+      (
+        activation.owner_id === currentUserId ||
+        activation.representante_id === currentUserId ||
+        currentRole === 'admin' ||
+        currentRole === 'distribuidor'
+      )
+  )
   // Owner info
   const [ownerInfo, setOwnerInfo] = useState<OwnerInfo | null>(null)
   const [ownerInfoOpen, setOwnerInfoOpen] = useState(false)
@@ -207,7 +218,7 @@ export function ActivacionReferidosPanel({
     } else if (activation.lead_id) {
       const { data } = await supabase
         .from('leads')
-        .select('ciudad, estado_region, situacion_laboral, estado_civil, tipo_vivienda, tiene_productos_rp')
+        .select('*')
         .eq('id', activation.lead_id)
         .maybeSingle()
       if (data) setOwnerInfo(data as OwnerInfo)
@@ -362,10 +373,24 @@ export function ActivacionReferidosPanel({
 
   const handleAddNewReferido = async () => {
     if (!configured || !activation || !currentUserId) return
+    if (!canAddReferido) {
+      setNewRef((prev) => ({
+        ...prev,
+        error: 'No tienes permiso para agregar referidos a esta lista.',
+      }))
+      return
+    }
     const nombre = newRef.nombre.trim()
     const telefono = stripPhone(newRef.telefono)
     if (!nombre || !telefono) {
       setNewRef((prev) => ({ ...prev, error: t('conexiones.referidosPanel.newRefRequired') }))
+      return
+    }
+    if (!currentUserId) {
+      setNewRef((prev) => ({
+        ...prev,
+        error: 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor',
+      }))
       return
     }
     setNewRef((prev) => ({ ...prev, saving: true, error: null }))
@@ -377,12 +402,19 @@ export function ActivacionReferidosPanel({
         telefono,
         relacion: newRef.relacion,
         estado: 'pendiente',
+        modo_gestion: 'vendedor_directo',
         owner_id: currentUserId,
+        gestionado_por_usuario_id: currentUserId,
       })
-      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion')
+      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por_usuario_id, tomado_por_vendedor_at, liberado_a_telemercadeo_at')
       .single()
     if (insertError || !data) {
-      setNewRef((prev) => ({ ...prev, saving: false, error: insertError?.message ?? t('toast.error') }))
+      const friendly = insertError?.message?.includes('ci_referidos_gestionado_por_required')
+        ? 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor'
+        : insertError?.message?.includes('row-level security')
+          ? 'No tienes permiso para agregar referidos a esta lista.'
+          : insertError?.message
+      setNewRef((prev) => ({ ...prev, saving: false, error: friendly ?? t('toast.error') }))
       return
     }
     const newRow = data as CiReferido
@@ -803,13 +835,13 @@ export function ActivacionReferidosPanel({
                     </div>
                     {newRef.error && <div className="form-error">{newRef.error}</div>}
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <Button
-                        type="button"
-                        onClick={handleAddNewReferido}
-                        disabled={newRef.saving}
-                      >
-                        {newRef.saving ? t('common.saving') : t('common.save')}
-                      </Button>
+                    <Button
+                      type="button"
+                      onClick={handleAddNewReferido}
+                      disabled={newRef.saving || !canAddReferido}
+                    >
+                      {newRef.saving ? t('common.saving') : t('common.save')}
+                    </Button>
                       <Button
                         type="button"
                         variant="ghost"
