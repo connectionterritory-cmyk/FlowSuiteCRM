@@ -199,10 +199,19 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           </select>
         </label>
         <label className="form-field">
-          <span>Direccion</span>
+          <span>Contacto</span>
           <input
-            value={form.direccion}
-            onChange={(event) => setForm((prev) => ({ ...prev, direccion: event.target.value }))}
+            value={form.contacto_nombre}
+            onChange={(event) => setForm((prev) => ({ ...prev, contacto_nombre: event.target.value }))}
+            placeholder="Nombre del cliente"
+          />
+        </label>
+        <label className="form-field">
+          <span>Teléfono</span>
+          <input
+            value={form.contacto_telefono}
+            onChange={(event) => setForm((prev) => ({ ...prev, contacto_telefono: event.target.value }))}
+            placeholder="+1 555 000 000"
           />
         </label>
         <label className="form-field">
@@ -221,17 +230,27 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           </select>
         </label>
         <label className="form-field">
-          <span>Contacto</span>
+          <span>Dirección</span>
           <input
-            value={form.contacto_nombre}
-            onChange={(event) => setForm((prev) => ({ ...prev, contacto_nombre: event.target.value }))}
+            value={form.direccion}
+            onChange={(event) => setForm((prev) => ({ ...prev, direccion: event.target.value }))}
+            placeholder="Calle y número"
           />
         </label>
         <label className="form-field">
-          <span>Telefono</span>
+          <span>Ciudad</span>
           <input
-            value={form.contacto_telefono}
-            onChange={(event) => setForm((prev) => ({ ...prev, contacto_telefono: event.target.value }))}
+            value={form.ciudad ?? ''}
+            onChange={(event) => setForm((prev) => ({ ...prev, ciudad: event.target.value }))}
+            placeholder="Ciudad"
+          />
+        </label>
+        <label className="form-field">
+          <span>Estado / Región</span>
+          <input
+            value={form.estado_region ?? ''}
+            onChange={(event) => setForm((prev) => ({ ...prev, estado_region: event.target.value }))}
+            placeholder="Estado"
           />
         </label>
         <label className="form-field">
@@ -240,6 +259,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             rows={3}
             value={form.notas}
             onChange={(event) => setForm((prev) => ({ ...prev, notas: event.target.value }))}
+            placeholder="Notas internas o indicaciones"
           />
         </label>
       </div>

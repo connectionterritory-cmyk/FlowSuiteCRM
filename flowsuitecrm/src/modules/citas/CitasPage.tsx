@@ -30,7 +30,7 @@ type RangeKey = 'hoy' | 'manana' | 'semana' | 'todas'
 
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: 'hoy', label: 'Hoy' },
-  { key: 'manana', label: 'Manana' },
+  { key: 'manana', label: 'Mañana' },
   { key: 'semana', label: 'Semana' },
   { key: 'todas', label: 'Todas' },
 ]
@@ -201,7 +201,7 @@ export function CitasPage() {
     <div className="page-stack">
       <SectionHeader
         title="Citas"
-        subtitle="Agenda de visitas y llamadas"
+        subtitle="Agenda de visitas, demos y seguimientos"
         action={<Button onClick={openNewModal}>Nueva cita</Button>}
       />
 
@@ -222,10 +222,15 @@ export function CitasPage() {
 
       {loading && <div className="card" style={{ padding: '1rem' }}>Cargando citas...</div>}
       {!loading && !hasResults && (
-        <EmptyState
-          title="Sin citas"
-          description="No hay citas para este rango."
-        />
+        <div className="card" style={{ padding: '1rem', display: 'grid', gap: '0.75rem' }}>
+          <EmptyState
+            title="No hay citas en este rango"
+            description="Crea una nueva cita o cambia el filtro para ver otras programaciones."
+          />
+          <div>
+            <Button onClick={openNewModal}>Nueva cita</Button>
+          </div>
+        </div>
       )}
       {hasResults && (
         <div className="citas-list" style={{ display: 'grid', gap: '0.75rem' }}>
@@ -274,7 +279,7 @@ export function CitasPage() {
                     }}
                     disabled={!addressParts.direccion && !addressParts.ciudad && !addressParts.estado_region}
                   >
-                    Maps
+                    Navegar
                   </Button>
                   <Button
                     variant="ghost"

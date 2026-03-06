@@ -157,11 +157,11 @@ export function CampanasPage() {
       return
     }
     if (!formValues.nombre.trim()) {
-      setFormError('Nombre requerido.')
+      setFormError('Nombre de campaña requerido.')
       return
     }
     if (!segmentsForFuente.some((segment) => segment.key === formValues.segmento_key)) {
-      setFormError('Segmento invalido.')
+      setFormError('Segmento inválido.')
       return
     }
     setSubmitting(true)
@@ -187,7 +187,7 @@ export function CampanasPage() {
       .select('id, canal, owner_id, descripcion')
       .maybeSingle()
     if (insertError || !data) {
-      const message = insertError?.message ?? 'No se pudo crear la campana.'
+      const message = insertError?.message ?? 'No se pudo crear la campaña.'
       setFormError(message)
       showToast(message, 'error')
     } else {
@@ -199,7 +199,7 @@ export function CampanasPage() {
       )
       setFormOpen(false)
       await loadCampaigns()
-      showToast('Campana creada')
+      showToast('Campaña creada')
       navigate(`/marketing-flow/envios?campana=${data.id}`)
     }
     setSubmitting(false)
@@ -217,7 +217,7 @@ export function CampanasPage() {
         return
       }
       await loadCampaigns()
-      showToast('Campana actualizada')
+      showToast('Campaña actualizada')
     },
     [configured, loadCampaigns, showToast]
   )
@@ -261,15 +261,15 @@ export function CampanasPage() {
   return (
     <div className="page-stack">
       <SectionHeader
-        title="Campanas"
-        subtitle="Crear y gestionar campanas"
-        action={<Button onClick={handleOpenForm}>Nueva campana</Button>}
+        title="Campañas"
+        subtitle="Crea, organiza y activa campañas de contacto"
+        action={<Button onClick={handleOpenForm}>Nueva campaña</Button>}
       />
 
       {error && <div className="form-error">{error}</div>}
 
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
+        <label style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #6b7280)' }}>
           Estado
         </label>
         <select
@@ -293,23 +293,23 @@ export function CampanasPage() {
         </select>
       </div>
 
-      {loading && <div className="card" style={{ padding: '1rem' }}>Cargando campanas...</div>}
+      {loading && <div className="card" style={{ padding: '1rem' }}>Cargando campañas...</div>}
       {!loading && !hasResults && (
         <EmptyState
-          title="Sin campanas"
-          description="Crea tu primera campana para comenzar los envios."
+          title="Sin campañas"
+          description="Crea tu primera campaña para comenzar los envíos."
         />
       )}
       {hasResults && (
         <DataTable
-        columns={['Nombre', 'Canal', 'Segmento', 'Template', 'Estado', 'Creada', 'Acciones']}
-        rows={rows}
-      />
+          columns={['Nombre', 'Canal', 'Segmento', 'Plantilla', 'Estado', 'Creada', 'Acciones']}
+          rows={rows}
+        />
       )}
 
       <Modal
         open={formOpen}
-        title="Nueva campana"
+        title="Nueva campaña"
         onClose={() => setFormOpen(false)}
         actions={
           <>
@@ -324,10 +324,11 @@ export function CampanasPage() {
       >
         <form id="mk-campaign-form" className="form-grid" onSubmit={handleSubmit}>
           <label className="form-field">
-            <span>Nombre</span>
+            <span>Nombre de campaña</span>
             <input
               value={formValues.nombre}
               onChange={(e) => setFormValues((prev) => ({ ...prev, nombre: e.target.value }))}
+              placeholder="Ej. Clientes activos Mayo"
             />
           </label>
           <label className="form-field">
@@ -342,7 +343,7 @@ export function CampanasPage() {
             </select>
           </label>
           <label className="form-field">
-            <span>Template key</span>
+            <span>Plantilla (opcional)</span>
             <input
               value={formValues.template_key}
               onChange={(e) => setFormValues((prev) => ({ ...prev, template_key: e.target.value }))}
@@ -350,12 +351,12 @@ export function CampanasPage() {
             />
           </label>
           <label className="form-field">
-            <span>Descripcion</span>
+            <span>Descripción</span>
             <textarea
               rows={3}
               value={formValues.descripcion}
               onChange={(e) => setFormValues((prev) => ({ ...prev, descripcion: e.target.value }))}
-              placeholder="Notas de la campana"
+              placeholder="Notas o mensaje base de la campaña"
             />
           </label>
           <label className="form-field">
@@ -383,7 +384,7 @@ export function CampanasPage() {
           </label>
           {formValues.segmento_key === 'cumpleanos_clientes' && (
             <label className="form-field">
-              <span>Mes</span>
+              <span>Mes de cumpleaños</span>
               <select
                 value={formValues.month}
                 onChange={(e) => setFormValues((prev) => ({ ...prev, month: e.target.value }))}
