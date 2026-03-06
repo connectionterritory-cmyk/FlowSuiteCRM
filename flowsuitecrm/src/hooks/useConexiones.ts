@@ -330,10 +330,10 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     if (embajadoresResult.error || periodosResult.error || programasResult.error || roleResult.error) {
       setErrorEmbajadores(
         embajadoresResult.error?.message ||
-          periodosResult.error?.message ||
-          programasResult.error?.message ||
-          roleResult.error?.message ||
-          'Error loading data',
+        periodosResult.error?.message ||
+        programasResult.error?.message ||
+        roleResult.error?.message ||
+        'Error loading data',
       )
     }
 
@@ -401,6 +401,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
           telefono: row.telefono,
           relacion: row.relacion,
           estado: 'pendiente',
+          gestionado_por: session.user.id,
         }))
         const { data, error: referidosError } = await supabase
           .from('ci_referidos')
@@ -498,7 +499,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const payload = normalizeReferido(row)
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
-        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id })
+        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id, gestionado_por: session.user.id })
         .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (insertError || !data) {
@@ -717,11 +718,11 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const program4en14Id = program4en14Result.data?.[0]?.id ?? null
       const referidosPayload = program4en14Id
         ? validRows.map((row) => ({
-            programa_id: program4en14Id,
-            nombre: row.nombre.trim(),
-            telefono: toNull(stripPhone(row.telefono)),
-            estado_presentacion: row.estado || 'pendiente',
-          }))
+          programa_id: program4en14Id,
+          nombre: row.nombre.trim(),
+          telefono: toNull(stripPhone(row.telefono)),
+          estado_presentacion: row.estado || 'pendiente',
+        }))
         : []
 
       const currentConnections =
