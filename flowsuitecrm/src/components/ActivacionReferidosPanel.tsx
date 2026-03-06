@@ -171,7 +171,12 @@ export function ActivacionReferidosPanel({
   const canAddReferido = Boolean(
     activation &&
       currentUserId &&
-      (activation.owner_id === currentUserId || activation.representante_id === currentUserId)
+      (
+        activation.owner_id === currentUserId ||
+        activation.representante_id === currentUserId ||
+        currentRole === 'admin' ||
+        currentRole === 'distribuidor'
+      )
   )
   // Owner info
   const [ownerInfo, setOwnerInfo] = useState<OwnerInfo | null>(null)
