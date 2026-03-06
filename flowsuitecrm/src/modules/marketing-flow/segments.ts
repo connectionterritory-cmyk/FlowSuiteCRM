@@ -25,10 +25,10 @@ export const LEAD_SEGMENTS: SegmentDefinition[] = SEGMENTS.map((segment) => ({
 }))
 
 export const CLIENTE_SEGMENTS: SegmentDefinition[] = [
-  { key: 'clientes_activos', label: 'Clientes activos', fuente: 'clientes', hint: 'Con teléfono disponible' },
-  { key: 'cumpleanos_clientes', label: 'Cumpleaños del mes', fuente: 'clientes', hint: 'Cumplen años en el mes elegido' },
+  { key: 'clientes_activos', label: 'Clientes activos', fuente: 'clientes', hint: 'Telefono disponible' },
   { key: 'clientes_miami', label: 'Clientes Miami', fuente: 'clientes' },
-  { key: 'clientes_la', label: 'Clientes Los Ángeles', fuente: 'clientes' },
+  { key: 'clientes_la', label: 'Clientes LA', fuente: 'clientes' },
+  { key: 'cumpleanos_clientes', label: '🎂 Cumpleaños (Clientes)', fuente: 'clientes', hint: 'Cumplen años en el mes seleccionado' },
 ]
 
 export const ALL_SEGMENTS: SegmentDefinition[] = [...LEAD_SEGMENTS, ...CLIENTE_SEGMENTS]
@@ -43,27 +43,33 @@ const mapLeadTargets = (rows: { id: string; nombre: string | null; apellido: str
     telefono: row.telefono ?? null,
   }))
 
-type SegmentParams = {
-  month?: number
-}
-
 const parseMonth = (value: string | null) => {
   if (!value) return null
   const parts = value.split('-')
-  if (parts.length < 2) return null
-  const month = Number(parts[1])
-  if (!Number.isFinite(month) || month < 1 || month > 12) return null
-  return month
+  if (parts.length >= 2) {
+    const month = Number(parts[1])
+    if (Number.isFinite(month) && month >= 1 && month <= 12) return month
+  } else {
+    const slashParts = value.split('/')
+    if (slashParts.length >= 2) {
+      if (parseInt(slashParts[0], 10) > 12) {
+        return parseInt(slashParts[1], 10)
+      } else {
+        return parseInt(slashParts[0], 10)
+      }
+    }
+  }
+  return null
 }
 
 export const fetchSegmentTargets = async (params: {
   fuente: Fuente
   segmentKey: string
   scope: LeadScope
-  segmentParams?: SegmentParams
+  segmentParams?: Record<string, any>
 }): Promise<SegmentTarget[]> => {
   if (!isSupabaseConfigured) return []
-  const { fuente, segmentKey, scope } = params
+  const { fuente, segmentKey, scope, segmentParams } = params
 
   if (fuente === 'leads') {
     const rows = await fetchLeadsForSegment(segmentKey as SegmentKey, scope)
@@ -90,7 +96,7 @@ export const fetchSegmentTargets = async (params: {
   const { data } = await query.order('created_at', { ascending: false })
   const rows = (data as { id: string; nombre: string | null; apellido: string | null; telefono: string | null; ciudad: string | null; fecha_nacimiento: string | null }[] | null) ?? []
   if (segmentKey === 'cumpleanos_clientes') {
-    const monthParam = params.segmentParams?.month
+    const monthParam = segmentParams?.month
     const nowMonth = new Date().getUTCMonth() + 1
     const month = monthParam && monthParam >= 1 && monthParam <= 12 ? monthParam : nowMonth
     return rows

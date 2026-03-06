@@ -23,7 +23,7 @@ type CampaignRecord = {
   owner_id: string | null
   template_key: string | null
   descripcion: string | null
-  segment_params?: Record<string, unknown> | null
+  segment_params: Record<string, any> | null
 }
 
 const initialForm = {
@@ -31,7 +31,7 @@ const initialForm = {
   canal: 'whatsapp',
   fuente: 'leads' as Fuente,
   segmento_key: 'nuevos',
-  month: 'current' as 'current' | string,
+  month: 0,
   template_key: '',
   descripcion: '',
 }
@@ -106,18 +106,6 @@ export function CampanasPage() {
     [formValues.fuente]
   )
 
-  const monthOptions = useMemo(() => {
-    const months = [
-      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-    ]
-    const currentLabel = `Este mes (${months[new Date().getMonth()]})`
-    return [
-      { value: 'current', label: currentLabel },
-      ...months.map((label, index) => ({ value: String(index + 1), label })),
-    ]
-  }, [])
-
   const scope = useMemo<LeadScope>(() => ({
     role,
     viewMode,
@@ -126,8 +114,8 @@ export function CampanasPage() {
     userId: session?.user.id ?? null,
   }), [distributionUserIds, hasDistribuidorScope, role, session?.user.id, viewMode])
 
-  const materializeCampaignTargets = useCallback(async (campaign: CampaignRecord, fuente: Fuente, segmentKey: string, segmentParams?: { month?: number }) => {
-    const targets = await fetchSegmentTargets({ fuente, segmentKey, scope, segmentParams })
+  const materializeCampaignTargets = useCallback(async (campaign: CampaignRecord, fuente: Fuente, segmentKey: string) => {
+    const targets = await fetchSegmentTargets({ fuente, segmentKey, scope, segmentParams: campaign.segment_params ?? undefined })
     const validTargets = targets.filter((target) => Boolean(target.telefono))
     if (validTargets.length === 0) return
     const messages = validTargets.map((target, index) => ({
@@ -166,25 +154,20 @@ export function CampanasPage() {
     }
     setSubmitting(true)
     setFormError(null)
-    const monthParam = formValues.segmento_key === 'cumpleanos_clientes'
-      ? (formValues.month === 'current'
-          ? new Date().getUTCMonth() + 1
-          : Number(formValues.month))
-      : null
     const payload = {
       nombre: formValues.nombre.trim(),
       canal: formValues.canal,
       segmento_key: formValues.segmento_key,
+      segment_params: formValues.segmento_key === 'cumpleanos_clientes' ? { month: formValues.month } : null,
       template_key: formValues.template_key.trim() || null,
       descripcion: formValues.descripcion.trim() || null,
-      segment_params: monthParam ? { month: monthParam } : {},
       estado: 'borrador',
       owner_id: session?.user.id ?? null,
     }
     const { data, error: insertError } = await supabase
       .from('mk_campaigns')
       .insert(payload)
-      .select('id, canal, owner_id, descripcion')
+      .select('id, canal, owner_id, descripcion, segment_params')
       .maybeSingle()
     if (insertError || !data) {
       const message = insertError?.message ?? 'No se pudo crear la campaña.'
@@ -195,7 +178,6 @@ export function CampanasPage() {
         data as CampaignRecord,
         formValues.fuente,
         formValues.segmento_key,
-        monthParam ? { month: monthParam } : undefined
       )
       setFormOpen(false)
       await loadCampaigns()
@@ -387,13 +369,21 @@ export function CampanasPage() {
               <span>Mes de cumpleaños</span>
               <select
                 value={formValues.month}
-                onChange={(e) => setFormValues((prev) => ({ ...prev, month: e.target.value }))}
+                onChange={(e) => setFormValues((prev) => ({ ...prev, month: Number(e.target.value) }))}
               >
-                {monthOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                <option value={0}>Este mes ({new Date().toLocaleString('es-ES', { month: 'long' })})</option>
+                <option value={1}>Enero</option>
+                <option value={2}>Febrero</option>
+                <option value={3}>Marzo</option>
+                <option value={4}>Abril</option>
+                <option value={5}>Mayo</option>
+                <option value={6}>Junio</option>
+                <option value={7}>Julio</option>
+                <option value={8}>Agosto</option>
+                <option value={9}>Septiembre</option>
+                <option value={10}>Octubre</option>
+                <option value={11}>Noviembre</option>
+                <option value={12}>Diciembre</option>
               </select>
             </label>
           )}
