@@ -13,6 +13,7 @@ import { CierresPage } from '../modules/cierres/CierresPage'
 import { ConexionesInfinitasPage } from '../modules/conexiones-infinitas/ConexionesInfinitasPage'
 import { Programa4en14Page } from '../modules/4en14/Programa4en14Page'
 import { ServicioClientePage } from '../modules/servicio-cliente/ServicioClientePage'
+import { CitasPage } from '../modules/citas/CitasPage'
 import { UsuariosPage } from '../modules/usuarios/UsuariosPage'
 import { TelemercadeoPage } from '../modules/telemercadeo/TelemercadeoPage'
 import { TelemercadeoCarteraPage } from '../modules/telemercadeo/TelemercadeoCarteraPage'
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="campanas" element={<CampanasPage />} />
             <Route path="envios" element={<EnviosPage />} />
           </Route>
+          <Route path="/citas" element={<CitasPage />} />
           <Route path="/clientes" element={<ClientesPage />} />
           <Route path="/ventas" element={<VentasPage />} />
           <Route path="/productos" element={<ProductosPage />} />
@@ -76,6 +78,7 @@ export default function App() {
           <Route path="/conexiones-infinitas" element={<ConexionesInfinitasPage />} />
           <Route path="/4en14" element={<Programa4en14Page />} />
           <Route path="/servicio-cliente" element={<ServicioClientePage />} />
+          <Route path="/citas" element={<CitasPage />} />
           <Route path="/telemercadeo" element={<TelemercadeoPage />}>
             <Route index element={<Navigate to="/telemercadeo/cartera" replace />} />
             <Route path="cartera" element={<TelemercadeoCarteraPage />} />

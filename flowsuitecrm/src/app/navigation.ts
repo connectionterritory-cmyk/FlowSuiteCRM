@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import {
+  IconCalendar,
   IconCustomers,
   IconDashboard,
   IconLeads,
@@ -38,6 +39,12 @@ export const navItems: NavItem[] = [
     icon: IconDashboard,
   },
   {
+    key: 'citas',
+    labelKey: 'nav.citas',
+    path: '/citas',
+    icon: IconCalendar,
+  },
+  {
     key: 'cierres',
     labelKey: 'nav.cierres',
     path: '/cierres',
@@ -60,6 +67,12 @@ export const navItems: NavItem[] = [
     labelKey: 'nav.marketingFlow',
     path: '/marketing-flow',
     icon: IconLeads,
+  },
+  {
+    key: 'citas',
+    labelKey: 'nav.citas',
+    path: '/citas',
+    icon: IconPrograms,
   },
   {
     key: 'clientes',

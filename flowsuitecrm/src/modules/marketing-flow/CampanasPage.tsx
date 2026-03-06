@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
@@ -8,7 +9,9 @@ import { Badge } from '../../components/Badge'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
-import { SEGMENTS, type SegmentKey } from './leadSegments'
+import { useViewMode } from '../../data/ViewModeProvider'
+import { fetchSegmentTargets, getSegmentsByFuente, type Fuente } from './segments'
+import type { LeadScope } from './leadSegments'
 
 type CampaignRecord = {
   id: string
@@ -20,20 +23,26 @@ type CampaignRecord = {
   owner_id: string | null
   template_key: string | null
   descripcion: string | null
+  segment_params?: Record<string, unknown> | null
 }
 
 const initialForm = {
   nombre: '',
   canal: 'whatsapp',
-  segmento_key: 'nuevos' as SegmentKey,
+  fuente: 'leads' as Fuente,
+  segmento_key: 'nuevos',
+  month: 'current' as 'current' | string,
   template_key: '',
   descripcion: '',
 }
 
 export function CampanasPage() {
   const { session } = useAuth()
+  const navigate = useNavigate()
+  const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
+  const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([])
@@ -43,13 +52,26 @@ export function CampanasPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const loadRole = useCallback(async () => {
+    if (!configured || !session?.user.id) {
+      setRole(null)
+      return
+    }
+    const { data } = await supabase
+      .from('usuarios')
+      .select('rol')
+      .eq('id', session.user.id)
+      .maybeSingle()
+    setRole((data as { rol?: string } | null)?.rol ?? null)
+  }, [configured, session?.user.id])
+
   const loadCampaigns = useCallback(async () => {
     if (!configured) return
     setLoading(true)
     setError(null)
     const { data, error: fetchError } = await supabase
       .from('mk_campaigns')
-      .select('id, nombre, canal, segmento_key, estado, created_at, owner_id, template_key, descripcion')
+      .select('id, nombre, canal, segmento_key, estado, created_at, owner_id, template_key, descripcion, segment_params')
       .order('created_at', { ascending: false })
       .limit(200)
     if (fetchError) {
@@ -65,11 +87,68 @@ export function CampanasPage() {
     loadCampaigns()
   }, [loadCampaigns])
 
+  useEffect(() => {
+    if (configured) loadRole()
+  }, [configured, loadRole])
+
   const handleOpenForm = () => {
-    setFormValues(initialForm)
+    setFormValues((prev) => ({
+      ...initialForm,
+      fuente: prev.fuente,
+      segmento_key: getSegmentsByFuente(prev.fuente)[0]?.key ?? initialForm.segmento_key,
+    }))
     setFormError(null)
     setFormOpen(true)
   }
+
+  const segmentsForFuente = useMemo(
+    () => getSegmentsByFuente(formValues.fuente),
+    [formValues.fuente]
+  )
+
+  const monthOptions = useMemo(() => {
+    const months = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ]
+    const currentLabel = `Este mes (${months[new Date().getMonth()]})`
+    return [
+      { value: 'current', label: currentLabel },
+      ...months.map((label, index) => ({ value: String(index + 1), label })),
+    ]
+  }, [])
+
+  const scope = useMemo<LeadScope>(() => ({
+    role,
+    viewMode,
+    hasDistribuidorScope,
+    distributionUserIds,
+    userId: session?.user.id ?? null,
+  }), [distributionUserIds, hasDistribuidorScope, role, session?.user.id, viewMode])
+
+  const materializeCampaignTargets = useCallback(async (campaign: CampaignRecord, fuente: Fuente, segmentKey: string, segmentParams?: { month?: number }) => {
+    const targets = await fetchSegmentTargets({ fuente, segmentKey, scope, segmentParams })
+    const validTargets = targets.filter((target) => Boolean(target.telefono))
+    if (validTargets.length === 0) return
+    const messages = validTargets.map((target, index) => ({
+      campaign_id: campaign.id,
+      owner_id: campaign.owner_id ?? session?.user.id ?? null,
+      contacto_tipo: fuente === 'leads' ? 'lead' : 'cliente',
+      contacto_id: target.id,
+      telefono: target.telefono ?? null,
+      nombre: target.nombre ?? null,
+      mensaje_texto: campaign.descripcion ?? null,
+      canal: campaign.canal ?? 'whatsapp',
+      orden: index + 1,
+      status: 'pendiente',
+    }))
+    const { error: insertError } = await supabase
+      .from('mk_messages')
+      .upsert(messages, { onConflict: 'campaign_id,telefono', ignoreDuplicates: true })
+    if (insertError) {
+      showToast(insertError.message, 'error')
+    }
+  }, [scope, session?.user.id, showToast])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -81,29 +160,47 @@ export function CampanasPage() {
       setFormError('Nombre requerido.')
       return
     }
-    if (!SEGMENTS.some((segment) => segment.key === formValues.segmento_key)) {
+    if (!segmentsForFuente.some((segment) => segment.key === formValues.segmento_key)) {
       setFormError('Segmento invalido.')
       return
     }
     setSubmitting(true)
     setFormError(null)
+    const monthParam = formValues.segmento_key === 'cumpleanos_clientes'
+      ? (formValues.month === 'current'
+          ? new Date().getUTCMonth() + 1
+          : Number(formValues.month))
+      : null
     const payload = {
       nombre: formValues.nombre.trim(),
       canal: formValues.canal,
       segmento_key: formValues.segmento_key,
       template_key: formValues.template_key.trim() || null,
       descripcion: formValues.descripcion.trim() || null,
+      segment_params: monthParam ? { month: monthParam } : {},
       estado: 'borrador',
       owner_id: session?.user.id ?? null,
     }
-    const { error: insertError } = await supabase.from('mk_campaigns').insert(payload)
-    if (insertError) {
-      setFormError(insertError.message)
-      showToast(insertError.message, 'error')
+    const { data, error: insertError } = await supabase
+      .from('mk_campaigns')
+      .insert(payload)
+      .select('id, canal, owner_id, descripcion')
+      .maybeSingle()
+    if (insertError || !data) {
+      const message = insertError?.message ?? 'No se pudo crear la campana.'
+      setFormError(message)
+      showToast(message, 'error')
     } else {
+      await materializeCampaignTargets(
+        data as CampaignRecord,
+        formValues.fuente,
+        formValues.segmento_key,
+        monthParam ? { month: monthParam } : undefined
+      )
       setFormOpen(false)
       await loadCampaigns()
       showToast('Campana creada')
+      navigate(`/marketing-flow/envios?campana=${data.id}`)
     }
     setSubmitting(false)
   }
@@ -262,18 +359,43 @@ export function CampanasPage() {
             />
           </label>
           <label className="form-field">
+            <span>Fuente</span>
+            <select
+              value={formValues.fuente}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, fuente: e.target.value as Fuente, segmento_key: getSegmentsByFuente(e.target.value as Fuente)[0]?.key ?? '' }))}
+            >
+              <option value="leads">Prospectos</option>
+              <option value="clientes">Clientes</option>
+            </select>
+          </label>
+          <label className="form-field">
             <span>Segmento</span>
             <select
               value={formValues.segmento_key}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, segmento_key: e.target.value as SegmentKey }))}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, segmento_key: e.target.value }))}
             >
-              {SEGMENTS.map((segment) => (
+              {segmentsForFuente.map((segment) => (
                 <option key={segment.key} value={segment.key}>
                   {segment.label}
                 </option>
               ))}
             </select>
           </label>
+          {formValues.segmento_key === 'cumpleanos_clientes' && (
+            <label className="form-field">
+              <span>Mes</span>
+              <select
+                value={formValues.month}
+                onChange={(e) => setFormValues((prev) => ({ ...prev, month: e.target.value }))}
+              >
+                {monthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {formError && <div className="form-error">{formError}</div>}
         </form>
       </Modal>

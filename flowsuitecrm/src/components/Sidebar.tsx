@@ -30,6 +30,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
   const isTelemercadeoRoute = location.pathname.startsWith('/telemercadeo')
   const [programsOpen, setProgramsOpen] = useState(isProgramRoute)
   const [telemercadeoOpen, setTelemercadeoOpen] = useState(isTelemercadeoRoute)
+  const uniqueNavItems = Array.from(new Map(navItems.map((item) => [item.path, item])).values())
 
   useEffect(() => {
     if (isProgramRoute) {
@@ -95,7 +96,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
         </button>
       </div>
       <nav className="sidebar-nav">
-        {navItems
+        {uniqueNavItems
           .filter((item) => {
             if (viewMode !== 'seller') return true
             return item.key !== 'usuarios' && item.key !== 'importaciones'
