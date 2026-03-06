@@ -401,6 +401,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
           telefono: row.telefono,
           relacion: row.relacion,
           estado: 'pendiente',
+          gestionado_por: session.user.id,
           gestionado_por_usuario_id: session.user.id,
         }))
         const { data, error: referidosError } = await supabase
@@ -499,7 +500,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const payload = normalizeReferido(row)
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
-        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id, gestionado_por_usuario_id: session.user.id })
+        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', owner_id: session.user.id, gestionado_por: session.user.id, gestionado_por_usuario_id: session.user.id })
         .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (insertError || !data) {

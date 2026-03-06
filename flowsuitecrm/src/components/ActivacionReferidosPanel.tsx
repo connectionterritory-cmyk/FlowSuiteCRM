@@ -178,7 +178,7 @@ export function ActivacionReferidosPanel({
     const { data, error: fetchError } = await supabase
       .from('ci_referidos')
       .select(
-        'id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por_usuario_id, tomado_por_vendedor_at, liberado_a_telemercadeo_at',
+        'id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por, tomado_por_vendedor_at, liberado_a_telemercadeo_at',
       )
       .eq('activacion_id', activation.id)
       .order('created_at', { ascending: true })
@@ -378,9 +378,10 @@ export function ActivacionReferidosPanel({
         relacion: newRef.relacion,
         estado: 'pendiente',
         owner_id: currentUserId,
-        gestionado_por_usuario_id: currentUserId,
+        gestionado_por: currentUserId,
+        gestionado_por: currentUserId,
       })
-      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por_usuario_id, tomado_por_vendedor_at, liberado_a_telemercadeo_at')
+      .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por, tomado_por_vendedor_at, liberado_a_telemercadeo_at')
       .single()
     if (insertError || !data) {
       setNewRef((prev) => ({ ...prev, saving: false, error: insertError?.message ?? t('toast.error') }))
