@@ -167,6 +167,12 @@ export function ActivacionReferidosPanel({
   const [newRef, setNewRef] = useState<NewRefForm>(EMPTY_NEW_REF)
   // Calificacion
   const [calificacionLead, setCalificacionLead] = useState<CalificacionLead | null>(null)
+
+  const canAddReferido = Boolean(
+    activation &&
+      currentUserId &&
+      (activation.owner_id === currentUserId || activation.representante_id === currentUserId)
+  )
   // Owner info
   const [ownerInfo, setOwnerInfo] = useState<OwnerInfo | null>(null)
   const [ownerInfoOpen, setOwnerInfoOpen] = useState(false)
@@ -362,6 +368,13 @@ export function ActivacionReferidosPanel({
 
   const handleAddNewReferido = async () => {
     if (!configured || !activation || !currentUserId) return
+    if (!canAddReferido) {
+      setNewRef((prev) => ({
+        ...prev,
+        error: 'No tienes permiso para agregar referidos a esta lista.',
+      }))
+      return
+    }
     const nombre = newRef.nombre.trim()
     const telefono = stripPhone(newRef.telefono)
     if (!nombre || !telefono) {
@@ -393,7 +406,9 @@ export function ActivacionReferidosPanel({
     if (insertError || !data) {
       const friendly = insertError?.message?.includes('ci_referidos_gestionado_por_required')
         ? 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor'
-        : insertError?.message
+        : insertError?.message?.includes('row-level security')
+          ? 'No tienes permiso para agregar referidos a esta lista.'
+          : insertError?.message
       setNewRef((prev) => ({ ...prev, saving: false, error: friendly ?? t('toast.error') }))
       return
     }
@@ -815,13 +830,13 @@ export function ActivacionReferidosPanel({
                     </div>
                     {newRef.error && <div className="form-error">{newRef.error}</div>}
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <Button
-                        type="button"
-                        onClick={handleAddNewReferido}
-                        disabled={newRef.saving}
-                      >
-                        {newRef.saving ? t('common.saving') : t('common.save')}
-                      </Button>
+                    <Button
+                      type="button"
+                      onClick={handleAddNewReferido}
+                      disabled={newRef.saving || !canAddReferido}
+                    >
+                      {newRef.saving ? t('common.saving') : t('common.save')}
+                    </Button>
                       <Button
                         type="button"
                         variant="ghost"
