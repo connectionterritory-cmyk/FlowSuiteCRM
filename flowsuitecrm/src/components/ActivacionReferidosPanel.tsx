@@ -207,7 +207,7 @@ export function ActivacionReferidosPanel({
     } else if (activation.lead_id) {
       const { data } = await supabase
         .from('leads')
-        .select('ciudad, estado_region, situacion_laboral, estado_civil, tipo_vivienda, tiene_productos_rp')
+        .select('*')
         .eq('id', activation.lead_id)
         .maybeSingle()
       if (data) setOwnerInfo(data as OwnerInfo)
