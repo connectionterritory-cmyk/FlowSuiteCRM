@@ -384,8 +384,8 @@ export function ActivacionReferidosPanel({
         telefono,
         relacion: newRef.relacion,
         estado: 'pendiente',
+        modo_gestion: 'vendedor_directo',
         owner_id: currentUserId,
-        gestionado_por: currentUserId,
         gestionado_por_usuario_id: currentUserId,
       })
       .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por, tomado_por_vendedor_at, liberado_a_telemercadeo_at')
