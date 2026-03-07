@@ -45,6 +45,7 @@ export type CiReferido = {
   gestionado_por_usuario_id?: string | null
   tomado_por_vendedor_at?: string | null
   liberado_a_telemercadeo_at?: string | null
+  cita_id?: string | null
 }
 
 export type CiCliente = {

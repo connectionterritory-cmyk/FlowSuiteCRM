@@ -15,6 +15,7 @@ import {
 } from '../lib/conexiones/validaciones'
 import { formatProperName } from '../lib/textFormat'
 import type { CiActivacion, CiReferido } from '../hooks/useConexiones'
+import { CitaModal, type CitaForm } from '../modules/citas/CitaModal'
 
 type Props = {
   open: boolean
@@ -168,6 +169,9 @@ export function ActivacionReferidosPanel({
   const [newRef, setNewRef] = useState<NewRefForm>(EMPTY_NEW_REF)
   // Calificacion
   const [calificacionLead, setCalificacionLead] = useState<CalificacionLead | null>(null)
+  const [citaOpen, setCitaOpen] = useState(false)
+  const [citaInitial, setCitaInitial] = useState<Partial<CitaForm>>({})
+  const [citaReferidoId, setCitaReferidoId] = useState<string | null>(null)
 
   const canAddReferido = Boolean(
     activation &&
@@ -190,7 +194,7 @@ export function ActivacionReferidosPanel({
     const { data, error: fetchError } = await supabase
       .from('ci_referidos')
       .select(
-        'id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por_usuario_id, tomado_por_vendedor_at, liberado_a_telemercadeo_at',
+        'id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a, gestionado_por_usuario_id, tomado_por_vendedor_at, liberado_a_telemercadeo_at, cita_id',
       )
       .eq('activacion_id', activation.id)
       .order('created_at', { ascending: true })
@@ -423,6 +427,37 @@ export function ActivacionReferidosPanel({
     setNotasDrafts((prev) => ({ ...prev, [newRow.id]: '' }))
     setNewRef(EMPTY_NEW_REF)
     setNewRefOpen(false)
+    onRefresh?.()
+  }
+
+  const handleAgendarCita = (ref: CiReferidoRow) => {
+    if (!ref.lead_id) return
+    const now = new Date()
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    setCitaInitial({
+      owner_id: currentUserId ?? '',
+      start_at: local.toISOString().slice(0, 16),
+      tipo: 'demo',
+      estado: 'programada',
+      assigned_to: currentUserId ?? '',
+      contacto_tipo: 'lead',
+      contacto_id: ref.lead_id,
+      contacto_nombre: ref.nombre ?? '',
+      contacto_telefono: ref.telefono ?? '',
+    })
+    setCitaReferidoId(ref.id)
+    setCitaOpen(true)
+  }
+
+  const handleCitaSaved = async (citaId?: string) => {
+    setCitaOpen(false)
+    if (!citaId || !citaReferidoId || !configured) return
+    await supabase
+      .from('ci_referidos')
+      .update({ cita_id: citaId, estado: 'cita_agendada' })
+      .eq('id', citaReferidoId)
+    setCitaReferidoId(null)
+    void loadReferidos()
     onRefresh?.()
   }
 
@@ -717,6 +752,25 @@ export function ActivacionReferidosPanel({
                             {t('conexiones.referidosPanel.actions.recoverFromTele')}
                           </button>
                         )}
+                        {ref.lead_id && !ref.cita_id && !isTeleReadOnly && (
+                          <button
+                            type="button"
+                            className="arp-icon-btn"
+                            title="Agendar cita de presentación"
+                            onClick={() => handleAgendarCita(ref)}
+                          >
+                            + Cita
+                          </button>
+                        )}
+                        {ref.cita_id && (
+                          <span
+                            className="arp-icon-btn"
+                            style={{ cursor: 'default', opacity: 0.75 }}
+                            title="Cita de presentación agendada"
+                          >
+                            ✓ Cita
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -873,6 +927,14 @@ export function ActivacionReferidosPanel({
         onSaved={async () => {
           setCalificacionLead(null)
         }}
+      />
+
+      <CitaModal
+        open={citaOpen}
+        onClose={() => { setCitaOpen(false); setCitaReferidoId(null) }}
+        onSaved={handleCitaSaved}
+        initialData={citaInitial}
+        assignedOptions={currentUserId ? [{ id: currentUserId, label: 'Yo' }] : []}
       />
     </>
   )

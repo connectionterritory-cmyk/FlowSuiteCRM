@@ -38,7 +38,7 @@ export type CitaForm = {
 type CitaModalProps = {
   open: boolean
   onClose: () => void
-  onSaved?: () => void
+  onSaved?: (citaId?: string) => void
   initialData?: Partial<CitaForm>
   assignedOptions?: AssignedOption[]
 }
@@ -320,9 +320,9 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       resultado_notas: form.resultado_notas?.trim() || null,
     }
     const request = form.id
-      ? supabase.from('citas').update(basePayload).eq('id', form.id)
-      : supabase.from('citas').insert({ ...basePayload, owner_id: session?.user.id ?? '' })
-    const { error } = await request
+      ? supabase.from('citas').update(basePayload).eq('id', form.id).select('id').maybeSingle()
+      : supabase.from('citas').insert({ ...basePayload, owner_id: session?.user.id ?? '' }).select('id').maybeSingle()
+    const { data: savedData, error } = await request
     if (error) {
       showToast(error.message, 'error')
       setSaving(false)
@@ -330,7 +330,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     }
     showToast(form.id ? 'Cita actualizada' : 'Cita creada')
     setSaving(false)
-    onSaved?.()
+    onSaved?.((savedData as { id?: string } | null)?.id ?? form.id)
     onClose()
   }
 
