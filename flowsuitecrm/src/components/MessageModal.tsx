@@ -4,12 +4,12 @@ import { Button } from './Button'
 import { Modal } from './Modal'
 import {
   buildWhatsappUrl,
-  replaceTemplateVariables,
   loadCustomTemplates,
   saveCustomTemplates,
   type CustomWhatsappTemplate,
   type WhatsappTemplateCategory,
 } from '../lib/whatsappTemplates'
+import { canonicalizeTemplate, PLACEHOLDER_OPTIONS, resolveTemplate } from '../lib/messagePlaceholders'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useToast } from './Toast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
@@ -149,6 +149,21 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const { session } = useAuth()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const resolvedContact: MessagingContact = contact ?? {
+    nombre: '',
+    telefono: null,
+    email: null,
+    vendedor: '',
+    recomendadoPor: null,
+    cuentaHycite: null,
+    saldoActual: null,
+    montoMoroso: null,
+    diasAtraso: null,
+    estadoMorosidad: null,
+    clienteId: null,
+    leadId: null,
+  }
+
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [imageUrl, setImageUrl] = useState('')
@@ -185,22 +200,38 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   )
 
   const variables = useMemo(() => {
-    const cliente = firstName(contact?.nombre ?? '')
+    const cliente = firstName(resolvedContact.nombre ?? '')
+    const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
+    const responsableNombre = resolvedContact.responsableNombre ?? currentUserName
+    const vendedorNombre = resolvedContact.vendedorNombre
+      ?? resolvedContact.responsableNombre
+      ?? currentUserName
+      ?? ''
+    const recomendadoPorNombre = resolvedContact.recomendadoPorNombre ?? resolvedContact.recomendadoPor ?? ''
+    const vendedorTelefono = resolvedContact.vendedorTelefono
+      ?? distributorPhone
+      ?? currentUser?.telefono
+      ?? ''
     return {
       cliente,
       nombre: cliente,
-      vendedor: contact?.vendedor ?? '',
-      recomendado_por: contact?.recomendadoPor ?? '',
-      telefono: distributorPhone || currentUser?.telefono || '',
-      email: contact?.email ?? '',
+      telefono: resolvedContact.telefono ?? distributorPhone ?? currentUser?.telefono ?? '',
+      vendedor_nombre: vendedorNombre,
+      vendedor_telefono: vendedorTelefono,
+      responsable_nombre: responsableNombre,
+      recomendado_por_nombre: recomendadoPorNombre,
+      email: resolvedContact.email ?? '',
       organizacion: currentUser?.organizacion ?? '',
-      cuenta_hycite: contact?.cuentaHycite ?? '',
-      saldo_actual: formatAmount(contact?.saldoActual),
-      monto_moroso: formatAmount(contact?.montoMoroso),
-      dias_atraso: contact?.diasAtraso != null ? String(contact.diasAtraso) : '',
-      estado_morosidad: contact?.estadoMorosidad ?? '',
+      cuenta_hycite: resolvedContact.cuentaHycite ?? '',
+      saldo_actual: formatAmount(resolvedContact.saldoActual),
+      monto_moroso: formatAmount(resolvedContact.montoMoroso),
+      dias_atraso: resolvedContact.diasAtraso != null ? String(resolvedContact.diasAtraso) : '',
+      estado_morosidad: resolvedContact.estadoMorosidad ?? '',
+      fuente: resolvedContact.fuente ?? '',
+      programa: resolvedContact.programa ?? '',
+      ciudad: resolvedContact.ciudad ?? '',
     }
-  }, [contact, currentUser?.organizacion, currentUser?.telefono, distributorPhone])
+  }, [currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, resolvedContact])
 
   const loadUserTemplates = useCallback(() => {
     if (!open) return
@@ -214,12 +245,27 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       return
     }
     const { data, error } = await supabase.rpc('get_distributor_phone')
-    if (error) {
-      setDistributorPhone(currentUser?.telefono ?? '')
+    const rpcPhone = (data as string | null) ?? ''
+    if (!error && rpcPhone.trim()) {
+      setDistributorPhone(rpcPhone)
       return
     }
-    setDistributorPhone((data as string | null) ?? currentUser?.telefono ?? '')
-  }, [open, currentUser?.telefono])
+    if (currentUser?.telefono?.trim()) {
+      setDistributorPhone(currentUser.telefono)
+      return
+    }
+    const userId = session?.user.id
+    if (!userId) {
+      setDistributorPhone('')
+      return
+    }
+    const { data: userRow } = await supabase
+      .from('usuarios')
+      .select('telefono')
+      .eq('id', userId)
+      .maybeSingle()
+    setDistributorPhone((userRow as { telefono?: string | null } | null)?.telefono ?? '')
+  }, [open, currentUser?.telefono, session?.user.id])
 
   useEffect(() => {
     if (!open) return
@@ -238,26 +284,24 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       : null
     if (preferred) {
       setSelectedTemplateId(preferred.id)
-      setMessage(replaceTemplateVariables(preferred.message, variables))
+      setMessage(canonicalizeTemplate(preferred.message))
     } else {
       setSelectedTemplateId(exampleTemplate.templateKey)
-      setMessage(replaceTemplateVariables(exampleTemplate.message, variables))
+      setMessage(canonicalizeTemplate(exampleTemplate.message))
     }
     setImageUrl('')
-  }, [open, contact, variables, initialTemplateId, exampleTemplate, customTemplates])
+  }, [open, contact, initialTemplateId, exampleTemplate, customTemplates])
 
   useEffect(() => {
     if (!open) return
     setActiveChannel(channel)
   }, [channel, open])
 
-  if (!open || !contact) return null
-
   const channelLabel = t(`messaging.channel.${activeChannel}`)
   const canSendMessage = message.trim().length > 0
-  const phoneValue = contact.telefono ? sanitizePhone(contact.telefono) : ''
+  const phoneValue = resolvedContact.telefono ? sanitizePhone(resolvedContact.telefono) : ''
   const hasPhone = phoneValue.length > 0
-  const hasEmail = Boolean(contact.email?.trim())
+  const hasEmail = Boolean(resolvedContact.email?.trim())
   const channelTabs: MessagingChannel[] = ['whatsapp', 'sms', 'email']
   const charCount = message.length
   const charOver = charCount > 1024
@@ -280,6 +324,18 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     }
     return inferMessageTypeFromId(selectedTemplateId ?? initialTemplateId)
   }, [customTemplates, initialTemplateId, selectedTemplateId])
+
+  const resolvedMessage = useMemo(() => resolveTemplate(message, variables), [message, variables])
+  const missingPlaceholders = resolvedMessage.missing
+
+  const placeholderGroups = useMemo(() => {
+    const map = new Map<string, { label: string; token: string }[]>()
+    PLACEHOLDER_OPTIONS.forEach((option) => {
+      if (!map.has(option.group)) map.set(option.group, [])
+      map.get(option.group)!.push({ label: option.label, token: option.token })
+    })
+    return Array.from(map.entries())
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -311,12 +367,12 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   // --- CUSTOM TEMPLATE SELECT ---
   const handleSelectCustom = (template: CustomWhatsappTemplate) => {
     setSelectedTemplateId(template.id)
-    setMessage(template.message ? replaceTemplateVariables(template.message, variables) : '')
+    setMessage(template.message ? canonicalizeTemplate(template.message) : '')
   }
 
   const handleSelectExample = () => {
     setSelectedTemplateId(exampleTemplate.templateKey)
-    setMessage(replaceTemplateVariables(exampleTemplate.message, variables))
+    setMessage(canonicalizeTemplate(exampleTemplate.message))
   }
 
   const handleSaveTemplate = () => {
@@ -366,7 +422,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     setCustomTemplates(updated)
     saveCustomTemplates(updated)
     if (selectedTemplateId === editingTemplateId) {
-      setMessage(replaceTemplateVariables(editingTemplateMessage.trim(), variables))
+      setMessage(canonicalizeTemplate(editingTemplateMessage.trim()))
     }
     setEditingTemplateId(null)
     showToast('Plantilla actualizada')
@@ -380,7 +436,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     saveCustomTemplates(updated)
     if (selectedTemplateId === template.id) {
       setSelectedTemplateId(exampleTemplate.templateKey)
-      setMessage(replaceTemplateVariables(exampleTemplate.message, variables))
+      setMessage(canonicalizeTemplate(exampleTemplate.message))
     }
     showToast('Plantilla eliminada')
   }
@@ -401,7 +457,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
       if (contact?.clienteId) {
         const { error } = await supabase.from('notasrp').insert({
-          cliente_id: contact.clienteId,
+          cliente_id: resolvedContact.clienteId,
           contenido: summary,
           canal: activeChannel,
           tipo_mensaje: messageType,
@@ -416,7 +472,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
       if (contact?.leadId && senderId) {
         const { error } = await supabase.from('lead_notas').insert({
-          lead_id: contact.leadId,
+          lead_id: resolvedContact.leadId,
           usuario_id: senderId,
           nota: summary,
           tipo: 'mensajeria',
@@ -433,41 +489,43 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   )
 
   const updateLeadContact = useCallback(async () => {
-    if (!contact.leadId) return
+    if (!resolvedContact.leadId) return
     const { error } = await supabase
       .from('leads')
       .update({
         estado_pipeline: 'contactado',
         whatsapp_mensaje_enviado_at: new Date().toISOString(),
       })
-      .eq('id', contact.leadId)
+      .eq('id', resolvedContact.leadId)
     if (error) showToast(error.message, 'error')
-  }, [contact.leadId, showToast])
+  }, [resolvedContact.leadId, showToast])
 
   const handleSend = async () => {
     if (!canSendMessage || warningMessage) return
     setSending(true)
     const finalMessage = imageUrl.trim()
-      ? message.trim() + '\n\n' + imageUrl.trim()
-      : message
+      ? resolvedMessage.text.trim() + '\n\n' + imageUrl.trim()
+      : resolvedMessage.text
     const sentAt = new Date().toISOString()
     if (activeChannel === 'whatsapp') {
-      const url = contact.telefono ? buildWhatsappUrl(contact.telefono, finalMessage) : null
+      const url = resolvedContact.telefono ? buildWhatsappUrl(resolvedContact.telefono, finalMessage) : null
       if (url) window.open(url, '_blank', 'noopener,noreferrer')
     }
     if (activeChannel === 'sms' && hasPhone) {
       window.open(`sms:${phoneValue}?&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
     }
-    if (activeChannel === 'email' && hasEmail && contact.email) {
+    if (activeChannel === 'email' && hasEmail && resolvedContact.email) {
       const subject = t('messaging.emailSubject')
-      window.open(`mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
+      window.open(`mailto:${resolvedContact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
     }
     // Save to history
-    appendHistory({ contactName: contact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
+    appendHistory({ contactName: resolvedContact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
     await saveMessageLog(finalMessage, sentAt)
     await updateLeadContact()
     setSending(false)
   }
+
+  if (!open || !contact) return null
 
   return (
     <Modal
@@ -546,7 +604,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
               className="template-snippet"
               style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >
-              {buildSubtitle(replaceTemplateVariables(exampleTemplate.message, variables))}
+                  {buildSubtitle(resolveTemplate(exampleTemplate.message, variables).text)}
             </span>
           </div>
           <div
@@ -754,7 +812,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                   className="template-snippet"
                   style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
-                  {buildSubtitle(replaceTemplateVariables(template.message, variables))}
+                  {buildSubtitle(resolveTemplate(template.message, variables).text)}
                 </span>
               </div>
             )
@@ -810,21 +868,15 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
           {/* VARIABLES CLICABLES */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
-            {[
-              { label: 'Cliente', vars: ['{cliente}', '{email}'] },
-              { label: 'Vendedor', vars: ['{vendedor}', '{organizacion}'] },
-              { label: 'Recomendado', vars: ['{recomendado_por}'] },
-              { label: 'Contacto', vars: ['{telefono}'] },
-              { label: 'Cartera', vars: ['{cuenta_hycite}', '{saldo_actual}', '{monto_moroso}', '{dias_atraso}', '{estado_morosidad}'] },
-            ].map((group) => (
-              <div key={group.label} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)' }}>{group.label}</span>
-                {group.vars.map((variable) => (
+            {placeholderGroups.map(([groupLabel, vars]) => (
+              <div key={groupLabel} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)' }}>{groupLabel}</span>
+                {vars.map((variable) => (
                   <button
-                    key={variable}
+                    key={variable.token}
                     type="button"
-                    title={`Insertar ${variable}`}
-                    onClick={() => insertVariable(variable)}
+                    title={`Insertar ${variable.token}`}
+                    onClick={() => insertVariable(variable.token)}
                     style={{
                       background: 'var(--color-surface, #f3f4f6)',
                       border: '1px solid var(--color-border, #e5e7eb)',
@@ -835,14 +887,19 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                       fontFamily: 'monospace',
                     }}
                   >
-                    {variable}
+                    {variable.token}
                   </button>
-          ))}
+                ))}
               </div>
             ))}
             <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
               — clic para insertar
             </span>
+            {missingPlaceholders.length > 0 && (
+              <span style={{ fontSize: '0.7rem', color: '#d97706' }}>
+                Faltan datos para: {missingPlaceholders.map((value) => `{${value}}`).join(', ')}
+              </span>
+            )}
           </div>
 
           {/* LINK DE IMAGEN */}

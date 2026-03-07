@@ -1,3 +1,5 @@
+import { resolveTemplate } from './messagePlaceholders'
+
 export const DEFAULT_ORGANIZATION_NAME = 'Connection Worldwide Group'
 export const CUSTOM_TEMPLATES_STORAGE_KEY = 'flowsuite.whatsapp.templates'
 
@@ -356,7 +358,7 @@ export const buildTemplateVariables = (context: WhatsappContext) => {
 }
 
 export const replaceTemplateVariables = (message: string, variables: Record<string, string>) =>
-  message.replace(/\{([a-z_]+)\}/gi, (_match, key) => variables[key] ?? '')
+  resolveTemplate(message, variables).text
 
 export const buildWhatsappUrl = (phone: string, message: string) => {
   const sanitizedPhone = phone.replace(/\D/g, '')

@@ -17,6 +17,7 @@ type UsuarioRecord = {
   nombre: string | null
   apellido: string | null
   email: string | null
+  telefono: string | null
   codigo_vendedor: string | null
   codigo_distribuidor: string | null
   reclutador_codigo: string | null
@@ -40,6 +41,7 @@ const initialForm = {
   nombre: '',
   apellido: '',
   email: '',
+  telefono: '',
   codigo_vendedor: '',
   codigo_distribuidor: '',
   reclutador_codigo: '',
@@ -114,7 +116,7 @@ export function UsuariosPage() {
     setError(null)
     const { data, error: fetchError } = await supabase
       .from('usuarios')
-      .select('id, nombre, apellido, email, codigo_vendedor, codigo_distribuidor, reclutador_codigo, rol, activo, created_at')
+      .select('id, nombre, apellido, email, telefono, codigo_vendedor, codigo_distribuidor, reclutador_codigo, rol, activo, created_at')
       .order('created_at', { ascending: false })
 
     if (fetchError) {
@@ -292,6 +294,7 @@ export function UsuariosPage() {
         nombre: usuario.nombre ?? '',
         apellido: usuario.apellido ?? '',
         email: usuario.email ?? '',
+        telefono: usuario.telefono ?? '',
         codigo_vendedor: usuario.codigo_vendedor ?? '',
         codigo_distribuidor: usuario.codigo_distribuidor ?? '',
         reclutador_codigo: usuario.reclutador_codigo ?? '',
@@ -423,6 +426,7 @@ export function UsuariosPage() {
       const payload = {
         nombre: toNull(formValues.nombre),
         apellido: toNull(formValues.apellido),
+        telefono: toNull(formValues.telefono),
         codigo_vendedor: toNull(formValues.codigo_vendedor),
         codigo_distribuidor: toNull(formValues.codigo_distribuidor),
         reclutador_codigo: toNull(formValues.reclutador_codigo),
@@ -455,6 +459,7 @@ export function UsuariosPage() {
         nombre: toNull(formValues.nombre),
         apellido: toNull(formValues.apellido),
         email: toNull(formValues.email),
+        telefono: toNull(formValues.telefono),
         codigo_vendedor: toNull(formValues.codigo_vendedor),
         codigo_distribuidor: toNull(formValues.codigo_distribuidor),
         reclutador_codigo: toNull(formValues.reclutador_codigo),
@@ -606,6 +611,14 @@ export function UsuariosPage() {
                   required
                   disabled={Boolean(editingId)}
                   title={editingId ? t('usuarios.errors.emailReadonly') : undefined}
+                />
+              </label>
+              <label className="form-field">
+                <span>{t('usuarios.fields.telefono')}</span>
+                <input
+                  value={formValues.telefono}
+                  onChange={handleChange('telefono')}
+                  placeholder="(000) 000-0000"
                 />
               </label>
               <label className="form-field">

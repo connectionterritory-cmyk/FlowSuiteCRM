@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { SEGMENTS, type SegmentKey, fetchLeadsForSegment, type LeadScope } from './leadSegments'
+import { SEGMENTS, type SegmentKey, fetchLeadsForSegment, countLeadsForSegment, type LeadScope, type LeadSegmentParams } from './leadSegments'
 
 export type Fuente = 'leads' | 'clientes'
 
@@ -17,6 +17,19 @@ export type SegmentTarget = {
   ciudad?: string | null
 }
 
+export type CampaignSegmentParams = {
+  contacto_tipo: 'lead' | 'cliente'
+  fuente?: string
+  segmento_key?: string
+  estado_pipeline?: string | null
+  filter_type?: string | null
+  programa_id?: string | null
+  owner_id?: string | null
+  vendedor_id?: string | null
+  distribuidor_id?: string | null
+  month?: number
+}
+
 export const LEAD_SEGMENTS: SegmentDefinition[] = SEGMENTS.map((segment) => ({
   key: segment.key,
   label: segment.label,
@@ -25,10 +38,10 @@ export const LEAD_SEGMENTS: SegmentDefinition[] = SEGMENTS.map((segment) => ({
 }))
 
 export const CLIENTE_SEGMENTS: SegmentDefinition[] = [
-  { key: 'clientes_activos', label: 'Clientes activos', fuente: 'clientes', hint: 'Telefono disponible' },
-  { key: 'clientes_miami', label: 'Clientes Miami', fuente: 'clientes' },
-  { key: 'clientes_la', label: 'Clientes LA', fuente: 'clientes' },
-  { key: 'cumpleanos_clientes', label: '🎂 Cumpleaños (Clientes)', fuente: 'clientes', hint: 'Cumplen años en el mes seleccionado' },
+  { key: 'clientes_activos', label: 'Clientes activos', fuente: 'clientes', hint: 'Activo = true' },
+  { key: 'clientes_accion_vencida', label: 'Clientes con próxima acción vencida', fuente: 'clientes', hint: 'next_action_date <= hoy' },
+  { key: 'clientes_sin_contacto', label: 'Clientes sin contacto reciente', fuente: 'clientes', hint: 'ultimo_contacto_at nulo o > 30 días' },
+  { key: 'cumpleanos_clientes', label: 'Cumpleaños del mes', fuente: 'clientes', hint: 'Mes actual' },
 ]
 
 export const ALL_SEGMENTS: SegmentDefinition[] = [...LEAD_SEGMENTS, ...CLIENTE_SEGMENTS]
@@ -66,29 +79,44 @@ export const fetchSegmentTargets = async (params: {
   fuente: Fuente
   segmentKey: string
   scope: LeadScope
-  segmentParams?: Record<string, any>
+  segmentParams?: CampaignSegmentParams
 }): Promise<SegmentTarget[]> => {
   if (!isSupabaseConfigured) return []
   const { fuente, segmentKey, scope, segmentParams } = params
 
   if (fuente === 'leads') {
-    const rows = await fetchLeadsForSegment(segmentKey as SegmentKey, scope)
+    const leadParams = segmentParams as LeadSegmentParams | undefined
+    const rows = await fetchLeadsForSegment(segmentKey as SegmentKey, scope, leadParams)
     return mapLeadTargets(rows)
   }
 
-  let query = supabase
+  const todayKey = new Date().toISOString().split('T')[0]
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+  const cutoffKey = cutoff.toISOString().split('T')[0]
+
+  let query: any = supabase
     .from('clientes')
-    .select('id, nombre, apellido, telefono, ciudad, fecha_nacimiento')
+    .select('id, nombre, apellido, telefono, ciudad, fecha_nacimiento, ultimo_contacto_at, next_action_date, activo, vendedor_id, distribuidor_id')
     .not('telefono', 'is', null)
     .neq('telefono', '')
 
-  if (segmentKey === 'clientes_miami') {
-    query = query.ilike('ciudad', '%miami%')
+  if (segmentParams?.vendedor_id) {
+    query = query.eq('vendedor_id', segmentParams.vendedor_id)
   }
-  if (segmentKey === 'clientes_la') {
-    query = query.ilike('ciudad', '%los angeles%')
+  if (segmentParams?.distribuidor_id) {
+    query = query.eq('distribuidor_id', segmentParams.distribuidor_id)
   }
 
+  if (segmentKey === 'clientes_activos') {
+    query = query.eq('activo', true)
+  }
+  if (segmentKey === 'clientes_accion_vencida') {
+    query = query.not('next_action_date', 'is', null).lte('next_action_date', todayKey)
+  }
+  if (segmentKey === 'clientes_sin_contacto') {
+    query = query.or(`ultimo_contacto_at.is.null,ultimo_contacto_at.lte.${cutoffKey}`)
+  }
   if (segmentKey === 'cumpleanos_clientes') {
     query = query.not('fecha_nacimiento', 'is', null)
   }
@@ -114,4 +142,66 @@ export const fetchSegmentTargets = async (params: {
     telefono: row.telefono ?? null,
     ciudad: row.ciudad ?? null,
   }))
+}
+
+export const estimateSegmentTargets = async (params: {
+  fuente: Fuente
+  segmentKey: string
+  scope: LeadScope
+  segmentParams?: CampaignSegmentParams
+}) => {
+  if (!isSupabaseConfigured) return { count: 0, isEstimate: false }
+  const { fuente, segmentKey, scope, segmentParams } = params
+  if (fuente === 'leads') {
+    const leadParams = segmentParams as LeadSegmentParams | undefined
+    return await countLeadsForSegment(segmentKey as SegmentKey, scope, leadParams)
+  }
+
+  const todayKey = new Date().toISOString().split('T')[0]
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+  const cutoffKey = cutoff.toISOString().split('T')[0]
+  let query: any = supabase
+    .from('clientes')
+    .select('id, fecha_nacimiento, ultimo_contacto_at, next_action_date, activo, vendedor_id, distribuidor_id', { count: 'exact' })
+    .not('telefono', 'is', null)
+    .neq('telefono', '')
+
+  if (segmentParams?.vendedor_id) {
+    query = query.eq('vendedor_id', segmentParams.vendedor_id)
+  }
+  if (segmentParams?.distribuidor_id) {
+    query = query.eq('distribuidor_id', segmentParams.distribuidor_id)
+  }
+
+  if (segmentKey === 'clientes_activos') {
+    query = query.eq('activo', true)
+  }
+  if (segmentKey === 'clientes_accion_vencida') {
+    query = query.not('next_action_date', 'is', null).lte('next_action_date', todayKey)
+  }
+  if (segmentKey === 'clientes_sin_contacto') {
+    query = query.or(`ultimo_contacto_at.is.null,ultimo_contacto_at.lte.${cutoffKey}`)
+  }
+
+  const MAX_SAMPLE = 2000
+  if (segmentKey !== 'cumpleanos_clientes') {
+    const { count, error } = await query.select('id', { count: 'exact' }).limit(1)
+    if (error) return { count: 0, isEstimate: false, error: error.message }
+    return { count: count ?? 0, isEstimate: false }
+  }
+
+  const { data, count, error } = await query.limit(MAX_SAMPLE)
+  if (error) return { count: 0, isEstimate: false, error: error.message }
+  const rows = (data as { fecha_nacimiento: string | null }[] | null) ?? []
+  const monthParam = segmentParams?.month
+  const nowMonth = new Date().getUTCMonth() + 1
+  const month = monthParam && monthParam >= 1 && monthParam <= 12 ? monthParam : nowMonth
+  const filtered = rows.filter((row) => parseMonth(row.fecha_nacimiento) === month)
+  const total = count ?? rows.length
+  if (total > MAX_SAMPLE && rows.length > 0) {
+    const ratio = filtered.length / rows.length
+    return { count: Math.round(total * ratio), isEstimate: true }
+  }
+  return { count: filtered.length, isEstimate: false }
 }

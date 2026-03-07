@@ -92,6 +92,7 @@ const initialForm = {
   apellido: '',
   email: '',
   telefono: '',
+  fecha_nacimiento: '',
   fuente: '',
   programa_id: '',
   embajador_id: '',
@@ -959,6 +960,7 @@ export function LeadsPage() {
       apellido: toNull(formatProperName(formValues.apellido)),
       email: toNull(formValues.email),
       telefono: toNull(formValues.telefono),
+      fecha_nacimiento: formValues.fecha_nacimiento || null,
       fuente: toNull(fuenteValue),
       programa_id: toNull(formValues.programa_id),
       embajador_id: toNull(formValues.embajador_id),
@@ -1688,6 +1690,10 @@ export function LeadsPage() {
           <label className="form-field">
             <span>{t('leads.fields.telefono')}</span>
             <input value={formValues.telefono} onChange={handleChange('telefono')} />
+          </label>
+          <label className="form-field">
+            <span>{t('leads.fields.fechaNacimiento')}</span>
+            <input type="date" value={formValues.fecha_nacimiento} onChange={handleChange('fecha_nacimiento')} />
           </label>
           <label className="form-field">
             <span>{t('leads.fields.fuente')}</span>
