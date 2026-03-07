@@ -289,13 +289,13 @@ export function Programa4en14Page() {
     if (newQualified.programa_id) {
       openReferralModal(newQualified.programa_id)
     }
-  }, [referidos])
+  }, [referidos, openReferralModal])
 
   const calcEndDate = useCallback((start: string) => {
     if (!start) return ''
     const date = new Date(`${start}T00:00:00`)
     date.setDate(date.getDate() + 14)
-    return date.toISOString().slice(0, 10)
+    return date.toLocaleDateString('en-CA')
   }, [])
 
   const formatDate = useCallback((value: string | null | undefined) => {
@@ -542,7 +542,7 @@ export function Programa4en14Page() {
       const confirmed = window.confirm(t('programa4en14.gift.confirmDeliver'))
       if (!confirmed) return
       setGiftSubmittingId(cycleId)
-      const today = new Date().toISOString().slice(0, 10)
+      const today = new Date().toLocaleDateString('en-CA')
       const { error: updateError } = await supabase
         .from('programa_4en14')
         .update({ regalo_entregado: true, fecha_regalo: today })
@@ -909,7 +909,7 @@ export function Programa4en14Page() {
         calificacionForm.estado_presentacion === 'demo_calificada' ||
         calificacionForm.estado_presentacion === 'venta') &&
       !calificacionReferido.fecha_demo
-    const demoDate = shouldSetDemoDate ? new Date().toISOString().slice(0, 10) : calificacionReferido.fecha_demo
+    const demoDate = shouldSetDemoDate ? new Date().toLocaleDateString('en-CA') : calificacionReferido.fecha_demo
     const referidosPayload = {
       estado_presentacion: calificacionForm.estado_presentacion,
       prioridad_top: calificacionForm.prioridad_top,
