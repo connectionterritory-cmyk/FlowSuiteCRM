@@ -298,7 +298,8 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   }, [channel, open])
 
   const channelLabel = t(`messaging.channel.${activeChannel}`)
-  const canSendMessage = message.trim().length > 0
+  const hasContact = Boolean(contact)
+  const canSendMessage = hasContact && message.trim().length > 0
   const phoneValue = resolvedContact.telefono ? sanitizePhone(resolvedContact.telefono) : ''
   const hasPhone = phoneValue.length > 0
   const hasEmail = Boolean(resolvedContact.email?.trim())
@@ -501,7 +502,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   }, [resolvedContact.leadId, showToast])
 
   const handleSend = async () => {
-    if (!canSendMessage || warningMessage) return
+    if (!hasContact || !canSendMessage || warningMessage) return
     setSending(true)
     const finalMessage = imageUrl.trim()
       ? resolvedMessage.text.trim() + '\n\n' + imageUrl.trim()
@@ -525,8 +526,6 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     setSending(false)
   }
 
-  if (!open || !contact) return null
-
   return (
     <Modal
       open={open}
@@ -544,6 +543,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         </>
       }
     >
+      {!hasContact && (
+        <div className="template-empty" style={{ marginBottom: '1rem' }}>
+          Selecciona un contacto para enviar el mensaje.
+        </div>
+      )}
       {/* CANAL TABS */}
       <div className="template-tabs messaging-tabs">
         {channelTabs.map((tab) => (

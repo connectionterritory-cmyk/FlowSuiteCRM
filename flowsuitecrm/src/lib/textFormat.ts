@@ -1,6 +1,6 @@
 const toTitleCase = (value: string) => {
   const lower = value.toLowerCase()
-  return lower.replace(/(^|[.\s])(\p{L})/gu, (match, prefix, letter) => `${prefix}${letter.toUpperCase()}`)
+  return lower.replace(/(^|[.\s])(\p{L})/gu, (_match, prefix, letter) => `${prefix}${letter.toUpperCase()}`)
 }
 
 export const formatProperName = (value: string) => toTitleCase(value.trim())
