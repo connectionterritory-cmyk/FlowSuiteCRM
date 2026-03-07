@@ -6,12 +6,14 @@ import { Badge } from '../../components/Badge'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 import { buildWhatsappUrl } from '../../lib/whatsappTemplates'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
 import { CitaModal, type CitaForm } from './CitaModal'
 
 type CitaRow = {
   id: string
+  owner_id: string | null
   start_at: string | null
   tipo: string | null
   nombre: string | null
@@ -19,6 +21,7 @@ type CitaRow = {
   direccion: string | null
   ciudad: string | null
   estado_region: string | null
+  zip: string | null
   estado: string | null
   assigned_to: string | null
   contacto_tipo: string | null
@@ -77,10 +80,18 @@ const getRange = (key: RangeKey) => {
   return null
 }
 
+const getEstadoTone = (estadoLabel: string) => {
+  if (estadoLabel === 'completada') return 'blue'
+  if (estadoLabel === 'confirmada' || estadoLabel === 'en_camino') return 'blue'
+  if (estadoLabel === 'cancelada' || estadoLabel === 'no_show') return 'neutral'
+  return 'gold'
+}
+
 export function CitasPage() {
   const { session } = useAuth()
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
+  const { distributionUserIds, hasDistribuidorScope } = useViewMode()
   const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +99,7 @@ export function CitasPage() {
   const [citas, setCitas] = useState<CitaRow[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [activeCita, setActiveCita] = useState<CitaRow | null>(null)
+  const [assignedOptions, setAssignedOptions] = useState<{ id: string; label: string }[]>([])
 
   const loadRole = useCallback(async () => {
     if (!configured || !session?.user.id) {
@@ -108,10 +120,10 @@ export function CitasPage() {
     setError(null)
     let query = supabase
       .from('citas')
-      .select('id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, estado, assigned_to, contacto_tipo, contacto_id, notas')
+      .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas')
 
     if (role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
-      query = query.eq('assigned_to', session.user.id)
+      query = query.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
     }
 
     const rangeValue = getRange(range)
@@ -137,6 +149,37 @@ export function CitasPage() {
   useEffect(() => {
     loadCitas()
   }, [loadCitas])
+
+  useEffect(() => {
+    if (!configured || !session?.user.id || !role) return
+    const loadAssignedOptions = async () => {
+      if (role === 'admin' || role === 'distribuidor') {
+        let query = supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, email')
+          .eq('activo', true)
+        if (hasDistribuidorScope && distributionUserIds.length > 0) {
+          query = query.in('id', distributionUserIds)
+        }
+        const { data, error } = await query
+        if (error) {
+          setAssignedOptions([{ id: session.user.id, label: 'Yo' }])
+          return
+        }
+        const options = (data ?? []).map((row) => {
+          const name = [row.nombre, row.apellido].filter(Boolean).join(' ').trim()
+          return {
+            id: row.id,
+            label: name || row.email || row.id,
+          }
+        })
+        setAssignedOptions(options.length > 0 ? options : [{ id: session.user.id, label: 'Yo' }])
+        return
+      }
+      setAssignedOptions([{ id: session.user.id, label: 'Yo' }])
+    }
+    void loadAssignedOptions()
+  }, [configured, distributionUserIds, hasDistribuidorScope, role, session?.user.id])
 
   const openNewModal = () => {
     setActiveCita(null)
@@ -172,6 +215,7 @@ export function CitasPage() {
       const now = new Date()
       const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
       return {
+        owner_id: session?.user.id ?? '',
         start_at: local.toISOString().slice(0, 16),
         tipo: 'servicio',
         estado: 'programada',
@@ -179,6 +223,7 @@ export function CitasPage() {
       }
     }
     return {
+      owner_id: activeCita.owner_id ?? (session?.user.id ?? ''),
       id: activeCita.id,
       start_at: activeCita.start_at ? toLocalInput(activeCita.start_at) : '',
       tipo: activeCita.tipo ?? 'servicio',
@@ -187,6 +232,7 @@ export function CitasPage() {
       direccion: activeCita.direccion ?? '',
       ciudad: activeCita.ciudad ?? '',
       estado_region: activeCita.estado_region ?? '',
+      zip: activeCita.zip ?? '',
       assigned_to: activeCita.assigned_to ?? (session?.user.id ?? ''),
       contacto_nombre: activeCita.nombre ?? '',
       contacto_telefono: activeCita.telefono ?? '',
@@ -251,7 +297,7 @@ export function CitasPage() {
                     <strong>{formatHour(cita.start_at)}{cita.start_at ? ` · ${formatDate(cita.start_at)}` : ''}</strong>
                     <span>{nombre}</span>
                   </div>
-                  <Badge label={estadoLabel} tone={estadoLabel === 'completada' ? 'blue' : 'gold'} />
+                  <Badge label={estadoLabel} tone={getEstadoTone(estadoLabel)} />
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', color: 'var(--color-text-muted, #6b7280)' }}>
                   <span>Tipo: {cita.tipo || '-'}</span>
@@ -300,11 +346,7 @@ export function CitasPage() {
         onClose={handleCloseModal}
         onSaved={loadCitas}
         initialData={initialForm}
-        assignedOptions={
-          session?.user.id
-            ? [{ id: session.user.id, label: 'Yo' }]
-            : []
-        }
+        assignedOptions={assignedOptions}
       />
     </div>
   )
