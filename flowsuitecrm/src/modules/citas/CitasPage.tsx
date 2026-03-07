@@ -3,7 +3,6 @@ import { SectionHeader } from '../../components/SectionHeader'
 import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
-import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
@@ -27,6 +26,8 @@ type CitaRow = {
   contacto_tipo: string | null
   contacto_id: string | null
   notas: string | null
+  resultado: string | null
+  resultado_notas: string | null
 }
 
 type RangeKey = 'hoy' | 'manana' | 'semana' | 'todas'
@@ -89,7 +90,6 @@ const getEstadoTone = (estadoLabel: string) => {
 
 export function CitasPage() {
   const { session } = useAuth()
-  const { showToast } = useToast()
   const configured = isSupabaseConfigured
   const { distributionUserIds, hasDistribuidorScope } = useViewMode()
   const [role, setRole] = useState<string | null>(null)
@@ -120,7 +120,7 @@ export function CitasPage() {
     setError(null)
     let query = supabase
       .from('citas')
-      .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas')
+      .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas, resultado, resultado_notas')
 
     if (role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
       query = query.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
@@ -196,18 +196,9 @@ export function CitasPage() {
     setActiveCita(null)
   }
 
-  const handleMarkCompleted = async (cita: CitaRow) => {
-    if (!configured || !cita.id) return
-    const { error: updateError } = await supabase
-      .from('citas')
-      .update({ estado: 'completada' })
-      .eq('id', cita.id)
-    if (updateError) {
-      showToast(updateError.message, 'error')
-      return
-    }
-    showToast('Cita completada')
-    void loadCitas()
+  const openCompletarModal = (cita: CitaRow) => {
+    setActiveCita({ ...cita, estado: 'completada' })
+    setModalOpen(true)
   }
 
   const initialForm = useMemo<Partial<CitaForm>>(() => {
@@ -238,6 +229,8 @@ export function CitasPage() {
       contacto_telefono: activeCita.telefono ?? '',
       contacto_tipo: activeCita.contacto_tipo ?? 'cliente',
       contacto_id: activeCita.contacto_id ?? '',
+      resultado: activeCita.resultado ?? '',
+      resultado_notas: activeCita.resultado_notas ?? '',
     }
   }, [activeCita, session?.user.id])
 
@@ -329,7 +322,7 @@ export function CitasPage() {
                   </Button>
                   <Button
                     variant="ghost"
-                    onClick={() => handleMarkCompleted(cita)}
+                    onClick={() => openCompletarModal(cita)}
                     disabled={estadoLabel === 'completada'}
                   >
                     Completar

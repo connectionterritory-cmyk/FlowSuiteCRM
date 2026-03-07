@@ -31,6 +31,8 @@ export type CitaForm = {
   campaign_id?: string
   message_id?: string
   response_id?: string
+  resultado?: string
+  resultado_notas?: string
 }
 
 type CitaModalProps = {
@@ -59,6 +61,8 @@ const emptyForm: CitaForm = {
   campaign_id: '',
   message_id: '',
   response_id: '',
+  resultado: '',
+  resultado_notas: '',
 }
 
 const ESTADO_OPTIONS = [
@@ -81,6 +85,15 @@ const TIPO_OPTIONS = [
 const CONTACTO_TIPO_OPTIONS = [
   { value: 'cliente', label: 'Cliente' },
   { value: 'lead', label: 'Lead / Prospecto' },
+]
+
+const RESULTADO_OPTIONS = [
+  { value: 'realizada',   label: 'Visita realizada' },
+  { value: 'venta',       label: 'Venta' },
+  { value: 'no_contacto', label: 'No contacto' },
+  { value: 'reagendar',   label: 'Reagendar' },
+  { value: 'no_interes',  label: 'Sin interés' },
+  { value: 'otro',        label: 'Otro' },
 ]
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -267,6 +280,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       showToast('El ID de contacto debe ser un UUID válido (ej: 550e8400-…).', 'error')
       return
     }
+    if (form.estado === 'completada' && !form.resultado?.trim()) {
+      showToast('Selecciona el resultado de la cita antes de marcarla como completada.', 'error')
+      return
+    }
     const startIso = toIso(form.start_at)
     if (!startIso) {
       showToast('Fecha invalida.', 'error')
@@ -278,7 +295,6 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       showToast('La hora de fin debe ser mayor a la de inicio.', 'error')
       return
     }
-
     setSaving(true)
 
     // owner_id is immutable after creation — only set on INSERT, never on UPDATE
@@ -300,6 +316,8 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       campaign_id: form.campaign_id || null,
       message_id: form.message_id || null,
       response_id: form.response_id || null,
+      resultado: form.resultado?.trim() || null,
+      resultado_notas: form.resultado_notas?.trim() || null,
     }
     const request = form.id
       ? supabase.from('citas').update(basePayload).eq('id', form.id)
@@ -367,6 +385,33 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             ))}
           </select>
         </label>
+        {form.estado === 'completada' && (
+          <>
+            <label className="form-field">
+              <span>Resultado <span style={{ color: 'var(--color-error, #dc2626)' }}>*</span></span>
+              <select
+                value={form.resultado ?? ''}
+                onChange={(event) => setForm((prev) => ({ ...prev, resultado: event.target.value }))}
+              >
+                <option value="">Selecciona un resultado…</option>
+                {RESULTADO_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Notas del resultado</span>
+              <textarea
+                rows={3}
+                value={form.resultado_notas ?? ''}
+                onChange={(event) => setForm((prev) => ({ ...prev, resultado_notas: event.target.value }))}
+                placeholder="Detalle del resultado"
+              />
+            </label>
+          </>
+        )}
         {/* CONTACTO — obligatorio, ligado a cliente o lead real */}
         <label className="form-field">
           <span>Tipo de contacto</span>
