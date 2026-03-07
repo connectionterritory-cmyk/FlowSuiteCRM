@@ -9,6 +9,7 @@ import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
 import { useDashboardCharts } from '../../hooks/useDashboardCharts'
 import { LineChart } from '../../components/LineChart'
 import { DonutChart } from '../../components/DonutChart'
+import { AgendaHoy } from '../../components/AgendaHoy'
 
 export function DashboardPage() {
   const { t, i18n } = useTranslation()
@@ -98,6 +99,8 @@ export function DashboardPage() {
           onClick={() => navigate('/telemercadeo/cumpleanos')}
         />
       </div>
+
+      <AgendaHoy />
 
       <div className="grid-2">
         <div className="card chart-card">
