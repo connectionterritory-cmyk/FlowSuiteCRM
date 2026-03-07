@@ -28,11 +28,6 @@ type LeadRecord = {
   apellido: string | null
   email: string | null
   telefono: string | null
-  direccion: string | null
-  apartamento: string | null
-  ciudad: string | null
-  estado_region: string | null
-  codigo_postal: string | null
   fecha_nacimiento: string | null
   fuente: string | null
   programa_id: string | null
@@ -297,7 +292,18 @@ export function LeadsPage() {
       return
     }
 
-    let query = supabase.from('leads').select('*').order('created_at', { ascending: false })
+    if (hasDistribuidorScope && scopeMode === 'distributor' && distributionUserIds.length === 0) {
+      setLeads([])
+      setLoading(false)
+      return
+    }
+
+    let query = supabase
+      .from('leads')
+      .select(
+        'id, nombre, apellido, email, telefono, fecha_nacimiento, fuente, programa_id, embajador_id, referido_por_cliente_id, owner_id, vendedor_id, estado_pipeline, next_action, next_action_date, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, created_at, updated_at, deleted_at, deleted_by, deleted_reason'
+      )
+      .order('created_at', { ascending: false })
     if (viewMode === 'trash') {
       query = query.not('deleted_at', 'is', null)
     } else {
@@ -309,7 +315,7 @@ export function LeadsPage() {
     if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
       query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
     }
-    if (hasDistribuidorScope && scopeMode === 'distributor' && distributionUserIds.length > 0) {
+    if (hasDistribuidorScope && scopeMode === 'distributor') {
       const ids = distributionUserIds.join(',')
       query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
     }
@@ -398,7 +404,7 @@ export function LeadsPage() {
 
   useEffect(() => {
     if (configured) loadLeads()
-  }, [configured, loadLeads, role])
+  }, [configured, loadLeads])
 
   useEffect(() => {
     if (!manageOpen || manageMode !== 'reassign') return
@@ -413,7 +419,7 @@ export function LeadsPage() {
 
   const normalizeStage = useCallback((stage: string | null) => normalizeLeadStage(stage), [])
 
-  const timeZone = 'America/Los_Angeles'
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const today = useMemo(() => new Date(), [])
   const threeDaysAgo = useMemo(() => {
     const date = new Date(today)
@@ -626,7 +632,7 @@ export function LeadsPage() {
 
   // --- FILTRADO ---
   const leadsFiltrados = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
+    const todayKey = formatDateKey(new Date())
     return leads.filter((lead) => {
       const fullName = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.toLowerCase()
       const tel = lead.telefono ?? ''
@@ -642,12 +648,12 @@ export function LeadsPage() {
       const matchVencido =
         !filtroVencido ||
         (!!lead.next_action_date &&
-          lead.next_action_date <= today &&
+          lead.next_action_date <= todayKey &&
           lead.estado_pipeline !== 'descartado' &&
           lead.estado_pipeline !== 'cierre')
       return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, normalizeStage])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, normalizeStage, formatDateKey])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -679,7 +685,7 @@ export function LeadsPage() {
 
   // --- ESTADISTICAS ---
   const stats = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
+    const todayKey = formatDateKey(new Date())
     return {
       total: leads.length,
       nuevo: leads.filter((l) => normalizeStage(l.estado_pipeline) === 'nuevo').length,
@@ -688,12 +694,12 @@ export function LeadsPage() {
       vencidos: leads.filter(
         (l) =>
           l.next_action_date &&
-          l.next_action_date <= today &&
+          l.next_action_date <= todayKey &&
           l.estado_pipeline !== 'descartado' &&
           l.estado_pipeline !== 'cierre',
       ).length,
     }
-  }, [leads, normalizeStage])
+  }, [leads, normalizeStage, formatDateKey])
 
   const mobileLeads = useMemo(() => {
     const filtered = mobileLeadsData.filter((lead) => {

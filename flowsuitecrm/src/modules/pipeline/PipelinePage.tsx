@@ -186,7 +186,7 @@ export function PipelinePage() {
     if (!configured) return
     setLoading(true)
     setError(null)
-    let query = supabase.from('leads').select('id, nombre, apellido, email, telefono, direccion, apartamento, ciudad, estado_region, codigo_postal, fecha_nacimiento, estado_pipeline, next_action, next_action_date, fuente, programa_id, embajador_id, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, vendedor_id').is('deleted_at', null)
+    let query = supabase.from('leads').select('id, nombre, apellido, email, telefono, fecha_nacimiento, estado_pipeline, next_action, next_action_date, fuente, programa_id, embajador_id, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, vendedor_id').is('deleted_at', null)
     if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
       query = query.or(`owner_id.eq.${session.user.id},vendedor_id.eq.${session.user.id}`)
     }

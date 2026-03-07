@@ -292,6 +292,60 @@ export function EnviosPage() {
     setResponseContact(null)
   }
 
+  const runAutoActions = useCallback(async (
+    resultado: string,
+    contact: { contacto_tipo: 'cliente' | 'lead'; contacto_id: string } | null,
+    followupAt: string | null,
+    montoPrm: number | null,
+    notasText: string | null,
+  ) => {
+    if (!configured || !contact || !session?.user.id) return
+    const { contacto_tipo, contacto_id } = contact
+
+    if (resultado === 'cita_agendada') {
+      if (contacto_tipo === 'lead') {
+        await supabase.from('leads').update({
+          next_action: 'Cita agendada via campaña',
+          next_action_date: followupAt,
+        }).eq('id', contacto_id)
+        await supabase.from('lead_notas').insert({
+          lead_id: contacto_id,
+          usuario_id: session.user.id,
+          nota: ['Cita agendada via campaña', notasText].filter(Boolean).join(': '),
+          tipo: 'seguimiento',
+        })
+      } else {
+        await supabase.from('clientes').update({
+          next_action: 'Cita agendada via campaña',
+          next_action_date: followupAt,
+        }).eq('id', contacto_id)
+        await supabase.from('notasrp').insert({
+          cliente_id: contacto_id,
+          contenido: ['Cita agendada via campaña', notasText].filter(Boolean).join(': '),
+          canal: 'whatsapp',
+          enviado_por: session.user.id,
+        })
+      }
+    }
+
+    if (resultado === 'pago_prometido' && contacto_tipo === 'cliente') {
+      await supabase.from('llamadas_telemercadeo').insert({
+        cliente_id: contacto_id,
+        telemercadista_id: session.user.id,
+        resultado: 'pago_prometido',
+        notas: notasText,
+        followup_at: followupAt,
+        monto_prometido: montoPrm,
+      })
+      if (followupAt) {
+        await supabase.from('clientes').update({
+          next_action: 'Pago prometido',
+          next_action_date: followupAt,
+        }).eq('id', contacto_id)
+      }
+    }
+  }, [configured, session?.user.id])
+
   const saveResponse = async () => {
     if (!configured || !responseMessageId || !responseForm.resultado) return null
     setResponseSaving(true)
@@ -331,6 +385,13 @@ export function EnviosPage() {
   const handleSaveResponse = async () => {
     const responseId = await saveResponse()
     if (!responseId) return
+    await runAutoActions(
+      responseForm.resultado,
+      responseContact,
+      responseForm.followup_at || null,
+      responseForm.monto_prometido ? Number(responseForm.monto_prometido) : null,
+      responseForm.notas.trim() || null,
+    )
     setResponseOpen(false)
     setResponseMessageId('')
     showToast('Respuesta registrada')
@@ -341,6 +402,13 @@ export function EnviosPage() {
     if (!responseContact) return
     const responseId = await saveResponse()
     if (!responseId) return
+    await runAutoActions(
+      responseForm.resultado,
+      responseContact,
+      responseForm.followup_at || null,
+      responseForm.monto_prometido ? Number(responseForm.monto_prometido) : null,
+      responseForm.notas.trim() || null,
+    )
     const startAt = responseForm.followup_at
       ? `${responseForm.followup_at}T09:00`
       : new Date().toISOString().slice(0, 16)
