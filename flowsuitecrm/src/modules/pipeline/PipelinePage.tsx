@@ -13,6 +13,7 @@ import { useViewMode } from '../../data/ViewModeProvider'
 import { EmptyState } from '../../components/EmptyState'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useMessaging } from '../../hooks/useMessaging'
+import { normalizeLeadStage } from '../../constants/pipeline'
 
 type LeadCard = {
   id: string
@@ -115,7 +116,10 @@ export function PipelinePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const today = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const today = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
 
   const stages = useMemo(
     () => ['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'],
@@ -162,25 +166,36 @@ export function PipelinePage() {
     return `${first}${last}`.toUpperCase()
   }, [])
 
+  const normalizeDateKey = useCallback((value: string | null) => {
+    if (!value) return null
+    return value.includes('T') ? value.split('T')[0] : value
+  }, [])
+
   const getDateStatus = useCallback(
     (date: string | null): 'overdue' | 'today' | null => {
-      if (!date) return null
-      if (date < today) return 'overdue'
-      if (date === today) return 'today'
+      const key = normalizeDateKey(date)
+      if (!key) return null
+      if (key < today) return 'overdue'
+      if (key === today) return 'today'
       return null
     },
-    [today]
+    [normalizeDateKey, today]
   )
 
   const loadLeads = useCallback(async () => {
     if (!configured) return
     setLoading(true)
     setError(null)
-    let query = supabase.from('leads').select('*').is('deleted_at', null)
+    let query = supabase.from('leads').select('id, nombre, apellido, email, telefono, direccion, apartamento, ciudad, estado_region, codigo_postal, fecha_nacimiento, estado_pipeline, next_action, next_action_date, fuente, programa_id, embajador_id, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, vendedor_id').is('deleted_at', null)
     if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
       query = query.or(`owner_id.eq.${session.user.id},vendedor_id.eq.${session.user.id}`)
     }
-    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+    if (hasDistribuidorScope && viewMode === 'distributor') {
+      if (distributionUserIds.length === 0) {
+        setLeads([])
+        setLoading(false)
+        return
+      }
       const ids = distributionUserIds.join(',')
       query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
     }
@@ -192,7 +207,7 @@ export function PipelinePage() {
       setLeads(data ?? [])
     }
     setLoading(false)
-  }, [configured])
+  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, session?.user.id, viewMode])
 
   useEffect(() => {
     if (configured) {
@@ -205,9 +220,8 @@ export function PipelinePage() {
   }, [configured, loadLeads])
 
   const normalizeStage = (stage: string | null): string => {
-    let s = stage ?? 'nuevo'
-    if (s === 'calificado') s = 'cita'
-    if (s === 'demostracion') s = 'demo'
+    let s = normalizeLeadStage(stage)
+    if (!s || s === 'otro') s = 'nuevo'
     if (!['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'].includes(s)) s = 'descartado'
     return s
   }
@@ -263,9 +277,10 @@ export function PipelinePage() {
 
   // --- Stats (based on all leads) ---
   const stats = useMemo(() => {
-    const overdueCount = leads.filter(
-      (l) => l.next_action_date && l.next_action_date < today && normalizeStage(l.estado_pipeline) !== 'descartado'
-    ).length
+    const overdueCount = leads.filter((l) => {
+      const dateKey = normalizeDateKey(l.next_action_date)
+      return Boolean(dateKey) && dateKey! < today && normalizeStage(l.estado_pipeline) !== 'descartado'
+    }).length
     const byStage: Record<string, number> = {}
     stages.forEach((s) => { byStage[s] = groupedLeads[s]?.length ?? 0 })
     return { total: leads.length, overdue: overdueCount, byStage }
@@ -345,9 +360,9 @@ export function PipelinePage() {
 
   const handleFormChange =
     (field: keyof OportunidadForm) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-      setFormValues((prev) => ({ ...prev, [field]: event.target.value }))
-    }
+      (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        setFormValues((prev) => ({ ...prev, [field]: event.target.value }))
+      }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

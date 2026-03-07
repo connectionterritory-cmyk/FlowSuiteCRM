@@ -14,6 +14,7 @@ import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useMessaging } from '../../hooks/useMessaging'
+import { CitaModal, type CitaForm } from '../citas/CitaModal'
 
 type CycleRecord = {
   id: string
@@ -41,6 +42,7 @@ type ReferidoRecord = {
   prioridad_top?: boolean | null
   notas_adicionales?: string | null
   fecha_demo?: string | null
+  cita_id?: string | null
 }
 
 type ReferralRow = {
@@ -148,6 +150,9 @@ export function Programa4en14Page() {
   const [referralSubmitting, setReferralSubmitting] = useState(false)
   const [referralError, setReferralError] = useState<string | null>(null)
   const configured = isSupabaseConfigured
+  const [citaOpen, setCitaOpen] = useState(false)
+  const [citaInitial, setCitaInitial] = useState<Partial<CitaForm>>({})
+  const [citaReferidoId, setCitaReferidoId] = useState<string | null>(null)
   const demoInitializedRef = useRef(false)
   const demoQualifiedSeenRef = useRef<Set<string>>(new Set())
   const referralNameRefs = useRef<Array<HTMLInputElement | null>>([])
@@ -156,6 +161,36 @@ export function Programa4en14Page() {
     () => new Intl.NumberFormat(i18n.language),
     [i18n.language],
   )
+
+  const handleAgendarCita4en14 = (ref: ReferidoRecord) => {
+    if (!ref.lead_id) return
+    const now = new Date()
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    setCitaInitial({
+      owner_id: session?.user.id ?? '',
+      start_at: local.toISOString().slice(0, 16),
+      tipo: 'demo',
+      estado: 'programada',
+      assigned_to: session?.user.id ?? '',
+      contacto_tipo: 'lead',
+      contacto_id: ref.lead_id,
+      contacto_nombre: ref.nombre ?? '',
+      contacto_telefono: ref.telefono ?? '',
+    })
+    setCitaReferidoId(ref.id)
+    setCitaOpen(true)
+  }
+
+  const handleCitaSaved4en14 = async (citaId?: string) => {
+    setCitaOpen(false)
+    if (!citaId || !citaReferidoId || !configured) return
+    await supabase
+      .from('programa_4en14_referidos')
+      .update({ cita_id: citaId })
+      .eq('id', citaReferidoId)
+    setCitaReferidoId(null)
+    void loadData()
+  }
 
   const loadData = useCallback(async () => {
     if (!configured) return
@@ -182,7 +217,7 @@ export function Programa4en14Page() {
       supabase
         .from('programa_4en14_referidos')
         .select(
-          'id, programa_id, nombre, telefono, estado_presentacion, created_at, lead_id, prioridad_top, notas_adicionales, fecha_demo'
+          'id, programa_id, nombre, telefono, estado_presentacion, created_at, lead_id, prioridad_top, notas_adicionales, fecha_demo, cita_id'
         ),
       supabase.from('clientes').select('id, nombre, apellido'),
       supabase.from('embajadores').select('id, nombre, apellido'),
@@ -669,6 +704,18 @@ export function Programa4en14Page() {
                               >
                                 ✏️
                               </button>
+                              {referido.lead_id && !referido.cita_id && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => handleAgendarCita4en14(referido)}
+                                >
+                                  + Cita
+                                </Button>
+                              )}
+                              {referido.cita_id && (
+                                <Badge label="Cita" tone="blue" />
+                              )}
                               <div className="contact-actions">
                                 <button
                                   type="button"
@@ -1312,6 +1359,12 @@ export function Programa4en14Page() {
         </div>
       )}
       <ModalRenderer />
+      <CitaModal
+        open={citaOpen}
+        onClose={() => { setCitaOpen(false); setCitaReferidoId(null) }}
+        onSaved={handleCitaSaved4en14}
+        initialData={citaInitial}
+      />
     </div>
   )
 }
