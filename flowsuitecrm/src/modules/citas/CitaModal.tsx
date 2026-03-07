@@ -88,12 +88,12 @@ const CONTACTO_TIPO_OPTIONS = [
 ]
 
 const RESULTADO_OPTIONS = [
-  { value: 'realizada',   label: 'Visita realizada' },
-  { value: 'venta',       label: 'Venta' },
+  { value: 'realizada', label: 'Visita realizada' },
+  { value: 'venta', label: 'Venta' },
   { value: 'no_contacto', label: 'No contacto' },
-  { value: 'reagendar',   label: 'Reagendar' },
-  { value: 'no_interes',  label: 'Sin interés' },
-  { value: 'otro',        label: 'Otro' },
+  { value: 'reagendar', label: 'Reagendar' },
+  { value: 'no_interes', label: 'Sin interés' },
+  { value: 'otro', label: 'Otro' },
 ]
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -103,6 +103,7 @@ type ContactSearchResult = {
   tipo: 'cliente' | 'lead'
   nombre: string
   telefono: string | null
+  direccion?: string | null
   ciudad?: string | null
   estado_region?: string | null
   zip?: string | null
@@ -178,7 +179,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       if (form.contacto_tipo === 'cliente') {
         let query = supabase
           .from('clientes')
-          .select('id, nombre, apellido, telefono, ciudad, estado_region, codigo_postal, vendedor_id, distribuidor_id')
+          .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, distribuidor_id')
           .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
           .limit(10)
         if (role && role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
@@ -198,6 +199,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             tipo: 'cliente' as const,
             nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Cliente',
             telefono: row.telefono ?? null,
+            direccion: row.direccion ?? null,
             ciudad: row.ciudad ?? null,
             estado_region: row.estado_region ?? null,
             zip: row.codigo_postal ?? null,
@@ -207,7 +209,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       } else {
         let query = supabase
           .from('leads')
-          .select('id, nombre, apellido, telefono, vendedor_id, owner_id')
+          .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, owner_id')
           .is('deleted_at', null)
           .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
           .limit(10)
@@ -228,6 +230,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             tipo: 'lead' as const,
             nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Lead',
             telefono: row.telefono ?? null,
+            direccion: row.direccion ?? null,
+            ciudad: row.ciudad ?? null,
+            estado_region: row.estado_region ?? null,
+            zip: row.codigo_postal ?? null,
           }))
           setContactResults(results)
         }
@@ -248,9 +254,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       contacto_id: contact.id,
       contacto_nombre: contact.nombre,
       contacto_telefono: contact.telefono ?? '',
-      ciudad: contact.tipo === 'cliente' ? (contact.ciudad ?? prev.ciudad) : prev.ciudad,
-      estado_region: contact.tipo === 'cliente' ? (contact.estado_region ?? prev.estado_region) : prev.estado_region,
-      zip: contact.tipo === 'cliente' ? (contact.zip ?? prev.zip) : prev.zip,
+      direccion: contact.direccion ?? prev.direccion,
+      ciudad: contact.ciudad ?? prev.ciudad,
+      estado_region: contact.estado_region ?? prev.estado_region,
+      zip: contact.zip ?? prev.zip,
     }))
     setContactSearch(contact.nombre)
     setContactResults([])
