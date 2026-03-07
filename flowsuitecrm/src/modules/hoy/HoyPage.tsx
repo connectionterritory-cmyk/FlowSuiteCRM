@@ -231,11 +231,11 @@ export function HoyPage() {
     [t]
   )
 
-  const timeZone = 'America/Los_Angeles'
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   const formatDateKey = useCallback(
     (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(date),
-    [timeZone]
+    []
   )
 
   const dateKeyToUtc = useCallback((dateKey: string) => {
@@ -563,7 +563,7 @@ export function HoyPage() {
         return
       }
       const cleanPhone = telefono.replace(/\D/g, '')
-      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
+      const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`
       window.open(url, '_blank')
     },
     [showToast, t]

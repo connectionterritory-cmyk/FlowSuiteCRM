@@ -192,8 +192,8 @@ export function CitasPage() {
     }
 
     if (rangeValue) {
-      const startDate = rangeValue.start.toISOString().split('T')[0]
-      const endDate = rangeValue.end.toISOString().split('T')[0]
+      const startDate = rangeValue.start.toLocaleDateString('en-CA')
+      const endDate = rangeValue.end.toLocaleDateString('en-CA')
       serviciosQuery = serviciosQuery.gte('fecha_servicio', startDate).lt('fecha_servicio', endDate)
     }
 
