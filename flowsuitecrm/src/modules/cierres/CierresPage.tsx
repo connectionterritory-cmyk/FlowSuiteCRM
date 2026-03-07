@@ -60,11 +60,11 @@ export function CierresPage() {
   const [editOpp, setEditOpp] = useState<OpportunityRow | null>(null)
   const [formValues, setFormValues] = useState<OpportunityForm>(initialForm)
   const [saving, setSaving] = useState(false)
-  const timeZone = 'America/Los_Angeles'
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   const formatDateKey = useCallback(
     (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(date),
-    [timeZone]
+    []
   )
 
   const dateKeyToUtc = useCallback((dateKey: string) => {

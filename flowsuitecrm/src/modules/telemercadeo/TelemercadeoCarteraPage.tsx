@@ -41,7 +41,7 @@ export function TelemercadeoCarteraPage() {
     }
     const ids = clientes.map((c) => c.id)
     const load = async () => {
-      const today = new Date().toISOString().split('T')[0]
+      const today = new Date().toLocaleDateString('en-CA')
       const { data } = await supabase
         .from('llamadas_telemercadeo')
         .select('cliente_id, resultado, created_at, followup_at')
@@ -144,7 +144,7 @@ export function TelemercadeoCarteraPage() {
     // Refresh last calls after registering a new one
     if (clientes.length === 0) return
     const ids = clientes.map((c) => c.id)
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('en-CA')
     supabase
       .from('llamadas_telemercadeo')
       .select('cliente_id, resultado, created_at, followup_at')
