@@ -255,9 +255,16 @@ export function ClientesPage() {
       // To restrict admin to their distributor scope, replace with:
       // const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
       // query = query.in('vendedor_id', teamIds)
+    } else if (currentRole === 'distribuidor' && viewMode === 'distributor') {
+      // Distribuidor view: see all clients (no filter).
     } else if (hasDistribuidorScope && viewMode === 'distributor') {
       const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
-      query = query.in('vendedor_id', teamIds)
+      const teamFilter = teamIds.length > 0
+        ? `vendedor_id.in.(${teamIds.join(',')})`
+        : `vendedor_id.eq.${userId}`
+      query = query.or(`distribuidor_id.eq.${userId},${teamFilter}`)
+    } else if (currentRole === 'distribuidor') {
+      query = query.or(`distribuidor_id.eq.${userId},vendedor_id.eq.${userId}`)
     }
     const { data, error: fetchError } = await query
 
