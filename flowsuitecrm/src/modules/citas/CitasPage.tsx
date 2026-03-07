@@ -290,7 +290,10 @@ export function CitasPage() {
                     <strong>{formatHour(cita.start_at)}{cita.start_at ? ` · ${formatDate(cita.start_at)}` : ''}</strong>
                     <span>{nombre}</span>
                   </div>
-                  <Badge label={estadoLabel} tone={getEstadoTone(estadoLabel)} />
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <Badge label={estadoLabel} tone={getEstadoTone(estadoLabel)} />
+                    {cita.resultado && <Badge label={cita.resultado.replace('_', ' ')} tone="neutral" />}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', color: 'var(--color-text-muted, #6b7280)' }}>
                   <span>Tipo: {cita.tipo || '-'}</span>
