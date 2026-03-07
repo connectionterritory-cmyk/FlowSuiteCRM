@@ -87,8 +87,7 @@ const CLIENTES_LIST_SELECT = [
   'estado_cuenta',  // account status (not financial — required for filtroEstado and stats)
   'origen',
   'created_at',
-  // Excluded (financial / sensitive): saldo_actual, monto_moroso, dias_atraso,
-  // estado_morosidad, numero_cuenta_financiera, hycite_id, codigo_vendedor_hycite
+  // Excluded (sensitive): numero_cuenta_financiera, codigo_vendedor_hycite
 ].join(', ')
 
 const initialForm = {
@@ -239,10 +238,10 @@ export function ClientesPage() {
   const [detailTab, setDetailTab] = useState<'info' | 'notas'>('info')
 
   const loadClientes = useCallback(async () => {
+    setLoading(true)
     if (!configured || !session?.user.id || !currentRole) return
     const userId = session.user.id
     setError(null)
-    setLoading(true)
     let query = supabase
       .from('clientes')
       .select(CLIENTES_LIST_SELECT)
@@ -591,7 +590,7 @@ export function ClientesPage() {
         ],
       }
     })
-  }, [clientesOrdenados, openWhatsapp, usersById])
+  }, [clientesOrdenados, getClienteResponsableId, getClienteVendedorLabel, openWhatsapp, usersById])
 
   const selectedCliente = selectedRow ? clientes.find((c) => c.id === selectedRow.id) ?? null : null
   const selectedClienteDetail = detailCliente ?? selectedCliente
