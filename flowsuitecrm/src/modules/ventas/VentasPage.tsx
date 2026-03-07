@@ -139,7 +139,12 @@ export function VentasPage() {
     if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
       query = query.eq('vendedor_id', session.user.id)
     }
-    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length > 0) {
+    if (hasDistribuidorScope && viewMode === 'distributor') {
+      if (distributionUserIds.length === 0) {
+        setVentas([])
+        setLoading(false)
+        return
+      }
       query = query.in('vendedor_id', distributionUserIds)
     }
     const { data, error: fetchError } = await query
@@ -150,7 +155,7 @@ export function VentasPage() {
       setVentas(data ?? [])
     }
     setLoading(false)
-  }, [configured, currentRole, session?.user.id])
+  }, [configured, currentRole, session?.user.id, distributionUserIds, hasDistribuidorScope, viewMode])
 
   const loadOptions = useCallback(async () => {
     if (!configured) return
@@ -323,7 +328,7 @@ export function VentasPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `ventas_${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `ventas_${new Date().toLocaleDateString('en-CA')}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
