@@ -1,12 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { StatCard } from '../../components/StatCard'
 import { Badge } from '../../components/Badge'
 import { EmptyState } from '../../components/EmptyState'
+import { Button } from '../../components/Button'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
 import { useDashboardCharts } from '../../hooks/useDashboardCharts'
+import { useConversionKpis, type ConversionRange } from '../../hooks/useConversionKpis'
 import { LineChart } from '../../components/LineChart'
 import { DonutChart } from '../../components/DonutChart'
 import { AgendaHoy } from '../../components/AgendaHoy'
@@ -16,13 +18,33 @@ export function DashboardPage() {
   const navigate = useNavigate()
   const { metrics, loading, configured } = useDashboardMetrics()
   const { salesSeries, pipelineSeries, loading: chartsLoading } = useDashboardCharts()
+  const [conversionRange, setConversionRange] = useState<ConversionRange>('semana')
+  const { data: conversionKpis, loading: conversionLoading } = useConversionKpis(conversionRange)
 
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(i18n.language),
     [i18n.language],
   )
 
+  const percentFormat = useMemo(
+    () => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 2 }),
+    [i18n.language],
+  )
+
+  const moneyFormat = useMemo(
+    () => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }),
+    [i18n.language],
+  )
+
   const formatValue = (value: number) => numberFormat.format(value)
+  const formatPercent = (value: number) => `${percentFormat.format(value)}%`
+  const formatMoney = (value: number) => moneyFormat.format(value)
+
+  const conversionRanges: { key: ConversionRange; label: string }[] = [
+    { key: 'hoy', label: t('dashboard.conversion.ranges.hoy') },
+    { key: 'semana', label: t('dashboard.conversion.ranges.semana') },
+    { key: 'mes', label: t('dashboard.conversion.ranges.mes') },
+  ]
 
   return (
     <div className="page-stack">
@@ -101,6 +123,62 @@ export function DashboardPage() {
       </div>
 
       <AgendaHoy />
+
+      <div className="card" style={{ display: 'grid', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>{t('dashboard.conversion.title')}</h3>
+            <p style={{ margin: '0.35rem 0 0', color: 'var(--color-text-muted, #6b7280)' }}>
+              {t('dashboard.conversion.subtitle')}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {conversionRanges.map((range) => {
+              const selected = range.key === conversionRange
+              return (
+                <Button
+                  key={range.key}
+                  variant="ghost"
+                  onClick={() => setConversionRange(range.key)}
+                  style={selected ? { background: 'rgba(59,130,246,0.12)' } : undefined}
+                >
+                  {range.label}
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+        <div className="stat-grid">
+          <StatCard
+            label={t('dashboard.conversion.metrics.programadas')}
+            value={conversionLoading ? t('common.loading') : formatValue(conversionKpis.citas.programadas)}
+            hint={t('dashboard.conversion.previous', { value: formatValue(conversionKpis.prev.citas_programadas) })}
+          />
+          <StatCard
+            label={t('dashboard.conversion.metrics.completadas')}
+            value={conversionLoading ? t('common.loading') : formatValue(conversionKpis.citas.completadas)}
+            hint={t('dashboard.conversion.previous', { value: formatValue(conversionKpis.prev.citas_completadas) })}
+          />
+          <StatCard
+            label={t('dashboard.conversion.metrics.noShow')}
+            value={conversionLoading ? t('common.loading') : formatValue(conversionKpis.citas.no_show)}
+            hint={t('dashboard.conversion.previous', { value: formatValue(conversionKpis.prev.citas_no_show) })}
+          />
+          <StatCard
+            label={t('dashboard.conversion.metrics.tasaAsistencia')}
+            value={conversionLoading ? t('common.loading') : formatPercent(conversionKpis.citas.tasa_asistencia)}
+          />
+          <StatCard
+            label={t('dashboard.conversion.metrics.tasaConversion')}
+            value={conversionLoading ? t('common.loading') : formatPercent(conversionKpis.conversion.tasa_conversion)}
+          />
+          <StatCard
+            label={t('dashboard.conversion.metrics.ventasMonto')}
+            value={conversionLoading ? t('common.loading') : formatMoney(conversionKpis.ventas.monto)}
+            hint={t('dashboard.conversion.previous', { value: formatMoney(conversionKpis.prev.ventas_monto) })}
+          />
+        </div>
+      </div>
 
       <div className="grid-2">
         <div className="card chart-card">

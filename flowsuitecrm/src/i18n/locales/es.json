@@ -237,6 +237,24 @@
       "pipelineSubtitle": "Por etapa de avance",
       "pipelineBadge": "Pipeline"
     },
+    "conversion": {
+      "title": "Conversion de citas",
+      "subtitle": "Rendimiento del periodo seleccionado",
+      "ranges": {
+        "hoy": "Hoy",
+        "semana": "Semana",
+        "mes": "Mes"
+      },
+      "metrics": {
+        "programadas": "Citas programadas",
+        "completadas": "Citas completadas",
+        "noShow": "No show",
+        "tasaAsistencia": "Tasa de asistencia",
+        "tasaConversion": "Tasa de conversion",
+        "ventasMonto": "Ventas ($)"
+      },
+      "previous": "Prev: {{value}}"
+    },
     "metrics": {
       "leadsNuevos": "Prospectos nuevos",
       "oportunidadesActivas": "Oportunidades activas",
