@@ -112,7 +112,7 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
         .order('updated_at', { ascending: false })
         .limit(200),
       supabase
-        .from('productos')
+        .from('v_productos_publicos')
         .select('id, nombre')
         .eq('activo', true)
         .order('nombre', { ascending: true })

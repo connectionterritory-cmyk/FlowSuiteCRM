@@ -162,7 +162,7 @@ export function VentasPage() {
     setLoadingOptions(true)
     const [clientesResult, productosResult, leadsResult] = await Promise.all([
       supabase.from('clientes').select('id, nombre, apellido').order('nombre'),
-      supabase.from('productos').select('id, nombre').order('nombre'),
+      supabase.from('v_productos_publicos').select('id, nombre').order('nombre'),
       supabase
         .from('leads')
         .select('id, nombre, apellido, telefono, email, referido_por_cliente_id')

@@ -222,7 +222,7 @@ export function Programa4en14Page() {
       supabase.from('clientes').select('id, nombre, apellido'),
       supabase.from('embajadores').select('id, nombre, apellido'),
       supabase.from('usuarios').select('id, nombre, apellido'),
-      supabase.from('productos').select('id, nombre, categoria').eq('activo', true).order('nombre'),
+      supabase.from('v_productos_publicos').select('id, nombre, categoria').eq('activo', true).order('nombre'),
       leadsPromise,
     ])
 

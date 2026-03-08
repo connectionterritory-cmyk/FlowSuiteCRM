@@ -134,7 +134,7 @@ export function ServicioClientePage() {
           .select(
             'id, nombre, apellido, telefono, telefono_casa, hycite_id, numero_cuenta_financiera, org_id, vendedor_id, distribuidor_id'
           ),
-        supabase.from('productos').select('id, nombre'),
+        supabase.from('v_productos_publicos').select('id, nombre'),
         supabase
           .from('equipos_instalados')
           .select('id, cliente_id, producto_id, numero_serie, fecha_instalacion, activo'),
