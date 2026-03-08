@@ -627,33 +627,53 @@ export function ServicioClientePage() {
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
     const vendedorId = toNull(formValues.vendedor_id) ?? session?.user.id ?? null
 
-    // Conflict check — exclude the record being edited
+    // Conflict check — servicios + citas (exclude current service on edit)
     if (vendedorId && formValues.fecha_servicio && formValues.hora_cita) {
-      let conflictQuery = supabase
-        .from('v_agenda_hoy')
-        .select('agenda_id')
-        .eq('vendedor_id', vendedorId)
-        .eq('fecha', formValues.fecha_servicio)
-        .eq('hora', normalizeTimeValue(formValues.hora_cita))
-        .limit(1)
-      if (formAction === 'edit' && editingServiceId) {
-        conflictQuery = conflictQuery.neq('agenda_id', editingServiceId)
-      }
-      const { data: conflictRows, error: conflictError } = await conflictQuery
+      const normalizedHora = normalizeTimeValue(formValues.hora_cita)
+      const startAtIso = normalizedHora
+        ? new Date(`${formValues.fecha_servicio}T${normalizedHora}:00`).toISOString()
+        : null
 
-      if (conflictError) {
-        setFormError(conflictError.message)
-        showToast(conflictError.message, 'error')
-        setSubmitting(false)
-        return
-      }
+      if (startAtIso) {
+        let serviciosQuery = supabase
+          .from('servicios')
+          .select('id')
+          .eq('vendedor_id', vendedorId)
+          .eq('fecha_servicio', formValues.fecha_servicio)
+          .eq('hora_cita', normalizedHora)
+          .limit(1)
 
-      if (conflictRows && conflictRows.length > 0) {
-        const conflictMessage = t('servicio.form.errors.conflict')
-        setFormError(conflictMessage)
-        showToast(conflictMessage, 'error')
-        setSubmitting(false)
-        return
+        if (formAction === 'edit' && editingServiceId) {
+          serviciosQuery = serviciosQuery.neq('id', editingServiceId)
+        }
+
+        const citasQuery = supabase
+          .from('citas')
+          .select('id')
+          .eq('start_at', startAtIso)
+          .or(`owner_id.eq.${vendedorId},assigned_to.eq.${vendedorId}`)
+          .limit(1)
+
+        const [serviciosResult, citasResult] = await Promise.all([serviciosQuery, citasQuery])
+
+        if (serviciosResult.error || citasResult.error) {
+          const message =
+            serviciosResult.error?.message ||
+            citasResult.error?.message ||
+            t('common.unknownError', 'No se pudo validar el horario.')
+          setFormError(message)
+          showToast(message, 'error')
+          setSubmitting(false)
+          return
+        }
+
+        if ((serviciosResult.data?.length ?? 0) > 0 || (citasResult.data?.length ?? 0) > 0) {
+          const conflictMessage = t('servicio.form.errors.conflict')
+          setFormError(conflictMessage)
+          showToast(conflictMessage, 'error')
+          setSubmitting(false)
+          return
+        }
       }
     }
 
@@ -666,25 +686,6 @@ export function ServicioClientePage() {
       tipo_servicio: formValues.tipo_servicio,
       observaciones: toNull(formValues.observaciones),
       venta_id: toNull(formValues.venta_id),
-    }
-
-    if (vendedorId && payload.fecha_servicio && payload.hora_cita) {
-      let conflictoQuery = supabase
-        .from('servicios')
-        .select('id')
-        .eq('vendedor_id', vendedorId)
-        .eq('fecha_servicio', payload.fecha_servicio)
-        .eq('hora_cita', normalizeTimeValue(payload.hora_cita))
-        .limit(1)
-      if (formAction === 'edit' && editingServiceId) {
-        conflictoQuery = conflictoQuery.neq('id', editingServiceId)
-      }
-      const { data: conflicto } = await conflictoQuery
-      if (conflicto && conflicto.length > 0) {
-        setFormError('Este vendedor ya tiene una cita en esa fecha y hora. Elige otro horario.')
-        setSubmitting(false)
-        return
-      }
     }
 
     const { error: saveError } =
@@ -941,7 +942,7 @@ export function ServicioClientePage() {
 
       <Modal
         open={deleteConfirmOpen}
-        title="Eliminar cita"
+        title={t('servicio.delete.title', 'Eliminar servicio')}
         onClose={() => { setDeleteConfirmOpen(false); setDeleteServicioId(null) }}
         actions={
           <>
@@ -954,13 +955,13 @@ export function ServicioClientePage() {
               disabled={deleteSubmitting}
               onClick={handleConfirmDelete}
             >
-              {deleteSubmitting ? t('common.saving') : '🗑️ Eliminar'}
+              {deleteSubmitting ? t('common.saving') : t('servicio.delete.submit', '🗑️ Eliminar')}
             </Button>
           </>
         }
       >
         <p style={{ margin: 0 }}>
-          ¿Estás seguro de eliminar esta cita? Esta acción no se puede deshacer.
+          {t('servicio.delete.description', '¿Estás seguro de eliminar este servicio? Esta acción no se puede deshacer.')}
         </p>
       </Modal>
 
