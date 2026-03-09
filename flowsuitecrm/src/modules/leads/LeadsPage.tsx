@@ -185,10 +185,14 @@ export function LeadsPage() {
   const [filtroFuente, setFiltroFuente] = useState('todos')
   const [filtroOwner, setFiltroOwner] = useState('todos')
   const [filtroVencido, setFiltroVencido] = useState(false)
+  const [filtroFechaCampo, setFiltroFechaCampo] = useState<'created_at' | 'next_action_date'>('created_at')
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [sortCol, setSortCol] = useState<number | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [visibleCount, setVisibleCount] = useState(200)
   const [lastActivityMap, setLastActivityMap] = useState<Record<string, string | null>>({})
   const [mobileFilter, setMobileFilter] = useState<'mine' | 'new' | 'followup' | 'appointment' | 'urgent'>('mine')
   const [noteOpen, setNoteOpen] = useState(false)
@@ -651,9 +655,18 @@ export function LeadsPage() {
           lead.next_action_date <= todayKey &&
           lead.estado_pipeline !== 'descartado' &&
           lead.estado_pipeline !== 'cierre')
-      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido
+      const dateValue =
+        filtroFechaCampo === 'created_at'
+          ? (lead.created_at ? formatDateKey(new Date(lead.created_at)) : '')
+          : (lead.next_action_date ?? '')
+      const matchFecha =
+        (!filtroFechaDesde && !filtroFechaHasta) ||
+        (dateValue &&
+          (!filtroFechaDesde || dateValue >= filtroFechaDesde) &&
+          (!filtroFechaHasta || dateValue <= filtroFechaHasta))
+      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, normalizeStage, formatDateKey])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -673,7 +686,7 @@ export function LeadsPage() {
       if (sortCol === 0) {
         valA = `${a.nombre ?? ''} ${a.apellido ?? ''}`.toLowerCase()
         valB = `${b.nombre ?? ''} ${b.apellido ?? ''}`.toLowerCase()
-      } else if (sortCol === 4) {
+      } else if (sortCol === 3) {
         valA = normalizeStage(a.estado_pipeline)
         valB = normalizeStage(b.estado_pipeline)
       }
@@ -682,6 +695,17 @@ export function LeadsPage() {
       return 0
     })
   }, [leadsFiltrados, sortCol, sortDir, normalizeStage])
+
+  useEffect(() => {
+    setVisibleCount(200)
+  }, [leadsOrdenados])
+
+  const visibleLeads = useMemo(
+    () => leadsOrdenados.slice(0, visibleCount),
+    [leadsOrdenados, visibleCount]
+  )
+
+  const canLoadMore = leadsOrdenados.length > visibleCount
 
   // --- ESTADISTICAS ---
   const stats = useMemo(() => {
@@ -832,7 +856,7 @@ export function LeadsPage() {
   const isTrashView = viewMode === 'trash'
 
   const rows = useMemo<DataTableRow[]>(() => {
-    return leadsOrdenados.map((lead) => {
+    return visibleLeads.map((lead) => {
       const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
       const stage = normalizeStage(lead.estado_pipeline)
       const estadoLabel = t(`pipeline.columns.${stage}`)
@@ -914,9 +938,10 @@ export function LeadsPage() {
         fullName,
         lead.telefono ?? '-',
         getFuenteLabel(lead.fuente),
-        getVendedorLabel(getLeadVendedorId(lead)),
         estadoLabel,
         lead.next_action ?? '-',
+        getVendedorLabel(getLeadVendedorId(lead)),
+        lead.created_at ? formatDateKey(new Date(lead.created_at)) : '-',
         whatsappAction,
       ]
 
@@ -930,7 +955,7 @@ export function LeadsPage() {
         detail: [],
       }
     })
-  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, getRecomendadoPor, isTrashView, leadsOrdenados, normalizeStage, openManageModal, openWhatsapp, t])
+  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, getRecomendadoPor, isTrashView, normalizeStage, openManageModal, openWhatsapp, t, visibleLeads])
 
   const emptyLabel = loading
     ? t('common.loading')
@@ -1007,6 +1032,9 @@ export function LeadsPage() {
     setFiltroFuente('todos')
     setFiltroOwner('todos')
     setFiltroVencido(false)
+    setFiltroFechaCampo('created_at')
+    setFiltroFechaDesde('')
+    setFiltroFechaHasta('')
   }
 
   const cantFiltrosActivos = [
@@ -1014,6 +1042,8 @@ export function LeadsPage() {
     filtroEstado !== 'todos' ? '1' : '',
     filtroFuente !== 'todos' ? '1' : '',
     filtroOwner !== 'todos' ? '1' : '',
+    filtroVencido ? '1' : '',
+    filtroFechaDesde || filtroFechaHasta ? '1' : '',
   ].filter(Boolean).length
 
   const exportarCSV = () => {
@@ -1423,6 +1453,90 @@ export function LeadsPage() {
               </select>
             </div>
 
+            <div style={{ minWidth: '180px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem',
+                  color: 'var(--color-text-muted, #6b7280)',
+                }}
+              >
+                {t('leads.filters.dateField')}
+              </label>
+              <select
+                value={filtroFechaCampo}
+                onChange={(e) => setFiltroFechaCampo(e.target.value as 'created_at' | 'next_action_date')}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.875rem',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
+                  width: '100%',
+                }}
+              >
+                <option value="created_at">{t('leads.filters.createdAt')}</option>
+                <option value="next_action_date">{t('leads.filters.nextActionDate')}</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem',
+                  color: 'var(--color-text-muted, #6b7280)',
+                }}
+              >
+                {t('leads.filters.dateFrom')}
+              </label>
+              <input
+                type="date"
+                value={filtroFechaDesde}
+                onChange={(e) => setFiltroFechaDesde(e.target.value)}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.875rem',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
+                }}
+              />
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem',
+                  color: 'var(--color-text-muted, #6b7280)',
+                }}
+              >
+                {t('leads.filters.dateTo')}
+              </label>
+              <input
+                type="date"
+                value={filtroFechaHasta}
+                onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.875rem',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
+                }}
+              />
+            </div>
+
             <div>
               <label
                 style={{
@@ -1511,7 +1625,7 @@ export function LeadsPage() {
               {emptyLabel}
             </div>
           ) : (
-            leadsOrdenados.map((lead) => {
+            visibleLeads.map((lead) => {
               const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
               const stage = normalizeStage(lead.estado_pipeline)
               const stageLabel = t(`pipeline.columns.${stage}`)
@@ -1558,6 +1672,11 @@ export function LeadsPage() {
                     <span>{lead.telefono ?? '-'}</span>
                     <span>{getFuenteLabel(lead.fuente)}</span>
                   </div>
+                  {lead.created_at && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #94a3b8)' }}>
+                      {t('leads.columns.createdAt')}: {formatDateKey(new Date(lead.created_at))}
+                    </div>
+                  )}
                   {(ownerLabel !== '-' || lead.next_action) && (
                     <div
                       style={{
@@ -1649,20 +1768,37 @@ export function LeadsPage() {
             t('leads.columns.nombre'),
             t('leads.columns.telefono'),
             t('leads.columns.fuente'),
-            t('leads.columns.owner'),
             t('leads.columns.estado'),
             t('leads.columns.nextAction'),
+            t('leads.columns.owner'),
+            t('leads.columns.createdAt'),
             t('whatsapp.column'),
             ...(canDeleteLeads || canReassignLeads ? ['Acciones'] : []),
           ]}
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={handleRowClick}
-          sortableColumns={[0, 4]}
+          sortableColumns={[0, 3]}
           sortColIndex={sortCol ?? undefined}
           sortDir={sortDir}
           onSort={handleSort}
         />
+      )}
+
+      {leadsOrdenados.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <span style={{ color: 'var(--color-text-muted, #6b7280)', fontSize: '0.85rem' }}>
+            {t('leads.filters.showing', {
+              shown: Math.min(visibleCount, leadsOrdenados.length),
+              total: leadsOrdenados.length,
+            })}
+          </span>
+          {canLoadMore && (
+            <Button variant="ghost" type="button" onClick={() => setVisibleCount((prev) => prev + 200)}>
+              {t('leads.filters.loadMore')}
+            </Button>
+          )}
+        </div>
       )}
 
       <Modal

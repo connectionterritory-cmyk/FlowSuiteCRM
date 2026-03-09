@@ -437,7 +437,14 @@
       "new": "Nuevos",
       "followup": "Seguimiento",
       "appointment": "Con cita",
-      "urgent": "Urgentes"
+      "urgent": "Urgentes",
+      "dateField": "Fecha",
+      "createdAt": "Fecha de registro",
+      "nextActionDate": "Próximo paso",
+      "dateFrom": "Desde",
+      "dateTo": "Hasta",
+      "showing": "Mostrando {{shown}} de {{total}}",
+      "loadMore": "Mostrar más"
     },
     "stage": {
       "other": "Otro"
@@ -523,7 +530,8 @@
       "fuente": "Fuente",
       "owner": "Vendedor",
       "estado": "Estado",
-      "nextAction": "Proxima accion"
+      "nextAction": "Proxima accion",
+      "createdAt": "Fecha de registro"
     }
   },
   "clientes": {
