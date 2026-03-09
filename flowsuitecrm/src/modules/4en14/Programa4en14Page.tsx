@@ -274,6 +274,13 @@ export function Programa4en14Page() {
     }
   }, [configured, loadData])
 
+  const openReferralModal = useCallback((programId: string) => {
+    setReferralProgramId(programId)
+    setReferralRows(buildReferralRows())
+    setReferralError(null)
+    setReferralOpen(true)
+  }, [])
+
   useEffect(() => {
     const qualified = referidos.filter(
       (referido) => referido.estado_presentacion === 'demo_calificada' && referido.id
@@ -317,13 +324,6 @@ export function Programa4en14Page() {
     setFormError(null)
     setFormOpen(true)
   }
-
-  const openReferralModal = useCallback((programId: string) => {
-    setReferralProgramId(programId)
-    setReferralRows(buildReferralRows())
-    setReferralError(null)
-    setReferralOpen(true)
-  }, [])
 
   const toggleCycleExpanded = useCallback((cycleId: string) => {
     setExpandedCycles((prev) => {

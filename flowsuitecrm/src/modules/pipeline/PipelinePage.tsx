@@ -21,11 +21,6 @@ type LeadCard = {
   apellido: string | null
   email: string | null
   telefono: string | null
-  direccion: string | null
-  apartamento: string | null
-  ciudad: string | null
-  estado_region: string | null
-  codigo_postal: string | null
   fecha_nacimiento: string | null
   estado_pipeline: string | null
   next_action: string | null
@@ -42,6 +37,7 @@ type LeadCard = {
   cantidad_ninos: number | null
   tiene_productos_rp: boolean | null
   tipo_vivienda: string | null
+  vendedor_id: string | null
 }
 
 type ClienteOption = {
