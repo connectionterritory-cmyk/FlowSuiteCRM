@@ -249,6 +249,45 @@ export function CitasPage() {
         setAssignedOptions(options.length > 0 ? options : [{ id: session.user.id, label: 'Yo' }])
         return
       }
+      // telemercadeo: ve sus vendedores asignados + sí mismo
+      if (role === 'telemercadeo') {
+        const { data: assignments } = await supabase
+          .from('tele_vendedor_assignments')
+          .select('vendedor_id')
+          .eq('tele_id', session.user.id)
+        const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
+        if (vendedorIds.length > 0) {
+          const { data: vendedores } = await supabase
+            .from('usuarios')
+            .select('id, nombre, apellido, email')
+            .in('id', vendedorIds)
+            .eq('activo', true)
+          const options = [
+            { id: session.user.id, label: 'Yo' },
+            ...(vendedores ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+              id: row.id,
+              label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+            })),
+          ]
+          setAssignedOptions(options)
+          return
+        }
+      }
+
+      // supervisor_telemercadeo: ve todos los usuarios activos
+      if (role === 'supervisor_telemercadeo') {
+        const { data } = await supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, email')
+          .eq('activo', true)
+        const options = (data ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+          id: row.id,
+          label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+        }))
+        setAssignedOptions(options.length > 0 ? options : [{ id: session.user.id, label: 'Yo' }])
+        return
+      }
+
       setAssignedOptions([{ id: session.user.id, label: 'Yo' }])
     }
     void loadAssignedOptions()
