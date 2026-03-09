@@ -174,8 +174,21 @@ export function CitasPage() {
       .from('citas')
       .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas, resultado, resultado_notas')
 
-    if (role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
-      citasQuery = citasQuery.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
+    const isGlobalRole = role === 'admin' || role === 'distribuidor' || role === 'supervisor_telemercadeo'
+    if (!isGlobalRole && session?.user.id) {
+      if (role === 'telemercadeo') {
+        // telemercadeo: citas propias + citas de sus vendedores asignados
+        const { data: assignments } = await supabase
+          .from('tele_vendedor_assignments')
+          .select('vendedor_id')
+          .eq('tele_id', session.user.id)
+        const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
+        const allIds = [session.user.id, ...vendedorIds]
+        const orClause = allIds.map(id => `owner_id.eq.${id},assigned_to.eq.${id}`).join(',')
+        citasQuery = citasQuery.or(orClause)
+      } else {
+        citasQuery = citasQuery.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
+      }
     }
 
     const rangeValue = getRange(range)
@@ -187,7 +200,7 @@ export function CitasPage() {
       .from('servicios')
       .select('id, fecha_servicio, hora_cita, tipo_servicio, observaciones, vendedor_id, cliente:clientes(nombre, apellido, telefono, direccion, ciudad, estado_region)')
 
-    if (role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
+    if (!isGlobalRole && session?.user.id) {
       serviciosQuery = serviciosQuery.eq('vendedor_id', session.user.id)
     }
 
