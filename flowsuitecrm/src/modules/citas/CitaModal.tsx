@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
+import { isMissingLeadAddressColumnError, LEADS_SEARCH_BASE_SELECT, LEADS_SEARCH_EXTENDED_SELECT } from '../../lib/leadsSchema'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
 import { useAuth } from '../../auth/AuthProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
+import { buildContactRef, getContactTable } from '../../lib/contactRefs'
+import type { ContactKind } from '../../types/contacts'
 
 type AssignedOption = {
   id: string
@@ -26,13 +29,14 @@ export type CitaForm = {
   assigned_to: string
   contacto_nombre: string
   contacto_telefono: string
-  contacto_tipo: string
+  contacto_tipo: ContactKind
   contacto_id: string
   campaign_id?: string
   message_id?: string
   response_id?: string
   resultado?: string
   resultado_notas?: string
+  next_action_date?: string
 }
 
 type CitaModalProps = {
@@ -63,6 +67,7 @@ const emptyForm: CitaForm = {
   response_id: '',
   resultado: '',
   resultado_notas: '',
+  next_action_date: '',
 }
 
 const ESTADO_OPTIONS = [
@@ -100,7 +105,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 type ContactSearchResult = {
   id: string
-  tipo: 'cliente' | 'lead'
+  tipo: ContactKind
   nombre: string
   telefono: string | null
   direccion?: string | null
@@ -164,6 +169,13 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     return `${form.contacto_nombre || 'Contacto'}${phone}`
   }, [form.contacto_id, form.contacto_nombre, form.contacto_telefono])
 
+  const scopeHint = useMemo(() => {
+    if (role === 'distribuidor' && viewMode === 'seller') {
+      return 'Estás en vista Vendedor. Si buscas contactos del equipo, cambia arriba a Distribuidor.'
+    }
+    return null
+  }, [role, viewMode])
+
   useEffect(() => {
     if (!open) return
     const term = contactSearch.trim()
@@ -182,11 +194,11 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, distribuidor_id')
           .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
           .limit(10)
-        if (role && role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
+        if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && session?.user.id) {
           query = query.eq('vendedor_id', session.user.id)
         } else if (role === 'distribuidor' && viewMode === 'seller' && session?.user.id) {
           query = query.eq('vendedor_id', session.user.id)
-        } else if (hasDistribuidorScope && distributionUserIds.length > 0) {
+        } else if (hasDistribuidorScope && distributionUserIds.length > 0 && role !== 'supervisor_telemercadeo') {
           query = query.in('vendedor_id', distributionUserIds)
         }
         const { data, error } = await query
@@ -207,25 +219,40 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           setContactResults(results)
         }
       } else {
-        let query = supabase
-          .from('leads')
-          .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, owner_id')
-          .is('deleted_at', null)
-          .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
-          .limit(10)
-        if (role && role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
-          query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
-        } else if (role === 'distribuidor' && viewMode === 'seller' && session?.user.id) {
-          query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
-        } else if (hasDistribuidorScope && distributionUserIds.length > 0) {
-          query = query.in('vendedor_id', distributionUserIds)
+        const buildLeadSearchQuery = (selectClause: string) => {
+          let query = supabase
+            .from('leads')
+            .select(selectClause)
+            .is('deleted_at', null)
+            .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
+            .limit(10)
+          if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && session?.user.id) {
+            query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
+          } else if (role === 'distribuidor' && viewMode === 'seller' && session?.user.id) {
+            query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
+          } else if (hasDistribuidorScope && distributionUserIds.length > 0 && role !== 'supervisor_telemercadeo') {
+            query = query.in('vendedor_id', distributionUserIds)
+          }
+          return query
         }
-        const { data, error } = await query
+        let { data, error } = await buildLeadSearchQuery(LEADS_SEARCH_EXTENDED_SELECT)
+        if (error && isMissingLeadAddressColumnError(error.message)) {
+          ;({ data, error } = await buildLeadSearchQuery(LEADS_SEARCH_BASE_SELECT))
+        }
         if (!active) return
         if (error) {
           setContactResults([])
         } else {
-          const results = (data ?? []).map((row) => ({
+          const results = ((data as Array<{
+            id: string
+            nombre: string | null
+            apellido: string | null
+            telefono: string | null
+            direccion?: string | null
+            ciudad?: string | null
+            estado_region?: string | null
+            codigo_postal?: string | null
+          }> | null) ?? []).map((row) => ({
             id: row.id,
             tipo: 'lead' as const,
             nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Lead',
@@ -336,6 +363,40 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       return
     }
     showToast(form.id ? 'Cita actualizada' : 'Cita creada')
+    const contactRef = buildContactRef(form.contacto_tipo, form.contacto_id)
+
+    // Set next action on contact when result requires follow-up
+    if (
+      (form.resultado === 'reagendar' || form.estado === 'no_show') &&
+      contactRef &&
+      form.next_action_date
+    ) {
+      const contactTable = getContactTable(contactRef.contacto_tipo)
+      await supabase.from(contactTable).update({
+        next_action: 'Reagendar cita',
+        next_action_date: form.next_action_date,
+      }).eq('id', contactRef.contacto_id)
+    }
+
+    // Sync address to contact only if contact has no address yet (never overwrite existing)
+    const citaDireccion = basePayload.direccion
+    if (citaDireccion && contactRef) {
+      const table = getContactTable(contactRef.contacto_tipo)
+      const { data: contactData } = await supabase
+        .from(table)
+        .select('direccion')
+        .eq('id', contactRef.contacto_id)
+        .maybeSingle()
+      if ((contactData as { direccion?: string | null } | null)?.direccion == null) {
+        await supabase.from(table).update({
+          direccion: citaDireccion,
+          ciudad: basePayload.ciudad ?? null,
+          estado_region: basePayload.estado_region ?? null,
+          codigo_postal: basePayload.zip ?? null,
+        }).eq('id', contactRef.contacto_id)
+      }
+    }
+
     setSaving(false)
     onSaved?.((savedData as { id?: string } | null)?.id ?? form.id)
     onClose()
@@ -419,13 +480,26 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             </label>
           </>
         )}
+        {(form.resultado === 'reagendar' || form.estado === 'no_show') && (
+          <label className="form-field">
+            <span>
+              Fecha del próximo paso <span style={{ color: 'var(--color-error, #dc2626)' }}>*</span>
+            </span>
+            <input
+              type="date"
+              value={form.next_action_date ?? ''}
+              onChange={(event) => setForm((prev) => ({ ...prev, next_action_date: event.target.value }))}
+            />
+            <div className="form-hint">Se asignará "Reagendar cita" como próxima acción en el contacto.</div>
+          </label>
+        )}
         {/* CONTACTO — obligatorio, ligado a cliente o lead real */}
-        <label className="form-field">
+        <div className="form-field">
           <span>Tipo de contacto</span>
           <select
             value={form.contacto_tipo}
             onChange={(event) => {
-              const nextTipo = event.target.value as 'cliente' | 'lead'
+                const nextTipo = event.target.value as ContactKind
               setForm((prev) => ({
                 ...prev,
                 contacto_tipo: nextTipo,
@@ -444,7 +518,13 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
               </option>
             ))}
           </select>
-        </label>
+          <div className="form-hint">
+            {form.contacto_tipo === 'cliente'
+              ? '¿Buscas un prospecto? Cambia a Lead / Prospecto'
+              : '¿Buscas un cliente convertido? Cambia a Cliente'}
+          </div>
+          {scopeHint && <div className="form-hint">{scopeHint}</div>}
+        </div>
         <div className="form-field">
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span>Contacto</span>
@@ -477,11 +557,17 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                       }
                     }, 150)
                   }}
-                  placeholder={form.contacto_tipo === 'lead' ? 'Buscar lead por nombre o telefono' : 'Buscar cliente por nombre o telefono'}
+                  placeholder={form.contacto_tipo === 'lead' ? 'Buscar prospecto por nombre o teléfono' : 'Buscar cliente por nombre o teléfono'}
                 />
                 {contactLoading && <div className="form-hint">Buscando...</div>}
                 {!contactLoading && contactSearch.trim().length >= 2 && contactResults.length === 0 && (
-                  <div className="form-hint">Sin resultados</div>
+                  <div className="form-hint">
+                    Sin resultados.{' '}
+                    {form.contacto_tipo === 'cliente'
+                      ? 'Si buscas un prospecto, cambia el tipo a Lead / Prospecto.'
+                      : 'Si buscas un cliente convertido, cambia el tipo a Cliente.'}
+                    {scopeHint ? ` ${scopeHint}` : ''}
+                  </div>
                 )}
                 {contactResults.length > 0 && (
                   <div className="card" style={{ marginTop: '0.5rem', maxHeight: 220, overflow: 'auto' }}>

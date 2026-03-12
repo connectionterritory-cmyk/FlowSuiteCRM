@@ -6,6 +6,7 @@ import { Topbar } from '../../components/Topbar'
 import { BottomNav } from '../../components/BottomNav'
 import { navItems, programSubItems } from '../navigation'
 import { ViewModeProvider } from '../../data/ViewModeProvider'
+import { ModalProvider } from '../../modals/ModalProvider'
 
 const STORAGE_KEY = 'flowsuite.sidebar.collapsed'
 const THEME_KEY = 'flowsuite.theme'
@@ -72,24 +73,26 @@ export function AppShell() {
       }
     >
       <ViewModeProvider>
-        <Sidebar
-          collapsed={collapsed}
-          onToggle={handleToggle}
-          mobileOpen={mobileNavOpen}
-          onMobileClose={() => setMobileNavOpen(false)}
-        />
-        <div className="app-main">
-          <Topbar
-            title={currentTitle}
-            theme={theme}
-            onToggleTheme={handleThemeToggle}
-            onMobileNavToggle={() => setMobileNavOpen(true)}
+        <ModalProvider>
+          <Sidebar
+            collapsed={collapsed}
+            onToggle={handleToggle}
+            mobileOpen={mobileNavOpen}
+            onMobileClose={() => setMobileNavOpen(false)}
           />
-          <main className="page">
-            <Outlet />
-          </main>
-        </div>
-        <BottomNav />
+          <div className="app-main">
+            <Topbar
+              title={currentTitle}
+              theme={theme}
+              onToggleTheme={handleThemeToggle}
+              onMobileNavToggle={() => setMobileNavOpen(true)}
+            />
+            <main className="page">
+              <Outlet />
+            </main>
+          </div>
+          <BottomNav />
+        </ModalProvider>
       </ViewModeProvider>
     </div>
   )

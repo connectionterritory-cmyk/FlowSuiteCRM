@@ -9,7 +9,9 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
 import { buildWhatsappUrl } from '../../lib/whatsappTemplates'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
-import { CitaModal, type CitaForm } from './CitaModal'
+import { isContactKind } from '../../lib/contactRefs'
+import { useModalHost } from '../../modals/ModalProvider'
+import type { CitaForm } from './CitaModal'
 
 type CitaRow = {
   id: string
@@ -143,14 +145,13 @@ export function CitasPage() {
   const navigate = useNavigate()
   const configured = isSupabaseConfigured
   const { distributionUserIds, hasDistribuidorScope } = useViewMode()
+  const { openCitaModal } = useModalHost()
   const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [range, setRange] = useState<RangeKey>('hoy')
   const [citas, setCitas] = useState<CitaRow[]>([])
   const [servicios, setServicios] = useState<ServicioRow[]>([])
-  const [modalOpen, setModalOpen] = useState(false)
-  const [activeCita, setActiveCita] = useState<CitaRow | null>(null)
   const [assignedOptions, setAssignedOptions] = useState<{ id: string; label: string }[]>([])
 
   const loadRole = useCallback(async () => {
@@ -306,58 +307,68 @@ export function CitasPage() {
     void loadAssignedOptions()
   }, [configured, distributionUserIds, hasDistribuidorScope, role, session?.user.id])
 
-  const openNewModal = () => {
-    setActiveCita(null)
-    setModalOpen(true)
-  }
-
-  const openEditModal = (cita: CitaRow) => {
-    setActiveCita(cita)
-    setModalOpen(true)
-  }
-
-  const handleCloseModal = () => {
-    setModalOpen(false)
-    setActiveCita(null)
-  }
-
-  const openCompletarModal = (cita: CitaRow) => {
-    setActiveCita({ ...cita, estado: 'completada' })
-    setModalOpen(true)
-  }
-
-  const initialForm = useMemo<Partial<CitaForm>>(() => {
-    if (!activeCita) {
+  const buildInitialForm = useCallback((cita?: CitaRow, estado?: string): Partial<CitaForm> => {
+    if (!cita) {
       const now = new Date()
       const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
       return {
         owner_id: session?.user.id ?? '',
         start_at: local.toISOString().slice(0, 16),
         tipo: 'servicio',
-        estado: 'programada',
+        estado: estado ?? 'programada',
         assigned_to: session?.user.id ?? '',
       }
     }
     return {
-      owner_id: activeCita.owner_id ?? (session?.user.id ?? ''),
-      id: activeCita.id,
-      start_at: activeCita.start_at ? toLocalInput(activeCita.start_at) : '',
-      tipo: activeCita.tipo ?? 'servicio',
-      estado: activeCita.estado ?? 'programada',
-      notas: activeCita.notas ?? '',
-      direccion: activeCita.direccion ?? '',
-      ciudad: activeCita.ciudad ?? '',
-      estado_region: activeCita.estado_region ?? '',
-      zip: activeCita.zip ?? '',
-      assigned_to: activeCita.assigned_to ?? (session?.user.id ?? ''),
-      contacto_nombre: activeCita.nombre ?? '',
-      contacto_telefono: activeCita.telefono ?? '',
-      contacto_tipo: activeCita.contacto_tipo ?? 'cliente',
-      contacto_id: activeCita.contacto_id ?? '',
-      resultado: activeCita.resultado ?? '',
-      resultado_notas: activeCita.resultado_notas ?? '',
+      owner_id: cita.owner_id ?? (session?.user.id ?? ''),
+      id: cita.id,
+      start_at: cita.start_at ? toLocalInput(cita.start_at) : '',
+      tipo: cita.tipo ?? 'servicio',
+      estado: estado ?? cita.estado ?? 'programada',
+      notas: cita.notas ?? '',
+      direccion: cita.direccion ?? '',
+      ciudad: cita.ciudad ?? '',
+      estado_region: cita.estado_region ?? '',
+      zip: cita.zip ?? '',
+      assigned_to: cita.assigned_to ?? (session?.user.id ?? ''),
+      contacto_nombre: cita.nombre ?? '',
+      contacto_telefono: cita.telefono ?? '',
+      contacto_tipo: isContactKind(cita.contacto_tipo) ? cita.contacto_tipo : 'cliente',
+      contacto_id: cita.contacto_id ?? '',
+      resultado: cita.resultado ?? '',
+      resultado_notas: cita.resultado_notas ?? '',
     }
-  }, [activeCita, session?.user.id])
+  }, [session?.user.id])
+
+  const openNewModal = useCallback(() => {
+    openCitaModal({
+      initialData: buildInitialForm(),
+      assignedOptions,
+      onSaved: () => {
+        void loadAgenda()
+      },
+    })
+  }, [assignedOptions, buildInitialForm, loadAgenda, openCitaModal])
+
+  const openEditModal = useCallback((cita: CitaRow) => {
+    openCitaModal({
+      initialData: buildInitialForm(cita),
+      assignedOptions,
+      onSaved: () => {
+        void loadAgenda()
+      },
+    })
+  }, [assignedOptions, buildInitialForm, loadAgenda, openCitaModal])
+
+  const openCompletarModal = useCallback((cita: CitaRow) => {
+    openCitaModal({
+      initialData: buildInitialForm(cita, 'completada'),
+      assignedOptions,
+      onSaved: () => {
+        void loadAgenda()
+      },
+    })
+  }, [assignedOptions, buildInitialForm, loadAgenda, openCitaModal])
 
   const agendaItems = useMemo<AgendaItem[]>(() => {
     const citaItems: AgendaItem[] = citas.map((cita) => ({
@@ -516,14 +527,6 @@ export function CitasPage() {
           })}
         </div>
       )}
-
-      <CitaModal
-        open={modalOpen}
-        onClose={handleCloseModal}
-        onSaved={loadAgenda}
-        initialData={initialForm}
-        assignedOptions={assignedOptions}
-      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { type ClipboardEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase/client'
+import { isMissingLeadAddressColumnError } from '../lib/leadsSchema'
 import { useToast } from './Toast'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
@@ -165,6 +166,11 @@ export function CalificacionPanel({
       apellido: toNull(formValues.apellido),
       email: toNull(formValues.email),
       telefono: toNull(formValues.telefono),
+      direccion: toNull(formValues.direccion),
+      apartamento: toNull(formValues.apartamento),
+      ciudad: toNull(formValues.ciudad),
+      estado_region: toNull(formValues.estado_region),
+      codigo_postal: toNull(formValues.codigo_postal),
       estado_civil: formValues.estado_civil || null,
       nombre_conyuge: isCasado ? toNull(formValues.nombre_conyuge) : null,
       telefono_conyuge: isCasado ? toNull(formValues.telefono_conyuge) : null,
@@ -175,17 +181,27 @@ export function CalificacionPanel({
       tipo_vivienda: formValues.tipo_vivienda || null,
     }
 
-    if (lead.direccion !== undefined) payload.direccion = toNull(formValues.direccion)
-    if (lead.apartamento !== undefined) payload.apartamento = toNull(formValues.apartamento)
-    if (lead.ciudad !== undefined) payload.ciudad = toNull(formValues.ciudad)
-    if (lead.estado_region !== undefined) payload.estado_region = toNull(formValues.estado_region)
-    if (lead.codigo_postal !== undefined) payload.codigo_postal = toNull(formValues.codigo_postal)
     if (lead.fecha_nacimiento !== undefined) payload.fecha_nacimiento = formValues.fecha_nacimiento || null
 
-    const { error: updateError } = await supabase
+    let { error: updateError } = await supabase
       .from('leads')
       .update(payload)
       .eq('id', lead.id)
+
+    if (updateError && isMissingLeadAddressColumnError(updateError.message)) {
+      const {
+        direccion: _direccion,
+        apartamento: _apartamento,
+        ciudad: _ciudad,
+        estado_region: _estadoRegion,
+        codigo_postal: _codigoPostal,
+        ...fallbackPayload
+      } = payload
+      ;({ error: updateError } = await supabase
+        .from('leads')
+        .update(fallbackPayload)
+        .eq('id', lead.id))
+    }
 
     if (updateError) {
       setError(updateError.message)

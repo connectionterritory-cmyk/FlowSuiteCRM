@@ -15,6 +15,7 @@ import { useToast } from './Toast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
 import { useUsers } from '../data/UsersProvider'
 import { useAuth } from '../auth/AuthProvider'
+import { getMessagingContactRef } from '../lib/contactRefs'
 
 type MessageModalProps = {
   open: boolean
@@ -455,10 +456,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       const senderName = buildSenderName()
       const messageTypeLabel = MESSAGE_TYPE_LABELS[messageType]
       const summary = `Mensaje ${channelLabel} (${messageTypeLabel})${senderName ? ` por ${senderName}` : ''}.`
+      const contactRef = getMessagingContactRef(resolvedContact)
 
-      if (contact?.clienteId) {
+      if (contactRef?.contacto_tipo === 'cliente') {
         const { error } = await supabase.from('notasrp').insert({
-          cliente_id: resolvedContact.clienteId,
+          cliente_id: contactRef.contacto_id,
           contenido: summary,
           canal: activeChannel,
           tipo_mensaje: messageType,
@@ -471,9 +473,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         }
       }
 
-      if (contact?.leadId && senderId) {
+      if (contactRef?.contacto_tipo === 'lead' && senderId) {
         const { error } = await supabase.from('lead_notas').insert({
-          lead_id: resolvedContact.leadId,
+          lead_id: contactRef.contacto_id,
           usuario_id: senderId,
           nota: summary,
           tipo: 'mensajeria',
@@ -486,20 +488,21 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         }
       }
     },
-    [activeChannel, channelLabel, contact?.clienteId, contact?.leadId, messageType, session?.user.id, showToast]
+    [activeChannel, channelLabel, messageType, resolvedContact, session?.user.id, showToast]
   )
 
   const updateLeadContact = useCallback(async () => {
-    if (!resolvedContact.leadId) return
+    const contactRef = getMessagingContactRef(resolvedContact)
+    if (contactRef?.contacto_tipo !== 'lead') return
     const { error } = await supabase
       .from('leads')
       .update({
         estado_pipeline: 'contactado',
         whatsapp_mensaje_enviado_at: new Date().toISOString(),
       })
-      .eq('id', resolvedContact.leadId)
+      .eq('id', contactRef.contacto_id)
     if (error) showToast(error.message, 'error')
-  }, [resolvedContact.leadId, showToast])
+  }, [resolvedContact, showToast])
 
   const handleSend = async () => {
     if (!hasContact || !canSendMessage || warningMessage) return

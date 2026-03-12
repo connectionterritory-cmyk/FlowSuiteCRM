@@ -20,6 +20,7 @@ import {
   formatAddressLabel,
   type ParsedAddress,
 } from '../../lib/addressUtils'
+import { toCanonicalContactDraft } from '../../lib/contactRefs'
 import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
 
 type ClienteRecord = {
@@ -768,16 +769,26 @@ export function ClientesPage() {
         }
       }
     }
+    const canonicalDraft = toCanonicalContactDraft({
+      nombre: formatProperName(formValues.nombre),
+      apellido: formatProperName(formValues.apellido),
+      email: formValues.email,
+      telefono: formValues.telefono,
+      direccion: formatProperText(formValues.direccion),
+      ciudad: formatProperText(formValues.ciudad),
+      estado_region: formatStateRegion(formValues.estado_region),
+      codigo_postal: formValues.codigo_postal,
+    })
     const basePayload = {
-      nombre: toNull(formatProperName(formValues.nombre)),
-      apellido: toNull(formatProperName(formValues.apellido)),
-      email: toNull(formValues.email),
-      telefono: toNull(formValues.telefono),
+      nombre: toNull(canonicalDraft.nombre),
+      apellido: canonicalDraft.apellido,
+      email: canonicalDraft.email,
+      telefono: canonicalDraft.telefono,
       telefono_casa: toNull(formValues.telefono_casa),
-      direccion: toNull(formatProperText(formValues.direccion)),
-      ciudad: toNull(formatProperText(formValues.ciudad)),
-      estado_region: toNull(formatStateRegion(formValues.estado_region)),
-      codigo_postal: toNull(formValues.codigo_postal),
+      direccion: canonicalDraft.direccion,
+      ciudad: canonicalDraft.ciudad,
+      estado_region: canonicalDraft.estado_region,
+      codigo_postal: canonicalDraft.codigo_postal,
       hycite_id: toNull(formValues.hycite_id),
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
       saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),

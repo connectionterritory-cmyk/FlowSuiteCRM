@@ -1,3 +1,5 @@
+import type { ContactRef } from './contacts'
+
 export type MessagingContact = {
   nombre: string
   telefono?: string | null
@@ -18,6 +20,7 @@ export type MessagingContact = {
   ciudad?: string | null
   clienteId?: string | null
   leadId?: string | null
+  contactRef?: ContactRef | null
 }
 
 export type MessagingChannel = 'whatsapp' | 'sms' | 'email'

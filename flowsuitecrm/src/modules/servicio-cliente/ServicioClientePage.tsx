@@ -10,6 +10,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { normalizeTimeValue } from '../../lib/timeUtils'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
+import { useModalHost } from '../../modals/ModalProvider'
 
 type ClienteOption = {
   id: string
@@ -91,6 +92,7 @@ export function ServicioClientePage() {
   const { session } = useAuth()
   const { currentUser, usersById } = useUsers()
   const { showToast } = useToast()
+  const { openCitaModal } = useModalHost()
   const configured = isSupabaseConfigured
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [productos, setProductos] = useState<ProductoOption[]>([])
@@ -467,17 +469,13 @@ export function ServicioClientePage() {
   }
 
   const handleOpenCitaForm = () => {
-    setFormValues({
-      ...initialServiceForm,
-      vendedor_id: defaultVendedorId,
-      tipo_servicio: 'revision',
+    openCitaModal({
+      initialData: { tipo: 'servicio', assigned_to: defaultVendedorId || session?.user.id || '' },
+      assignedOptions: usuariosAsignables.map((u) => ({ id: u.id, label: u.label })),
+      onSaved: () => {
+        void loadData()
+      },
     })
-    setFormError(null)
-    setFormAction('create')
-    setEditingServiceId(null)
-    setFormMode('cita')
-    setFormClienteSearch('')
-    setFormOpen(true)
   }
 
   const handleOpenNoteForm = () => {

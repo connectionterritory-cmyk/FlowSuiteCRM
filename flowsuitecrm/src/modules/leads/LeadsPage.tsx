@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { IconRestore, IconSwap, IconTrash, IconWhatsapp } from '../../components/icons'
 import { useToast } from '../../components/Toast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { LEADS_BASE_SELECT, LEADS_EXTENDED_SELECT, isMissingLeadAddressColumnError } from '../../lib/leadsSchema'
 import { formatProperName } from '../../lib/textFormat'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
@@ -28,6 +29,11 @@ type LeadRecord = {
   apellido: string | null
   email: string | null
   telefono: string | null
+  direccion?: string | null
+  apartamento?: string | null
+  ciudad?: string | null
+  estado_region?: string | null
+  codigo_postal?: string | null
   fecha_nacimiento: string | null
   fuente: string | null
   programa_id: string | null
@@ -302,34 +308,39 @@ export function LeadsPage() {
       return
     }
 
-    let query = supabase
-      .from('leads')
-      .select(
-        'id, nombre, apellido, email, telefono, fecha_nacimiento, fuente, programa_id, embajador_id, referido_por_cliente_id, owner_id, vendedor_id, estado_pipeline, next_action, next_action_date, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, created_at, updated_at, deleted_at, deleted_by, deleted_reason'
-      )
-      .order('created_at', { ascending: false })
-    if (viewMode === 'trash') {
-      query = query.not('deleted_at', 'is', null)
-    } else {
-      query = query.is('deleted_at', null)
+    const buildLeadQuery = (selectClause: string) => {
+      let query = supabase
+        .from('leads')
+        .select(selectClause)
+        .order('created_at', { ascending: false })
+      if (viewMode === 'trash') {
+        query = query.not('deleted_at', 'is', null)
+      } else {
+        query = query.is('deleted_at', null)
+      }
+      if (role === 'telemercadeo') {
+        query = query.eq('estado_pipeline', 'nuevo')
+      }
+      if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
+        query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+      }
+      if (hasDistribuidorScope && scopeMode === 'distributor') {
+        const ids = distributionUserIds.join(',')
+        query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
+      }
+      return query
     }
-    if (role === 'telemercadeo') {
-      query = query.eq('estado_pipeline', 'nuevo')
+
+    let { data, error: fetchError } = await buildLeadQuery(LEADS_EXTENDED_SELECT)
+    if (fetchError && isMissingLeadAddressColumnError(fetchError.message)) {
+      ;({ data, error: fetchError } = await buildLeadQuery(LEADS_BASE_SELECT))
     }
-    if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
-      query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
-    }
-    if (hasDistribuidorScope && scopeMode === 'distributor') {
-      const ids = distributionUserIds.join(',')
-      query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
-    }
-    const { data, error: fetchError } = await query
 
     if (fetchError) {
       setError(fetchError.message)
       setLeads([])
     } else {
-      setLeads(data ?? [])
+      setLeads((data as LeadRecord[] | null) ?? [])
     }
     setLoading(false)
   }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id, isMobile, loadLastActivity])

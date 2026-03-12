@@ -11,6 +11,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
+import { toCanonicalContactDraft } from '../../lib/contactRefs'
 
 type VentaRecord = {
   id: string
@@ -442,16 +443,18 @@ export function VentasPage() {
       setProductoFormValues((prev) => ({ ...prev, [field]: value }))
     }
 
-  const buildDireccionValue = () => {
-    const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
-    const direccionPayload = {
-      direccion: toNull(clienteFormValues.direccion),
-      apartamento: toNull(clienteFormValues.apartamento),
-      ciudad: toNull(clienteFormValues.ciudad),
-      estado_region: toNull(clienteFormValues.estado_region),
-      codigo_postal: toNull(clienteFormValues.codigo_postal),
-    }
-    return Object.values(direccionPayload).some((value) => value) ? JSON.stringify(direccionPayload) : null
+  const buildClienteDraft = () => {
+    const direccion = [clienteFormValues.direccion.trim(), clienteFormValues.apartamento.trim()].filter(Boolean).join(', ')
+    return toCanonicalContactDraft({
+      nombre: clienteFormValues.nombre,
+      apellido: clienteFormValues.apellido,
+      email: clienteFormValues.email,
+      telefono: clienteFormValues.telefono,
+      direccion,
+      ciudad: clienteFormValues.ciudad,
+      estado_region: clienteFormValues.estado_region,
+      codigo_postal: clienteFormValues.codigo_postal,
+    })
   }
 
   const handleCreateCliente = async (event: FormEvent<HTMLFormElement>) => {
@@ -461,12 +464,16 @@ export function VentasPage() {
     setClienteFormError(null)
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
     const vendedorId = session?.user.id ?? null
+    const clienteDraft = buildClienteDraft()
     const payload = {
-      nombre: toNull(clienteFormValues.nombre),
-      apellido: toNull(clienteFormValues.apellido),
-      email: toNull(clienteFormValues.email),
-      telefono: toNull(clienteFormValues.telefono),
-      direccion: buildDireccionValue(),
+      nombre: toNull(clienteDraft.nombre),
+      apellido: clienteDraft.apellido,
+      email: clienteDraft.email,
+      telefono: clienteDraft.telefono,
+      direccion: clienteDraft.direccion,
+      ciudad: clienteDraft.ciudad,
+      estado_region: clienteDraft.estado_region,
+      codigo_postal: clienteDraft.codigo_postal,
       numero_cuenta_financiera: toNull(clienteFormValues.numero_cuenta_financiera),
       saldo_actual: clienteFormValues.saldo_actual === '' ? 0 : Number(clienteFormValues.saldo_actual),
       estado_morosidad: clienteFormValues.estado_morosidad || null,

@@ -87,19 +87,20 @@ export function AgendaHoy() {
     const end = new Date(start)
     end.setDate(end.getDate() + 1)
 
-    const startIso = start.toISOString()
-    const endIso = end.toISOString()
-    const startDate = startIso.split('T')[0]
-    const endDate = endIso.split('T')[0]
+    const startDate = start.toLocaleDateString('en-CA')
+    const endDate = end.toLocaleDateString('en-CA')
+    const startLocalDateTime = `${startDate}T00:00:00`
+    const endLocalDateTime = `${endDate}T00:00:00`
 
     let citasQuery = supabase
       .from('citas')
       .select('id, start_at, tipo, nombre, estado')
-      .gte('start_at', startIso)
-      .lt('start_at', endIso)
+      .gte('start_at', startLocalDateTime)
+      .lt('start_at', endLocalDateTime)
       .order('start_at', { ascending: true })
 
-    if (role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
+    const isGlobalRole = role === 'admin' || role === 'distribuidor' || role === 'supervisor_telemercadeo'
+    if (!isGlobalRole && session?.user.id) {
       citasQuery = citasQuery.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
     }
 
@@ -111,7 +112,7 @@ export function AgendaHoy() {
       .order('fecha_servicio', { ascending: true })
       .order('hora_cita', { ascending: true, nullsFirst: false })
 
-    if (role !== 'admin' && role !== 'distribuidor' && session?.user.id) {
+    if (!isGlobalRole && session?.user.id) {
       serviciosQuery = serviciosQuery.eq('vendedor_id', session.user.id)
     }
 
@@ -195,7 +196,7 @@ export function AgendaHoy() {
                 <span>{item.titulo}</span>
                 {item.tipo_label && (
                   <span style={{ color: 'var(--color-text-muted, #6b7280)', fontSize: '0.85em' }}>
-                    · {item.tipo_label.replace('_', ' ')}
+                    · {item.tipo_label.replace(/_/g, ' ')}
                   </span>
                 )}
               </div>

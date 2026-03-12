@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
@@ -96,7 +97,7 @@ type AgendaItem = {
   vendedor_id: string
   fecha: string
   hora: string | null
-  tipo: 'servicio' | 'demo'
+  tipo: 'servicio' | 'demo' | 'cita'
   subtipo: string
   cliente_nombre: string
   cliente_telefono: string | null
@@ -113,6 +114,7 @@ const REFERIDOS_EN_PROCESO_ESTADOS = ['cita_agendada', 'presentacion_hecha']
 
 export function HoyPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { session } = useAuth()
   const { showToast } = useToast()
   const { openWhatsapp, ModalRenderer } = useMessaging()
@@ -121,6 +123,7 @@ export function HoyPage() {
   const isMasterAdmin = session?.user?.email === 'royalflorida@gmail.com'
   const isAdmin = currentUser?.rol === 'admin' || isMasterAdmin
   const isDistribuidor = currentUser?.rol === 'distribuidor'
+  const isSupervisorTelemercadeo = currentUser?.rol === 'supervisor_telemercadeo'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -194,8 +197,9 @@ export function HoyPage() {
       closingOpps.length === 0 &&
       newLeads.length === 0 &&
       cobranzas.length === 0 &&
-      birthdays.length === 0,
-    [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays]
+      birthdays.length === 0 &&
+      agenda.length === 0,
+    [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays, agenda]
   )
 
   const totalMoroso = useMemo(
@@ -340,6 +344,7 @@ export function HoyPage() {
       overdueClientsRes,
       todayClientsRes,
       agendaRes,
+      citasAgendaRes,
     ] = await Promise.all([
       // ── Leads ─────────────────────────────────────────────
       supabase
@@ -411,34 +416,57 @@ export function HoyPage() {
         .lte('fecha_proximo_cambio', todayPlus15Iso)
         .order('fecha_proximo_cambio', { ascending: true }),
       // ── Client Appointments ──────────────────────────────
-      supabase
-        .from('clientes')
-        .select('id, nombre, apellido, telefono, next_action, next_action_date, vendedor_id')
-        .eq('vendedor_id', vendedorId)
-        .not('next_action_date', 'is', null)
-        .lt('next_action_date', todayIso)
-        .order('next_action_date', { ascending: true }),
-      supabase
-        .from('clientes')
-        .select('id, nombre, apellido, telefono, next_action, next_action_date, vendedor_id')
-        .eq('vendedor_id', vendedorId)
-        .eq('next_action_date', todayIso)
-        .order('next_action_date', { ascending: true }),
+      (() => {
+        let q = supabase
+          .from('clientes')
+          .select('id, nombre, apellido, telefono, next_action, next_action_date, vendedor_id')
+          .not('next_action_date', 'is', null)
+          .lt('next_action_date', todayIso)
+          .order('next_action_date', { ascending: true })
+        if (!isAdmin && !isDistribuidor && !isSupervisorTelemercadeo) {
+          q = q.eq('vendedor_id', vendedorId)
+        }
+        return q
+      })(),
+      (() => {
+        let q = supabase
+          .from('clientes')
+          .select('id, nombre, apellido, telefono, next_action, next_action_date, vendedor_id')
+          .eq('next_action_date', todayIso)
+          .order('next_action_date', { ascending: true })
+        if (!isAdmin && !isDistribuidor && !isSupervisorTelemercadeo) {
+          q = q.eq('vendedor_id', vendedorId)
+        }
+        return q
+      })(),
       // ── Unified Agenda ───────────────────────────────────
       (() => {
-        const agendaQuery = supabase
+        let agendaQuery = supabase
           .from('v_agenda_hoy')
           .select('*')
           .gte('fecha', todayIso)
           .lt('fecha', tomorrowIso)
           .order('hora', { ascending: true, nullsFirst: false })
-        if (isAdmin) return agendaQuery
+        if (isAdmin || isSupervisorTelemercadeo) return agendaQuery
         if (isDistribuidor) {
-          agendaQuery.or(`vendedor_id.eq.${vendedorId},vendedor_id.is.null`)
+          agendaQuery = agendaQuery.or(`vendedor_id.eq.${vendedorId},vendedor_id.is.null`)
           return agendaQuery
         }
-        agendaQuery.eq('vendedor_id', vendedorId)
+        agendaQuery = agendaQuery.eq('vendedor_id', vendedorId)
         return agendaQuery
+      })(),
+      // ── Citas canónicas del día ───────────────────────────
+      (() => {
+        let citasQuery = supabase
+          .from('citas')
+          .select('id, start_at, tipo, nombre, estado, assigned_to, owner_id')
+          .gte('start_at', `${todayIso}T00:00:00`)
+          .lt('start_at', `${tomorrowIso}T00:00:00`)
+          .order('start_at', { ascending: true })
+        if (!isAdmin && !isDistribuidor && !isSupervisorTelemercadeo) {
+          citasQuery = citasQuery.or(`owner_id.eq.${vendedorId},assigned_to.eq.${vendedorId}`)
+        }
+        return citasQuery
       })(),
     ])
 
@@ -514,13 +542,35 @@ export function HoyPage() {
     setMantenimientoStats({ rojo, amarillo })
     setMantenimientos(mantFilteredByVendedor)
 
-    setAgenda((agendaRes.data as AgendaItem[] | null) ?? [])
+    const serviciosAgenda = (agendaRes.data as AgendaItem[] | null) ?? []
+    const citasItems: AgendaItem[] = ((citasAgendaRes.data as { id: string; start_at: string | null; tipo: string | null; nombre: string | null; estado: string | null; assigned_to: string | null; owner_id: string | null }[] | null) ?? []).map((c) => ({
+      agenda_id: c.id,
+      vendedor_id: c.assigned_to || c.owner_id || '',
+      fecha: todayIso,
+      hora: c.start_at ? new Date(c.start_at).toTimeString().slice(0, 8) : null,
+      tipo: 'cita' as const,
+      subtipo: c.tipo || '',
+      cliente_nombre: c.nombre || 'Sin nombre',
+      cliente_telefono: null,
+      direccion: null,
+      ciudad: null,
+      estado_region: null,
+      notas: null,
+      completado: c.estado === 'completada',
+    }))
+    const mergedAgenda = [...serviciosAgenda, ...citasItems].sort((a, b) => {
+      if (!a.hora && !b.hora) return 0
+      if (!a.hora) return 1
+      if (!b.hora) return -1
+      return a.hora.localeCompare(b.hora)
+    })
+    setAgenda(mergedAgenda)
 
     const leadIds = [...overdueLeadsData, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
 
     setLoading(false)
-  }, [configured, isAdmin, isDistribuidor, session?.user.id, getMonthRange, today, todayIso, tomorrowIso, loadLastActivity, t])
+  }, [configured, isAdmin, isDistribuidor, isSupervisorTelemercadeo, session?.user.id, getMonthRange, today, todayIso, tomorrowIso, loadLastActivity, t])
 
   useEffect(() => {
     loadData()
@@ -970,9 +1020,9 @@ export function HoyPage() {
           </div>
           <div className="hoy-agenda-grid">
             {agenda.map((item) => {
-              const typeIcon = item.tipo === 'servicio' ? '🔧' : '✨'
-              const typeLabel = item.tipo === 'servicio' ? 'Servicio Técnico' : 'Demostración'
-              const colorClass = item.tipo === 'servicio' ? 'blue' : 'green'
+              const typeIcon = item.tipo === 'servicio' ? '🔧' : item.tipo === 'cita' ? '📅' : '✨'
+              const typeLabel = item.tipo === 'servicio' ? 'Servicio Técnico' : item.tipo === 'cita' ? 'Cita' : 'Demostración'
+              const colorClass = item.tipo === 'servicio' ? 'blue' : item.tipo === 'cita' ? 'purple' : 'green'
               const routeMsg = `Hola ${item.cliente_nombre}, soy ${greetingName}, voy en camino para tu ${item.subtipo || typeLabel} de hoy.`
 
               return (
@@ -1017,6 +1067,16 @@ export function HoyPage() {
                         title="Editar cita"
                       >
                         ✏️ Editar
+                      </button>
+                    )}
+                    {item.tipo === 'cita' && (
+                      <button
+                        className="action-btn"
+                        style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}
+                        onClick={() => navigate('/citas')}
+                        title="Ver en Citas"
+                      >
+                        📅 Ver en Citas
                       </button>
                     )}
                   </div>
