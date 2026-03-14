@@ -16,10 +16,27 @@ import { AgendaHoy } from '../../components/AgendaHoy'
 export function DashboardPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const { metrics, loading, configured } = useDashboardMetrics()
-  const { salesSeries, pipelineSeries, loading: chartsLoading } = useDashboardCharts()
+  const {
+    metrics,
+    loading,
+    configured,
+    error: metricsError,
+    scopePending: metricsScopePending,
+  } = useDashboardMetrics()
+  const {
+    salesSeries,
+    pipelineSeries,
+    loading: chartsLoading,
+    error: chartsError,
+    scopePending: chartsScopePending,
+  } = useDashboardCharts()
   const [conversionRange, setConversionRange] = useState<ConversionRange>('semana')
-  const { data: conversionKpis, loading: conversionLoading } = useConversionKpis(conversionRange)
+  const {
+    data: conversionKpis,
+    loading: conversionLoading,
+    error: conversionError,
+    scopePending: conversionScopePending,
+  } = useConversionKpis(conversionRange)
 
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(i18n.language),
@@ -40,11 +57,48 @@ export function DashboardPage() {
   const formatPercent = (value: number) => `${percentFormat.format(value)}%`
   const formatMoney = (value: number) => moneyFormat.format(value)
 
+  const metricsBusy = loading || metricsScopePending
+  const chartsBusy = chartsLoading || chartsScopePending
+  const conversionBusy = conversionLoading || conversionScopePending
+  const scopePendingLabel = 'Resolviendo alcance...'
+  const metricsUnavailable = Boolean(metricsError) && !metricsBusy
+  const conversionUnavailable = Boolean(conversionError) && !conversionBusy
+
+  const renderMetricValue = (value: number) => {
+    if (metricsScopePending) return scopePendingLabel
+    if (loading) return t('common.loading')
+    if (metricsUnavailable) return t('common.noData')
+    return formatValue(value)
+  }
+
+  const renderConversionValue = (value: number, formatter: (next: number) => string) => {
+    if (conversionScopePending) return scopePendingLabel
+    if (conversionLoading) return t('common.loading')
+    if (conversionUnavailable) return t('common.noData')
+    return formatter(value)
+  }
+
   const conversionRanges: { key: ConversionRange; label: string }[] = [
     { key: 'hoy', label: t('dashboard.conversion.ranges.hoy') },
     { key: 'semana', label: t('dashboard.conversion.ranges.semana') },
     { key: 'mes', label: t('dashboard.conversion.ranges.mes') },
   ]
+
+  if (!configured) {
+    return (
+      <div className="page-stack">
+        <SectionHeader
+          title={t('dashboard.title')}
+          subtitle={t('dashboard.subtitle')}
+          action={<Badge label={t('dashboard.periodoActual')} tone="gold" />}
+        />
+        <EmptyState
+          title={t('dashboard.missingConfigTitle')}
+          description={t('dashboard.missingConfigDescription')}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="page-stack">
@@ -54,70 +108,63 @@ export function DashboardPage() {
         action={<Badge label={t('dashboard.periodoActual')} tone="gold" />}
       />
 
-      {!configured && (
-        <EmptyState
-          title={t('dashboard.missingConfigTitle')}
-          description={t('dashboard.missingConfigDescription')}
-        />
-      )}
-
       <div className="stat-grid">
         <StatCard
           label={t('dashboard.metrics.leadsNuevos')}
-          value={loading ? t('common.loading') : formatValue(metrics.leadsNew)}
+          value={renderMetricValue(metrics.leadsNew)}
           onClick={() => navigate('/leads')}
         />
         <StatCard
           label={t('dashboard.metrics.oportunidadesActivas')}
-          value={loading ? t('common.loading') : formatValue(metrics.opportunitiesActive)}
+          value={renderMetricValue(metrics.opportunitiesActive)}
           onClick={() => navigate('/pipeline')}
         />
         <StatCard
           label={t('dashboard.metrics.demos')}
-          value={loading ? t('common.loading') : formatValue(metrics.demos)}
+          value={renderMetricValue(metrics.demos)}
           onClick={() => navigate('/leads')}
         />
         <StatCard
           label={t('dashboard.metrics.ventasMes')}
-          value={loading ? t('common.loading') : formatValue(metrics.salesMonth)}
+          value={renderMetricValue(metrics.salesMonth)}
           onClick={() => navigate('/ventas')}
         />
         <StatCard
           label={t('dashboard.metrics.embajadoresSilver')}
-          value={loading ? t('common.loading') : formatValue(metrics.ambassadorsSilver)}
+          value={renderMetricValue(metrics.ambassadorsSilver)}
           accent="gold"
           onClick={() => navigate('/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.embajadoresGold')}
-          value={loading ? t('common.loading') : formatValue(metrics.ambassadorsGold)}
+          value={renderMetricValue(metrics.ambassadorsGold)}
           accent="gold"
           onClick={() => navigate('/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.volumenAnual')}
-          value={loading ? t('common.loading') : formatValue(metrics.ambassadorsVolumeAnnual)}
+          value={renderMetricValue(metrics.ambassadorsVolumeAnnual)}
           accent="gold"
           onClick={() => navigate('/conexiones-infinitas')}
         />
         <StatCard
           label={t('dashboard.metrics.ciclosActivos')}
-          value={loading ? t('common.loading') : formatValue(metrics.cyclesActive)}
+          value={renderMetricValue(metrics.cyclesActive)}
           onClick={() => navigate('/4en14')}
         />
         <StatCard
           label={t('dashboard.metrics.serviciosVencidos')}
-          value={loading ? t('common.loading') : formatValue(metrics.servicesOverdue)}
+          value={renderMetricValue(metrics.servicesOverdue)}
           onClick={() => navigate('/telemercadeo/filtros')}
         />
         <StatCard
           label={t('dashboard.metrics.serviciosProximos')}
-          value={loading ? t('common.loading') : formatValue(metrics.servicesDueSoon)}
+          value={renderMetricValue(metrics.servicesDueSoon)}
           onClick={() => navigate('/telemercadeo/filtros')}
         />
         <StatCard
           label={t('dashboard.metrics.cumpleanos')}
-          value={loading ? t('common.loading') : formatValue(metrics.birthdaysUpcoming)}
+          value={renderMetricValue(metrics.birthdaysUpcoming)}
           onClick={() => navigate('/telemercadeo/cumpleanos')}
         />
       </div>
@@ -151,30 +198,30 @@ export function DashboardPage() {
         <div className="stat-grid">
           <StatCard
             label={t('dashboard.conversion.metrics.programadas')}
-            value={conversionLoading ? t('common.loading') : formatValue(conversionKpis.citas.programadas)}
+            value={renderConversionValue(conversionKpis.citas.programadas, formatValue)}
             hint={t('dashboard.conversion.previous', { value: formatValue(conversionKpis.prev.citas_programadas) })}
           />
           <StatCard
             label={t('dashboard.conversion.metrics.completadas')}
-            value={conversionLoading ? t('common.loading') : formatValue(conversionKpis.citas.completadas)}
+            value={renderConversionValue(conversionKpis.citas.completadas, formatValue)}
             hint={t('dashboard.conversion.previous', { value: formatValue(conversionKpis.prev.citas_completadas) })}
           />
           <StatCard
             label={t('dashboard.conversion.metrics.noShow')}
-            value={conversionLoading ? t('common.loading') : formatValue(conversionKpis.citas.no_show)}
+            value={renderConversionValue(conversionKpis.citas.no_show, formatValue)}
             hint={t('dashboard.conversion.previous', { value: formatValue(conversionKpis.prev.citas_no_show) })}
           />
           <StatCard
             label={t('dashboard.conversion.metrics.tasaAsistencia')}
-            value={conversionLoading ? t('common.loading') : formatPercent(conversionKpis.citas.tasa_asistencia)}
+            value={renderConversionValue(conversionKpis.citas.tasa_asistencia, formatPercent)}
           />
           <StatCard
             label={t('dashboard.conversion.metrics.tasaConversion')}
-            value={conversionLoading ? t('common.loading') : formatPercent(conversionKpis.conversion.tasa_conversion)}
+            value={renderConversionValue(conversionKpis.conversion.tasa_conversion, formatPercent)}
           />
           <StatCard
             label={t('dashboard.conversion.metrics.ventasMonto')}
-            value={conversionLoading ? t('common.loading') : formatMoney(conversionKpis.ventas.monto)}
+            value={renderConversionValue(conversionKpis.ventas.monto, formatMoney)}
             hint={t('dashboard.conversion.previous', { value: formatMoney(conversionKpis.prev.ventas_monto) })}
           />
         </div>
@@ -189,8 +236,8 @@ export function DashboardPage() {
             </div>
           </div>
           <LineChart
-            data={chartsLoading ? [] : salesSeries}
-            emptyLabel={chartsLoading ? t('common.loading') : t('common.noData')}
+            data={chartsBusy || chartsError ? [] : salesSeries}
+            emptyLabel={chartsScopePending ? scopePendingLabel : chartsLoading ? t('common.loading') : t('common.noData')}
           />
         </div>
         <div className="card chart-card">
@@ -202,8 +249,8 @@ export function DashboardPage() {
             <Badge label={t('dashboard.charts.pipelineBadge')} tone="blue" />
           </div>
           <DonutChart
-            data={chartsLoading ? [] : pipelineSeries}
-            emptyLabel={chartsLoading ? t('common.loading') : t('common.noData')}
+            data={chartsBusy || chartsError ? [] : pipelineSeries}
+            emptyLabel={chartsScopePending ? scopePendingLabel : chartsLoading ? t('common.loading') : t('common.noData')}
           />
         </div>
       </div>
@@ -224,11 +271,11 @@ export function DashboardPage() {
           <div className="stat-list">
             <div>
               <span>{t('dashboard.nextSteps.leads')}</span>
-              <strong>{loading ? t('common.loading') : formatValue(metrics.leadsNew)}</strong>
+              <strong>{renderMetricValue(metrics.leadsNew)}</strong>
             </div>
             <div>
               <span>{t('dashboard.nextSteps.ciclos')}</span>
-              <strong>{loading ? t('common.loading') : formatValue(metrics.cyclesActive)}</strong>
+              <strong>{renderMetricValue(metrics.cyclesActive)}</strong>
             </div>
           </div>
         </div>

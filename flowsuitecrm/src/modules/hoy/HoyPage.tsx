@@ -9,6 +9,8 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useMessaging } from '../../hooks/useMessaging'
 import { useUsers } from '../../data/UsersProvider'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { buildMapsNavUrl } from '../../lib/addressUtils'
+import { getContactTable } from '../../lib/contactRefs'
 import { normalizeTimeValue } from '../../lib/timeUtils'
 
 type LeadRow = {
@@ -108,6 +110,68 @@ type AgendaItem = {
   completado: boolean
 }
 
+type CrmTaskRow = {
+  id: string
+  contacto_tipo: 'lead' | 'cliente'
+  contacto_id: string
+  tipo: string
+  descripcion: string | null
+  asignado_a: string
+  created_by: string
+  fecha_vencimiento: string
+  hora_vencimiento: string | null
+  prioridad: 'baja' | 'media' | 'alta'
+  estado: 'pendiente' | 'completada' | 'cancelada'
+  cita_origen_id: string | null
+  created_at: string
+}
+
+type ContactTaskRow = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
+}
+
+type HoyTask = CrmTaskRow & {
+  contacto_nombre: string
+  contacto_telefono: string | null
+  direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
+}
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  llamada: 'Llamada',
+  visita: 'Visita',
+  enviar_material: 'Enviar material',
+  reagendar_cita: 'Reagendar cita',
+  seguimiento: 'Seguimiento',
+  cobro: 'Cobro',
+  otro: 'Otro',
+}
+
+const TASK_ACTIVITY_TYPES: Record<string, 'llamada' | 'visita' | 'seguimiento' | 'envio_material'> = {
+  llamada: 'llamada',
+  visita: 'visita',
+  enviar_material: 'envio_material',
+  reagendar_cita: 'seguimiento',
+  seguimiento: 'seguimiento',
+  cobro: 'seguimiento',
+  otro: 'seguimiento',
+}
+
+const TASK_PRIORITY_ORDER: Record<'alta' | 'media' | 'baja', number> = {
+  alta: 0,
+  media: 1,
+  baja: 2,
+}
+
 const REFERIDOS_ACTIVOS_ESTADOS = ['contactado', 'cita_agendada', 'presentacion_hecha']
 const REFERIDOS_EN_PROCESO_ESTADOS = ['cita_agendada', 'presentacion_hecha']
 
@@ -145,8 +209,10 @@ export function HoyPage() {
   const [reactivacion, setReactivacion] = useState<ClienteReactivacionRow[]>([])
   const [mantenimientos, setMantenimientos] = useState<MantenimientoRow[]>([])
   const [agenda, setAgenda] = useState<AgendaItem[]>([])
+  const [crmTasks, setCrmTasks] = useState<HoyTask[]>([])
   const [mantenimientoStats, setMantenimientoStats] = useState({ rojo: 0, amarillo: 0 })
   const [filtroMantenimiento, setFiltroMantenimiento] = useState<'todos' | 'rojo' | 'amarillo'>('todos')
+  const [taskSavingId, setTaskSavingId] = useState<string | null>(null)
 
   // Collapsible modals
   const [cobranzasOpen, setCobranzasOpen] = useState(false)
@@ -198,8 +264,9 @@ export function HoyPage() {
       newLeads.length === 0 &&
       cobranzas.length === 0 &&
       birthdays.length === 0 &&
-      agenda.length === 0,
-    [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays, agenda]
+      agenda.length === 0 &&
+      crmTasks.length === 0,
+    [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays, agenda, crmTasks]
   )
 
   const totalMoroso = useMemo(
@@ -233,6 +300,147 @@ export function HoyPage() {
     (row: { nombre: string | null; apellido: string | null }) =>
       [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || t('common.noData'),
     [t]
+  )
+
+  const getTaskTypeLabel = useCallback((tipo: string) => TASK_TYPE_LABELS[tipo] ?? 'Seguimiento', [])
+
+  const sortHoyTasks = useCallback((tasks: HoyTask[]) => {
+    return [...tasks].sort((a, b) => {
+      const dateCompare = a.fecha_vencimiento.localeCompare(b.fecha_vencimiento)
+      if (dateCompare !== 0) return dateCompare
+      if (a.hora_vencimiento && b.hora_vencimiento) {
+        const timeCompare = a.hora_vencimiento.localeCompare(b.hora_vencimiento)
+        if (timeCompare !== 0) return timeCompare
+      } else if (a.hora_vencimiento) {
+        return -1
+      } else if (b.hora_vencimiento) {
+        return 1
+      }
+      const priorityCompare = TASK_PRIORITY_ORDER[a.prioridad] - TASK_PRIORITY_ORDER[b.prioridad]
+      if (priorityCompare !== 0) return priorityCompare
+      return a.created_at.localeCompare(b.created_at)
+    })
+  }, [])
+
+  const hydrateHoyTasks = useCallback(
+    async (tasks: CrmTaskRow[]) => {
+      if (tasks.length === 0) return []
+
+      const leadIds = Array.from(new Set(tasks.filter((task) => task.contacto_tipo === 'lead').map((task) => task.contacto_id)))
+      const clienteIds = Array.from(new Set(tasks.filter((task) => task.contacto_tipo === 'cliente').map((task) => task.contacto_id)))
+
+      const [leadContactsRes, clienteContactsRes] = await Promise.all([
+        leadIds.length > 0
+          ? supabase
+            .from('leads')
+            .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal')
+            .in('id', leadIds)
+          : Promise.resolve({ data: [], error: null }),
+        clienteIds.length > 0
+          ? supabase
+            .from('clientes')
+            .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal')
+            .in('id', clienteIds)
+          : Promise.resolve({ data: [], error: null }),
+      ])
+
+      if (leadContactsRes.error) {
+        console.warn('crm_tareas lead hydration failed:', leadContactsRes.error.message)
+      }
+      if (clienteContactsRes.error) {
+        console.warn('crm_tareas cliente hydration failed:', clienteContactsRes.error.message)
+      }
+
+      const contactsByKey = new Map<string, ContactTaskRow>()
+      ;((leadContactsRes.data as ContactTaskRow[] | null) ?? []).forEach((row) => {
+        contactsByKey.set(`lead:${row.id}`, row)
+      })
+      ;((clienteContactsRes.data as ContactTaskRow[] | null) ?? []).forEach((row) => {
+        contactsByKey.set(`cliente:${row.id}`, row)
+      })
+
+      return sortHoyTasks(
+        tasks.map((task) => {
+          const contact = contactsByKey.get(`${task.contacto_tipo}:${task.contacto_id}`)
+          const contacto_nombre = contact ? getClientName(contact) : 'Contacto sin nombre'
+          return {
+            ...task,
+            contacto_nombre,
+            contacto_telefono: contact?.telefono ?? null,
+            direccion: contact?.direccion ?? null,
+            ciudad: contact?.ciudad ?? null,
+            estado_region: contact?.estado_region ?? null,
+            codigo_postal: contact?.codigo_postal ?? null,
+          }
+        })
+      )
+    },
+    [getClientName, sortHoyTasks]
+  )
+
+  const syncTaskContactCache = useCallback(
+    async (task: Pick<CrmTaskRow, 'contacto_tipo' | 'contacto_id' | 'tipo' | 'fecha_vencimiento'>) => {
+      const contactTable = getContactTable(task.contacto_tipo)
+      const [nextTaskRes, contactRes] = await Promise.all([
+        supabase
+          .from('crm_tareas')
+          .select('tipo, fecha_vencimiento, hora_vencimiento, created_at')
+          .eq('contacto_tipo', task.contacto_tipo)
+          .eq('contacto_id', task.contacto_id)
+          .eq('estado', 'pendiente')
+          .order('fecha_vencimiento', { ascending: true })
+          .order('hora_vencimiento', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from(contactTable)
+          .select('next_action, next_action_date')
+          .eq('id', task.contacto_id)
+          .maybeSingle(),
+      ])
+
+      if (nextTaskRes.error) {
+        console.warn('crm_tareas next cache sync failed:', nextTaskRes.error.message)
+        return
+      }
+
+      const nextTask = nextTaskRes.data as { tipo?: string | null; fecha_vencimiento?: string | null } | null
+      if (nextTask?.tipo && nextTask.fecha_vencimiento) {
+        const { error: updateError } = await supabase
+          .from(contactTable)
+          .update({
+            next_action: getTaskTypeLabel(nextTask.tipo),
+            next_action_date: nextTask.fecha_vencimiento,
+          })
+          .eq('id', task.contacto_id)
+        if (updateError) {
+          console.warn('crm_tareas cache update failed:', updateError.message)
+        }
+        return
+      }
+
+      if (contactRes.error) {
+        console.warn('crm_tareas contact cache read failed:', contactRes.error.message)
+        return
+      }
+
+      const currentContact = contactRes.data as { next_action?: string | null; next_action_date?: string | null } | null
+      const currentLabel = currentContact?.next_action?.trim().toLowerCase() ?? ''
+      const taskLabel = getTaskTypeLabel(task.tipo).trim().toLowerCase()
+      if (currentContact?.next_action_date !== task.fecha_vencimiento || currentLabel !== taskLabel) {
+        return
+      }
+
+      const { error: clearError } = await supabase
+        .from(contactTable)
+        .update({ next_action: null, next_action_date: null })
+        .eq('id', task.contacto_id)
+      if (clearError) {
+        console.warn('crm_tareas cache clear failed:', clearError.message)
+      }
+    },
+    [getTaskTypeLabel]
   )
 
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -345,6 +553,7 @@ export function HoyPage() {
       todayClientsRes,
       agendaRes,
       citasAgendaRes,
+      crmTasksRes,
     ] = await Promise.all([
       // ── Leads ─────────────────────────────────────────────
       supabase
@@ -468,6 +677,12 @@ export function HoyPage() {
         }
         return citasQuery
       })(),
+      supabase
+        .from('crm_tareas')
+        .select('id, contacto_tipo, contacto_id, tipo, descripcion, asignado_a, created_by, fecha_vencimiento, hora_vencimiento, prioridad, estado, cita_origen_id, created_at')
+        .eq('asignado_a', vendedorId)
+        .eq('estado', 'pendiente')
+        .lte('fecha_vencimiento', todayIso),
     ])
 
     if (overdueRes.error || todayRes.error || newRes.error || oppsRes.error || salesRes.error) {
@@ -566,11 +781,19 @@ export function HoyPage() {
     })
     setAgenda(mergedAgenda)
 
+    if (crmTasksRes.error) {
+      console.warn('crm_tareas load failed:', crmTasksRes.error.message)
+      setCrmTasks([])
+    } else {
+      const hydratedTasks = await hydrateHoyTasks((crmTasksRes.data as CrmTaskRow[] | null) ?? [])
+      setCrmTasks(hydratedTasks)
+    }
+
     const leadIds = [...overdueLeadsData, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
 
     setLoading(false)
-  }, [configured, isAdmin, isDistribuidor, isSupervisorTelemercadeo, session?.user.id, getMonthRange, today, todayIso, tomorrowIso, loadLastActivity, t])
+  }, [configured, hydrateHoyTasks, isAdmin, isDistribuidor, isSupervisorTelemercadeo, session?.user.id, getMonthRange, today, todayIso, tomorrowIso, loadLastActivity, t])
 
   useEffect(() => {
     loadData()
@@ -621,15 +844,89 @@ export function HoyPage() {
 
   const handleMaps = useCallback(
     (row: { direccion?: string | null; ciudad?: string | null; estado_region?: string | null; codigo_postal?: string | null }) => {
-      const addr = [row.direccion, row.ciudad, row.estado_region, row.codigo_postal].filter(Boolean).join(', ')
-      if (!addr) {
+      const mapsUrl = buildMapsNavUrl({
+        direccion: row.direccion ?? null,
+        ciudad: row.ciudad ?? null,
+        estado_region: row.estado_region ?? null,
+        codigo_postal: row.codigo_postal ?? null,
+      })
+      if (!mapsUrl) {
         showToast('Dirección no disponible', 'error')
         return
       }
-      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`
-      window.open(url, '_blank')
+      window.open(mapsUrl, '_blank')
     },
     [showToast]
+  )
+
+  const handleWhatsappTask = useCallback(
+    (task: HoyTask) => {
+      if (!task.contacto_telefono) {
+        showToast(t('messaging.phoneMissing'), 'error')
+        return
+      }
+      openWhatsapp({
+        nombre: task.contacto_nombre,
+        telefono: task.contacto_telefono,
+        leadId: task.contacto_tipo === 'lead' ? task.contacto_id : undefined,
+        clienteId: task.contacto_tipo === 'cliente' ? task.contacto_id : undefined,
+      })
+    },
+    [openWhatsapp, showToast, t]
+  )
+
+  const handleCompleteTask = useCallback(
+    async (task: HoyTask) => {
+      if (!session?.user.id) {
+        showToast(t('common.noData'), 'error')
+        return
+      }
+
+      setTaskSavingId(task.id)
+      const completedAt = new Date().toISOString()
+      const { error: completeError } = await supabase
+        .from('crm_tareas')
+        .update({
+          estado: 'completada',
+          completada_at: completedAt,
+          completada_por: session.user.id,
+        })
+        .eq('id', task.id)
+
+      if (completeError) {
+        setTaskSavingId(null)
+        showToast(completeError.message, 'error')
+        return
+      }
+
+      const { error: activityError } = await supabase.from('contacto_actividades').insert({
+        contacto_tipo: task.contacto_tipo,
+        contacto_id: task.contacto_id,
+        tipo: TASK_ACTIVITY_TYPES[task.tipo] ?? 'seguimiento',
+        resumen: `${getTaskTypeLabel(task.tipo)} completada`,
+        contenido: task.descripcion?.trim() || null,
+        autor_id: session.user.id,
+        fecha_actividad: completedAt,
+        metadata: {
+          prioridad: task.prioridad,
+          fecha_vencimiento: task.fecha_vencimiento,
+          hora_vencimiento: task.hora_vencimiento,
+          tarea_tipo: task.tipo,
+          tarea_id: task.id,
+        },
+        cita_id: task.cita_origen_id,
+      })
+
+      if (activityError) {
+        console.warn('crm_tareas completion activity failed:', activityError.message)
+      }
+
+      await syncTaskContactCache(task)
+      await loadData()
+      setTaskSavingId(null)
+      showToast('Tarea completada')
+    },
+    [getTaskTypeLabel, loadData, session?.user.id, showToast, syncTaskContactCache, t]
   )
 
   const handleOpenEditAgenda = useCallback((item: AgendaItem) => {
@@ -818,6 +1115,56 @@ export function HoyPage() {
         </div>
         <div className="hoy-item-chevron">
           <input type="checkbox" checked={lead.estado_pipeline === 'cierre'} readOnly style={{ opacity: 0, position: 'absolute' }} />
+        </div>
+      </div>
+    )
+  }
+
+  const renderCrmTaskCard = (task: HoyTask) => {
+    const overdue = task.fecha_vencimiento < todayIso
+    const priorityVariant =
+      task.prioridad === 'alta'
+        ? 'variant-danger'
+        : task.prioridad === 'media'
+          ? 'variant-warning'
+          : 'variant-neutral'
+
+    return (
+      <div key={task.id} className={`seller-card seller-lead ${overdue ? 'overdue' : 'today'}`}>
+        <div className="seller-lead-main">
+          <div>
+            <div className="seller-lead-name">{task.contacto_nombre}</div>
+            <div className="seller-lead-meta">
+              <span className="seller-pill variant-info">{getTaskTypeLabel(task.tipo)}</span>
+              <span className={`seller-pill ${priorityVariant}`}>{task.prioridad}</span>
+              <span className={`seller-pill ${overdue ? 'variant-danger' : 'variant-success'}`}>
+                {relativeDayLabel(task.fecha_vencimiento)}
+                {task.hora_vencimiento ? ` · ${task.hora_vencimiento.slice(0, 5)}` : ''}
+              </span>
+            </div>
+            {task.descripcion && (
+              <div className="seller-section-sub" style={{ marginTop: '0.4rem' }}>
+                {task.descripcion}
+              </div>
+            )}
+            {(task.direccion || task.ciudad || task.estado_region) && (
+              <div className="seller-section-sub">📍 {[task.direccion, task.ciudad, task.estado_region].filter(Boolean).join(', ')}</div>
+            )}
+          </div>
+        </div>
+        <div className="seller-lead-actions">
+          <Button variant="ghost" onClick={() => handleCall(task.contacto_telefono)}>
+            📞 {t('hoy.call')}
+          </Button>
+          <Button variant="ghost" onClick={() => handleWhatsappTask(task)}>
+            💬 {t('hoy.whatsapp')}
+          </Button>
+          <Button variant="ghost" onClick={() => handleMaps(task)}>
+            📍 Mapas
+          </Button>
+          <Button type="button" onClick={() => handleCompleteTask(task)} disabled={taskSavingId === task.id}>
+            ✅ {taskSavingId === task.id ? t('common.saving') : 'Completar'}
+          </Button>
         </div>
       </div>
     )
@@ -1095,6 +1442,21 @@ export function HoyPage() {
           </div>
           <div className="hoy-list-container">
             {todayLeads.map((lead) => renderLeadListItem(lead, '👤', 'blue'))}
+          </div>
+        </section>
+      )}
+
+      {!loading && crmTasks.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>Tareas de seguimiento</h3>
+            <span className={`seller-count ${crmTasks.some((task) => task.fecha_vencimiento < todayIso) ? 'alert' : ''}`.trim()}>
+              {crmTasks.length}
+            </span>
+          </div>
+          <div className="seller-section-sub">Asignadas para hoy o vencidas</div>
+          <div className="seller-opps">
+            {crmTasks.map(renderCrmTaskCard)}
           </div>
         </section>
       )}

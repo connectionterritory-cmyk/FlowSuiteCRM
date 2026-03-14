@@ -5,6 +5,7 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
+import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { EmptyState } from '../../components/EmptyState'
 import { IconWhatsapp } from '../../components/icons'
 import { useToast } from '../../components/Toast'
@@ -236,7 +237,7 @@ export function ClientesPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [clienteNotas, setClienteNotas] = useState<ClienteNota[]>([])
   const [notasLoading, setNotasLoading] = useState(false)
-  const [detailTab, setDetailTab] = useState<'info' | 'notas'>('info')
+  const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial'>('info')
 
   const loadClientes = useCallback(async () => {
     setLoading(true)
@@ -1575,6 +1576,18 @@ export function ClientesPage() {
           if (detailTab === 'notas') {
             return [{ label: 'Notas', value: notasContent }]
           }
+          if (detailTab === 'historial') {
+            return [{
+              label: 'Historial',
+              value: selectedClienteDetail ? (
+                <ContactoTimeline
+                  contactoTipo="cliente"
+                  contactoId={selectedClienteDetail.id}
+                  emptyLabel="Sin historial de actividades para este cliente"
+                />
+              ) : '-',
+            }]
+          }
           return [
             { label: 'Nombre', value: selectedClienteDetail.nombre ?? '-' },
             { label: 'Apellido', value: selectedClienteDetail.apellido ?? '-' },
@@ -1689,9 +1702,10 @@ export function ClientesPage() {
         tabs={selectedClienteDetail ? [
           { key: 'info', label: 'Informacion' },
           { key: 'notas', label: 'Notas' },
+          { key: 'historial', label: 'Historial' },
         ] : undefined}
         activeTab={selectedClienteDetail ? detailTab : undefined}
-        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas') : undefined}
+        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas' | 'historial') : undefined}
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (

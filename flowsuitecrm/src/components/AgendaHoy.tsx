@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useAuth } from '../auth/AuthProvider'
+import { useUsers } from '../data/UsersProvider'
+import { useViewMode } from '../data/ViewModeProvider'
 import { Badge } from './Badge'
 import { Button } from './Button'
 
@@ -40,6 +42,13 @@ type AgendaItemHoy = {
   estado: string | null
 }
 
+type AgendaScope = {
+  pending: boolean
+  kind: 'none' | 'global' | 'self' | 'distribution'
+  userId: string | null
+  userIds: string[]
+}
+
 const buildServiceStartAt = (fecha: string | null, hora: string | null) => {
   if (!fecha) return null
   const safeHora = (hora ?? '00:00').slice(0, 5)
@@ -59,77 +68,195 @@ const getEstadoTone = (estado: string): 'blue' | 'gold' | 'neutral' => {
   return 'gold'
 }
 
+const resolveAgendaScope = ({
+  configured,
+  authLoading,
+  userId,
+  usersLoading,
+  currentRole,
+  hasDistribuidorScope,
+  viewMode,
+  distributionLoading,
+  distributionUserIds,
+}: {
+  configured: boolean
+  authLoading: boolean
+  userId: string | null
+  usersLoading: boolean
+  currentRole: string | null
+  hasDistribuidorScope: boolean
+  viewMode: 'seller' | 'distributor'
+  distributionLoading: boolean
+  distributionUserIds: string[]
+}): AgendaScope => {
+  if (!configured) {
+    return { pending: false, kind: 'none', userId: null, userIds: [] }
+  }
+
+  if (authLoading) {
+    return { pending: true, kind: 'none', userId: null, userIds: [] }
+  }
+
+  if (!userId) {
+    return { pending: false, kind: 'none', userId: null, userIds: [] }
+  }
+
+  if (usersLoading) {
+    return { pending: true, kind: 'none', userId, userIds: [] }
+  }
+
+  if (currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) {
+    return { pending: false, kind: 'self', userId, userIds: [userId] }
+  }
+
+  if (hasDistribuidorScope && viewMode === 'distributor') {
+    if (distributionLoading || distributionUserIds.length === 0) {
+      return { pending: true, kind: 'distribution', userId, userIds: [] }
+    }
+
+    return {
+      pending: false,
+      kind: 'distribution',
+      userId,
+      userIds: distributionUserIds,
+    }
+  }
+
+  if (!currentRole) {
+    return { pending: false, kind: 'self', userId, userIds: [userId] }
+  }
+
+  return { pending: false, kind: 'global', userId, userIds: [] }
+}
+
 export function AgendaHoy() {
-  const { session } = useAuth()
+  const { session, loading: authLoading } = useAuth()
+  const { currentRole, loading: usersLoading } = useUsers()
+  const { viewMode, hasDistribuidorScope, distributionUserIds, distributionLoading } = useViewMode()
   const navigate = useNavigate()
   const configured = isSupabaseConfigured
   const [citas, setCitas] = useState<CitaHoy[]>([])
   const [servicios, setServicios] = useState<ServicioHoy[]>([])
   const [loading, setLoading] = useState(false)
-  const [role, setRole] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const loadRole = useCallback(async () => {
-    if (!configured || !session?.user.id) return
-    const { data } = await supabase
-      .from('usuarios')
-      .select('rol')
-      .eq('id', session.user.id)
-      .maybeSingle()
-    setRole((data as { rol?: string } | null)?.rol ?? null)
-  }, [configured, session?.user.id])
-
-  const loadAgenda = useCallback(async () => {
-    if (!configured) return
-    setLoading(true)
-    const now = new Date()
-    const start = new Date(now)
-    start.setHours(0, 0, 0, 0)
-    const end = new Date(start)
-    end.setDate(end.getDate() + 1)
-
-    const startDate = start.toLocaleDateString('en-CA')
-    const endDate = end.toLocaleDateString('en-CA')
-    const startLocalDateTime = `${startDate}T00:00:00`
-    const endLocalDateTime = `${endDate}T00:00:00`
-
-    let citasQuery = supabase
-      .from('citas')
-      .select('id, start_at, tipo, nombre, estado')
-      .gte('start_at', startLocalDateTime)
-      .lt('start_at', endLocalDateTime)
-      .order('start_at', { ascending: true })
-
-    const isGlobalRole = role === 'admin' || role === 'distribuidor' || role === 'supervisor_telemercadeo'
-    if (!isGlobalRole && session?.user.id) {
-      citasQuery = citasQuery.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
-    }
-
-    let serviciosQuery = supabase
-      .from('servicios')
-      .select('id, fecha_servicio, hora_cita, tipo_servicio, vendedor_id, cliente:clientes(nombre, apellido)')
-      .gte('fecha_servicio', startDate)
-      .lt('fecha_servicio', endDate)
-      .order('fecha_servicio', { ascending: true })
-      .order('hora_cita', { ascending: true, nullsFirst: false })
-
-    if (!isGlobalRole && session?.user.id) {
-      serviciosQuery = serviciosQuery.eq('vendedor_id', session.user.id)
-    }
-
-    const [citasResult, serviciosResult] = await Promise.all([citasQuery, serviciosQuery])
-
-    setCitas((citasResult.data as CitaHoy[] | null) ?? [])
-    setServicios((serviciosResult.data as ServicioHoy[] | null) ?? [])
-    setLoading(false)
-  }, [configured, role, session?.user.id])
+  const scope = useMemo(
+    () => resolveAgendaScope({
+      configured,
+      authLoading,
+      userId: session?.user.id ?? null,
+      usersLoading,
+      currentRole,
+      hasDistribuidorScope,
+      viewMode,
+      distributionLoading,
+      distributionUserIds,
+    }),
+    [
+      configured,
+      authLoading,
+      session?.user.id,
+      usersLoading,
+      currentRole,
+      hasDistribuidorScope,
+      viewMode,
+      distributionLoading,
+      distributionUserIds,
+    ],
+  )
 
   useEffect(() => {
-    void loadRole()
-  }, [loadRole])
+    if (!configured) {
+      setError(null)
+      setCitas([])
+      setServicios([])
+      setLoading(false)
+      return
+    }
 
-  useEffect(() => {
-    if (role !== null || !configured) void loadAgenda()
-  }, [loadAgenda, role, configured])
+    if (scope.pending) {
+      setLoading(true)
+      return
+    }
+
+    if (scope.kind === 'none') {
+      setError(null)
+      setCitas([])
+      setServicios([])
+      setLoading(false)
+      return
+    }
+
+    let active = true
+
+    const loadAgenda = async () => {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const now = new Date()
+        const start = new Date(now)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(start)
+        end.setDate(end.getDate() + 1)
+
+        const startDate = start.toLocaleDateString('en-CA')
+        const endDate = end.toLocaleDateString('en-CA')
+        const startLocalDateTime = `${startDate}T00:00:00`
+        const endLocalDateTime = `${endDate}T00:00:00`
+
+        let citasQuery = supabase
+          .from('citas')
+          .select('id, start_at, tipo, nombre, estado')
+          .gte('start_at', startLocalDateTime)
+          .lt('start_at', endLocalDateTime)
+          .order('start_at', { ascending: true })
+
+        let serviciosQuery = supabase
+          .from('servicios')
+          .select('id, fecha_servicio, hora_cita, tipo_servicio, vendedor_id, cliente:clientes(nombre, apellido)')
+          .gte('fecha_servicio', startDate)
+          .lt('fecha_servicio', endDate)
+          .order('fecha_servicio', { ascending: true })
+          .order('hora_cita', { ascending: true, nullsFirst: false })
+
+        if (scope.kind === 'self' && scope.userId) {
+          citasQuery = citasQuery.or(`owner_id.eq.${scope.userId},assigned_to.eq.${scope.userId}`)
+          serviciosQuery = serviciosQuery.eq('vendedor_id', scope.userId)
+        } else if (scope.kind === 'distribution') {
+          const ids = scope.userIds.join(',')
+          citasQuery = citasQuery.or(`owner_id.in.(${ids}),assigned_to.in.(${ids})`)
+          serviciosQuery = serviciosQuery.in('vendedor_id', scope.userIds)
+        }
+
+        const [citasResult, serviciosResult] = await Promise.all([citasQuery, serviciosQuery])
+        const fetchError = citasResult.error || serviciosResult.error
+        if (fetchError) {
+          throw new Error(fetchError.message ?? 'Error loading dashboard agenda')
+        }
+
+        if (!active) return
+
+        setCitas((citasResult.data as CitaHoy[] | null) ?? [])
+        setServicios((serviciosResult.data as ServicioHoy[] | null) ?? [])
+      } catch (nextError) {
+        if (!active) return
+        setError(nextError instanceof Error ? nextError.message : 'Error loading dashboard agenda')
+        setCitas([])
+        setServicios([])
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadAgenda()
+
+    return () => {
+      active = false
+    }
+  }, [configured, scope])
 
   const items = useMemo<AgendaItemHoy[]>(() => {
     const citaItems: AgendaItemHoy[] = citas.map((c) => ({
@@ -154,7 +281,7 @@ export function AgendaHoy() {
       }
     })
 
-    const toTime = (v: string | null) => (v ? new Date(v).getTime() : Number.POSITIVE_INFINITY)
+    const toTime = (value: string | null) => (value ? new Date(value).getTime() : Number.POSITIVE_INFINITY)
     return [...citaItems, ...servicioItems]
       .sort((a, b) => toTime(a.start_at) - toTime(b.start_at))
       .slice(0, 8)
@@ -173,11 +300,15 @@ export function AgendaHoy() {
 
       {loading && <p style={{ color: 'var(--color-text-muted, #6b7280)', margin: 0 }}>Cargando...</p>}
 
-      {!loading && items.length === 0 && (
+      {!loading && error && (
+        <p style={{ color: 'var(--color-text-muted, #6b7280)', margin: 0 }}>No se pudo cargar la agenda.</p>
+      )}
+
+      {!loading && !error && items.length === 0 && (
         <p style={{ color: 'var(--color-text-muted, #6b7280)', margin: 0 }}>Sin eventos para hoy.</p>
       )}
 
-      {!loading && items.length > 0 && (
+      {!loading && !error && items.length > 0 && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
           {items.map((item) => (
             <div

@@ -38,6 +38,13 @@ type ConversionKpis = {
   }
 }
 
+type DashboardScope = {
+  pending: boolean
+  kind: 'none' | 'global' | 'self' | 'distribution'
+  userId: string | null
+  userIds: string[]
+}
+
 const emptyKpis: ConversionKpis = {
   period: { start: '', end: '' },
   previous: { start: '', end: '' },
@@ -56,59 +63,166 @@ const emptyKpis: ConversionKpis = {
   },
 }
 
+const resolveDashboardScope = ({
+  configured,
+  authLoading,
+  userId,
+  usersLoading,
+  currentRole,
+  hasDistribuidorScope,
+  viewMode,
+  distributionLoading,
+  distributionUserIds,
+}: {
+  configured: boolean
+  authLoading: boolean
+  userId: string | null
+  usersLoading: boolean
+  currentRole: string | null
+  hasDistribuidorScope: boolean
+  viewMode: 'seller' | 'distributor'
+  distributionLoading: boolean
+  distributionUserIds: string[]
+}): DashboardScope => {
+  if (!configured) {
+    return { pending: false, kind: 'none', userId: null, userIds: [] }
+  }
+
+  if (authLoading) {
+    return { pending: true, kind: 'none', userId: null, userIds: [] }
+  }
+
+  if (!userId) {
+    return { pending: false, kind: 'none', userId: null, userIds: [] }
+  }
+
+  if (usersLoading) {
+    return { pending: true, kind: 'none', userId, userIds: [] }
+  }
+
+  if (currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) {
+    return { pending: false, kind: 'self', userId, userIds: [userId] }
+  }
+
+  if (hasDistribuidorScope && viewMode === 'distributor') {
+    if (distributionLoading || distributionUserIds.length === 0) {
+      return { pending: true, kind: 'distribution', userId, userIds: [] }
+    }
+
+    return {
+      pending: false,
+      kind: 'distribution',
+      userId,
+      userIds: distributionUserIds,
+    }
+  }
+
+  if (!currentRole) {
+    return { pending: false, kind: 'self', userId, userIds: [userId] }
+  }
+
+  return { pending: false, kind: 'global', userId, userIds: [] }
+}
+
 export function useConversionKpis(range: ConversionRange) {
   const [data, setData] = useState<ConversionKpis>(emptyKpis)
   const [loading, setLoading] = useState(true)
-  const [configured] = useState(isSupabaseConfigured)
-  const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
-  const { session } = useAuth()
-  const { currentRole } = useUsers()
+  const [error, setError] = useState<string | null>(null)
+  const configured = isSupabaseConfigured
+  const { viewMode, hasDistribuidorScope, distributionUserIds, distributionLoading } = useViewMode()
+  const { session, loading: authLoading } = useAuth()
+  const { currentRole, loading: usersLoading } = useUsers()
+
+  const scope = useMemo(
+    () => resolveDashboardScope({
+      configured,
+      authLoading,
+      userId: session?.user.id ?? null,
+      usersLoading,
+      currentRole,
+      hasDistribuidorScope,
+      viewMode,
+      distributionLoading,
+      distributionUserIds,
+    }),
+    [
+      configured,
+      authLoading,
+      session?.user.id,
+      usersLoading,
+      currentRole,
+      hasDistribuidorScope,
+      viewMode,
+      distributionLoading,
+      distributionUserIds,
+    ],
+  )
 
   const scopedUserIds = useMemo(() => {
-    const userId = session?.user.id
-    if (!userId) return null
-
-    const sellerScope = currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')
-    if (sellerScope) return [userId]
-
-    if (hasDistribuidorScope && viewMode === 'distributor') {
-      return distributionUserIds.length > 0 ? distributionUserIds : null
+    if (scope.kind === 'self' || scope.kind === 'distribution') {
+      return scope.userIds
     }
-
-    if (currentRole === 'admin' || currentRole === 'distribuidor') return null
-
-    return [userId]
-  }, [currentRole, distributionUserIds, hasDistribuidorScope, session?.user.id, viewMode])
+    if (scope.kind === 'global') {
+      return null
+    }
+    return []
+  }, [scope.kind, scope.userIds])
 
   useEffect(() => {
     if (!configured) {
-      setLoading(false)
-      return
-    }
-
-    if (hasDistribuidorScope && viewMode === 'distributor' && distributionUserIds.length === 0) {
+      setError(null)
       setData(emptyKpis)
       setLoading(false)
       return
     }
 
-    const run = async () => {
+    if (scope.pending) {
       setLoading(true)
-      const { data: response, error } = await supabase.rpc('get_conversion_kpis', {
-        p_user_ids: scopedUserIds,
-        p_range: range,
-      })
-
-      if (error) {
-        setData(emptyKpis)
-      } else {
-        setData((response as ConversionKpis) ?? emptyKpis)
-      }
-      setLoading(false)
+      return
     }
 
-    run()
-  }, [configured, distributionUserIds.length, hasDistribuidorScope, range, scopedUserIds, viewMode])
+    if (scope.kind === 'none') {
+      setError(null)
+      setData(emptyKpis)
+      setLoading(false)
+      return
+    }
 
-  return { data, loading, configured }
+    let active = true
+
+    const run = async () => {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const { data: response, error: rpcError } = await supabase.rpc('get_conversion_kpis', {
+          p_user_ids: scope.kind === 'global' ? null : scopedUserIds,
+          p_range: range,
+        })
+
+        if (rpcError) {
+          throw new Error(rpcError.message)
+        }
+
+        if (!active) return
+        setData((response as ConversionKpis) ?? emptyKpis)
+      } catch (nextError) {
+        if (!active) return
+        setError(nextError instanceof Error ? nextError.message : 'Error loading conversion KPIs')
+        setData(emptyKpis)
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void run()
+
+    return () => {
+      active = false
+    }
+  }, [configured, range, scope, scopedUserIds])
+
+  return { data, loading, configured, error, scopePending: scope.pending }
 }

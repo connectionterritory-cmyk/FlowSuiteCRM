@@ -7,7 +7,7 @@ export const LEADS_EXTENDED_SELECT =
 export const LEADS_SEARCH_BASE_SELECT = 'id, nombre, apellido, telefono, vendedor_id, owner_id'
 
 export const LEADS_SEARCH_EXTENDED_SELECT =
-  'id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, owner_id'
+  'id, nombre, apellido, telefono, direccion, apartamento, ciudad, estado_region, codigo_postal, vendedor_id, owner_id'
 
 const MISSING_LEADS_COLUMNS = ['direccion', 'apartamento', 'ciudad', 'estado_region', 'codigo_postal']
 

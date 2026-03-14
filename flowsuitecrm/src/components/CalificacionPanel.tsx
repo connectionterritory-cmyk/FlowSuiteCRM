@@ -2,6 +2,7 @@ import { type ClipboardEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase/client'
 import { isMissingLeadAddressColumnError } from '../lib/leadsSchema'
+import { ContactoTimeline } from './ContactoTimeline'
 import { useToast } from './Toast'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
@@ -459,6 +460,10 @@ export function CalificacionPanel({
               </label>
             </div>
             {error && <div className="form-error">{error}</div>}
+          </div>
+          <div className="drawer-section">
+            <h4>Historial</h4>
+            <ContactoTimeline contactoTipo="lead" contactoId={lead.id} emptyLabel="Sin historial de actividades para este prospecto" />
           </div>
           {showActions && (
             <div className="drawer-section">

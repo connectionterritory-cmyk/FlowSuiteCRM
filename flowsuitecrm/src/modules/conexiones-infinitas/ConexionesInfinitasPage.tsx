@@ -2840,7 +2840,7 @@ function ConexionesActivacionesTab() {
       .select('id, representante_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
       .eq('programa_id', programId)
 
-    if (role === 'telemercadeo' || role === 'supervisor_telemercadeo') {
+    if (role === 'telemercadeo') {
       const { data: assignments } = await supabase
         .from('tele_vendedor_assignments')
         .select('vendedor_id')
@@ -2854,6 +2854,8 @@ function ConexionesActivacionesTab() {
         return
       }
       query = query.in('representante_id', ids)
+    } else if (role === 'supervisor_telemercadeo') {
+      // Supervisor sees all activaciones across the full team (no representante filter)
     } else if (role === 'vendedor' || (hasDistribuidorScope && effectiveScope === 'mine')) {
       query = query.eq('representante_id', session.user.id)
     } else if (hasDistribuidorScope && effectiveScope === 'distribution') {

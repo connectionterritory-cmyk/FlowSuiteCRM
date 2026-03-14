@@ -21,6 +21,7 @@ type CitaRow = {
   nombre: string | null
   telefono: string | null
   direccion: string | null
+  apartamento: string | null
   ciudad: string | null
   estado_region: string | null
   zip: string | null
@@ -173,7 +174,7 @@ export function CitasPage() {
     setError(null)
     let citasQuery = supabase
       .from('citas')
-      .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas, resultado, resultado_notas')
+      .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, apartamento, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas, resultado, resultado_notas')
 
     const isGlobalRole = role === 'admin' || role === 'distribuidor' || role === 'supervisor_telemercadeo'
     if (!isGlobalRole && session?.user.id) {
@@ -327,6 +328,7 @@ export function CitasPage() {
       estado: estado ?? cita.estado ?? 'programada',
       notas: cita.notas ?? '',
       direccion: cita.direccion ?? '',
+      apartamento: cita.apartamento ?? '',
       ciudad: cita.ciudad ?? '',
       estado_region: cita.estado_region ?? '',
       zip: cita.zip ?? '',
