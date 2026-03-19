@@ -616,6 +616,17 @@ img {
   border-color: rgba(37, 99, 235, 0.2);
 }
 
+.btn.secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+
+.btn.secondary:hover {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1130,6 +1141,9 @@ body.theme-light .pipeline-card {
   gap: 18px;
   overflow: hidden;
 }
+
+.modal-sm { width: min(400px, 92vw); }
+.modal-lg { width: min(900px, 92vw); }
 
 .modal-header {
   display: flex;

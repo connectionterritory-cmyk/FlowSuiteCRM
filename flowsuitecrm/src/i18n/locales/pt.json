@@ -142,7 +142,54 @@
     "telemercadeoReferidos": "Indicacoes",
     "importaciones": "Importaciones",
     "usuarios": "Usuarios",
-    "perfil": "Perfil"
+    "perfil": "Perfil",
+    "catalogoProductos": "Catalogo"
+  },
+  "catalogo": {
+    "title": "Catalogo de Produtos",
+    "subtitle": "Consulte precos publicos e parcelas sem expor custos internos.",
+    "readOnly": "Somente leitura",
+    "searchPlaceholder": "Buscar produto, codigo ou palavra-chave...",
+    "results": "{{count}} produtos",
+    "emptyTitle": "Nenhum produto para mostrar",
+    "emptyDescription": "Tente outra busca ou ajuste o filtro de status.",
+    "noCategory": "Sem categoria",
+    "productFallback": "Produto",
+    "tapToView": "Toque para abrir a ficha comercial.",
+    "viewSheet": "Ver ficha",
+    "viewReplacement": "Ver substituto",
+    "noImage": "Sem foto",
+    "contactSales": "Consultar",
+    "fromPerMonth": "A partir de {{value}}/mes",
+    "downPayment": "Entrada: {{value}}",
+    "shipping": "Frete: {{value}}",
+    "handling": "Manuseio: {{value}}",
+    "benefits": "Beneficios",
+    "financing": "Financiamento",
+    "months": "{{count}} meses",
+    "replacementNotice": "Este produto foi substituido por uma versao mais recente.",
+    "replacementPending": "Substituto ainda nao configurado.",
+    "filters": {
+      "allCategories": "Todas",
+      "status": {
+        "all": "Todos os status",
+        "active": "Ativos",
+        "offer": "Em oferta",
+        "discontinued": "Descontinuados",
+        "replaced": "Substituidos"
+      }
+    },
+    "status": {
+      "active": "Ativo",
+      "offer": "Oferta",
+      "discontinued": "Descontinuado",
+      "replaced": "Substituido",
+      "draft": "Rascunho"
+    },
+    "errors": {
+      "title": "Nao foi possivel carregar o catalogo",
+      "notConfigured": "Supabase nao esta configurado."
+    }
   },
   "segmentos": {
     "title": "Segmentos",
@@ -561,14 +608,22 @@
     "fields": {
       "numeroNotaPedido": "Numero pedido",
       "ownerType": "Origem da venda",
-      "clienteId": "Cliente ID",
+      "clienteId": "Cliente",
       "prospectoId": "Prospecto",
       "numeroCuentaFinanciera": "Conta HyCite",
-      "vendedorId": "Vendedor ID",
-      "productoId": "Produto ID",
+      "vendedorId": "Vendedor",
+      "productoId": "Produto",
       "tipoMovimiento": "Tipo movimento",
       "monto": "Valor",
-      "fechaVenta": "Data venda"
+      "fechaVenta": "Data venda",
+      "estado": "Status",
+      "subtotal": "Subtotal",
+      "impuesto": "Imposto",
+      "cargoEnvio": "Frete",
+      "descuento": "Desconto",
+      "total": "Total",
+      "pagoInicial": "Entrada",
+      "saldoPendiente": "Saldo devedor"
     },
     "ownerTypes": {
       "cliente": "Cliente",
@@ -582,7 +637,15 @@
       "selectCliente": "Selecione um cliente.",
       "selectProspecto": "Selecione um prospecto.",
       "accountRequired": "Informe a conta HyCite para converter o prospecto.",
-      "prospectoMissing": "Prospecto selecionado nao encontrado."
+      "prospectoMissing": "Prospecto selecionado nao encontrado.",
+      "completeRequired": "Preencha todos os campos obrigatorios."
+    },
+    "estado": {
+      "borrador": "Rascunho",
+      "confirmada": "Confirmada",
+      "procesando": "Processando",
+      "entregada": "Entregue",
+      "cancelada": "Cancelada"
     },
     "columns": {
       "nota": "Pedido",
@@ -591,6 +654,7 @@
       "vendedor": "Vendedor",
       "monto": "Valor",
       "tipo": "Tipo",
+      "estado": "Status",
       "fecha": "Data"
     }
   },

@@ -142,7 +142,54 @@
     "telemercadeoReferidos": "Referrals",
     "importaciones": "Importaciones",
     "usuarios": "Users",
-    "perfil": "Profile"
+    "perfil": "Profile",
+    "catalogoProductos": "Catalog"
+  },
+  "catalogo": {
+    "title": "Product Catalog",
+    "subtitle": "Browse public product pricing and payment options without exposing internal costs.",
+    "readOnly": "Read only",
+    "searchPlaceholder": "Search product, code, or keyword...",
+    "results": "{{count}} products",
+    "emptyTitle": "No products to show",
+    "emptyDescription": "Try another search or change the status filter.",
+    "noCategory": "Uncategorized",
+    "productFallback": "Product",
+    "tapToView": "Tap to open the sales sheet.",
+    "viewSheet": "View sheet",
+    "viewReplacement": "View replacement",
+    "noImage": "No image",
+    "contactSales": "Contact us",
+    "fromPerMonth": "From {{value}}/mo",
+    "downPayment": "Down payment: {{value}}",
+    "shipping": "Shipping: {{value}}",
+    "handling": "Handling: {{value}}",
+    "benefits": "Benefits",
+    "financing": "Financing",
+    "months": "{{count}} months",
+    "replacementNotice": "This product was replaced by a newer version.",
+    "replacementPending": "Replacement is not configured yet.",
+    "filters": {
+      "allCategories": "All",
+      "status": {
+        "all": "All statuses",
+        "active": "Active",
+        "offer": "On offer",
+        "discontinued": "Discontinued",
+        "replaced": "Replaced"
+      }
+    },
+    "status": {
+      "active": "Active",
+      "offer": "Offer",
+      "discontinued": "Discontinued",
+      "replaced": "Replaced",
+      "draft": "Draft"
+    },
+    "errors": {
+      "title": "We could not load the catalog",
+      "notConfigured": "Supabase is not configured."
+    }
   },
   "segmentos": {
     "title": "Segments",
@@ -561,14 +608,22 @@
     "fields": {
       "numeroNotaPedido": "Order number",
       "ownerType": "Sale origin",
-      "clienteId": "Customer ID",
+      "clienteId": "Customer",
       "prospectoId": "Prospect",
       "numeroCuentaFinanciera": "HyCite account",
-      "vendedorId": "Sales rep ID",
-      "productoId": "Product ID",
+      "vendedorId": "Sales rep",
+      "productoId": "Product",
       "tipoMovimiento": "Movement type",
       "monto": "Amount",
-      "fechaVenta": "Sale date"
+      "fechaVenta": "Sale date",
+      "estado": "Status",
+      "subtotal": "Subtotal",
+      "impuesto": "Tax",
+      "cargoEnvio": "Shipping",
+      "descuento": "Discount",
+      "total": "Total",
+      "pagoInicial": "Down payment",
+      "saldoPendiente": "Balance due"
     },
     "ownerTypes": {
       "cliente": "Customer",
@@ -582,7 +637,15 @@
       "selectCliente": "Select a customer.",
       "selectProspecto": "Select a prospect.",
       "accountRequired": "Enter the HyCite account to convert the prospect.",
-      "prospectoMissing": "Selected prospect was not found."
+      "prospectoMissing": "Selected prospect was not found.",
+      "completeRequired": "Complete all required fields."
+    },
+    "estado": {
+      "borrador": "Draft",
+      "confirmada": "Confirmed",
+      "procesando": "Processing",
+      "entregada": "Delivered",
+      "cancelada": "Cancelled"
     },
     "columns": {
       "nota": "Order",
@@ -591,6 +654,7 @@
       "vendedor": "Sales rep",
       "monto": "Amount",
       "tipo": "Type",
+      "estado": "Status",
       "fecha": "Date"
     }
   },
