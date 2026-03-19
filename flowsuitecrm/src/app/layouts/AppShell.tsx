@@ -14,19 +14,18 @@ const THEME_KEY = 'flowsuite.theme'
 export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
-  const [collapsed, setCollapsed] = useState(false)
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    return saved === 'true'
+  })
+  const [mobileNavState, setMobileNavState] = useState(() => ({
+    open: false,
+    path: location.pathname,
+  }))
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem(THEME_KEY)
     return saved === 'light' ? 'light' : 'dark'
   })
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      setCollapsed(saved === 'true')
-    }
-  }, [])
 
   useEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light')
@@ -34,9 +33,7 @@ export function AppShell() {
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
 
-  useEffect(() => {
-    setMobileNavOpen(false)
-  }, [location.pathname])
+  const mobileNavOpen = mobileNavState.open && mobileNavState.path === location.pathname
 
   const handleToggle = () => {
     setCollapsed((prev) => {
@@ -78,14 +75,18 @@ export function AppShell() {
             collapsed={collapsed}
             onToggle={handleToggle}
             mobileOpen={mobileNavOpen}
-            onMobileClose={() => setMobileNavOpen(false)}
+            onMobileClose={() =>
+              setMobileNavState((prev) => ({ ...prev, open: false }))
+            }
           />
           <div className="app-main">
             <Topbar
               title={currentTitle}
               theme={theme}
               onToggleTheme={handleThemeToggle}
-              onMobileNavToggle={() => setMobileNavOpen(true)}
+              onMobileNavToggle={() =>
+                setMobileNavState({ open: true, path: location.pathname })
+              }
             />
             <main className="page">
               <Outlet />

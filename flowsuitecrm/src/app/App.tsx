@@ -28,6 +28,8 @@ import { CampanasPage } from '../modules/marketing-flow/CampanasPage'
 import { EnviosPage } from '../modules/marketing-flow/EnviosPage'
 import { LoginPage } from '../modules/auth/LoginPage'
 import { ResetPasswordPage } from '../modules/auth/ResetPasswordPage'
+import { ListaPreciosPage } from '../modules/lista-precios/ListaPreciosPage'
+import { CatalogoProductosPage } from '../modules/catalogo-productos/CatalogoProductosPage'
 import { useAuth } from '../auth/AuthProvider'
 
 function ProtectedRoute() {
@@ -57,6 +59,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/lista-precios" element={<ListaPreciosPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -73,7 +76,9 @@ export default function App() {
           <Route path="/citas" element={<CitasPage />} />
           <Route path="/clientes" element={<ClientesPage />} />
           <Route path="/ventas" element={<VentasPage />} />
+          <Route path="/catalogo" element={<CatalogoProductosPage />} />
           <Route path="/productos" element={<ProductosPage />} />
+          <Route path="/catalogo-productos" element={<CatalogoProductosPage />} />
           <Route path="/programas" element={<ProgramasPage />} />
           <Route path="/conexiones-infinitas" element={<ConexionesInfinitasPage />} />
           <Route path="/4en14" element={<Programa4en14Page />} />
