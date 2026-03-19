@@ -11,6 +11,7 @@ const navItems = [
   { to: '/agua', label: 'Agua' },
   { to: '/cartera', label: 'Cartera' },
   { to: '/team-hub', label: 'Team Hub' },
+  { to: '/lista-precios', label: 'Lista de Precios' },
 ]
 
 export default function AppShell() {

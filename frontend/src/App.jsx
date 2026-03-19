@@ -9,6 +9,7 @@ import Servicio from './pages/Servicio'
 import Agua from './pages/Agua'
 import Cartera from './pages/Cartera'
 import TeamHub from './pages/TeamHub'
+import ListaPrecios from './pages/ListaPrecios'
 
 function LoadingScreen() {
   return (
@@ -29,6 +30,7 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/lista-precios" element={<ListaPrecios />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     )
@@ -37,6 +39,7 @@ function AppRoutes() {
   return (
     <OrgProvider>
       <Routes>
+        <Route path="/lista-precios" element={<ListaPrecios />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Navigate to="/pipeline" replace />} />
           <Route path="/pipeline" element={<Pipeline />} />
