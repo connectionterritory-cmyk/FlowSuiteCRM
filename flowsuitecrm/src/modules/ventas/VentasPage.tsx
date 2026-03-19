@@ -22,7 +22,36 @@ type VentaRecord = {
   tipo_movimiento: string | null
   monto: number | null
   fecha_venta: string | null
+  estado: string | null
+  subtotal: number | null
+  impuesto: number | null
+  cargo_envio: number | null
+  descuento: number | null
+  total: number | null
+  pago_inicial: number | null
+  saldo_pendiente: number | null
   created_at: string | null
+}
+
+type VentaItem = {
+  id: string
+  venta_id: string
+  linea: number
+  producto_id: string | null
+  codigo_articulo: string | null
+  descripcion: string | null
+  cantidad: number
+  precio_unitario: number
+  subtotal: number
+}
+
+type VentaTransaccion = {
+  id: string
+  venta_id: string
+  fecha: string
+  descripcion: string | null
+  cantidad: number
+  saldo: number | null
 }
 
 type ClienteOption = {
@@ -43,16 +72,42 @@ type LeadOption = {
 type ProductoOption = {
   id: string
   nombre: string | null
+  codigo: string | null
+  precio: number | null
+}
+
+type FormItem = {
+  id: string
+  producto_id: string
+  codigo: string
+  descripcion: string
+  cantidad: number
+  precio_unitario: number
+  subtotal: number
 }
 
 const initialForm = {
   numero_nota_pedido: '',
   cliente_id: '',
   vendedor_id: '',
-  producto_id: '',
   tipo_movimiento: 'venta_inicial',
-  monto: '',
   fecha_venta: '',
+  estado: 'borrador',
+  impuesto: '0',
+  cargo_envio: '0',
+  descuento: '0',
+  pago_inicial: '0',
+  notas: '',
+}
+
+const initialItem: FormItem = {
+  id: '',
+  producto_id: '',
+  codigo: '',
+  descripcion: '',
+  cantidad: 1,
+  precio_unitario: 0,
+  subtotal: 0,
 }
 
 const initialClienteForm = {
@@ -87,6 +142,17 @@ function tipoBadgeStyle(tipo: string | null): { background: string; color: strin
   return { background: '#f3f4f6', color: '#6b7280' }
 }
 
+function estadoBadgeStyle(estado: string | null): { background: string; color: string } {
+  switch (estado) {
+    case 'borrador': return { background: '#f3f4f6', color: '#6b7280' }
+    case 'confirmada': return { background: '#dbeafe', color: '#1d4ed8' }
+    case 'procesando': return { background: '#fef3c7', color: '#b45309' }
+    case 'entregada': return { background: '#d1fae5', color: '#047857' }
+    case 'cancelada': return { background: '#fee2e2', color: '#b91c1c' }
+    default: return { background: '#f3f4f6', color: '#6b7280' }
+  }
+}
+
 export function VentasPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
@@ -101,7 +167,9 @@ export function VentasPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [formStep, setFormStep] = useState(1)
   const [formValues, setFormValues] = useState(initialForm)
+  const [formItems, setFormItems] = useState<FormItem[]>([{ ...initialItem, id: crypto.randomUUID() }])
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [ventaOwnerType, setVentaOwnerType] = useState<'cliente' | 'prospecto'>('cliente')
@@ -115,12 +183,15 @@ export function VentasPage() {
   const [productoFormValues, setProductoFormValues] = useState(initialProductoForm)
   const [productoFormError, setProductoFormError] = useState<string | null>(null)
   const [productoSubmitting, setProductoSubmitting] = useState(false)
-  const [selectedRow, setSelectedRow] = useState<DataTableRow | null>(null)
+  const [selectedVenta, setSelectedVenta] = useState<VentaRecord | null>(null)
+  const [selectedVentaItems, setSelectedVentaItems] = useState<VentaItem[]>([])
+  const [selectedVentaTransacciones, setSelectedVentaTransacciones] = useState<VentaTransaccion[]>([])
+  const [detailTab, setDetailTab] = useState<'resumen' | 'articulos' | 'transacciones'>('resumen')
   const configured = isSupabaseConfigured
 
-  // --- FILTROS ---
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
+  const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroVendedor, setFiltroVendedor] = useState('todos')
   const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
@@ -128,6 +199,12 @@ export function VentasPage() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [sortCol, setSortCol] = useState<number | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [productoSearch, setProductoSearch] = useState<Record<string, string>>({})
+  const [productoDropdownOpen, setProductoDropdownOpen] = useState<Record<string, boolean>>({})
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [clienteDropdownOpen, setClienteDropdownOpen] = useState(false)
+  const [leadSearch, setLeadSearch] = useState('')
+  const [leadDropdownOpen, setLeadDropdownOpen] = useState(false)
 
   const loadVentas = useCallback(async () => {
     if (!configured) return
@@ -135,7 +212,7 @@ export function VentasPage() {
     setError(null)
     let query = supabase
       .from('ventas')
-      .select('id, numero_nota_pedido, cliente_id, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, created_at')
+      .select('id, numero_nota_pedido, cliente_id, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
       .order('created_at', { ascending: false })
     if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
       query = query.eq('vendedor_id', session.user.id)
@@ -163,7 +240,7 @@ export function VentasPage() {
     setLoadingOptions(true)
     const [clientesResult, productosResult, leadsResult] = await Promise.all([
       supabase.from('clientes').select('id, nombre, apellido').order('nombre'),
-      supabase.from('v_productos_publicos').select('id, nombre').order('nombre'),
+      supabase.from('v_productos_publicos').select('id, nombre, codigo, precio').order('nombre'),
       supabase
         .from('leads')
         .select('id, nombre, apellido, telefono, email, referido_por_cliente_id')
@@ -175,6 +252,15 @@ export function VentasPage() {
     setLeads((leadsResult.data as LeadOption[]) ?? [])
     setLoadingOptions(false)
   }, [configured])
+
+  const loadVentaDetails = useCallback(async (ventaId: string) => {
+    const [itemsResult, transaccionesResult] = await Promise.all([
+      supabase.from('venta_items').select('*').eq('venta_id', ventaId).order('linea'),
+      supabase.from('venta_transacciones').select('*').eq('venta_id', ventaId).order('fecha', { ascending: false }),
+    ])
+    setSelectedVentaItems(itemsResult.data ?? [])
+    setSelectedVentaTransacciones(transaccionesResult.data ?? [])
+  }, [])
 
   useEffect(() => {
     if (configured) {
@@ -198,30 +284,28 @@ export function VentasPage() {
   }, [clientes])
 
   const productoMap = useMemo(() => {
-    return new Map(productos.map((p) => [p.id, p.nombre ?? p.id]))
+    return new Map(productos.map((p) => [p.id, { nombre: p.nombre ?? p.id, codigo: p.codigo ?? '', precio: p.precio ?? 0 }]))
   }, [productos])
 
-  // --- VENDEDORES ÚNICOS ---
   const vendedoresUnicos = useMemo(() => {
     const ids = [...new Set(ventas.map((v) => v.vendedor_id).filter(Boolean))] as string[]
     return ids.map((id) => ({ id, nombre: usersById[id] ?? id }))
   }, [ventas, usersById])
 
-  // --- FILTRADO ---
   const ventasFiltradas = useMemo(() => {
     return ventas.filter((v) => {
       const nota = (v.numero_nota_pedido ?? '').toLowerCase()
       const clienteNombre = v.cliente_id ? (clienteMap.get(v.cliente_id) ?? '').toLowerCase() : ''
       const matchBusqueda = !busqueda || nota.includes(busqueda.toLowerCase()) || clienteNombre.includes(busqueda.toLowerCase())
       const matchTipo = filtroTipo === 'todos' || v.tipo_movimiento === filtroTipo
+      const matchEstado = filtroEstado === 'todos' || v.estado === filtroEstado
       const matchVendedor = filtroVendedor === 'todos' || v.vendedor_id === filtroVendedor
       const matchDesde = !filtroFechaDesde || (v.fecha_venta ?? '') >= filtroFechaDesde
       const matchHasta = !filtroFechaHasta || (v.fecha_venta ?? '') <= filtroFechaHasta
-      return matchBusqueda && matchTipo && matchVendedor && matchDesde && matchHasta
+      return matchBusqueda && matchTipo && matchEstado && matchVendedor && matchDesde && matchHasta
     })
-  }, [ventas, busqueda, filtroTipo, filtroVendedor, filtroFechaDesde, filtroFechaHasta, clienteMap])
+  }, [ventas, busqueda, filtroTipo, filtroEstado, filtroVendedor, filtroFechaDesde, filtroFechaHasta, clienteMap])
 
-  // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
     if (sortCol === colIndex) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -236,10 +320,10 @@ export function VentasPage() {
     return [...ventasFiltradas].sort((a, b) => {
       let valA: string | number = 0
       let valB: string | number = 0
-      if (sortCol === 4) {
-        valA = a.monto ?? 0
-        valB = b.monto ?? 0
-      } else if (sortCol === 6) {
+      if (sortCol === 5) {
+        valA = a.total ?? a.monto ?? 0
+        valB = b.total ?? b.monto ?? 0
+      } else if (sortCol === 7) {
         valA = a.fecha_venta ?? ''
         valB = b.fecha_venta ?? ''
       }
@@ -249,54 +333,60 @@ export function VentasPage() {
     })
   }, [ventasFiltradas, sortCol, sortDir])
 
-  // --- ESTADISTICAS ---
   const stats = useMemo(() => {
-    const montoTotal = ventas.reduce((acc, v) => acc + (v.monto ?? 0), 0)
+    const montoTotal = ventas.reduce((acc, v) => acc + (v.total ?? v.monto ?? 0), 0)
     return {
       total: ventas.length,
       montoTotal,
       ventaInicial: ventas.filter((v) => v.tipo_movimiento === 'venta_inicial').length,
       agregado: ventas.filter((v) => v.tipo_movimiento === 'agregado').length,
+      confirmadas: ventas.filter((v) => v.estado === 'confirmada').length,
     }
   }, [ventas])
 
-  // --- ROWS ---
   const rows = useMemo<DataTableRow[]>(() => {
     return ventasOrdenadas.map((venta) => {
       const tipoLabel = venta.tipo_movimiento ? t(`ventas.tipo.${venta.tipo_movimiento}`) : '-'
+      const estadoLabel = venta.estado ? t(`ventas.estado.${venta.estado}`) : '-'
       const clienteLabel = venta.cliente_id ? clienteMap.get(venta.cliente_id) ?? venta.cliente_id : '-'
-      const productoLabel = venta.producto_id ? productoMap.get(venta.producto_id) ?? venta.producto_id : '-'
       const vendedorLabel = venta.vendedor_id ? usersById[venta.vendedor_id] ?? venta.vendedor_id : '-'
+      const monto = venta.total ?? venta.monto ?? 0
       return {
         id: venta.id,
         cells: [
           venta.numero_nota_pedido ?? '-',
           clienteLabel,
-          productoLabel,
           vendedorLabel,
-          venta.monto != null ? numberFormat.format(venta.monto) : '-',
+          monto != null ? numberFormat.format(monto) : '-',
           tipoLabel,
+          estadoLabel,
           venta.fecha_venta ?? '-',
         ],
         detail: [
           { label: t('ventas.fields.numeroNotaPedido'), value: venta.numero_nota_pedido ?? '-' },
           { label: t('ventas.fields.clienteId'), value: clienteLabel },
           { label: t('ventas.fields.vendedorId'), value: vendedorLabel },
-          { label: t('ventas.fields.productoId'), value: productoLabel },
           { label: t('ventas.fields.tipoMovimiento'), value: tipoLabel },
-          { label: t('ventas.fields.monto'), value: venta.monto != null ? numberFormat.format(venta.monto) : '-' },
+          { label: t('ventas.fields.estado'), value: estadoLabel },
+          { label: t('ventas.fields.subtotal'), value: numberFormat.format(venta.subtotal ?? 0) },
+          { label: t('ventas.fields.impuesto'), value: numberFormat.format(venta.impuesto ?? 0) },
+          { label: t('ventas.fields.cargoEnvio'), value: numberFormat.format(venta.cargo_envio ?? 0) },
+          { label: t('ventas.fields.descuento'), value: numberFormat.format(venta.descuento ?? 0) },
+          { label: t('ventas.fields.total'), value: numberFormat.format(venta.total ?? monto) },
+          { label: t('ventas.fields.pagoInicial'), value: numberFormat.format(venta.pago_inicial ?? 0) },
+          { label: t('ventas.fields.saldoPendiente'), value: numberFormat.format(venta.saldo_pendiente ?? monto) },
           { label: t('ventas.fields.fechaVenta'), value: venta.fecha_venta ?? '-' },
         ],
       }
     })
-  }, [clienteMap, numberFormat, productoMap, t, usersById, ventasOrdenadas])
+  }, [clienteMap, numberFormat, t, usersById, ventasOrdenadas])
 
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
 
-  // --- FILTROS HELPERS ---
   const limpiarFiltros = () => {
     setBusqueda('')
     setFiltroTipo('todos')
+    setFiltroEstado('todos')
     setFiltroVendedor('todos')
     setFiltroFechaDesde('')
     setFiltroFechaHasta('')
@@ -305,21 +395,21 @@ export function VentasPage() {
   const cantFiltrosActivos = [
     busqueda,
     filtroTipo !== 'todos' ? '1' : '',
+    filtroEstado !== 'todos' ? '1' : '',
     filtroVendedor !== 'todos' ? '1' : '',
     filtroFechaDesde,
     filtroFechaHasta,
   ].filter(Boolean).length
 
-  // --- CSV EXPORT ---
   const exportarCSV = () => {
-    const headers = ['Nota Pedido', 'Cliente', 'Producto', 'Vendedor', 'Monto', 'Tipo', 'Fecha']
+    const headers = ['Nota Pedido', 'Cliente', 'Vendedor', 'Monto', 'Tipo', 'Estado', 'Fecha']
     const csvRows = ventasFiltradas.map((v) => [
       v.numero_nota_pedido ?? '',
       v.cliente_id ? clienteMap.get(v.cliente_id) ?? '' : '',
-      v.producto_id ? productoMap.get(v.producto_id) ?? '' : '',
       v.vendedor_id ? usersById[v.vendedor_id] ?? v.vendedor_id : '',
-      v.monto ?? 0,
+      v.total ?? v.monto ?? 0,
       v.tipo_movimiento ? t(`ventas.tipo.${v.tipo_movimiento}`) : '',
+      v.estado ? t(`ventas.estado.${v.estado}`) : '',
       v.fecha_venta ?? '',
     ])
     const csv = [headers, ...csvRows]
@@ -334,13 +424,20 @@ export function VentasPage() {
     URL.revokeObjectURL(url)
   }
 
-  // --- FORM HANDLERS ---
   const handleOpenForm = () => {
     setFormValues({ ...initialForm, vendedor_id: session?.user.id ?? '' })
+    setFormItems([{ ...initialItem, id: crypto.randomUUID() }])
+    setProductoSearch({})
+    setProductoDropdownOpen({})
+    setClienteSearch('')
+    setClienteDropdownOpen(false)
+    setLeadSearch('')
+    setLeadDropdownOpen(false)
     setVentaOwnerType('cliente')
     setProspectoId('')
     setProspectoCuenta('')
     setFormError(null)
+    setFormStep(1)
     setFormOpen(true)
   }
 
@@ -350,8 +447,111 @@ export function VentasPage() {
     if (value === 'cliente') {
       setProspectoId('')
       setProspectoCuenta('')
+      setLeadSearch('')
+      setLeadDropdownOpen(false)
     } else {
       setFormValues((prev) => ({ ...prev, cliente_id: '' }))
+      setClienteSearch('')
+      setClienteDropdownOpen(false)
+    }
+  }
+
+  const selectProducto = (itemId: string, productoId: string) => {
+    const prod = productoMap.get(productoId)
+    setFormItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item
+        return {
+          ...item,
+          producto_id: productoId,
+          codigo: prod?.codigo ?? '',
+          descripcion: prod?.nombre ?? '',
+          precio_unitario: prod?.precio ?? 0,
+          subtotal: item.cantidad * (prod?.precio ?? 0),
+        }
+      })
+    )
+    setProductoSearch((prev) => ({ ...prev, [itemId]: prod?.nombre ?? '' }))
+    setProductoDropdownOpen((prev) => ({ ...prev, [itemId]: false }))
+  }
+
+  const handleItemChange = (id: string, field: keyof FormItem) =>
+    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const value = event.target.value
+      setFormItems((prev) =>
+        prev.map((item) => {
+          if (item.id !== id) return item
+          const updates: Partial<FormItem> = { [field]: value }
+          if (field === 'producto_id') {
+            const prod = productoMap.get(value)
+            if (prod) {
+              updates.codigo = prod.codigo
+              updates.descripcion = prod.nombre ?? ''
+              updates.precio_unitario = prod.precio
+              updates.subtotal = item.cantidad * prod.precio
+            }
+          } else if (field === 'cantidad') {
+            const qty = parseFloat(value) || 0
+            updates.cantidad = qty
+            updates.subtotal = qty * item.precio_unitario
+          } else if (field === 'precio_unitario') {
+            const price = parseFloat(value) || 0
+            updates.precio_unitario = price
+            updates.subtotal = item.cantidad * price
+          }
+          return { ...item, ...updates } as FormItem
+        })
+      )
+    }
+
+  const addItem = () => {
+    setFormItems((prev) => [...prev, { ...initialItem, id: crypto.randomUUID() }])
+  }
+
+  const removeItem = (id: string) => {
+    if (formItems.length > 1) {
+      setFormItems((prev) => prev.filter((item) => item.id !== id))
+    }
+  }
+
+  const calcularTotales = useMemo(() => {
+    const subtotal = formItems.reduce((acc, item) => acc + (item.subtotal || 0), 0)
+    const impuesto = parseFloat(formValues.impuesto) || 0
+    const cargo_envio = parseFloat(formValues.cargo_envio) || 0
+    const descuento = parseFloat(formValues.descuento) || 0
+    const total = subtotal + impuesto + cargo_envio - descuento
+    const pago_inicial = parseFloat(formValues.pago_inicial) || 0
+    const saldo_pendiente = total - pago_inicial
+    return { subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente }
+  }, [formItems, formValues.impuesto, formValues.cargo_envio, formValues.descuento, formValues.pago_inicial])
+
+  const validateStep = (step: number): boolean => {
+    if (step === 1) {
+      if (ventaOwnerType === 'cliente' && !formValues.cliente_id) return false
+      if (ventaOwnerType === 'prospecto' && !prospectoId) return false
+    }
+    if (step === 2) {
+      const hasItems = formItems.some((item) => item.producto_id && item.cantidad > 0)
+      if (!hasItems) return false
+    }
+    return true
+  }
+
+  const nextStep = () => {
+    if (validateStep(formStep)) {
+      setFormStep((s) => Math.min(s + 1, 3))
+    } else {
+      setFormError(t('ventas.errors.completeRequired'))
+    }
+  }
+
+  const prevStep = () => setFormStep((s) => Math.max(s - 1, 1))
+
+  const handleRowClick = async (row: DataTableRow) => {
+    const venta = ventas.find((v) => v.id === row.id)
+    if (venta) {
+      setSelectedVenta(venta)
+      await loadVentaDetails(venta.id)
     }
   }
 
@@ -393,39 +593,80 @@ export function VentasPage() {
         return
       }
       clienteIdFinal = clienteData.id
-      const { error: leadUpdateError } = await supabase
+      await supabase
         .from('leads').update({ estado_pipeline: 'cierre', next_action: 'Convertido' }).eq('id', prospectoId)
-      if (leadUpdateError) showToast(leadUpdateError.message, 'error')
     }
 
     const payload = {
       numero_nota_pedido: toNull(formValues.numero_nota_pedido),
       cliente_id: clienteIdFinal,
       vendedor_id: vendedorId,
-      producto_id: toNull(formValues.producto_id),
       tipo_movimiento: formValues.tipo_movimiento,
-      monto: formValues.monto === '' ? 0 : Number(formValues.monto),
       fecha_venta: formValues.fecha_venta || null,
+      estado: formValues.estado,
+      subtotal: calcularTotales.subtotal,
+      impuesto: calcularTotales.impuesto,
+      cargo_envio: calcularTotales.cargo_envio,
+      descuento: calcularTotales.descuento,
+      total: calcularTotales.total,
+      pago_inicial: calcularTotales.pago_inicial,
+      saldo_pendiente: calcularTotales.saldo_pendiente,
+      notas: toNull(formValues.notas),
     }
 
-    const { error: insertError } = await supabase.from('ventas').insert(payload)
+    const { data: ventaData, error: insertError } = await supabase.from('ventas').insert(payload).select('id').single()
     if (insertError) {
       setFormError(insertError.message)
       showToast(insertError.message, 'error')
-    } else {
-      setFormOpen(false)
-      setProspectoId('')
-      setProspectoCuenta('')
-      setVentaOwnerType('cliente')
-      await loadOptions()
-      await loadVentas()
-      showToast(t('toast.success'))
+      setSubmitting(false)
+      return
     }
+
+    const itemsPayload = formItems
+      .filter((item) => item.producto_id && item.cantidad > 0)
+      .map((item, index) => ({
+        venta_id: ventaData.id,
+        linea: index + 1,
+        producto_id: item.producto_id,
+        codigo_articulo: item.codigo,
+        descripcion: item.descripcion,
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario,
+        subtotal: item.subtotal,
+      }))
+
+    if (itemsPayload.length > 0) {
+      const { error: itemsError } = await supabase.from('venta_items').insert(itemsPayload)
+      if (itemsError) {
+        setFormError(itemsError.message)
+        showToast(itemsError.message, 'error')
+        setSubmitting(false)
+        return
+      }
+    }
+
+    const transaccionesPayload = [
+      { venta_id: ventaData.id, descripcion: 'SALES PRICE', cantidad: calcularTotales.subtotal },
+      { venta_id: ventaData.id, descripcion: 'SALES TAX CHARGE', cantidad: calcularTotales.impuesto },
+    ]
+    if (calcularTotales.pago_inicial > 0) {
+      transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'CONSUMER DOWN PAYMENT', cantidad: -calcularTotales.pago_inicial })
+    }
+
+    await supabase.from('venta_transacciones').insert(transaccionesPayload)
+
+    setFormOpen(false)
+    setProspectoId('')
+    setProspectoCuenta('')
+    setVentaOwnerType('cliente')
+    await loadOptions()
+    await loadVentas()
+    showToast(t('toast.success'))
     setSubmitting(false)
   }
 
   const handleChange = (field: keyof typeof initialForm) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       setFormValues((prev) => ({ ...prev, [field]: event.target.value }))
     }
 
@@ -508,13 +749,23 @@ export function VentasPage() {
       precio: productoFormValues.precio === '' ? 0 : Number(productoFormValues.precio),
       activo: productoFormValues.activo,
     }
-    const { data, error: insertError } = await supabase.from('productos').insert(payload).select('id, nombre').single()
+    const { data, error: insertError } = await supabase.from('productos').insert(payload).select('id, nombre, codigo, precio').single()
     if (insertError) {
       setProductoFormError(insertError.message)
       showToast(insertError.message, 'error')
     } else if (data) {
       await loadOptions()
-      setFormValues((prev) => ({ ...prev, producto_id: data.id }))
+      setFormItems((prev) => {
+        const newItems = [...prev]
+        if (newItems.length > 0 && !newItems[0].producto_id) {
+          newItems[0].producto_id = data.id
+          newItems[0].codigo = data.codigo ?? ''
+          newItems[0].descripcion = data.nombre ?? ''
+          newItems[0].precio_unitario = data.precio ?? 0
+          newItems[0].subtotal = newItems[0].cantidad * (data.precio ?? 0)
+        }
+        return newItems
+      })
       setProductoFormOpen(false)
       showToast(t('toast.success'))
     }
@@ -552,13 +803,13 @@ export function VentasPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      {/* ESTADISTICAS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
         {[
           { label: 'Total ventas', value: stats.total, display: String(stats.total), color: '#3b82f6', onClick: limpiarFiltros },
           { label: 'Monto total', value: stats.montoTotal, display: numberFormat.format(stats.montoTotal), color: '#10b981', onClick: limpiarFiltros },
           { label: 'Ventas iniciales', value: stats.ventaInicial, display: String(stats.ventaInicial), color: '#6366f1', onClick: () => { limpiarFiltros(); setFiltroTipo('venta_inicial') } },
           { label: 'Agregados', value: stats.agregado, display: String(stats.agregado), color: '#f59e0b', onClick: () => { limpiarFiltros(); setFiltroTipo('agregado') } },
+          { label: 'Confirmadas', value: stats.confirmadas, display: String(stats.confirmadas), color: '#8b5cf6', onClick: () => { limpiarFiltros(); setFiltroEstado('confirmada') } },
         ].map((s) => (
           <div
             key={s.label}
@@ -579,7 +830,6 @@ export function VentasPage() {
         ))}
       </div>
 
-      {/* FILTROS */}
       <div style={{ background: 'var(--color-surface, #f9fafb)', borderRadius: '0.75rem', border: '1px solid var(--color-border, #e5e7eb)' }}>
         <div
           role="button"
@@ -612,64 +862,47 @@ export function VentasPage() {
           <div style={{ padding: '0 1rem 1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end', borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
             <div style={{ flex: '1', minWidth: '200px' }}>
               <label style={labelStyle}>BUSCAR</label>
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Nota de pedido, cliente..."
-                style={inputStyle}
-              />
+              <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Nota de pedido, cliente..." style={inputStyle} />
             </div>
             <div>
               <label style={labelStyle}>TIPO</label>
-              <select
-                value={filtroTipo}
-                onChange={(e) => setFiltroTipo(e.target.value)}
-                style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
-              >
+              <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}>
                 <option value="todos">Todos</option>
                 <option value="venta_inicial">{t('ventas.tipo.venta_inicial')}</option>
                 <option value="agregado">{t('ventas.tipo.agregado')}</option>
               </select>
             </div>
             <div>
-              <label style={labelStyle}>VENDEDOR</label>
-              <select
-                value={filtroVendedor}
-                onChange={(e) => setFiltroVendedor(e.target.value)}
-                style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
-              >
+              <label style={labelStyle}>ESTADO</label>
+              <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}>
                 <option value="todos">Todos</option>
-                {vendedoresUnicos.map((v) => (
-                  <option key={v.id} value={v.id}>{v.nombre}</option>
-                ))}
+                <option value="borrador">{t('ventas.estado.borrador')}</option>
+                <option value="confirmada">{t('ventas.estado.confirmada')}</option>
+                <option value="procesando">{t('ventas.estado.procesando')}</option>
+                <option value="entregada">{t('ventas.estado.entregada')}</option>
+                <option value="cancelada">{t('ventas.estado.cancelada')}</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>VENDEDOR</label>
+              <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }}>
+                <option value="todos">Todos</option>
+                {vendedoresUnicos.map((v) => (<option key={v.id} value={v.id}>{v.nombre}</option>))}
               </select>
             </div>
             <div style={{ minWidth: '140px' }}>
               <label style={labelStyle}>DESDE</label>
-              <input
-                type="date"
-                value={filtroFechaDesde}
-                onChange={(e) => setFiltroFechaDesde(e.target.value)}
-                style={inputStyle}
-              />
+              <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} style={inputStyle} />
             </div>
             <div style={{ minWidth: '140px' }}>
               <label style={labelStyle}>HASTA</label>
-              <input
-                type="date"
-                value={filtroFechaHasta}
-                onChange={(e) => setFiltroFechaHasta(e.target.value)}
-                style={inputStyle}
-              />
+              <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} style={inputStyle} />
             </div>
-            {cantFiltrosActivos > 0 && (
-              <Button variant="ghost" type="button" onClick={limpiarFiltros}>Limpiar</Button>
-            )}
+            {cantFiltrosActivos > 0 && (<Button variant="ghost" type="button" onClick={limpiarFiltros}>Limpiar</Button>)}
           </div>
         )}
       </div>
 
-      {/* TABLA / CARDS */}
       {isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {ventasOrdenadas.length === 0 ? (
@@ -680,39 +913,33 @@ export function VentasPage() {
             ventasOrdenadas.map((venta) => {
               const clienteLabel = venta.cliente_id ? clienteMap.get(venta.cliente_id) ?? '-' : '-'
               const tipoLabel = venta.tipo_movimiento ? t(`ventas.tipo.${venta.tipo_movimiento}`) : '-'
+              const estadoLabel = venta.estado ? t(`ventas.estado.${venta.estado}`) : '-'
               const vendedorLabel = venta.vendedor_id ? usersById[venta.vendedor_id] ?? '-' : '-'
               const badgeStyle = tipoBadgeStyle(venta.tipo_movimiento)
+              const estadoStyle = estadoBadgeStyle(venta.estado)
               const matchingRow = rows.find((r) => r.id === venta.id)
+              const monto = venta.total ?? venta.monto ?? 0
               return (
                 <div
                   key={venta.id}
-                  onClick={() => matchingRow && setSelectedRow(matchingRow)}
+                  onClick={() => matchingRow && handleRowClick(matchingRow)}
                   style={{ padding: '0.875rem 1rem', background: 'var(--card-bg, #1e2d3d)', borderRadius: '0.75rem', border: '1px solid var(--card-border, rgba(255,255,255,0.08))', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                     <div>
                       <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{clienteLabel}</span>
-                      {venta.numero_nota_pedido && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #94a3b8)', marginLeft: '0.5rem' }}>#{venta.numero_nota_pedido}</span>
-                      )}
+                      {venta.numero_nota_pedido && (<span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #94a3b8)', marginLeft: '0.5rem' }}>#{venta.numero_nota_pedido}</span>)}
                     </div>
-                    <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...badgeStyle, flexShrink: 0 }}>
-                      {tipoLabel}
-                    </span>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...badgeStyle }}>{tipoLabel}</span>
+                      <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...estadoStyle }}>{estadoLabel}</span>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: '#10b981' }}>
-                      {venta.monto != null ? numberFormat.format(venta.monto) : '-'}
-                    </span>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted, #94a3b8)' }}>
-                      {venta.fecha_venta ?? '-'}
-                    </span>
+                    <span style={{ fontSize: '1rem', fontWeight: 700, color: '#10b981' }}>{numberFormat.format(monto)}</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted, #94a3b8)' }}>{venta.fecha_venta ?? '-'}</span>
                   </div>
-                  {vendedorLabel !== '-' && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #94a3b8)' }}>
-                      {vendedorLabel}
-                    </div>
-                  )}
+                  {vendedorLabel !== '-' && (<div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #94a3b8)' }}>{vendedorLabel}</div>)}
                 </div>
               )
             })
@@ -723,141 +950,468 @@ export function VentasPage() {
           columns={[
             t('ventas.columns.nota'),
             t('ventas.columns.cliente'),
-            t('ventas.columns.producto'),
             t('ventas.columns.vendedor'),
             t('ventas.columns.monto'),
             t('ventas.columns.tipo'),
+            t('ventas.columns.estado'),
             t('ventas.columns.fecha'),
           ]}
           rows={rows}
           emptyLabel={emptyLabel}
-          onRowClick={setSelectedRow}
-          sortableColumns={[4, 6]}
+          onRowClick={handleRowClick}
+          sortableColumns={[5, 7]}
           sortColIndex={sortCol ?? undefined}
           sortDir={sortDir}
           onSort={handleSort}
         />
       )}
 
-      {/* DETAIL PANEL */}
       <DetailPanel
-        open={Boolean(selectedRow)}
+        open={Boolean(selectedVenta)}
         title={t('ventas.detailsTitle')}
-        items={selectedRow?.detail ?? []}
-        onClose={() => setSelectedRow(null)}
+        items={selectedVenta ? [
+          { label: t('ventas.fields.numeroNotaPedido'), value: selectedVenta.numero_nota_pedido ?? '-' },
+          { label: t('ventas.fields.clienteId'), value: selectedVenta.cliente_id ? clienteMap.get(selectedVenta.cliente_id) ?? '-' : '-' },
+          { label: t('ventas.fields.vendedorId'), value: selectedVenta.vendedor_id ? usersById[selectedVenta.vendedor_id] ?? '-' : '-' },
+          { label: t('ventas.fields.tipoMovimiento'), value: selectedVenta.tipo_movimiento ? t(`ventas.tipo.${selectedVenta.tipo_movimiento}`) : '-' },
+          { label: t('ventas.fields.estado'), value: selectedVenta.estado ? t(`ventas.estado.${selectedVenta.estado}`) : '-' },
+          { label: t('ventas.fields.total'), value: numberFormat.format(selectedVenta.total ?? selectedVenta.monto ?? 0) },
+          { label: t('ventas.fields.fechaVenta'), value: selectedVenta.fecha_venta ?? '-' },
+        ] : []}
+        onClose={() => setSelectedVenta(null)}
       />
 
-      {/* MODAL NUEVA VENTA */}
       <Modal
         open={formOpen}
-        title={t('ventas.form.title')}
+        title={`${t('ventas.form.title')} - Paso ${formStep} de 3`}
         onClose={() => setFormOpen(false)}
+        size="lg"
         actions={
           <>
             <Button variant="ghost" type="button" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="submit" form="venta-form" disabled={submitting}>
-              {submitting ? t('common.saving') : t('common.save')}
-            </Button>
+            {formStep > 1 && <Button variant="secondary" type="button" onClick={prevStep}>Atrás</Button>}
+            {formStep < 3 && <Button type="button" onClick={nextStep}>Siguiente</Button>}
+            {formStep === 3 && (<Button type="submit" form="venta-form" disabled={submitting}>{submitting ? t('common.saving') : t('common.save')}</Button>)}
           </>
         }
       >
-        <form id="venta-form" className="form-grid" onSubmit={handleSubmit}>
-          <label className="form-field">
-            <span>{t('ventas.fields.numeroNotaPedido')}</span>
-            <input value={formValues.numero_nota_pedido} onChange={handleChange('numero_nota_pedido')} />
-          </label>
-          <label className="form-field">
-            <span>{t('ventas.fields.ownerType')}</span>
-            <select value={ventaOwnerType} onChange={handleOwnerTypeChange}>
-              <option value="cliente">{t('ventas.ownerTypes.cliente')}</option>
-              <option value="prospecto">{t('ventas.ownerTypes.prospecto')}</option>
-            </select>
-          </label>
-          {ventaOwnerType === 'cliente' ? (
-            <label className="form-field">
-              <span>{t('ventas.fields.clienteId')}</span>
-              <select value={formValues.cliente_id} onChange={handleChange('cliente_id')}>
-                <option value="">{t('common.select')}</option>
-                {loadingOptions && <option value="">{t('common.loading')}</option>}
-                {clientes.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>
-                    {[cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.id}
-                  </option>
-                ))}
-              </select>
-              {clientes.length === 0 && (
-                <button
-                  type="button"
-                  className="inline-link"
-                  onClick={() => {
-                    setClienteFormValues(initialClienteForm)
-                    setClienteFormError(null)
-                    setClienteFormOpen(true)
-                  }}
-                >
-                  + {t('common.createCliente')}
-                </button>
-              )}
-            </label>
-          ) : (
-            <>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+          {[1, 2, 3].map((step) => (
+            <div
+              key={step}
+              style={{
+                flex: 1,
+                textAlign: 'center',
+                padding: '0.5rem',
+                borderRadius: '0.375rem',
+                background: formStep === step ? '#3b82f6' : formStep > step ? '#10b981' : 'transparent',
+                color: formStep >= step ? 'white' : 'var(--color-text-muted)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+              }}
+            >
+              {step === 1 ? 'Cliente' : step === 2 ? 'Artículos' : 'Financiero'}
+            </div>
+          ))}
+        </div>
+
+        <form id="venta-form" onSubmit={handleSubmit}>
+          {formStep === 1 && (
+            <div className="form-grid">
               <label className="form-field">
-                <span>{t('ventas.fields.prospectoId')}</span>
-                <select value={prospectoId} onChange={(e) => setProspectoId(e.target.value)}>
-                  <option value="">{t('common.select')}</option>
-                  {loadingOptions && <option value="">{t('common.loading')}</option>}
-                  {leads.map((lead) => (
-                    <option key={lead.id} value={lead.id}>
-                      {[lead.nombre, lead.apellido].filter(Boolean).join(' ') || lead.id}
-                    </option>
-                  ))}
+                <span>{t('ventas.fields.numeroNotaPedido')}</span>
+                <input value={formValues.numero_nota_pedido} onChange={handleChange('numero_nota_pedido')} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.ownerType')}</span>
+                <select value={ventaOwnerType} onChange={handleOwnerTypeChange}>
+                  <option value="cliente">{t('ventas.ownerTypes.cliente')}</option>
+                  <option value="prospecto">{t('ventas.ownerTypes.prospecto')}</option>
                 </select>
               </label>
+              {ventaOwnerType === 'cliente' ? (
+                <label className="form-field">
+                  <span>{t('ventas.fields.clienteId')}</span>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      value={clienteSearch}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setClienteSearch(val)
+                        setClienteDropdownOpen(true)
+                        if (!val) setFormValues((prev) => ({ ...prev, cliente_id: '' }))
+                      }}
+                      onFocus={() => setClienteDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setClienteDropdownOpen(false), 150)}
+                      placeholder={loadingOptions ? t('common.loading') : 'Buscar cliente...'}
+                      style={{ width: '100%', padding: '0.375rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)', boxSizing: 'border-box' }}
+                    />
+                    {clienteDropdownOpen && (() => {
+                      const q = clienteSearch.toLowerCase().trim()
+                      const filtered = q.length > 0
+                        ? clientes.filter((c) => [c.nombre, c.apellido].filter(Boolean).join(' ').toLowerCase().includes(q))
+                        : clientes.slice(0, 50)
+                      return filtered.length > 0 ? (
+                        <ul style={{ position: 'absolute', zIndex: 200, top: '100%', left: 0, right: 0, maxHeight: '200px', overflowY: 'auto', background: 'var(--color-surface, #fff)', border: '1px solid var(--color-border)', borderRadius: '0.25rem', margin: 0, padding: 0, listStyle: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.15)' }}>
+                          {filtered.map((c) => {
+                            const label = [c.nombre, c.apellido].filter(Boolean).join(' ') || c.id
+                            return (
+                              <li
+                                key={c.id}
+                                onMouseDown={() => {
+                                  setFormValues((prev) => ({ ...prev, cliente_id: c.id }))
+                                  setClienteSearch(label)
+                                  setClienteDropdownOpen(false)
+                                }}
+                                style={{ padding: '0.375rem 0.625rem', cursor: 'pointer', fontSize: '0.85rem', borderBottom: '1px solid var(--color-border, #e5e7eb)' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-primary-light, #eff6ff)' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '' }}
+                              >
+                                {label}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      ) : null
+                    })()}
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-link"
+                    onClick={() => {
+                      setClienteFormValues(initialClienteForm)
+                      setClienteFormError(null)
+                      setClienteFormOpen(true)
+                    }}
+                  >
+                    + {t('common.createCliente')}
+                  </button>
+                </label>
+              ) : (
+                <>
+                  <label className="form-field">
+                    <span>{t('ventas.fields.prospectoId')}</span>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        value={leadSearch}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setLeadSearch(val)
+                          setLeadDropdownOpen(true)
+                          if (!val) setProspectoId('')
+                        }}
+                        onFocus={() => setLeadDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setLeadDropdownOpen(false), 150)}
+                        placeholder={loadingOptions ? t('common.loading') : 'Buscar prospecto...'}
+                        style={{ width: '100%', padding: '0.375rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)', boxSizing: 'border-box' }}
+                      />
+                      {leadDropdownOpen && (() => {
+                        const q = leadSearch.toLowerCase().trim()
+                        const filtered = q.length > 0
+                          ? leads.filter((l) => [l.nombre, l.apellido].filter(Boolean).join(' ').toLowerCase().includes(q))
+                          : leads.slice(0, 50)
+                        return filtered.length > 0 ? (
+                          <ul style={{ position: 'absolute', zIndex: 200, top: '100%', left: 0, right: 0, maxHeight: '200px', overflowY: 'auto', background: 'var(--color-surface, #fff)', border: '1px solid var(--color-border)', borderRadius: '0.25rem', margin: 0, padding: 0, listStyle: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.15)' }}>
+                            {filtered.map((l) => {
+                              const label = [l.nombre, l.apellido].filter(Boolean).join(' ') || l.id
+                              return (
+                                <li
+                                  key={l.id}
+                                  onMouseDown={() => {
+                                    setProspectoId(l.id)
+                                    setLeadSearch(label)
+                                    setLeadDropdownOpen(false)
+                                  }}
+                                  style={{ padding: '0.375rem 0.625rem', cursor: 'pointer', fontSize: '0.85rem', borderBottom: '1px solid var(--color-border, #e5e7eb)' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-primary-light, #eff6ff)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = '' }}
+                                >
+                                  {label}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        ) : null
+                      })()}
+                    </div>
+                  </label>
+                  <label className="form-field">
+                    <span>{t('ventas.fields.numeroCuentaFinanciera')}</span>
+                    <input value={prospectoCuenta} onChange={(e) => setProspectoCuenta(e.target.value)} />
+                  </label>
+                </>
+              )}
               <label className="form-field">
-                <span>{t('ventas.fields.numeroCuentaFinanciera')}</span>
-                <input value={prospectoCuenta} onChange={(e) => setProspectoCuenta(e.target.value)} />
+                <span>{t('ventas.fields.vendedorId')}</span>
+                <input value={vendedorName} readOnly />
               </label>
-            </>
+              <label className="form-field">
+                <span>{t('ventas.fields.fechaVenta')}</span>
+                <input type="date" value={formValues.fecha_venta} onChange={handleChange('fecha_venta')} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.tipoMovimiento')}</span>
+                <select value={formValues.tipo_movimiento} onChange={handleChange('tipo_movimiento')}>
+                  <option value="venta_inicial">{t('ventas.tipo.venta_inicial')}</option>
+                  <option value="agregado">{t('ventas.tipo.agregado')}</option>
+                </select>
+              </label>
+            </div>
           )}
-          <label className="form-field">
-            <span>{t('ventas.fields.vendedorId')}</span>
-            <input value={vendedorName} readOnly />
-          </label>
-          <label className="form-field">
-            <span>{t('ventas.fields.productoId')}</span>
-            <select value={formValues.producto_id} onChange={handleChange('producto_id')}>
-              <option value="">{t('common.select')}</option>
-              {loadingOptions && <option value="">{t('common.loading')}</option>}
-              {productos.map((producto) => (
-                <option key={producto.id} value={producto.id}>{producto.nombre ?? producto.id}</option>
-              ))}
-            </select>
-            {productos.length === 0 && (
-              <button type="button" className="inline-link" onClick={() => { setProductoFormValues(initialProductoForm); setProductoFormError(null); setProductoFormOpen(true) }}>
-                + {t('common.createProducto')}
-              </button>
-            )}
-          </label>
-          <label className="form-field">
-            <span>{t('ventas.fields.tipoMovimiento')}</span>
-            <select value={formValues.tipo_movimiento} onChange={handleChange('tipo_movimiento')}>
-              <option value="venta_inicial">{t('ventas.tipo.venta_inicial')}</option>
-              <option value="agregado">{t('ventas.tipo.agregado')}</option>
-            </select>
-          </label>
-          <label className="form-field">
-            <span>{t('ventas.fields.monto')}</span>
-            <input type="number" value={formValues.monto} onChange={handleChange('monto')} />
-          </label>
-          <label className="form-field">
-            <span>{t('ventas.fields.fechaVenta')}</span>
-            <input type="date" value={formValues.fecha_venta} onChange={handleChange('fecha_venta')} />
-          </label>
-          {formError && <div className="form-error">{formError}</div>}
+
+          {formStep === 2 && (
+            <div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <th style={{ textAlign: 'left', padding: '0.5rem', width: '40%' }}>Producto</th>
+                    <th style={{ textAlign: 'left', padding: '0.5rem', width: '15%' }}>Código</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem', width: '10%' }}>Cant</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem', width: '15%' }}>Precio</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem', width: '15%' }}>Subtotal</th>
+                    <th style={{ width: '5%' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formItems.map((item) => (
+                    <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border, #e5e7eb)' }}>
+                      <td style={{ padding: '0.5rem' }}>
+                        <div style={{ position: 'relative', width: '100%' }}>
+                          <input
+                            value={productoSearch[item.id] ?? (item.producto_id ? (productos.find((p) => p.id === item.producto_id)?.nombre ?? '') : '')}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setProductoSearch((prev) => ({ ...prev, [item.id]: val }))
+                              setProductoDropdownOpen((prev) => ({ ...prev, [item.id]: true }))
+                              if (!val) {
+                                setFormItems((prev) => prev.map((fi) =>
+                                  fi.id === item.id ? { ...fi, producto_id: '', codigo: '', descripcion: '', precio_unitario: 0, subtotal: 0 } : fi
+                                ))
+                              }
+                            }}
+                            onFocus={() => setProductoDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
+                            onBlur={() => setTimeout(() => setProductoDropdownOpen((prev) => ({ ...prev, [item.id]: false })), 150)}
+                            placeholder="Buscar producto..."
+                            style={{ width: '100%', padding: '0.375rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)', boxSizing: 'border-box' }}
+                          />
+                          {productoDropdownOpen[item.id] && (() => {
+                            const q = (productoSearch[item.id] ?? '').toLowerCase().trim()
+                            const filtered = q.length > 0
+                              ? productos.filter((p) => (p.nombre ?? '').toLowerCase().includes(q) || (p.codigo ?? '').toLowerCase().includes(q))
+                              : productos.slice(0, 50)
+                            return filtered.length > 0 ? (
+                              <ul style={{ position: 'absolute', zIndex: 200, top: '100%', left: 0, right: 0, maxHeight: '200px', overflowY: 'auto', background: 'var(--color-surface, #fff)', border: '1px solid var(--color-border)', borderRadius: '0.25rem', margin: 0, padding: 0, listStyle: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.15)' }}>
+                                {filtered.map((p) => (
+                                  <li
+                                    key={p.id}
+                                    onMouseDown={() => selectProducto(item.id, p.id)}
+                                    style={{ padding: '0.375rem 0.625rem', cursor: 'pointer', fontSize: '0.85rem', borderBottom: '1px solid var(--color-border, #e5e7eb)' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-primary-light, #eff6ff)' }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = '' }}
+                                  >
+                                    <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>{p.codigo}</span>
+                                    <span>{p.nombre}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null
+                          })()}
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-link"
+                          style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}
+                          onClick={() => { setProductoFormValues(initialProductoForm); setProductoFormError(null); setProductoFormOpen(true) }}
+                        >
+                          + {t('common.createProducto')}
+                        </button>
+                      </td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <input value={item.codigo} onChange={handleItemChange(item.id, 'codigo')} style={{ width: '100%', padding: '0.375rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)' }} />
+                      </td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <input type="number" min="1" value={item.cantidad} onChange={handleItemChange(item.id, 'cantidad')} style={{ width: '100%', padding: '0.375rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)', textAlign: 'right' }} />
+                      </td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <input type="number" min="0" step="0.01" value={item.precio_unitario} onChange={handleItemChange(item.id, 'precio_unitario')} style={{ width: '100%', padding: '0.375rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)', textAlign: 'right' }} />
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600 }}>
+                        {numberFormat.format(item.subtotal)}
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <button type="button" onClick={() => removeItem(item.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.25rem' }} disabled={formItems.length === 1}>×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Button type="button" variant="ghost" onClick={addItem} style={{ marginTop: '0.75rem' }}>+ Agregar línea</Button>
+              <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '0.375rem', textAlign: 'right' }}>
+                <span style={{ fontWeight: 600 }}>Subtotal: {numberFormat.format(calcularTotales.subtotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {formStep === 3 && (
+            <div className="form-grid">
+              <label className="form-field">
+                <span>{t('ventas.fields.subtotal')}</span>
+                <input value={numberFormat.format(calcularTotales.subtotal)} readOnly style={{ background: 'var(--color-surface)' }} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.impuesto')}</span>
+                <input type="number" min="0" step="0.01" value={formValues.impuesto} onChange={handleChange('impuesto')} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.cargoEnvio')}</span>
+                <input type="number" min="0" step="0.01" value={formValues.cargo_envio} onChange={handleChange('cargo_envio')} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.descuento')}</span>
+                <input type="number" min="0" step="0.01" value={formValues.descuento} onChange={handleChange('descuento')} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.total')}</span>
+                <input value={numberFormat.format(calcularTotales.total)} readOnly style={{ background: 'var(--color-surface)', fontWeight: 700, color: '#10b981' }} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.pagoInicial')}</span>
+                <input type="number" min="0" step="0.01" value={formValues.pago_inicial} onChange={handleChange('pago_inicial')} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.saldoPendiente')}</span>
+                <input value={numberFormat.format(calcularTotales.saldo_pendiente)} readOnly style={{ background: 'var(--color-surface)', fontWeight: 700, color: calcularTotales.saldo_pendiente > 0 ? '#f59e0b' : '#10b981' }} />
+              </label>
+              <label className="form-field">
+                <span>{t('ventas.fields.estado')}</span>
+                <select value={formValues.estado} onChange={handleChange('estado')}>
+                  <option value="borrador">{t('ventas.estado.borrador')}</option>
+                  <option value="confirmada">{t('ventas.estado.confirmada')}</option>
+                  <option value="procesando">{t('ventas.estado.procesando')}</option>
+                  <option value="entregada">{t('ventas.estado.entregada')}</option>
+                  <option value="cancelada">{t('ventas.estado.cancelada')}</option>
+                </select>
+              </label>
+              <label className="form-field" style={{ gridColumn: '1 / -1' }}>
+                <span>Notas</span>
+                <textarea value={formValues.notas} onChange={handleChange('notas')} rows={3} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--color-border)', fontSize: '0.875rem', background: 'var(--color-input)', color: 'var(--color-text)' }} />
+              </label>
+              {formError && <div className="form-error" style={{ gridColumn: '1 / -1' }}>{formError}</div>}
+            </div>
+          )}
         </form>
       </Modal>
 
-      {/* MODAL CREAR CLIENTE */}
+      <Modal
+        open={Boolean(selectedVenta)}
+        title={selectedVenta ? `Venta ${selectedVenta.numero_nota_pedido || selectedVenta.id.slice(0, 8)}` : ''}
+        onClose={() => setSelectedVenta(null)}
+        size="lg"
+      >
+        {selectedVenta && (
+          <>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+              {(['resumen', 'articulos', 'transacciones'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setDetailTab(tab)}
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem',
+                    borderRadius: '0.375rem',
+                    border: 'none',
+                    background: detailTab === tab ? '#3b82f6' : 'transparent',
+                    color: detailTab === tab ? 'white' : 'var(--color-text)',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab === 'resumen' ? 'Resumen' : tab === 'articulos' ? 'Artículos' : 'Transacciones'}
+                </button>
+              ))}
+            </div>
+
+            {detailTab === 'resumen' && (
+              <div className="form-grid">
+                <div className="form-field"><span>Cliente</span><strong>{selectedVenta.cliente_id ? clienteMap.get(selectedVenta.cliente_id) ?? '-' : '-'}</strong></div>
+                <div className="form-field"><span>Vendedor</span><strong>{selectedVenta.vendedor_id ? usersById[selectedVenta.vendedor_id] ?? '-' : '-'}</strong></div>
+                <div className="form-field"><span>Tipo</span><strong>{selectedVenta.tipo_movimiento ? t(`ventas.tipo.${selectedVenta.tipo_movimiento}`) : '-'}</strong></div>
+                <div className="form-field"><span>Estado</span><span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...estadoBadgeStyle(selectedVenta.estado) }}>{selectedVenta.estado ? t(`ventas.estado.${selectedVenta.estado}`) : '-'}</span></div>
+                <div className="form-field"><span>Fecha</span><strong>{selectedVenta.fecha_venta ?? '-'}</strong></div>
+                <div className="form-field"><span>Subtotal</span><strong>{numberFormat.format(selectedVenta.subtotal ?? 0)}</strong></div>
+                <div className="form-field"><span>Impuesto</span><strong>{numberFormat.format(selectedVenta.impuesto ?? 0)}</strong></div>
+                <div className="form-field"><span>Envío</span><strong>{numberFormat.format(selectedVenta.cargo_envio ?? 0)}</strong></div>
+                <div className="form-field"><span>Descuento</span><strong>{numberFormat.format(selectedVenta.descuento ?? 0)}</strong></div>
+                <div className="form-field"><span>Total</span><strong style={{ color: '#10b981', fontSize: '1.1rem' }}>{numberFormat.format(selectedVenta.total ?? selectedVenta.monto ?? 0)}</strong></div>
+                <div className="form-field"><span>Pago Inicial</span><strong>{numberFormat.format(selectedVenta.pago_inicial ?? 0)}</strong></div>
+                <div className="form-field"><span>Saldo Pendiente</span><strong style={{ color: (selectedVenta.saldo_pendiente ?? 0) > 0 ? '#f59e0b' : '#10b981' }}>{numberFormat.format(selectedVenta.saldo_pendiente ?? 0)}</strong></div>
+              </div>
+            )}
+
+            {detailTab === 'articulos' && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>#</th>
+                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>Código</th>
+                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>Descripción</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem' }}>Cant</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem' }}>Precio</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem' }}>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedVentaItems.length === 0 ? (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No hay artículos</td></tr>
+                  ) : (
+                    selectedVentaItems.map((item) => (
+                      <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border, #e5e7eb)' }}>
+                        <td style={{ padding: '0.5rem' }}>{item.linea}</td>
+                        <td style={{ padding: '0.5rem' }}>{item.codigo_articulo ?? '-'}</td>
+                        <td style={{ padding: '0.5rem' }}>{item.descripcion ?? '-'}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>{item.cantidad}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>{numberFormat.format(item.precio_unitario)}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600 }}>{numberFormat.format(item.subtotal)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {detailTab === 'transacciones' && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>Fecha</th>
+                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>Descripción</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem' }}>Cantidad</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem' }}>Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedVentaTransacciones.length === 0 ? (
+                    <tr><td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No hay transacciones</td></tr>
+                  ) : (
+                    selectedVentaTransacciones.map((tx) => (
+                      <tr key={tx.id} style={{ borderBottom: '1px solid var(--color-border, #e5e7eb)' }}>
+                        <td style={{ padding: '0.5rem' }}>{tx.fecha ? new Date(tx.fecha).toLocaleDateString('es-MX') : '-'}</td>
+                        <td style={{ padding: '0.5rem' }}>{tx.descripcion ?? '-'}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right', color: tx.cantidad < 0 ? '#10b981' : '#374151', fontWeight: 500 }}>
+                          {tx.cantidad < 0 ? `(${numberFormat.format(Math.abs(tx.cantidad))})` : numberFormat.format(tx.cantidad)}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600 }}>{tx.saldo != null ? numberFormat.format(tx.saldo) : '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </Modal>
+
       <Modal
         open={clienteFormOpen}
         title={t('clientes.form.title')}
@@ -900,7 +1454,6 @@ export function VentasPage() {
         </form>
       </Modal>
 
-      {/* MODAL CREAR PRODUCTO */}
       <Modal
         open={productoFormOpen}
         title={t('productos.form.title')}
