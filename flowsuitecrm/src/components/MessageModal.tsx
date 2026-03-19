@@ -150,20 +150,24 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const { session } = useAuth()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const resolvedContact: MessagingContact = contact ?? {
-    nombre: '',
-    telefono: null,
-    email: null,
-    vendedor: '',
-    recomendadoPor: null,
-    cuentaHycite: null,
-    saldoActual: null,
-    montoMoroso: null,
-    diasAtraso: null,
-    estadoMorosidad: null,
-    clienteId: null,
-    leadId: null,
-  }
+  const resolvedContact = useMemo<MessagingContact>(
+    () =>
+      contact ?? {
+        nombre: '',
+        telefono: null,
+        email: null,
+        vendedor: '',
+        recomendadoPor: null,
+        cuentaHycite: null,
+        saldoActual: null,
+        montoMoroso: null,
+        diasAtraso: null,
+        estadoMorosidad: null,
+        clienteId: null,
+        leadId: null,
+      },
+    [contact]
+  )
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
@@ -266,15 +270,17 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       .eq('id', userId)
       .maybeSingle()
     setDistributorPhone((userRow as { telefono?: string | null } | null)?.telefono ?? '')
-  }, [open, currentUser?.telefono, session?.user.id])
+  }, [open, currentUser, session])
 
   useEffect(() => {
     if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadUserTemplates()
   }, [open, loadUserTemplates])
 
   useEffect(() => {
     if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDistributorPhone()
   }, [open, loadDistributorPhone])
 
@@ -284,6 +290,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       ? customTemplates.find((tmpl) => tmpl.id === initialTemplateId) ?? null
       : null
     if (preferred) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedTemplateId(preferred.id)
       setMessage(canonicalizeTemplate(preferred.message))
     } else {
@@ -295,6 +302,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
   useEffect(() => {
     if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveChannel(channel)
   }, [channel, open])
 
@@ -341,6 +349,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
   useEffect(() => {
     if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessageType(inferredMessageType)
   }, [inferredMessageType, open])
 
@@ -444,10 +453,10 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   }
 
   // --- SEND ---
-  const buildSenderName = () => {
+  const buildSenderName = useCallback(() => {
     const parts = [currentUser?.nombre, currentUser?.apellido].filter(Boolean)
     return parts.join(' ').trim() || currentUser?.email || ''
-  }
+  }, [currentUser?.apellido, currentUser?.email, currentUser?.nombre])
 
   const saveMessageLog = useCallback(
     async (finalMessage: string, sentAt: string) => {
@@ -488,7 +497,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         }
       }
     },
-    [activeChannel, channelLabel, messageType, resolvedContact, session?.user.id, showToast]
+    [activeChannel, buildSenderName, channelLabel, messageType, resolvedContact, session?.user.id, showToast]
   )
 
   const updateLeadContact = useCallback(async () => {

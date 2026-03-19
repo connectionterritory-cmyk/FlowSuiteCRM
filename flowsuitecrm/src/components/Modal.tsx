@@ -7,6 +7,7 @@ type ModalProps = {
   actions?: React.ReactNode
   className?: string
   bodyClassName?: string
+  size?: 'sm' | 'md' | 'lg'
 }
 
 export function Modal({
@@ -18,13 +19,14 @@ export function Modal({
   actions,
   className,
   bodyClassName,
+  size = 'md',
 }: ModalProps) {
   if (!open) return null
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
-        className={`modal ${className ?? ''}`.trim()}
+        className={`modal modal-${size} ${className ?? ''}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
