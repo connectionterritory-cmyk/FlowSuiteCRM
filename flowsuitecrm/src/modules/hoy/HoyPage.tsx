@@ -184,10 +184,10 @@ export function HoyPage() {
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { currentUser, usersById } = useUsers()
   const configured = isSupabaseConfigured
-  const isMasterAdmin = session?.user?.email === 'royalflorida@gmail.com'
-  const isAdmin = currentUser?.rol === 'admin' || isMasterAdmin
-  const isDistribuidor = currentUser?.rol === 'distribuidor'
-  const isSupervisorTelemercadeo = currentUser?.rol === 'supervisor_telemercadeo'
+  const isMasterAdmin = useMemo(() => session?.user?.email === 'royalflorida@gmail.com', [session?.user?.email])
+  const isAdmin = useMemo(() => currentUser?.rol === 'admin' || isMasterAdmin, [currentUser?.rol, isMasterAdmin])
+  const isDistribuidor = useMemo(() => currentUser?.rol === 'distribuidor', [currentUser?.rol])
+  const isSupervisorTelemercadeo = useMemo(() => currentUser?.rol === 'supervisor_telemercadeo', [currentUser?.rol])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -527,11 +527,6 @@ export function HoyPage() {
     todayPlus7.setDate(todayPlus7.getDate() + 7)
     const todayPlus7Iso = todayPlus7.toISOString().split('T')[0]
 
-    // Birthday date pattern: match %-MM-DD across any year
-    const birthMonth = String(today.getMonth() + 1).padStart(2, '0')
-    const birthDay = String(today.getDate()).padStart(2, '0')
-    const birthPattern = `%-${birthMonth}-${birthDay}`
-
     // 90 days ago for reactivation
     const ninetyDaysAgo = new Date(today)
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
@@ -608,7 +603,9 @@ export function HoyPage() {
         .from('clientes')
         .select('id, nombre, apellido, telefono, fecha_nacimiento, vendedor_id')
         .eq('vendedor_id', vendedorId)
-        .like('fecha_nacimiento', birthPattern),
+        .not('fecha_nacimiento', 'is', null)
+        .filter('extract(month from fecha_nacimiento)', 'eq', today.getMonth() + 1)
+        .filter('extract(day from fecha_nacimiento)', 'eq', today.getDate()),
       supabase
         .from('clientes')
         .select('id, nombre, apellido, telefono, fecha_ultimo_pedido, vendedor_id')
