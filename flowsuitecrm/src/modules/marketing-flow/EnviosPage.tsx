@@ -12,6 +12,7 @@ import { useToast } from '../../components/Toast'
 import { CitaModal, type CitaForm } from '../citas/CitaModal'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/AuthProvider'
+import { useViewMode } from '../../data/ViewModeProvider'
 
 type CampaignRecord = {
   id: string
@@ -19,6 +20,7 @@ type CampaignRecord = {
   estado: string | null
   segmento_key: string | null
   segment_params: Record<string, unknown> | null
+  owner_id: string | null
 }
 
 type MkMessageRow = {
@@ -38,6 +40,7 @@ export function EnviosPage() {
   const { session } = useAuth()
   const [searchParams] = useSearchParams()
   const { showToast } = useToast()
+  const { hasDistribuidorScope, distributionUserIds } = useViewMode()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -169,7 +172,7 @@ export function EnviosPage() {
     if (!configured || !session?.user.id) return
     let query = supabase
       .from('mk_campaigns')
-      .select('id, nombre, estado, segmento_key, segment_params')
+      .select('id, nombre, estado, segmento_key, segment_params, owner_id')
       .order('created_at', { ascending: false })
       .limit(200)
     if (!isMarketingManager) {
@@ -202,7 +205,14 @@ export function EnviosPage() {
     }
   }, [searchParams])
 
-  const canSend = Boolean(campaignId) && selectedCampaign?.estado === 'activa'
+  const isOwner = Boolean(selectedCampaign?.owner_id && selectedCampaign?.owner_id === session?.user.id)
+  const canWriteCampaign =
+    isOwner
+    || (hasDistribuidorScope
+      && Boolean(selectedCampaign?.owner_id)
+      && distributionUserIds.includes(selectedCampaign?.owner_id ?? ''))
+  const canSend = Boolean(campaignId) && selectedCampaign?.estado === 'activa' && canWriteCampaign
+  const permissionTooltip = !canWriteCampaign ? 'Solo el responsable de la campaña puede ejecutar envíos' : undefined
 
   const handleOpenMessage = (message: MkMessageRow) => {
     if (!canSend) return
@@ -497,15 +507,30 @@ export function EnviosPage() {
           <Badge key={`${message.id}-status`} label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />,
           ...(isBirthdayCampaign ? [birthDay ? String(birthDay) : '—'] : []),
           <div key={`${message.id}-actions`} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button variant={sendVariant} onClick={() => handleOpenMessage(message)} disabled={!canSend}>
+            <Button
+              variant={sendVariant}
+              onClick={() => handleOpenMessage(message)}
+              disabled={!canSend}
+              title={permissionTooltip}
+            >
               {sendLabel}
             </Button>
             {!alreadySent && (
-              <Button variant="ghost" onClick={() => handleMarkSent(message)} disabled={!canSend}>
+              <Button
+                variant="ghost"
+                onClick={() => handleMarkSent(message)}
+                disabled={!canSend}
+                title={permissionTooltip}
+              >
                 Marcar enviado
               </Button>
             )}
-            <Button variant="ghost" onClick={() => openResponseModal(message)}>
+            <Button
+              variant="ghost"
+              onClick={() => openResponseModal(message)}
+              disabled={!canSend}
+              title={permissionTooltip}
+            >
               Registrar respuesta
             </Button>
             {responded && <Badge label="Respondido" tone="gold" />}
