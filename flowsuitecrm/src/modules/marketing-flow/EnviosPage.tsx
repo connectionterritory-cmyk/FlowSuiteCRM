@@ -226,7 +226,7 @@ export function EnviosPage() {
       .from('mk_messages')
       .update({
         sent_at: activeMessage.sent_at ?? nowIso,
-        status: activeMessage.status ?? 'enviado',
+        status: 'enviado',
         abierto_at: nowIso,
       })
       .eq('id', activeMessage.id)
