@@ -251,14 +251,18 @@ export function EnviosPage() {
   const handleMarkSent = async (message: MkMessageRow) => {
     if (!configured || !canSend) return
     const nowIso = new Date().toISOString()
+    const sentAt = message.sent_at ?? nowIso
     const { error: updateError } = await supabase
       .from('mk_messages')
-      .update({ sent_at: message.sent_at ?? nowIso, status: 'enviado' })
+      .update({ sent_at: sentAt, status: 'enviado' })
       .eq('id', message.id)
     if (updateError) {
       showToast(updateError.message, 'error')
       return
     }
+    setMessages((prev) =>
+      prev.map((m) => (m.id === message.id ? { ...m, sent_at: sentAt, status: 'enviado' } : m))
+    )
     showToast('Envio registrado')
     void loadMessages()
   }
