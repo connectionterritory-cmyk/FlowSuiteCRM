@@ -243,7 +243,7 @@ export function EnviosPage() {
     const nowIso = new Date().toISOString()
     const { error: updateError } = await supabase
       .from('mk_messages')
-      .update({ sent_at: message.sent_at ?? nowIso, status: message.status ?? 'enviado' })
+      .update({ sent_at: message.sent_at ?? nowIso, status: 'enviado' })
       .eq('id', message.id)
     if (updateError) {
       showToast(updateError.message, 'error')
