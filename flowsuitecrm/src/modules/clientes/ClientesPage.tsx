@@ -14,6 +14,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useUsers } from '../../data/UsersProvider'
 import { useViewMode } from '../../data/ViewModeProvider'
 import { useMessaging } from '../../hooks/useMessaging'
+import { useModalHost } from '../../modals/ModalProvider'
 import {
   parseUsAddress,
   buildMapsNavUrl,
@@ -218,6 +219,7 @@ export function ClientesPage() {
   const [parsedAddr, setParsedAddr] = useState<ParsedAddress | null>(null)
   const [selectedRow, setSelectedRow] = useState<DataTableRow | null>(null)
   const { openWhatsapp, ModalRenderer } = useMessaging()
+  const { openGestionModal } = useModalHost()
   const configured = isSupabaseConfigured
 
   // --- FILTROS ---
@@ -1734,6 +1736,31 @@ export function ClientesPage() {
               >
                 <IconWhatsapp className="whatsapp-icon" />
               </button>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() =>
+                  openGestionModal({
+                    contacto: {
+                      tipo: 'cliente',
+                      id: selectedClienteDetail.id,
+                      nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'Cliente',
+                      telefono: selectedClienteDetail.telefono ?? selectedClienteDetail.telefono_casa ?? null,
+                      email: selectedClienteDetail.email ?? null,
+                      subtitle: selectedClienteDetail.vendedor_id
+                        ? usersById[selectedClienteDetail.vendedor_id] ?? 'Cliente'
+                        : 'Cliente',
+                    },
+                    moduloOrigen: 'clientes',
+                    origenId: selectedClienteDetail.id,
+                    onSubmit: async (draft) => {
+                      showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
+                    },
+                  })
+                }
+              >
+                + Gestión
+              </Button>
               {canManageClientes && (
                 <Button
                   variant="ghost"

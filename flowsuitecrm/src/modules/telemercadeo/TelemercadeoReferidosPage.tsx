@@ -5,6 +5,7 @@ import { resultadoColor, resultadoLabel, formatFechaCorta } from './Telemercadeo
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/Toast'
+import { useModalHost } from '../../modals/ModalProvider'
 
 type CiReferido = {
   id: string
@@ -40,6 +41,7 @@ export function TelemercadeoReferidosPage() {
   const configured = isSupabaseConfigured
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { showToast } = useToast()
+  const { openGestionModal } = useModalHost()
   const [referidos, setReferidos] = useState<CiReferido[]>([])
   const [loading, setLoading] = useState(false)
   const [filtro, setFiltro] = useState<'pendientes' | 'todos'>('pendientes')
@@ -242,6 +244,38 @@ export function TelemercadeoReferidosPage() {
                     }}
                   >
                     Registrar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openGestionModal({
+                        contacto: {
+                          tipo: 'lead',
+                          id: ref.id,
+                          nombre: ref.nombre ?? 'Referido sin nombre',
+                          telefono: ref.telefono ?? null,
+                          email: ref.email ?? null,
+                          subtitle: 'Referido de Conexiones Infinitas · piloto',
+                        },
+                        moduloOrigen: 'telemercadeo_referidos',
+                        origenId: ref.id,
+                        onSubmit: async (draft) => {
+                          showToast(`Gestión piloto preparada para ${ref.nombre ?? 'referido'}: ${draft.resumen || draft.tipo}`)
+                        },
+                      })
+                    }
+                    style={{
+                      padding: '0.45rem 0.75rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(168,85,247,0.35)',
+                      background: 'rgba(168,85,247,0.14)',
+                      color: '#c084fc',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                    }}
+                  >
+                    + Gestión
                   </button>
                 </div>
               </div>
