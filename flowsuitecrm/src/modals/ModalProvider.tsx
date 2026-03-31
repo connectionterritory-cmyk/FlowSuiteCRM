@@ -13,6 +13,7 @@ import {
   type MessageModalIntent,
   type ModalHostValue,
 } from './ModalHostContext'
+export { useModalHost, useOptionalModalHost } from './useModalHost'
 
 export function ModalProvider({ children }: { children: React.ReactNode }) {
   const { currentRole } = useUsers()

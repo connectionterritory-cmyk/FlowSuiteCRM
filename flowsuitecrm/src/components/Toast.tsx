@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { ToastContext, type ToastTone } from './ToastContext'
+export { useToast } from './useToast'
 
 type ToastItem = {
   id: string

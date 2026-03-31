@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase/client'
 import { AuthContext } from './AuthContext'
+export { useAuth } from './useAuth'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)

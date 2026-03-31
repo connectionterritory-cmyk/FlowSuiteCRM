@@ -3,6 +3,7 @@ import { useUsers } from './useUsers'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useAuth } from '../auth/useAuth'
 import { ViewModeContext, type ViewMode } from './ViewModeContext'
+export { useViewMode } from './useViewMode'
 
 const STORAGE_KEY = 'flowsuite.viewMode'
 

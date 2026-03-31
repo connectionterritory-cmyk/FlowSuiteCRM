@@ -2,6 +2,7 @@ import { startTransition, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { useAuth } from '../auth/useAuth'
 import { UsersContext, type UserRow } from './UsersContext'
+export { useUsers } from './useUsers'
 
 export function UsersProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth()
