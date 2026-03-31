@@ -95,7 +95,7 @@ export const fetchSegmentTargets = async (params: {
   cutoff.setDate(cutoff.getDate() - 30)
   const cutoffKey = cutoff.toISOString().split('T')[0]
 
-  let query: any = supabase
+  let query = supabase
     .from('clientes')
     .select('id, nombre, apellido, telefono, ciudad, fecha_nacimiento, ultimo_contacto_at, next_action_date, activo, vendedor_id, distribuidor_id')
     .not('telefono', 'is', null)
@@ -161,7 +161,7 @@ export const estimateSegmentTargets = async (params: {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
   const cutoffKey = cutoff.toISOString().split('T')[0]
-  let query: any = supabase
+  let query = supabase
     .from('clientes')
     .select('id, fecha_nacimiento, ultimo_contacto_at, next_action_date, activo, vendedor_id, distribuidor_id', { count: 'exact' })
     .not('telefono', 'is', null)
@@ -186,7 +186,7 @@ export const estimateSegmentTargets = async (params: {
 
   const MAX_SAMPLE = 2000
   if (segmentKey !== 'cumpleanos_clientes') {
-    const { count, error } = await query.select('id', { count: 'exact' }).limit(1)
+    const { count, error } = await query.limit(1)
     if (error) return { count: 0, isEstimate: false, error: error.message }
     return { count: count ?? 0, isEstimate: false }
   }

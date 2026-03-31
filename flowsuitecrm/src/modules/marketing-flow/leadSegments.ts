@@ -49,6 +49,15 @@ export type LeadSegmentParams = {
   vendedor_id?: string | null
 }
 
+type QueryWithEqOr<T> = {
+  eq: (column: string, value: unknown) => T
+  or: (filters: string) => T
+}
+
+type QueryWithLeadFilters<T> = QueryWithEqOr<T> & {
+  in: (column: string, values: string[]) => T
+}
+
 const normalizeFuenteValue = (value: string) => value.trim().toLowerCase()
 
 const fetchLeadFuenteValues = async (fuente: string) => {
@@ -66,7 +75,7 @@ const fetchLeadFuenteValues = async (fuente: string) => {
   return { values: Array.from(new Set(values)), error: null as string | null }
 }
 
-const applyLeadScope = (query: any, scope: LeadScope) => {
+const applyLeadScope = <T extends QueryWithEqOr<T>>(query: T, scope: LeadScope): T => {
   if (scope.role === 'telemercadeo') {
     return query.eq('estado_pipeline', 'nuevo')
   }
@@ -106,11 +115,11 @@ const filterNoContact = async (rows: LeadRow[]) => {
   })
 }
 
-const applyLeadParams = async (
-  query: any,
+const applyLeadParams = async <T extends QueryWithLeadFilters<T>>(
+  query: T,
   segmentParams?: LeadSegmentParams,
 ) => {
-  let nextQuery: any = query
+  let nextQuery = query
   if (segmentParams?.programa_id) {
     nextQuery = nextQuery.eq('programa_id', segmentParams.programa_id)
   }
@@ -132,7 +141,7 @@ const applyLeadParams = async (
 export const fetchLeadsForSegment = async (segment: SegmentKey, scope: LeadScope, segmentParams?: LeadSegmentParams) => {
   if (!isSupabaseConfigured) return [] as LeadRow[]
   const todayKey = new Date().toISOString().split('T')[0]
-  let query: any = supabase
+  let query = supabase
     .from('leads')
     .select(LEAD_SELECT)
     .is('deleted_at', null)
@@ -180,7 +189,7 @@ export const countLeadsForSegment = async (
   if (!isSupabaseConfigured) return { count: 0, isEstimate: false }
   const todayKey = new Date().toISOString().split('T')[0]
   if (segment !== 'sin_contacto') {
-    let countQuery: any = supabase
+    let countQuery = supabase
       .from('leads')
       .select('id', { count: 'exact' })
       .is('deleted_at', null)
@@ -212,7 +221,7 @@ export const countLeadsForSegment = async (
   }
 
   const MAX_SAMPLE = 2000
-  let sampleQuery: any = supabase
+  let sampleQuery = supabase
     .from('leads')
     .select('id, updated_at, created_at', { count: 'exact' })
     .is('deleted_at', null)

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { SectionHeader } from '../../components/SectionHeader'
 import { Button } from '../../components/Button'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth } from '../../auth/useAuth'
 
 type EstadoCuenta = 'actual' | 'cancelacion_total' | 'inactivo'
 
@@ -47,6 +47,8 @@ interface Importacion {
 
 type Step = 'idle' | 'preview' | 'importing' | 'done'
 type ReportType = 'customer_list' | 'birthday_report'
+type SheetCell = string | number | boolean | Date | null | undefined
+type SheetRow = SheetCell[]
 
 const MONTH_MAP: Record<string, string> = {
   'JANUARY': '01', 'FEBRUARY': '02', 'MARCH': '03', 'APRIL': '04',
@@ -390,8 +392,9 @@ export function ImportacionesPage() {
         if (!active) return
         setRole((data as { rol?: string } | null)?.rol ?? null)
       } finally {
-        if (!active) return
-        setRoleLoading(false)
+        if (active) {
+          setRoleLoading(false)
+        }
       }
     }
     cargarRol()
@@ -431,14 +434,16 @@ export function ImportacionesPage() {
         const ws = wb.Sheets[wb.SheetNames[0]]
 
         // Detección automática de tipo de reporte
-        const initialRaw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, range: 0, defval: '', raw: false }).slice(0, 10)
-        const isBirthdayReport = initialRaw.some(row => row.some(cell => String(cell).toUpperCase().includes('CUSTOMER BIRTHDAYS')))
+        const initialRaw = XLSX.utils.sheet_to_json<SheetRow>(ws, { header: 1, range: 0, defval: '', raw: false }).slice(0, 10)
+        const isBirthdayReport = initialRaw.some((row) =>
+          row.some((cell) => String(cell).toUpperCase().includes('CUSTOMER BIRTHDAYS')),
+        )
 
         const effectiveReportType = isBirthdayReport ? 'birthday_report' : 'customer_list'
         setReportType(effectiveReportType)
 
         // Búsqueda robusta de la fila de encabezados
-        const allRows = XLSX.utils.sheet_to_json<any[][]>(ws, { header: 1, defval: '', raw: false })
+        const allRows = XLSX.utils.sheet_to_json<SheetRow>(ws, { header: 1, defval: '', raw: false })
         let headerIndex = -1
 
         // Palabras clave que identifican la fila de encabezados
@@ -473,18 +478,18 @@ export function ImportacionesPage() {
           headerIndex = 7
         }
 
-        const raw: any[][] = headerIndex === -1 ? allRows : allRows.slice(headerIndex)
+        const raw: SheetRow[] = headerIndex === -1 ? allRows : allRows.slice(headerIndex)
 
         if (raw.length < 2) { setParseError('No se pudo detectar el formato de los datos.'); return }
 
         const seen = new Map<string, number>()
-        const headers = (raw[0] as any[]).map(h => {
-          const s = String(h || '').trim()
+        const headers = raw[0].map((headerCell) => {
+          const s = String(headerCell || '').trim()
           const c = seen.get(s) ?? 0; seen.set(s, c + 1)
           return c === 0 ? s : `${s}_${c}`
         })
-        const rows: Record<string, string>[] = raw.slice(1).map(row =>
-          Object.fromEntries(headers.map((h, i) => [h, String((row as any[])[i] ?? '').trim()]))
+        const rows: Record<string, string>[] = raw.slice(1).map((row) =>
+          Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? '').trim()]))
         )
         const validos = rows.map(parsearFila).filter((c): c is ClienteImport => c !== null)
         if (validos.length === 0) { setParseError('No se encontraron registros válidos.'); return }

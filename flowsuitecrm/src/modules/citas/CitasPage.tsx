@@ -5,12 +5,12 @@ import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 import { buildWhatsappUrl } from '../../lib/whatsappTemplates'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
 import { isContactKind } from '../../lib/contactRefs'
-import { useModalHost } from '../../modals/ModalProvider'
+import { useModalHost } from '../../modals/useModalHost'
 import type { CitaForm } from './CitaModal'
 
 type CitaRow = {
@@ -147,6 +147,7 @@ export function CitasPage() {
   const configured = isSupabaseConfigured
   const { distributionUserIds, hasDistribuidorScope } = useViewMode()
   const { openCitaModal } = useModalHost()
+  const sessionUserId = session?.user.id ?? null
   const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -156,17 +157,17 @@ export function CitasPage() {
   const [assignedOptions, setAssignedOptions] = useState<{ id: string; label: string }[]>([])
 
   const loadRole = useCallback(async () => {
-    if (!configured || !session?.user.id) {
+    if (!configured || !sessionUserId) {
       setRole(null)
       return
     }
     const { data } = await supabase
       .from('usuarios')
       .select('rol')
-      .eq('id', session.user.id)
+      .eq('id', sessionUserId)
       .maybeSingle()
     setRole((data as { rol?: string } | null)?.rol ?? null)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   const loadAgenda = useCallback(async () => {
     if (!configured) return
@@ -177,19 +178,19 @@ export function CitasPage() {
       .select('id, owner_id, start_at, tipo, nombre, telefono, direccion, apartamento, ciudad, estado_region, zip, estado, assigned_to, contacto_tipo, contacto_id, notas, resultado, resultado_notas')
 
     const isGlobalRole = role === 'admin' || role === 'distribuidor' || role === 'supervisor_telemercadeo'
-    if (!isGlobalRole && session?.user.id) {
+    if (!isGlobalRole && sessionUserId) {
       if (role === 'telemercadeo') {
         // telemercadeo: citas propias + citas de sus vendedores asignados
         const { data: assignments } = await supabase
           .from('tele_vendedor_assignments')
           .select('vendedor_id')
-          .eq('tele_id', session.user.id)
+          .eq('tele_id', sessionUserId)
         const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
-        const allIds = [session.user.id, ...vendedorIds]
+        const allIds = [sessionUserId, ...vendedorIds]
         const orClause = allIds.map(id => `owner_id.eq.${id},assigned_to.eq.${id}`).join(',')
         citasQuery = citasQuery.or(orClause)
       } else {
-        citasQuery = citasQuery.or(`owner_id.eq.${session.user.id},assigned_to.eq.${session.user.id}`)
+        citasQuery = citasQuery.or(`owner_id.eq.${sessionUserId},assigned_to.eq.${sessionUserId}`)
       }
     }
 
@@ -202,8 +203,8 @@ export function CitasPage() {
       .from('servicios')
       .select('id, fecha_servicio, hora_cita, tipo_servicio, observaciones, vendedor_id, cliente:clientes(nombre, apellido, telefono, direccion, ciudad, estado_region)')
 
-    if (!isGlobalRole && session?.user.id) {
-      serviciosQuery = serviciosQuery.eq('vendedor_id', session.user.id)
+    if (!isGlobalRole && sessionUserId) {
+      serviciosQuery = serviciosQuery.eq('vendedor_id', sessionUserId)
     }
 
     if (rangeValue) {
@@ -228,18 +229,25 @@ export function CitasPage() {
     setCitas((citasResult.data as CitaRow[] | null) ?? [])
     setServicios((serviciosResult.data as ServicioRow[] | null) ?? [])
     setLoading(false)
-  }, [configured, range, role, session?.user.id])
+  }, [configured, range, role, sessionUserId])
 
   useEffect(() => {
-    if (configured) loadRole()
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadRole()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadRole])
 
   useEffect(() => {
-    loadAgenda()
+    const handle = window.setTimeout(() => {
+      void loadAgenda()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [loadAgenda])
 
   useEffect(() => {
-    if (!configured || !session?.user.id || !role) return
+    if (!configured || !sessionUserId || !role) return
     const loadAssignedOptions = async () => {
       if (role === 'admin' || role === 'distribuidor') {
         let query = supabase
@@ -251,7 +259,7 @@ export function CitasPage() {
         }
         const { data, error } = await query
         if (error) {
-          setAssignedOptions([{ id: session.user.id, label: 'Yo' }])
+          setAssignedOptions([{ id: sessionUserId, label: 'Yo' }])
           return
         }
         const options = (data ?? []).map((row) => {
@@ -261,7 +269,7 @@ export function CitasPage() {
             label: name || row.email || row.id,
           }
         })
-        setAssignedOptions(options.length > 0 ? options : [{ id: session.user.id, label: 'Yo' }])
+        setAssignedOptions(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
         return
       }
       // telemercadeo: ve sus vendedores asignados + sí mismo
@@ -269,7 +277,7 @@ export function CitasPage() {
         const { data: assignments } = await supabase
           .from('tele_vendedor_assignments')
           .select('vendedor_id')
-          .eq('tele_id', session.user.id)
+          .eq('tele_id', sessionUserId)
         const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
         if (vendedorIds.length > 0) {
           const { data: vendedores } = await supabase
@@ -278,7 +286,7 @@ export function CitasPage() {
             .in('id', vendedorIds)
             .eq('activo', true)
           const options = [
-            { id: session.user.id, label: 'Yo' },
+            { id: sessionUserId, label: 'Yo' },
             ...(vendedores ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
               id: row.id,
               label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
@@ -299,29 +307,29 @@ export function CitasPage() {
           id: row.id,
           label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
         }))
-        setAssignedOptions(options.length > 0 ? options : [{ id: session.user.id, label: 'Yo' }])
+        setAssignedOptions(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
         return
       }
 
-      setAssignedOptions([{ id: session.user.id, label: 'Yo' }])
+      setAssignedOptions([{ id: sessionUserId, label: 'Yo' }])
     }
     void loadAssignedOptions()
-  }, [configured, distributionUserIds, hasDistribuidorScope, role, session?.user.id])
+  }, [configured, distributionUserIds, hasDistribuidorScope, role, sessionUserId])
 
   const buildInitialForm = useCallback((cita?: CitaRow, estado?: string): Partial<CitaForm> => {
     if (!cita) {
       const now = new Date()
       const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
       return {
-        owner_id: session?.user.id ?? '',
+        owner_id: sessionUserId ?? '',
         start_at: local.toISOString().slice(0, 16),
         tipo: 'servicio',
         estado: estado ?? 'programada',
-        assigned_to: session?.user.id ?? '',
+        assigned_to: sessionUserId ?? '',
       }
     }
     return {
-      owner_id: cita.owner_id ?? (session?.user.id ?? ''),
+      owner_id: cita.owner_id ?? (sessionUserId ?? ''),
       id: cita.id,
       start_at: cita.start_at ? toLocalInput(cita.start_at) : '',
       tipo: cita.tipo ?? 'servicio',
@@ -332,7 +340,7 @@ export function CitasPage() {
       ciudad: cita.ciudad ?? '',
       estado_region: cita.estado_region ?? '',
       zip: cita.zip ?? '',
-      assigned_to: cita.assigned_to ?? (session?.user.id ?? ''),
+      assigned_to: cita.assigned_to ?? (sessionUserId ?? ''),
       contacto_nombre: cita.nombre ?? '',
       contacto_telefono: cita.telefono ?? '',
       contacto_tipo: isContactKind(cita.contacto_tipo) ? cita.contacto_tipo : 'cliente',
@@ -340,7 +348,7 @@ export function CitasPage() {
       resultado: cita.resultado ?? '',
       resultado_notas: cita.resultado_notas ?? '',
     }
-  }, [session?.user.id])
+  }, [sessionUserId])
 
   const openNewModal = useCallback(() => {
     openCitaModal({

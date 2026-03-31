@@ -1,25 +1,15 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { useUsers } from './UsersProvider'
+import { startTransition, useEffect, useMemo, useState } from 'react'
+import { useUsers } from './useUsers'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
-import { useAuth } from '../auth/AuthProvider'
-
-type ViewMode = 'seller' | 'distributor'
-
-type ViewModeContextValue = {
-  viewMode: ViewMode
-  setViewMode: (mode: ViewMode) => void
-  hasDistribuidorScope: boolean
-  distributionUserIds: string[]
-  distributionLoading: boolean
-}
+import { useAuth } from '../auth/useAuth'
+import { ViewModeContext, type ViewMode } from './ViewModeContext'
 
 const STORAGE_KEY = 'flowsuite.viewMode'
-
-const ViewModeContext = createContext<ViewModeContextValue | undefined>(undefined)
 
 export function ViewModeProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useUsers()
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const isMasterAdmin = session?.user?.email === 'royalflorida@gmail.com'
   const hasDistribuidorScope =
     currentUser?.rol === 'admin' ||
@@ -38,21 +28,29 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isMasterAdmin) {
-      setViewMode('distributor')
+      startTransition(() => {
+        setViewMode('distributor')
+      })
       return
     }
     if (!hasDistribuidorScope) {
-      setViewMode('seller')
+      startTransition(() => {
+        setViewMode('seller')
+      })
       return
     }
     if (typeof window === 'undefined') return
     const stored = window.localStorage.getItem(STORAGE_KEY)
     if (stored === 'seller' || stored === 'distributor') {
-      setViewMode(stored)
+      startTransition(() => {
+        setViewMode(stored)
+      })
       return
     }
-    setViewMode('distributor')
-  }, [hasDistribuidorScope])
+    startTransition(() => {
+      setViewMode('distributor')
+    })
+  }, [hasDistribuidorScope, isMasterAdmin])
 
   useEffect(() => {
     if (!hasDistribuidorScope || isMasterAdmin) return
@@ -61,12 +59,16 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
   }, [hasDistribuidorScope, isMasterAdmin, viewMode])
 
   useEffect(() => {
-    if (!session?.user.id) {
-      setDistributionUserIds([])
+    if (!sessionUserId) {
+      startTransition(() => {
+        setDistributionUserIds([])
+      })
       return
     }
     if (!isSupabaseConfigured || !hasDistribuidorScope) {
-      setDistributionUserIds([session.user.id])
+      startTransition(() => {
+        setDistributionUserIds([sessionUserId])
+      })
       return
     }
     let active = true
@@ -79,12 +81,12 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
           .eq('activo', true)
         if (!active) return
         if (error) {
-          setDistributionUserIds([session.user.id])
+          setDistributionUserIds([sessionUserId])
           setDistributionLoading(false)
           return
         }
         const ids = (data ?? []).map((row) => row.id)
-        if (session?.user.id && !ids.includes(session.user.id)) ids.push(session.user.id)
+        if (sessionUserId && !ids.includes(sessionUserId)) ids.push(sessionUserId)
         setDistributionUserIds(ids)
         setDistributionLoading(false)
         return
@@ -96,29 +98,32 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
 
     if (currentUser?.codigo_distribuidor) {
         query = query.or(
-          `codigo_distribuidor.eq.${currentUser.codigo_distribuidor},distribuidor_padre_id.eq.${session.user.id}`,
+          `codigo_distribuidor.eq.${currentUser.codigo_distribuidor},distribuidor_padre_id.eq.${sessionUserId}`,
         )
       } else {
-        query = query.eq('distribuidor_padre_id', session.user.id)
+        query = query.eq('distribuidor_padre_id', sessionUserId)
       }
 
       const { data, error } = await query
       if (!active) return
       if (error) {
-        setDistributionUserIds([session.user.id])
+        setDistributionUserIds([sessionUserId])
         setDistributionLoading(false)
         return
       }
       const ids = (data ?? []).map((row) => row.id)
-      if (session?.user.id && !ids.includes(session.user.id)) ids.push(session.user.id)
+      if (sessionUserId && !ids.includes(sessionUserId)) ids.push(sessionUserId)
       setDistributionUserIds(ids)
       setDistributionLoading(false)
     }
-    load()
+    const handle = window.setTimeout(() => {
+      void load()
+    }, 0)
     return () => {
       active = false
+      window.clearTimeout(handle)
     }
-  }, [hasDistribuidorScope, isMasterAdmin, currentUser?.codigo_distribuidor, session?.user.id])
+  }, [hasDistribuidorScope, isMasterAdmin, currentUser?.codigo_distribuidor, sessionUserId])
 
   const value = useMemo(
     () => ({ viewMode, setViewMode, hasDistribuidorScope, distributionUserIds, distributionLoading }),
@@ -126,12 +131,4 @@ export function ViewModeProvider({ children }: { children: React.ReactNode }) {
   )
 
   return <ViewModeContext.Provider value={value}>{children}</ViewModeContext.Provider>
-}
-
-export function useViewMode() {
-  const context = useContext(ViewModeContext)
-  if (!context) {
-    throw new Error('useViewMode must be used within ViewModeProvider')
-  }
-  return context
 }

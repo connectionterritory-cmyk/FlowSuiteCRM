@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { Button } from './Button'
 import { CalificacionPanel } from './CalificacionPanel'
 import { useMessaging } from '../hooks/useMessaging'
-import { useToast } from './Toast'
+import { useToast } from './useToast'
 import {
   MIN_REFERIDOS_CI,
   CI_REFERIDO_ESTADOS,
@@ -16,6 +16,7 @@ import {
 import { formatProperName } from '../lib/textFormat'
 import type { CiActivacion, CiReferido } from '../hooks/useConexiones'
 import { CitaModal, type CitaForm } from '../modules/citas/CitaModal'
+import { buildReferidoEmbudo, getReferidoStageLabel } from '../lib/referidos/transiciones'
 
 type Props = {
   open: boolean
@@ -99,11 +100,24 @@ const EMPTY_NEW_REF: NewRefForm = {
   error: null,
 }
 
+const resetLeadForms = (): Record<string, LeadForm> => ({})
+const resetDrafts = (): Record<string, string> => ({})
+const resetSavingMap = (): Record<string, boolean> => ({})
+
 const splitNombreApellido = (value?: string | null) => {
   const parts = (value ?? '').trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return { nombre: '', apellido: '' }
   const [nombre, ...apellidoParts] = parts
   return { nombre, apellido: apellidoParts.join(' ') }
+}
+
+const REFERIDO_PRIORIDAD: Record<string, number> = {
+  pendiente: 0,
+  contactado: 1,
+  cita_agendada: 2,
+  presentacion_hecha: 3,
+  telemercadeo: 4,
+  regalo_entregado: 5,
 }
 
 // ── Star Rating ───────────────────────────────────────────────
@@ -162,6 +176,7 @@ export function ActivacionReferidosPanel({
   const [estadoFilter, setEstadoFilter] = useState<CiReferidoEstado | 'todos'>('todos')
   const [leadForms, setLeadForms] = useState<Record<string, LeadForm>>({})
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
+  const [expandedDetailId, setExpandedDetailId] = useState<string | null>(null)
   const [notasDrafts, setNotasDrafts] = useState<Record<string, string>>({})
   const [notasSaving, setNotasSaving] = useState<Record<string, boolean>>({})
   // Add referido form
@@ -232,21 +247,27 @@ export function ActivacionReferidosPanel({
 
   useEffect(() => {
     if (open && activation) {
-      loadReferidos()
-      loadOwnerInfo()
+      const handle = window.setTimeout(() => {
+        void loadReferidos()
+        void loadOwnerInfo()
+      }, 0)
+      return () => window.clearTimeout(handle)
     }
     if (!open) {
-      setReferidos([])
-      setEstadoFilter('todos')
-      setLeadForms({})
-      setExpandedLeadId(null)
-      setNotasDrafts({})
-      setNotasSaving({})
-      setNewRefOpen(false)
-      setNewRef(EMPTY_NEW_REF)
-      setCalificacionLead(null)
-      setOwnerInfo(null)
-      setOwnerInfoOpen(false)
+      startTransition(() => {
+        setReferidos([])
+        setEstadoFilter('todos')
+        setLeadForms(resetLeadForms())
+        setExpandedLeadId(null)
+        setExpandedDetailId(null)
+        setNotasDrafts(resetDrafts())
+        setNotasSaving(resetSavingMap())
+        setNewRefOpen(false)
+        setNewRef(EMPTY_NEW_REF)
+        setCalificacionLead(null)
+        setOwnerInfo(null)
+        setOwnerInfoOpen(false)
+      })
     }
   }, [open, activation, loadReferidos, loadOwnerInfo])
 
@@ -479,10 +500,26 @@ export function ActivacionReferidosPanel({
         ? '#3b82f6'
         : '#94a3b8'
 
-  const filtered =
+  const filteredBase =
     estadoFilter === 'todos'
       ? referidos
       : referidos.filter((r) => r.estado === estadoFilter)
+
+  const filtered = [...filteredBase].sort((a, b) => {
+    const aPriority = REFERIDO_PRIORIDAD[a.estado ?? 'pendiente'] ?? 99
+    const bPriority = REFERIDO_PRIORIDAD[b.estado ?? 'pendiente'] ?? 99
+    if (aPriority !== bPriority) return aPriority - bPriority
+
+    const aHasLead = Boolean(a.lead_id)
+    const bHasLead = Boolean(b.lead_id)
+    if (aHasLead !== bHasLead) return aHasLead ? 1 : -1
+
+    const aHasNote = Boolean((a.notas ?? '').trim())
+    const bHasNote = Boolean((b.notas ?? '').trim())
+    if (aHasNote !== bHasNote) return aHasNote ? 1 : -1
+
+    return (a.nombre ?? '').localeCompare(b.nombre ?? '', 'es')
+  })
 
   // Owner info pills
   const ownerPills: string[] = []
@@ -623,9 +660,11 @@ export function ActivacionReferidosPanel({
               filtered.map((ref) => {
                 const style = ESTADO_STYLE[ref.estado ?? 'pendiente'] ?? ESTADO_STYLE.pendiente
                 const isExpanded = expandedLeadId === ref.id
+                const isDetailOpen = expandedDetailId === ref.id
                 const form = leadForms[ref.id]
                 const isVendedorDirecto = ref.modo_gestion === 'vendedor_directo'
                 const isTeleReadOnly = currentRole === 'telemercadeo' && isVendedorDirecto
+                const embudo = buildReferidoEmbudo(ref)
                 // Option A: referidos start as vendedor_directo.
                 // Representante/admin/distribuidor can send to tele or recover from tele.
                 const isRepresentante = activation?.representante_id === currentUserId
@@ -636,10 +675,84 @@ export function ActivacionReferidosPanel({
                     currentRole === 'distribuidor')
                 const canSendToTele = canManageGestion && isVendedorDirecto
                 const canRecoverFromTele = canManageGestion && !isVendedorDirecto
+                const noteValue = notasDrafts[ref.id] ?? ''
+                const notePreview = noteValue.trim().length > 0 ? noteValue.trim().slice(0, 80) : ''
+                const nextStep =
+                  embudo.etapa === 'llamada_gestionada' && !ref.lead_id
+                    ? isVendedorDirecto
+                      ? 'Crear lead o enviar a telemercadeo'
+                      : 'Recuperar o dar seguimiento'
+                    : embudo.siguientePaso
+                const isUrgent = (ref.estado ?? 'pendiente') === 'pendiente' && !ref.cita_id
 
                 return (
-                  <div key={ref.id} className="arp-row">
-                    <div className="arp-row-main">
+                  <div
+                    key={ref.id}
+                    className="arp-row"
+                    style={{ padding: '0.9rem 1rem', display: 'grid', gap: '0.75rem' }}
+                  >
+                    <div
+                      className="arp-row-main"
+                      style={{ alignItems: 'flex-start', display: 'grid', gap: '0.75rem' }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          flexWrap: 'wrap',
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <div style={{ display: 'grid', gap: '0.4rem', minWidth: 0, flex: '1 1 20rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span className="arp-row-nombre">{ref.nombre ?? '-'}</span>
+                            <span className="arp-row-tel">{ref.telefono ?? '-'}</span>
+                            {isUrgent && (
+                              <span className="arp-relacion-chip" style={{ background: '#fee2e2', color: '#991b1b' }}>
+                                Trabajar ahora
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span className="arp-relacion-chip" style={{ background: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}>
+                              {getReferidoStageLabel(embudo.etapa)}
+                            </span>
+                            {ref.relacion && <span className="arp-relacion-chip">{ref.relacion}</span>}
+                            <span
+                              className="arp-relacion-chip"
+                              style={isVendedorDirecto ? { background: '#fde68a', color: '#92400e' } : undefined}
+                            >
+                              {isVendedorDirecto
+                                ? t('conexiones.referidosPanel.management.vendedorDirecto')
+                                : t('conexiones.referidosPanel.management.telemercadeo')}
+                            </span>
+                            {ref.cita_id && (
+                              <span className="arp-relacion-chip" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                                Cita
+                              </span>
+                            )}
+                            {ref.lead_id && (
+                              <span className="arp-relacion-chip" style={{ background: '#dcfce7', color: '#166534' }}>
+                                Lead
+                              </span>
+                            )}
+                          </div>
+                          {notePreview && !isDetailOpen && (
+                            <div className="drawer-subtitle" style={{ margin: 0 }}>
+                              Nota: {notePreview}
+                              {noteValue.trim().length > 80 ? '...' : ''}
+                            </div>
+                          )}
+                          <div className="drawer-subtitle" style={{ margin: 0 }}>
+                            Ultima accion: {embudo.ultimaAccion}
+                          </div>
+                          <div className="drawer-subtitle" style={{ margin: 0, color: '#cbd5e1' }}>
+                            Siguiente paso: {nextStep}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gap: '0.5rem', justifyItems: 'end' }}>
                       {/* Estado select */}
                       <select
                         className="arp-estado-select"
@@ -656,26 +769,21 @@ export function ActivacionReferidosPanel({
                           </option>
                         ))}
                       </select>
-
-                      {/* Name + phone + relacion */}
-                      <div className="arp-row-info">
-                        <span className="arp-row-nombre">{ref.nombre ?? '-'}</span>
-                        <span className="arp-row-tel">{ref.telefono ?? '-'}</span>
-                        {ref.relacion && (
-                          <span className="arp-relacion-chip">{ref.relacion}</span>
-                        )}
-                        <span
-                          className="arp-relacion-chip"
-                          style={isVendedorDirecto ? { background: '#fde68a', color: '#92400e' } : undefined}
-                        >
-                          {isVendedorDirecto
-                            ? t('conexiones.referidosPanel.management.vendedorDirecto')
-                            : t('conexiones.referidosPanel.management.telemercadeo')}
-                        </span>
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                            onClick={() => setExpandedDetailId((prev) => (prev === ref.id ? null : ref.id))}
+                          >
+                            {isDetailOpen ? 'Ocultar detalle' : 'Detalle'}
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="arp-row-actions">
+                      <div
+                        className="arp-row-actions"
+                        style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}
+                      >
                         <button
                           type="button"
                           className="arp-icon-btn arp-icon-btn--wa"
@@ -702,6 +810,16 @@ export function ActivacionReferidosPanel({
                         >
                           SMS
                         </button>
+                        {!ref.cita_id && ref.lead_id && !isTeleReadOnly && (
+                          <button
+                            type="button"
+                            className="arp-icon-btn"
+                            title="Agendar cita de presentación"
+                            onClick={() => handleAgendarCita(ref)}
+                          >
+                            + Cita
+                          </button>
+                        )}
                         {ref.lead_id ? (
                           <button
                             type="button"
@@ -718,6 +836,7 @@ export function ActivacionReferidosPanel({
                             className="arp-icon-btn"
                             disabled={isTeleReadOnly}
                             onClick={() => {
+                              setExpandedDetailId(ref.id)
                               if (isExpanded) {
                                 setExpandedLeadId(null)
                               } else {
@@ -752,79 +871,68 @@ export function ActivacionReferidosPanel({
                             {t('conexiones.referidosPanel.actions.recoverFromTele')}
                           </button>
                         )}
-                        {ref.lead_id && !ref.cita_id && !isTeleReadOnly && (
-                          <button
-                            type="button"
-                            className="arp-icon-btn"
-                            title="Agendar cita de presentación"
-                            onClick={() => handleAgendarCita(ref)}
-                          >
-                            + Cita
-                          </button>
-                        )}
-                        {ref.cita_id && (
-                          <span
-                            className="arp-icon-btn"
-                            style={{ cursor: 'default', opacity: 0.75 }}
-                            title="Cita de presentación agendada"
-                          >
-                            ✓ Cita
-                          </span>
-                        )}
                       </div>
                     </div>
 
-                    {/* Star rating row */}
-                    <div className="arp-row-stars">
-                      <StarRating
-                        value={ref.calificacion ?? null}
-                        onChange={(n) => handleStarChange(ref.id, n)}
-                        disabled={isTeleReadOnly}
-                      />
-                    </div>
-
-                    {/* Notas */}
-                    <textarea
-                      className="arp-notas"
-                      placeholder={t('conexiones.referidosPanel.notasPlaceholder')}
-                      value={notasDrafts[ref.id] ?? ''}
-                      rows={2}
-                      disabled={isTeleReadOnly}
-                      onChange={(e) =>
-                        setNotasDrafts((prev) => ({ ...prev, [ref.id]: e.target.value }))
-                      }
-                      onBlur={() => {
-                        if (!isTeleReadOnly) handleNotasBlur(ref.id)
-                      }}
-                    />
-                    {notasSaving[ref.id] && (
-                      <span className="form-hint" style={{ fontSize: '0.75rem' }}>
-                        {t('common.saving')}...
-                      </span>
-                    )}
-
-                    {/* Lead creation inline form */}
-                    {isExpanded && form && (
-                      <div className="arp-lead-form">
-                        {form.error && <div className="form-error">{form.error}</div>}
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <Button
-                            type="button"
-                            onClick={() => handleCreateLead(ref)}
-                            disabled={form.saving || isTeleReadOnly}
-                          >
-                            {form.saving
-                              ? t('common.saving')
-                              : t('conexiones.referidosPanel.createLead')}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => setExpandedLeadId(null)}
-                          >
-                            {t('common.cancel')}
-                          </Button>
+                    {isDetailOpen && (
+                      <div
+                        style={{
+                          borderTop: '1px solid rgba(148,163,184,0.18)',
+                          paddingTop: '0.75rem',
+                          display: 'grid',
+                          gap: '0.65rem',
+                        }}
+                      >
+                        <div className="arp-row-stars">
+                          <StarRating
+                            value={ref.calificacion ?? null}
+                            onChange={(n) => handleStarChange(ref.id, n)}
+                            disabled={isTeleReadOnly}
+                          />
                         </div>
+
+                        <textarea
+                          className="arp-notas"
+                          placeholder={t('conexiones.referidosPanel.notasPlaceholder')}
+                          value={noteValue}
+                          rows={2}
+                          disabled={isTeleReadOnly}
+                          onChange={(e) =>
+                            setNotasDrafts((prev) => ({ ...prev, [ref.id]: e.target.value }))
+                          }
+                          onBlur={() => {
+                            if (!isTeleReadOnly) handleNotasBlur(ref.id)
+                          }}
+                        />
+                        {notasSaving[ref.id] && (
+                          <span className="form-hint" style={{ fontSize: '0.75rem' }}>
+                            {t('common.saving')}...
+                          </span>
+                        )}
+
+                        {isExpanded && form && (
+                          <div className="arp-lead-form">
+                            {form.error && <div className="form-error">{form.error}</div>}
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <Button
+                                type="button"
+                                onClick={() => handleCreateLead(ref)}
+                                disabled={form.saving || isTeleReadOnly}
+                              >
+                                {form.saving
+                                  ? t('common.saving')
+                                  : t('conexiones.referidosPanel.createLead')}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setExpandedLeadId(null)}
+                              >
+                                {t('common.cancel')}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

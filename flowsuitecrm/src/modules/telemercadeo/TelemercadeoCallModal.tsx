@@ -1,21 +1,20 @@
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase } from '../../lib/supabase/client'
 import { buildTelUrl } from '../../lib/addressUtils'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth } from '../../auth/useAuth'
 import { IconPhone } from '../../components/icons'
-import { useUsers } from '../../data/UsersProvider'
+import { useUsers } from '../../data/useUsers'
+import { type Cliente, type ResultadoLlamada } from './TelemercadeoShared'
 import {
-  type Cliente,
-  type ResultadoLlamada,
   resultadoLabel,
   resultadoColor,
   formatFechaCorta,
   segmentoColor,
   segmentoLabel,
-} from './TelemercadeoShared'
+} from './telemercadeoSharedUtils'
 
 type LlamadaHistorial = {
   id: string
@@ -66,6 +65,7 @@ export function TelemercadeoCallModal({
   onClose,
 }: TelemercadeoCallModalProps) {
   const { session } = useAuth()
+  const { usersById } = useUsers()
   const { showToast } = useToast()
   const [resultado, setResultado] = useState<ResultadoLlamada>('no_contesta')
   const [notas, setNotas] = useState('')
@@ -81,23 +81,29 @@ export function TelemercadeoCallModal({
   // Reset form fields when modal opens for a new client
   useEffect(() => {
     if (!open) return
-    setResultado('no_contesta')
-    setNotas('')
-    setFechaFollowup('')
-    setMontoProme('')
-    setGuionAbierto(false)
-    setExpandedHistoryIds(new Set())
+    startTransition(() => {
+      setResultado('no_contesta')
+      setNotas('')
+      setFechaFollowup('')
+      setMontoProme('')
+      setGuionAbierto(false)
+      setExpandedHistoryIds(new Set())
+    })
   }, [open, cliente?.id])
 
   // Load call history when modal opens
   useEffect(() => {
     if (!open || !cliente?.id) {
-      setHistorial([])
-      setExpandedHistoryIds(new Set())
+      startTransition(() => {
+        setHistorial([])
+        setExpandedHistoryIds(new Set())
+      })
       return
     }
     let active = true
-    setLoadingHistorial(true)
+    startTransition(() => {
+      setLoadingHistorial(true)
+    })
     const load = async () => {
       const { data } = await supabase
         .from('llamadas_telemercadeo')
@@ -110,9 +116,12 @@ export function TelemercadeoCallModal({
       setExpandedHistoryIds(new Set())
       setLoadingHistorial(false)
     }
-    load()
+    const handle = window.setTimeout(() => {
+      void load()
+    }, 0)
     return () => {
       active = false
+      window.clearTimeout(handle)
     }
   }, [open, cliente?.id])
 
@@ -175,7 +184,6 @@ export function TelemercadeoCallModal({
     setGuardando(false)
   }
 
-  const { usersById } = useUsers()
   const vendorName = cliente.vendedor_id ? usersById[cliente.vendedor_id] : null
 
   return (

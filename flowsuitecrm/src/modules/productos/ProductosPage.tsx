@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, type FormEvent, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as XLSX from 'xlsx'
@@ -8,10 +8,20 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
 import { EmptyState } from '../../components/EmptyState'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
+import { LABEL_STYLE } from '../../components/formControlStyles'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useUsers } from '../../data/UsersProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useUsers } from '../../data/useUsers'
+import { useViewMode } from '../../data/useViewMode'
+import { ProductDetailEditPanel } from './ProductDetailEditPanel'
+import {
+  type PriceEntry,
+  extractEntries,
+  inferCategoriaPrincipal,
+  inferSubcategoria,
+  inferLinea,
+  computeCosts,
+} from './productImportUtils'
 
 type ProductoRecord = {
   id: string
@@ -33,6 +43,21 @@ type ProductoRecord = {
   created_at: string | null
 }
 
+type DetailValues = {
+  nombre: string
+  categoria_principal: string
+  subcategoria: string
+  linea_producto: string
+  categoria_compra: string
+  costo_n1: string
+  costo_n2: string
+  costo_n3: string
+  costo_n4: string
+  recargo_arancelario: string
+  precio: string
+  activo: boolean
+}
+
 const initialForm = {
   codigo: '',
   nombre: '',
@@ -42,12 +67,10 @@ const initialForm = {
   foto_url: '' as string | null,
 }
 
-type PriceEntry = {
-  categoria_compra: 'mercaderia' | 'premium' | 'miscelaneos'
-  codigo: string
-  descripcion: string
-  precio_base: number
-  recargo_arancelario: number
+const GRID_TWO_COL_STYLE: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gap: '1rem',
 }
 
 export function ProductosPage() {
@@ -63,10 +86,11 @@ export function ProductosPage() {
   const [formValues, setFormValues] = useState(initialForm)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null)
   const [editingProductId, setEditingProductId] = useState<string | null>(null)
   const [selectedRow, setSelectedRow] = useState<(DataTableRow & { originalData?: ProductoRecord }) | null>(null)
   const [detailEditMode, setDetailEditMode] = useState(false)
-  const [detailValues, setDetailValues] = useState({
+  const [detailValues, setDetailValues] = useState<DetailValues>({
     nombre: '',
     categoria_principal: '',
     subcategoria: '',
@@ -129,9 +153,9 @@ export function ProductosPage() {
     if (!configured) return
     if (usersLoading) return
     if (canAccessProductos) return
-    showToast('No tienes acceso a Productos.', 'error')
+    showToast(t('productos.errors.noAccess'), 'error')
     navigate('/dashboard', { replace: true })
-  }, [canAccessProductos, configured, navigate, showToast, usersLoading])
+  }, [canAccessProductos, configured, navigate, showToast, t, usersLoading])
 
   useEffect(() => {
     const producto = selectedRow?.originalData
@@ -156,7 +180,7 @@ export function ProductosPage() {
     setDetailPhotoPreview(producto.foto_url ?? null)
     setDetailPhotoFile(null)
     setDetailEditMode(false)
-  }, [selectedRow])
+  }, [selectedRow, detailPhotoPreview])
 
   const categoriasUnicas = useMemo(() => {
     const categorias = new Set<string>()
@@ -194,14 +218,46 @@ export function ProductosPage() {
     })
   }, [productos, searchNombre, searchCodigo, filtroCategoria, filtroLinea])
 
+  const createDetailValues = useMemo(
+    () => ({
+      nombre: formValues.nombre,
+      categoria_principal: formValues.categoria,
+      subcategoria: '',
+      linea_producto: '',
+      categoria_compra: '',
+      costo_n1: '',
+      costo_n2: '',
+      costo_n3: '',
+      costo_n4: '',
+      recargo_arancelario: '',
+      precio: formValues.precio,
+      activo: formValues.activo,
+    }),
+    [formValues]
+  )
+
+  const setCreateDetailValues = useCallback(
+    (next: SetStateAction<DetailValues>) => {
+      const updated = typeof next === 'function' ? next(createDetailValues) : next
+      setFormValues((prev) => ({
+        ...prev,
+        nombre: updated.nombre,
+        categoria: updated.categoria_principal,
+        precio: updated.precio,
+        activo: updated.activo,
+      }))
+    },
+    [createDetailValues]
+  )
+
   const rows = useMemo<DataTableRow[]>(() => {
     return productosFiltrados.map((producto) => {
       const estadoLabel = producto.activo ? t('productos.estado.activo') : t('productos.estado.inactivo')
       const baseCells = [
         producto.foto_url ? (
-          <img
-            src={producto.foto_url}
-            alt={producto.nombre ?? 'Producto'}
+            <img
+              src={producto.foto_url}
+              alt={producto.nombre ?? t('productos.fields.foto')}
             style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }}
           />
         ) : (
@@ -269,7 +325,7 @@ export function ProductosPage() {
         ],
       }
     })
-  }, [numberFormat, productosFiltrados, t])
+  }, [numberFormat, productosFiltrados, canViewCostos, t])
 
 
   const handleDelete = async () => {
@@ -320,6 +376,7 @@ export function ProductosPage() {
   }
 
   const handleCloseForm = () => {
+    if (submitting) return
     if (photoPreview) URL.revokeObjectURL(photoPreview)
     setPhotoPreview(null)
     setPhotoFile(null)
@@ -327,12 +384,12 @@ export function ProductosPage() {
     setFormOpen(false)
   }
 
-  const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null
     setPhotoFile(file)
     if (photoPreview) URL.revokeObjectURL(photoPreview)
     setPhotoPreview(file ? URL.createObjectURL(file) : null)
-  }
+  }, [photoPreview])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -345,6 +402,7 @@ export function ProductosPage() {
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
     let foto_url: string | null = formValues.foto_url || null
     if (photoFile) {
+      setUploadStatus(t('productos.status.subiendo'))
       const extension = photoFile.name.split('.').pop()?.toLowerCase() || 'jpg'
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`
       const { error: uploadError } = await supabase
@@ -355,8 +413,10 @@ export function ProductosPage() {
         setFormError(uploadError.message)
         showToast(uploadError.message, 'error')
         setSubmitting(false)
+        setUploadStatus(null)
         return
       }
+      setUploadStatus(t('productos.status.guardando'))
       const { data: publicUrl } = supabase.storage.from('productos').getPublicUrl(fileName)
       foto_url = publicUrl.publicUrl
     }
@@ -384,9 +444,10 @@ export function ProductosPage() {
       showToast(t('toast.success'))
     }
     setSubmitting(false)
+    setUploadStatus(null)
   }
 
-  const handleChange = (field: keyof typeof initialForm) =>
+  const handleChange = useCallback((field: keyof typeof initialForm) =>
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const target = event.target
       const value =
@@ -394,26 +455,76 @@ export function ProductosPage() {
           ? target.checked
         : target.value
       setFormValues((prev) => ({ ...prev, [field]: value }))
-    }
+    }, [])
 
-  const handleDetailChange = (field: keyof typeof detailValues) =>
+  const handleCreateDetailChange = useCallback(
+    (field: keyof DetailValues) =>
+      (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const target = event.target
+        const value =
+          target instanceof HTMLInputElement && target.type === 'checkbox'
+            ? target.checked
+            : target.value
+        setCreateDetailValues((prev) => ({ ...prev, [field]: value }))
+      },
+    [setCreateDetailValues]
+  )
+
+  const handleDetailChange = useCallback((field: keyof typeof detailValues) =>
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const target = event.target
       const value =
         target instanceof HTMLInputElement && target.type === 'checkbox'
           ? target.checked
-          : target.value
+        : target.value
       setDetailValues((prev) => ({ ...prev, [field]: value }))
-    }
+    }, [])
 
-  const handleDetailPhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleDetailPhotoChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null
     setDetailPhotoFile(file)
     if (detailPhotoPreview && detailPhotoPreview.startsWith('blob:')) {
       URL.revokeObjectURL(detailPhotoPreview)
     }
     setDetailPhotoPreview(file ? URL.createObjectURL(file) : detailPhotoPreview)
-  }
+  }, [detailPhotoPreview])
+
+  const createPanelItems = useMemo(() => {
+    const productoForCreate = {
+      codigo: formValues.codigo || null,
+      nombre: formValues.nombre || null,
+      categoria: formValues.categoria || null,
+      categoria_compra: null,
+      categoria_principal: formValues.categoria || null,
+      subcategoria: null,
+      linea_producto: null,
+      precio: formValues.precio ? Number(formValues.precio) : null,
+      costo_n1: null,
+      costo_n2: null,
+      costo_n3: null,
+      costo_n4: null,
+      recargo_arancelario: null,
+      activo: formValues.activo,
+      foto_url: photoPreview,
+    }
+
+    return ProductDetailEditPanel({
+      producto: productoForCreate,
+      detailValues: createDetailValues,
+      setDetailValues: setCreateDetailValues,
+      canViewCostos: false,
+      categoriaCompraOptions: [],
+      handleDetailChange: handleCreateDetailChange,
+      handleDetailPhotoChange: handlePhotoChange,
+      detailPhotoPreview: photoPreview,
+      t,
+      gridStyle: GRID_TWO_COL_STYLE,
+      mode: 'create',
+      showAdvancedFields: false,
+      codigoValue: formValues.codigo,
+      onCodigoChange: handleChange('codigo'),
+    })
+  }, [createDetailValues, formValues, handleCreateDetailChange, handlePhotoChange, handleChange, photoPreview, setCreateDetailValues, t])
 
   const handleSaveDetail = async () => {
     if (!selectedRow || !canManageProductos) return
@@ -426,6 +537,7 @@ export function ProductosPage() {
     const toNumber = (value: string) => (value.trim() === '' ? null : Number(value))
     let foto_url: string | null = selectedRow.originalData?.foto_url ?? null
     if (detailPhotoFile) {
+      setUploadStatus(t('productos.status.subiendo'))
       const extension = detailPhotoFile.name.split('.').pop()?.toLowerCase() || 'jpg'
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`
       const { error: uploadError } = await supabase
@@ -435,8 +547,10 @@ export function ProductosPage() {
       if (uploadError) {
         showToast(uploadError.message, 'error')
         setSubmitting(false)
+        setUploadStatus(null)
         return
       }
+      setUploadStatus(t('productos.status.actualizando'))
       const { data: publicUrl } = supabase.storage.from('productos').getPublicUrl(fileName)
       foto_url = publicUrl.publicUrl
     }
@@ -463,69 +577,49 @@ export function ProductosPage() {
       .eq('id', selectedRow.id)
     if (updateError) {
       showToast(updateError.message, 'error')
-    } else {
-      setDetailEditMode(false)
-      setDetailPhotoFile(null)
-      await loadProductos()
-      showToast(t('toast.success'))
+      setSubmitting(false)
+      setUploadStatus(null)
+      return
     }
+
+    const original = selectedRow.originalData
+    if (!original) {
+      setSubmitting(false)
+      setUploadStatus(null)
+      return
+    }
+
+    const updatedProduct: ProductoRecord = {
+      ...original,
+      nombre: payload.nombre ?? original.nombre,
+      categoria: payload.categoria ?? original.categoria,
+      categoria_principal: payload.categoria_principal ?? original.categoria_principal,
+      subcategoria: payload.subcategoria ?? original.subcategoria,
+      linea_producto: payload.linea_producto ?? original.linea_producto,
+      categoria_compra: payload.categoria_compra ?? original.categoria_compra,
+      costo_n1: payload.costo_n1 ?? original.costo_n1,
+      costo_n2: payload.costo_n2 ?? original.costo_n2,
+      costo_n3: payload.costo_n3 ?? original.costo_n3,
+      costo_n4: payload.costo_n4 ?? original.costo_n4,
+      recargo_arancelario: payload.recargo_arancelario ?? original.recargo_arancelario,
+      precio: payload.precio ?? original.precio ?? 0,
+      activo: Boolean(payload.activo),
+      foto_url,
+    }
+
+    setProductos((prev) => prev.map((producto) => (producto.id === selectedRow.id ? updatedProduct : producto)))
+    setSelectedRow((prev) => (prev ? { ...prev, originalData: updatedProduct } : prev))
+    setDetailEditMode(false)
+    setDetailPhotoFile(null)
+    setDetailPhotoPreview(foto_url)
+    showToast(t('toast.success'))
     setSubmitting(false)
+    setUploadStatus(null)
   }
 
   const detailItems = useMemo(() => {
     if (!selectedRow?.originalData) return []
     const producto = selectedRow.originalData
-    const renderInput = (value: string, onChange: (event: ChangeEvent<HTMLInputElement>) => void, placeholder?: string) => (
-      <input
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        style={{
-          width: '100%',
-          padding: '0.35rem 0.5rem',
-          borderRadius: 6,
-          border: '1px solid rgba(148,163,184,0.35)',
-          background: 'rgba(255,255,255,0.06)',
-          color: 'var(--text-primary)',
-        }}
-      />
-    )
-    const renderSelect = (value: string, options: string[], onChange: (event: ChangeEvent<HTMLSelectElement>) => void) => (
-      <select
-        value={value}
-        onChange={onChange}
-        style={{
-          width: '100%',
-          padding: '0.35rem 0.5rem',
-          borderRadius: 6,
-          border: '1px solid rgba(148,163,184,0.35)',
-          background: 'rgba(255,255,255,0.06)',
-          color: 'var(--text-primary)',
-        }}
-      >
-        <option value="">{t('common.select')}</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    )
-    const renderNumber = (value: string, onChange: (event: ChangeEvent<HTMLInputElement>) => void) => (
-      <input
-        type="number"
-        value={value}
-        onChange={onChange}
-        style={{
-          width: '100%',
-          padding: '0.35rem 0.5rem',
-          borderRadius: 6,
-          border: '1px solid rgba(148,163,184,0.35)',
-          background: 'rgba(255,255,255,0.06)',
-          color: 'var(--text-primary)',
-        }}
-      />
-    )
     const categoriaCompraOptions = ['mercaderia', 'premium', 'miscelaneos']
 
     const baseItems = [
@@ -535,27 +629,19 @@ export function ProductosPage() {
       },
       {
         label: t('productos.fields.nombre'),
-        value: detailEditMode
-          ? renderInput(detailValues.nombre, handleDetailChange('nombre'))
-          : producto.nombre ?? '-',
+        value: producto.nombre ?? '-',
       },
       {
         label: t('productos.fields.categoria'),
-        value: detailEditMode
-          ? renderInput(detailValues.categoria_principal, handleDetailChange('categoria_principal'), 'Ej. Filtracion')
-          : producto.categoria_principal ?? producto.categoria ?? '-',
+        value: producto.categoria_principal ?? producto.categoria ?? '-',
       },
       {
         label: t('productos.fields.subcategoria'),
-        value: detailEditMode
-          ? renderInput(detailValues.subcategoria, handleDetailChange('subcategoria'), 'Ej. Repuestos filtros')
-          : producto.subcategoria ?? '-',
+        value: producto.subcategoria ?? '-',
       },
       {
         label: t('productos.fields.linea'),
-        value: detailEditMode
-          ? renderInput(detailValues.linea_producto, handleDetailChange('linea_producto'), 'Ej. Innove')
-          : producto.linea_producto ?? '-',
+        value: producto.linea_producto ?? '-',
       },
     ]
 
@@ -563,31 +649,27 @@ export function ProductosPage() {
       ? [
           {
             label: t('productos.fields.categoriaCompra'),
-            value: detailEditMode
-              ? renderSelect(detailValues.categoria_compra, categoriaCompraOptions, handleDetailChange('categoria_compra'))
-              : producto.categoria_compra ?? '-',
+            value: producto.categoria_compra ?? '-',
           },
           {
             label: t('productos.fields.costoN1'),
-            value: detailEditMode ? renderNumber(detailValues.costo_n1, handleDetailChange('costo_n1')) : producto.costo_n1 ?? '-',
+            value: producto.costo_n1 ?? '-',
           },
           {
             label: t('productos.fields.costoN2'),
-            value: detailEditMode ? renderNumber(detailValues.costo_n2, handleDetailChange('costo_n2')) : producto.costo_n2 ?? '-',
+            value: producto.costo_n2 ?? '-',
           },
           {
             label: t('productos.fields.costoN3'),
-            value: detailEditMode ? renderNumber(detailValues.costo_n3, handleDetailChange('costo_n3')) : producto.costo_n3 ?? '-',
+            value: producto.costo_n3 ?? '-',
           },
           {
             label: t('productos.fields.costoN4'),
-            value: detailEditMode ? renderNumber(detailValues.costo_n4, handleDetailChange('costo_n4')) : producto.costo_n4 ?? '-',
+            value: producto.costo_n4 ?? '-',
           },
           {
             label: t('productos.fields.recargo'),
-            value: detailEditMode
-              ? renderNumber(detailValues.recargo_arancelario, handleDetailChange('recargo_arancelario'))
-              : producto.recargo_arancelario ?? '-',
+            value: producto.recargo_arancelario ?? '-',
           },
         ]
       : []
@@ -596,28 +678,31 @@ export function ProductosPage() {
       ? [{ label: t('productos.editingLabel'), value: t('productos.editingHelp') }]
       : []
 
-    const photoValue = detailEditMode ? (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <input type="file" accept="image/*" onChange={handleDetailPhotoChange} />
-        {(detailPhotoPreview || producto.foto_url) && (
-          <img
-            src={detailPhotoPreview ?? producto.foto_url ?? ''}
-            alt={producto.nombre ?? 'Producto'}
-            style={{ maxWidth: '100%', borderRadius: 8 }}
-          />
-        )}
-      </div>
+    const photoValue = producto.foto_url ? (
+      <img
+        src={producto.foto_url}
+        alt={producto.nombre ?? t('productos.fields.foto')}
+        style={{ maxWidth: '100%', borderRadius: 8 }}
+      />
     ) : (
-      producto.foto_url ? (
-        <img
-          src={producto.foto_url}
-          alt={producto.nombre ?? 'Producto'}
-          style={{ maxWidth: '100%', borderRadius: 8 }}
-        />
-      ) : (
-        '-'
-      )
+      '-'
     )
+
+    if (detailEditMode) {
+      const editItems = ProductDetailEditPanel({
+        producto,
+        detailValues,
+        setDetailValues,
+        canViewCostos,
+        categoriaCompraOptions,
+        handleDetailChange,
+        handleDetailPhotoChange,
+        detailPhotoPreview,
+        t,
+        gridStyle: GRID_TWO_COL_STYLE,
+      })
+      return [...editBanner, ...editItems]
+    }
 
     return [
       ...editBanner,
@@ -625,25 +710,18 @@ export function ProductosPage() {
       ...costoItems,
       {
         label: t('productos.fields.precio'),
-        value: detailEditMode ? renderNumber(detailValues.precio, handleDetailChange('precio')) : producto.precio ?? '-',
+        value: producto.precio ?? '-',
       },
       {
         label: t('productos.fields.activo'),
-        value: detailEditMode ? (
-          <label className="checkbox-field" style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-            <input type="checkbox" checked={detailValues.activo} onChange={handleDetailChange('activo')} />
-            {detailValues.activo ? t('productos.estado.activo') : t('productos.estado.inactivo')}
-          </label>
-        ) : (
-          producto.activo ? t('productos.estado.activo') : t('productos.estado.inactivo')
-        ),
+        value: producto.activo ? t('productos.estado.activo') : t('productos.estado.inactivo'),
       },
       {
         label: t('productos.fields.foto'),
         value: photoValue,
       },
     ]
-  }, [selectedRow, detailEditMode, detailValues, canViewCostos, t, detailPhotoPreview])
+  }, [selectedRow, detailEditMode, detailValues, canViewCostos, t, detailPhotoPreview, handleDetailChange, handleDetailPhotoChange])
 
   const columns = useMemo(() => {
     const base = [
@@ -664,197 +742,6 @@ export function ProductosPage() {
     return [...base, ...costoColumns, t('productos.columns.precio'), t('productos.columns.activo')]
   }, [canViewCostos, t])
 
-  const normalizeText = (value: unknown) => String(value ?? '').trim()
-
-  const parseMoney = (value: unknown) => {
-    const cleaned = normalizeText(value).replace(/\$/g, '').replace(/,/g, '')
-    if (!cleaned) return null
-    const parsed = Number(cleaned)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-
-  const parseCategoriaCompra = (value: unknown) => {
-    const code = normalizeText(value).toUpperCase()
-    if (code === 'MRCH') return 'mercaderia'
-    if (code === 'PREM') return 'premium'
-    if (code === 'MISC') return 'miscelaneos'
-    return null
-  }
-
-  const inferLinea = (descripcion: string) => {
-    const upper = descripcion.toUpperCase()
-    if (upper.includes('NOVEL')) return 'Novel'
-    if (upper.includes('INNOVE')) return 'Innove'
-    if (upper.includes('5 CAPAS') || upper.includes('5 CPS') || upper.includes('5CPS') || upper.includes('5CPAS')) return '5 Capas'
-    if (upper.includes('EASY RELEASE')) return 'Easy Release'
-    if (upper.includes('GOURMET') || upper.includes('GOURMT')) return 'Gourmet'
-    if (upper.includes('PRECISION')) return 'Precision'
-    return 'General'
-  }
-
-  const inferCategoriaPrincipal = (descripcion: string, categoriaCompra: PriceEntry['categoria_compra']) => {
-    const upper = descripcion.toUpperCase()
-    const has = (term: string) => upper.includes(term)
-
-    if (has('FILTRO') || has('FRESCAPURE') || has('FRESCAFLOW') || has('OSMOSIS') || has('MINERAL') || has('ULTRAVIOLETA') || has('PURIFIC')) {
-      return 'Filtracion'
-    }
-    if (has('CUCHILLO') || has('CUCHILL') || has('SANTOKU') || has('AFILADOR') || has('HACHA') || has('BLOQUE')) {
-      return 'Cuchillos'
-    }
-    if (
-      categoriaCompra === 'miscelaneos' &&
-      (has('VALVULA') || has('VÁLVULA') || has('MANGO') || has('AGARR') || has('ASA') || has('ARO') || has('EMPAQUE') || has('PIEZA') || has('CUBIERTA'))
-    ) {
-      return 'Repuestos'
-    }
-    if (has('TAPA') || has('PARRILLA') || has('COLADOR') || has('ARO') || has('COVER')) {
-      return 'Tapas y Parrillas'
-    }
-    if (has('BARISTA') || has('EXPERTEA') || has('ESPRESSO') || has('CHOCOLATERA') || has('BLENDER') || has('JUICER') || has('EXTRACTOR') || has('PRECISION COOK')) {
-      return 'Electrodomesticos'
-    }
-    if (has('VASO') || has('COPA') || has('VAJILLA') || has('TAZON') || has('CRISTAL') || has('BAMBÚ') || has('BAMBU')) {
-      return 'Vajilla'
-    }
-    if (has('FOLLETO') || has('CATALOGO') || has('RECETARIO') || has('LITERATURA') || has('BROCHURE') || has('TRIPTICO') || has('REVISTA') || has('LAMINAS')) {
-      return 'Literatura'
-    }
-    if (has('MALETA') || has('MALETIN') || has('BOLSA') || has('MANTEL') || has('PRENDEDOR') || has('POSTER') || has('KIT DE PRESENTACION') || has('TARJETAS')) {
-      return 'Materiales'
-    }
-    if (has('JUEGO') || has('JGO') || has('SIST') || has('SET')) {
-      return 'Juegos de Ollas'
-    }
-    if (has('OLLA') || has('SARTEN') || has('PAELLERA') || has('WOK') || has('MULTIPAN') || has('CACEROLA') || has('PRESION')) {
-      return 'Ollas y Sartenes'
-    }
-    if (categoriaCompra === 'miscelaneos') {
-      return 'Accesorios'
-    }
-    if (categoriaCompra === 'premium') {
-      return 'Accesorios'
-    }
-    return 'Accesorios'
-  }
-
-  const inferSubcategoria = (categoriaPrincipal: string, descripcion: string) => {
-    const upper = descripcion.toUpperCase()
-    const has = (term: string) => upper.includes(term)
-
-    if (categoriaPrincipal === 'Filtracion') {
-      if (has('CARTUCHO') || has('REPUEST') || has('REEMPLAZO')) return 'Repuestos filtros'
-      if (has('FRESCAPURE')) return 'FrescaPure'
-      if (has('FRESCAFLOW')) return 'FrescaFlow'
-      if (has('ULTRA')) return 'Ultra'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Tapas y Parrillas') {
-      if (has('TAPA ALTA')) return 'Tapa alta'
-      if (has('TAPA')) return 'Tapa'
-      if (has('PARRILLA')) return 'Parrilla'
-      if (has('COLADOR')) return 'Colador'
-      if (has('ARO')) return 'Aro'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Ollas y Sartenes') {
-      if (has('OLLA')) return 'Olla'
-      if (has('SARTEN')) return 'Sarten'
-      if (has('PAELLERA')) return 'Paellera'
-      if (has('WOK')) return 'Wok'
-      if (has('MULTIPAN')) return 'MultiPan'
-      if (has('PRESION')) return 'Olla presion'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Electrodomesticos') {
-      if (has('BLENDER')) return 'Blender'
-      if (has('JUICER') || has('EXTRACTOR')) return 'Extractor'
-      if (has('PRECISION COOK')) return 'Precision Cook'
-      if (has('BARISTA') || has('ESPRESSO')) return 'Cafe'
-      if (has('EXPERTEA')) return 'Te'
-      if (has('CHOCOLATERA')) return 'Chocolate'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Cuchillos') {
-      if (has('SANTOKU')) return 'Santoku'
-      if (has('AFILADOR')) return 'Afilador'
-      if (has('BLOQUE')) return 'Bloque'
-      if (has('HACHA')) return 'Hacha'
-      if (has('JUEGO') || has('SET')) return 'Set'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Vajilla') {
-      if (has('VASO')) return 'Vasos'
-      if (has('COPA')) return 'Copas'
-      if (has('TAZON')) return 'Tazones'
-      if (has('TABLA')) return 'Tablas'
-      if (has('RECIPIENTE')) return 'Recipientes'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Accesorios') {
-      if (has('PERFECT POP')) return 'Perfect Pop'
-      if (has('SMART TEMP')) return 'Smart Temp'
-      if (has('WARMER')) return 'Warmer Pro'
-      if (has('UTENSIL')) return 'Utensilios'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Repuestos') {
-      if (has('VALVULA') || has('VÁLVULA')) return 'Valvulas'
-      if (has('MANGO') || has('AGARR') || has('ASA')) return 'Mangos y agarraderas'
-      if (has('ARO')) return 'Aros'
-      if (has('EMPAQUE')) return 'Empaques'
-      return 'General'
-    }
-    if (categoriaPrincipal === 'Juegos de Ollas') {
-      return 'Juegos'
-    }
-    return 'General'
-  }
-
-  const computeCosts = (categoriaCompra: PriceEntry['categoria_compra'], base: number) => {
-    if (categoriaCompra !== 'mercaderia') {
-      return {
-        costo_n1: base,
-        costo_n2: base,
-        costo_n3: base,
-        costo_n4: base,
-      }
-    }
-    return {
-      costo_n1: Number((base * 0.9).toFixed(2)),
-      costo_n2: Number((base * 0.95).toFixed(2)),
-      costo_n3: Number(base.toFixed(2)),
-      costo_n4: Number((base * 1.1).toFixed(2)),
-    }
-  }
-
-  const extractEntries = (rows: unknown[][]) => {
-    const entries: PriceEntry[] = []
-    const extractBlock = (row: unknown[], offset: number) => {
-      const categoriaCompra = parseCategoriaCompra(row[offset])
-      if (!categoriaCompra) return
-      const codigo = normalizeText(row[offset + 1])
-      const descripcion = normalizeText(row[offset + 3])
-      const precio = parseMoney(row[offset + 7])
-      const recargo = parseMoney(row[offset + 9]) ?? 0
-      if (!codigo || !descripcion || precio == null) return
-      entries.push({
-        categoria_compra: categoriaCompra,
-        codigo,
-        descripcion,
-        precio_base: precio,
-        recargo_arancelario: recargo,
-      })
-    }
-
-    rows.forEach((row) => {
-      extractBlock(row, 0)
-      extractBlock(row, 12)
-    })
-
-    return entries
-  }
-
   const procesarListaPrecios = async (file: File) => {
     if (!configured) {
       setImportError(t('common.supabaseRequired'))
@@ -871,7 +758,7 @@ export function ProductosPage() {
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]
       const entries = extractEntries(rows)
       if (entries.length === 0) {
-        setImportError('No se encontraron registros validos.')
+        setImportError(t('productos.import.errors.noRecords'))
         setImportLoading(false)
         return
       }
@@ -919,7 +806,7 @@ export function ProductosPage() {
       })
       await loadProductos()
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Error al procesar el archivo.')
+      setImportError(err instanceof Error ? err.message : t('productos.import.errors.process'))
     }
     setImportLoading(false)
   }
@@ -1087,44 +974,19 @@ export function ProductosPage() {
             <Button variant="ghost" type="button" onClick={handleCloseForm}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" form="producto-form" disabled={submitting}>
-              {submitting ? t('common.saving') : t('common.save')}
+            <Button type="submit" form="producto-form" disabled={!!submitting}>
+              {uploadStatus ?? (submitting ? t('common.saving') : t('common.save'))}
             </Button>
           </>
         }
       >
-        <form id="producto-form" className="form-grid" onSubmit={handleSubmit}>
-          <label className="form-field">
-            <span>{t('productos.fields.codigo')}</span>
-            <input value={formValues.codigo} onChange={handleChange('codigo')} />
-          </label>
-          <label className="form-field">
-            <span>{t('productos.fields.nombre')}</span>
-            <input value={formValues.nombre} onChange={handleChange('nombre')} />
-          </label>
-          <label className="form-field">
-            <span>{t('productos.fields.categoria')}</span>
-            <input value={formValues.categoria} onChange={handleChange('categoria')} />
-          </label>
-          <label className="form-field">
-            <span>{t('productos.fields.precio')}</span>
-            <input type="number" value={formValues.precio} onChange={handleChange('precio')} />
-          </label>
-          <label className="form-field" style={{ gridColumn: '1 / -1' }}>
-            <span>{t('productos.fields.foto')}</span>
-            <input type="file" accept="image/*" onChange={handlePhotoChange} />
-            {photoPreview && (
-              <img
-                src={photoPreview}
-                alt={t('productos.fields.foto')}
-                style={{ marginTop: 8, maxWidth: '220px', borderRadius: 8 }}
-              />
-            )}
-          </label>
-          <label className="form-field checkbox-field">
-            <span>{t('productos.fields.activo')}</span>
-            <input type="checkbox" checked={formValues.activo} onChange={handleChange('activo')} />
-          </label>
+        <form id="producto-form" onSubmit={handleSubmit} style={{ display: 'grid', gap: '1.25rem' }}>
+          {createPanelItems.map((item) => (
+            <div key={item.label} style={{ display: 'grid', gap: '0.6rem' }}>
+              <span style={{ ...LABEL_STYLE, fontSize: '0.8rem', fontWeight: 700 }}>{item.label}</span>
+              {item.value}
+            </div>
+          ))}
           {formError && <div className="form-error">{formError}</div>}
         </form>
       </Modal>
@@ -1133,6 +995,7 @@ export function ProductosPage() {
           title={t('productos.detailsTitle')}
           items={detailItems}
           onClose={() => {
+            if (submitting) return
             setSelectedRow(null)
             setDetailEditMode(false)
             setDetailPhotoFile(null)
@@ -1149,8 +1012,8 @@ export function ProductosPage() {
                   >
                     {t('common.cancel')}
                   </Button>
-                  <Button type="button" onClick={handleSaveDetail} disabled={submitting}>
-                    {submitting ? t('common.saving') : t('common.save')}
+                  <Button type="button" onClick={handleSaveDetail} disabled={!!submitting}>
+                    {uploadStatus ?? (submitting ? t('common.saving') : t('common.save'))}
                   </Button>
                 </>
               ) : (

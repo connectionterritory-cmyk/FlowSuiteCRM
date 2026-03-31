@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
-import { useToast } from '../../components/Toast'
-import { useAuth } from '../../auth/AuthProvider'
+import { useToast } from '../../components/useToast'
+import { useAuth } from '../../auth/useAuth'
 import { useMessaging } from '../../hooks/useMessaging'
-import { useUsers } from '../../data/UsersProvider'
+import { useUsers } from '../../data/useUsers'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
 import { getContactTable } from '../../lib/contactRefs'
@@ -73,6 +73,16 @@ type ClienteReactivacionRow = {
   apellido: string | null
   telefono: string | null
   fecha_ultimo_pedido: string | null
+}
+
+type ClienteAgendaRow = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono: string | null
+  next_action: string | null
+  next_action_date: string | null
+  is_cliente: true
 }
 
 type MantenimientoRow = {
@@ -447,7 +457,7 @@ export function HoyPage() {
 
   const formatDateKey = useCallback(
     (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(date),
-    []
+    [timeZone]
   )
 
   const dateKeyToUtc = useCallback((dateKey: string) => {
@@ -705,10 +715,26 @@ export function HoyPage() {
     }
 
     const overdueLeadsData = ((overdueRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
-    const overdueClientsData = ((overdueClientsRes.data as any[] | null) ?? []).map(c => ({ ...c, is_cliente: true }))
+    const overdueClientsData = ((overdueClientsRes.data as ClienteAgendaRow[] | null) ?? []).map((client) => ({
+      ...client,
+      is_cliente: true,
+      estado_pipeline: null,
+      updated_at: null,
+      created_at: null,
+      vendedor_id: vendedorId,
+      owner_id: null,
+    }))
 
     const todayLeadsData = ((todayRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
-    const todayClientsData = ((todayClientsRes.data as any[] | null) ?? []).map(c => ({ ...c, is_cliente: true }))
+    const todayClientsData = ((todayClientsRes.data as ClienteAgendaRow[] | null) ?? []).map((client) => ({
+      ...client,
+      is_cliente: true,
+      estado_pipeline: null,
+      updated_at: null,
+      created_at: null,
+      vendedor_id: vendedorId,
+      owner_id: null,
+    }))
 
     const newLeadsData = ((newRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
     const oppsData = (oppsRes.data as OpportunityRow[] | null) ?? []
@@ -790,7 +816,7 @@ export function HoyPage() {
     await loadLastActivity(leadIds)
 
     setLoading(false)
-  }, [configured, hydrateHoyTasks, isAdmin, isDistribuidor, isSupervisorTelemercadeo, session?.user.id, getMonthRange, today, todayIso, tomorrowIso, loadLastActivity, t])
+  }, [configured, hydrateHoyTasks, isAdmin, isDistribuidor, isSupervisorTelemercadeo, session?.user.id, getMonthRange, today, todayIso, todayPlus15Iso, tomorrowIso, loadLastActivity, t])
 
   useEffect(() => {
     loadData()
@@ -1002,7 +1028,13 @@ export function HoyPage() {
     const contentField = lead.is_cliente ? 'contenido' : 'nota'
     const typeField = lead.is_cliente ? 'tipo_mensaje' : 'tipo'
 
-    const payload: any = {
+    const payload: Record<string, string | null> & {
+      usuario_id?: string
+      enviado_por?: string
+      enviado_en?: string
+      mensaje?: string | null
+      canal?: string
+    } = {
       [idField]: lead.id,
       [contentField]: `📍 Check-in — ${new Date().toLocaleString()}`,
       [typeField]: 'checkin',
@@ -1013,7 +1045,7 @@ export function HoyPage() {
     } else {
       payload.enviado_por = session.user.id
       payload.enviado_en = new Date().toISOString()
-      payload.mensaje = payload.contenido
+      payload.mensaje = payload[contentField] ?? null
       payload.canal = 'presencial'
     }
 

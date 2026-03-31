@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from './Button'
-import { useToast } from './Toast'
-import { useAuth } from '../auth/AuthProvider'
+import { useToast } from './useToast'
+import { useAuth } from '../auth/useAuth'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 
 type QuickActionsSheetProps = {
@@ -37,6 +37,7 @@ const actionOrder: ActionKey[] = ['newLead', 'note', 'nextAction', 'opportunity'
 export function QuickActionsSheet({ open, onClose, initialAction = null }: QuickActionsSheetProps) {
   const { t } = useTranslation()
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
 
@@ -93,9 +94,9 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
   )
 
   const loadOptions = useCallback(async () => {
-    if (!configured || !session?.user.id) return
+    if (!configured || !sessionUserId) return
     setLoadingOptions(true)
-    const vendedorId = session.user.id
+    const vendedorId = sessionUserId
 
     const [leadsRes, clientesRes, productosRes] = await Promise.all([
       supabase
@@ -123,12 +124,17 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
     setClienteOptions((clientesRes.data as ClienteOption[] | null) ?? [])
     setProductoOptions((productosRes.data as ProductoOption[] | null) ?? [])
     setLoadingOptions(false)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   useEffect(() => {
     if (!open) return
-    setActiveAction(initialAction)
-    loadOptions()
+    startTransition(() => {
+      setActiveAction(initialAction)
+    })
+    const handle = window.setTimeout(() => {
+      void loadOptions()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [open, initialAction, loadOptions])
 
   const getLabel = (row: { nombre: string | null; apellido?: string | null; telefono?: string | null }) => {
@@ -156,7 +162,7 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
       showToast(t('quickActions.requiredLead'), 'error')
       return
     }
-    if (!session?.user.id) return
+    if (!sessionUserId) return
     setSubmitting(true)
     const { error } = await supabase.from('leads').insert({
       nombre: leadForm.nombre.trim(),
@@ -164,8 +170,8 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
       telefono: leadForm.telefono.trim(),
       email: leadForm.email.trim() || null,
       estado_pipeline: 'nuevo',
-      owner_id: session.user.id,
-      vendedor_id: session.user.id,
+      owner_id: sessionUserId,
+      vendedor_id: sessionUserId,
       referido_por_cliente_id: leadForm.referidoPorClienteId || null,
     })
     if (error) {
@@ -178,14 +184,14 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
   }
 
   const handleCreateNote = async () => {
-    if (!noteForm.leadId || !noteForm.nota.trim() || !session?.user.id) {
+    if (!noteForm.leadId || !noteForm.nota.trim() || !sessionUserId) {
       showToast(t('quickActions.requiredNote'), 'error')
       return
     }
     setSubmitting(true)
     const { error } = await supabase.from('lead_notas').insert({
       lead_id: noteForm.leadId,
-      usuario_id: session.user.id,
+      usuario_id: sessionUserId,
       nota: noteForm.nota.trim(),
       tipo: 'seguimiento',
     })

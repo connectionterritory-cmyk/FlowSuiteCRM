@@ -1,51 +1,18 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { MessageModal } from '../components/MessageModal'
 import {
   RegistrarGestionModal,
-  type GestionContactoRef,
-  type GestionDraft,
   type GestionRole,
-  type GestionTipo,
 } from '../components/RegistrarGestionModal'
-import { CitaModal, type CitaForm } from '../modules/citas/CitaModal'
-import type { MessagingChannel, MessagingContact } from '../types/messaging'
-import { useUsers } from '../data/UsersProvider'
-
-type AssignedOption = {
-  id: string
-  label: string
-}
-
-type MessageModalIntent = {
-  channel: MessagingChannel
-  contact: MessagingContact
-  initialTemplateId?: string | null
-}
-
-type CitaModalIntent = {
-  initialData?: Partial<CitaForm>
-  assignedOptions?: AssignedOption[]
-  onSaved?: (citaId?: string) => void
-}
-
-type GestionModalIntent = {
-  contacto?: GestionContactoRef | null
-  tipoDefault?: GestionTipo
-  moduloOrigen?: string
-  origenId?: string
-  onSubmit?: (draft: GestionDraft) => void | Promise<void>
-}
-
-type ModalHostValue = {
-  openMessageModal: (intent: MessageModalIntent) => void
-  closeMessageModal: () => void
-  openCitaModal: (intent: CitaModalIntent) => void
-  closeCitaModal: () => void
-  openGestionModal: (intent?: GestionModalIntent) => void
-  closeGestionModal: () => void
-}
-
-const ModalHostContext = createContext<ModalHostValue | null>(null)
+import { CitaModal } from '../modules/citas/CitaModal'
+import { useUsers } from '../data/useUsers'
+import {
+  ModalHostContext,
+  type CitaModalIntent,
+  type GestionModalIntent,
+  type MessageModalIntent,
+  type ModalHostValue,
+} from './ModalHostContext'
 
 export function ModalProvider({ children }: { children: React.ReactNode }) {
   const { currentRole } = useUsers()
@@ -122,16 +89,4 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
       />
     </ModalHostContext.Provider>
   )
-}
-
-export function useModalHost() {
-  const context = useContext(ModalHostContext)
-  if (!context) {
-    throw new Error('useModalHost must be used within ModalProvider')
-  }
-  return context
-}
-
-export function useOptionalModalHost() {
-  return useContext(ModalHostContext)
 }

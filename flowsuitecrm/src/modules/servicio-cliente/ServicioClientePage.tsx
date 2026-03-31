@@ -5,12 +5,12 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { normalizeTimeValue } from '../../lib/timeUtils'
-import { useAuth } from '../../auth/AuthProvider'
-import { useUsers } from '../../data/UsersProvider'
-import { useModalHost } from '../../modals/ModalProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
+import { useModalHost } from '../../modals/useModalHost'
 
 type ClienteOption = {
   id: string
@@ -182,9 +182,11 @@ export function ServicioClientePage() {
   }, [configured, t])
 
   useEffect(() => {
-    if (configured) {
-      loadData()
-    }
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadData()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadData])
 
   const clienteMap = useMemo(() => {
@@ -329,7 +331,7 @@ export function ServicioClientePage() {
     setFormMode(servicio.hora_cita ? 'cita' : 'servicio')
     setFormClienteSearch(clienteLabel || servicio.cliente_id || '')
     setFormOpen(true)
-  }, [clienteById, normalizeTimeValue])
+  }, [clienteById])
 
   const handleOpenDeleteConfirm = useCallback((servicioId: string) => {
     setDeleteServicioId(servicioId)

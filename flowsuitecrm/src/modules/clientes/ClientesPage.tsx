@@ -1,4 +1,4 @@
-import { type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
@@ -8,13 +8,13 @@ import { DetailPanel } from '../../components/DetailPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { EmptyState } from '../../components/EmptyState'
 import { IconWhatsapp } from '../../components/icons'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useUsers } from '../../data/UsersProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
+import { useViewMode } from '../../data/useViewMode'
 import { useMessaging } from '../../hooks/useMessaging'
-import { useModalHost } from '../../modals/ModalProvider'
+import { useModalHost } from '../../modals/useModalHost'
 import {
   parseUsAddress,
   buildMapsNavUrl,
@@ -221,6 +221,7 @@ export function ClientesPage() {
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { openGestionModal } = useModalHost()
   const configured = isSupabaseConfigured
+  const sessionUserId = session?.user.id ?? null
 
   // --- FILTROS ---
   const [busqueda, setBusqueda] = useState('')
@@ -243,8 +244,8 @@ export function ClientesPage() {
 
   const loadClientes = useCallback(async () => {
     setLoading(true)
-    if (!configured || !session?.user.id || !currentRole) return
-    const userId = session.user.id
+    if (!configured || !sessionUserId || !currentRole) return
+    const userId = sessionUserId
     setError(null)
     let query = supabase
       .from('clientes')
@@ -278,10 +279,14 @@ export function ClientesPage() {
       setClientes((data ?? []) as unknown as ClienteRecord[])
     }
     setLoading(false)
-  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, session?.user.id, viewMode])
+  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, isSellerView, sessionUserId, viewMode])
 
   useEffect(() => {
-    if (configured) loadClientes()
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadClientes()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadClientes])
 
   useEffect(() => {
@@ -294,10 +299,10 @@ export function ClientesPage() {
   const getClienteVendedorLabel = useCallback(
     (userId: string | null) => {
       if (!userId) return 'Sin asignar'
-      if (userId === session?.user.id && currentUserLabel) return currentUserLabel
+      if (userId === sessionUserId && currentUserLabel) return currentUserLabel
       return usersById[userId] ?? 'Sin nombre'
     },
-    [currentUserLabel, session?.user.id, usersById]
+    [currentUserLabel, sessionUserId, usersById]
   )
 
   const getClienteResponsableId = useCallback(
@@ -373,6 +378,7 @@ export function ClientesPage() {
     filtroCiudad,
     filtroEstadoRegion,
     filtroCodigoPostal,
+    getClienteVendedorKey,
   ])
 
   // --- ORDENACION ---
@@ -594,7 +600,7 @@ export function ClientesPage() {
         ],
       }
     })
-  }, [clientesOrdenados, getClienteResponsableId, getClienteVendedorLabel, openWhatsapp, usersById])
+  }, [clientesOrdenados, getClienteResponsableId, getClienteVendedorLabel, openWhatsapp])
 
   const selectedCliente = selectedRow ? clientes.find((c) => c.id === selectedRow.id) ?? null : null
   const selectedClienteDetail = detailCliente ?? selectedCliente
@@ -602,14 +608,18 @@ export function ClientesPage() {
 
   useEffect(() => {
     if (!configured || !selectedRow?.id) {
-      setDetailCliente(null)
-      setClienteNotas([])
+      startTransition(() => {
+        setDetailCliente(null)
+        setClienteNotas([])
+      })
       return
     }
     let active = true
-    setDetailLoading(true)
-    setNotasLoading(true)
-    setDetailTab('info')
+    startTransition(() => {
+      setDetailLoading(true)
+      setNotasLoading(true)
+      setDetailTab('info')
+    })
     const loadDetail = async () => {
       const [detailRes, notasRes] = await Promise.all([
         supabase
@@ -640,9 +650,12 @@ export function ClientesPage() {
       setDetailLoading(false)
       setNotasLoading(false)
     }
-    loadDetail()
+    const handle = window.setTimeout(() => {
+      void loadDetail()
+    }, 0)
     return () => {
       active = false
+      window.clearTimeout(handle)
     }
   }, [configured, selectedRow?.id])
 

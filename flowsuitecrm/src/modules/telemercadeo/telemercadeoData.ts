@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth } from '../../auth/useAuth'
 import type { Cliente, EquipoInstalado } from './TelemercadeoShared'
 
 const CLIENTE_FIELDS =
@@ -30,15 +30,16 @@ async function getTeleVendedorIds(userId: string): Promise<string[] | null> {
 export function useTelemercadeoClientes(options?: { balanceOnly?: boolean }) {
   const configured = isSupabaseConfigured
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(false)
   const balanceOnly = options?.balanceOnly ?? false
 
   const cargarClientes = useCallback(async () => {
-    if (!configured || !session?.user.id) return
+    if (!configured || !sessionUserId) return
     setLoading(true)
 
-    const vendedorIds = await getTeleVendedorIds(session.user.id)
+    const vendedorIds = await getTeleVendedorIds(sessionUserId)
 
     // If telemercadeo user but has no assigned vendedores, show empty list
     if (vendedorIds !== null && vendedorIds.length === 0) {
@@ -65,10 +66,13 @@ export function useTelemercadeoClientes(options?: { balanceOnly?: boolean }) {
     const { data } = await query
     setClientes((data as Cliente[]) ?? [])
     setLoading(false)
-  }, [configured, session?.user.id, balanceOnly])
+  }, [balanceOnly, configured, sessionUserId])
 
   useEffect(() => {
-    cargarClientes()
+    const handle = window.setTimeout(() => {
+      void cargarClientes()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [cargarClientes])
 
   return { clientes, loading, recargar: cargarClientes }
@@ -77,14 +81,15 @@ export function useTelemercadeoClientes(options?: { balanceOnly?: boolean }) {
 export function useTelemercadeoEquipos() {
   const configured = isSupabaseConfigured
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const [equipos, setEquipos] = useState<EquipoInstalado[]>([])
   const [loading, setLoading] = useState(false)
 
   const cargarEquipos = useCallback(async () => {
-    if (!configured || !session?.user.id) return
+    if (!configured || !sessionUserId) return
     setLoading(true)
 
-    const vendedorIds = await getTeleVendedorIds(session.user.id)
+    const vendedorIds = await getTeleVendedorIds(sessionUserId)
 
     // If telemercadeo user but has no assigned vendedores, show empty list
     if (vendedorIds !== null && vendedorIds.length === 0) {
@@ -109,10 +114,13 @@ export function useTelemercadeoEquipos() {
     const { data } = await query
     setEquipos((data as unknown as EquipoInstalado[]) ?? [])
     setLoading(false)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   useEffect(() => {
-    cargarEquipos()
+    const handle = window.setTimeout(() => {
+      void cargarEquipos()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [cargarEquipos])
 
   return { equipos, loading, recargar: cargarEquipos }

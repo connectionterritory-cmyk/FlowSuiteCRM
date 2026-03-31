@@ -1,5 +1,6 @@
-import { type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { StatCard } from '../../components/StatCard'
@@ -7,15 +8,15 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
 import { ActivacionReferidosPanel } from '../../components/ActivacionReferidosPanel'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
 import { useConexiones, type CiActivacion, type CiReferido, type GiftProduct } from '../../hooks/useConexiones'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { CONEXIONES_INFINITAS_DIFUSION, replaceTemplateVariables } from '../../lib/whatsappTemplates'
 import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
-import { useAuth } from '../../auth/AuthProvider'
-import { useUsers } from '../../data/UsersProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
+import { useViewMode } from '../../data/useViewMode'
 import { useMessaging } from '../../hooks/useMessaging'
 import {
   CI_REFERIDO_ESTADOS,
@@ -115,6 +116,7 @@ const buildConexionRows = (count = 3) =>
 
 export function ConexionesActivacionesTabLegacy() {
   const { t, i18n } = useTranslation()
+  const location = useLocation()
   const { session } = useAuth()
   const { usersById } = useUsers()
   const { showToast } = useToast()
@@ -140,6 +142,7 @@ export function ConexionesActivacionesTabLegacy() {
   const [activationOpen, setActivationOpen] = useState(false)
   const [activationError, setActivationError] = useState<string | null>(null)
   const [activationSaving, setActivationSaving] = useState(false)
+  const leadContext = (location.state as { fromLead?: { nombre?: string | null; telefono?: string | null; fuente?: string | null } } | null)?.fromLead ?? null
   const [selectedActivationId, setSelectedActivationId] = useState<string | null>(null)
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
   const [ownerSearch, setOwnerSearch] = useState('')
@@ -419,7 +422,7 @@ export function ConexionesActivacionesTabLegacy() {
     return () => {
       active = false
     }
-  }, [configured, selectedActivation])
+  }, [configured, createSignedPhotoUrl, selectedActivation])
 
   const revokePreviewUrl = useCallback((url: string | null) => {
     if (url?.startsWith('blob:')) {
@@ -1097,7 +1100,6 @@ export function ConexionesActivacionesTabLegacy() {
     clientesMap,
     formatDate,
     giftMap,
-    getActivationState,
     leadsMap,
     numberFormat,
     referidosByActivacion,
@@ -1145,7 +1147,7 @@ export function ConexionesActivacionesTabLegacy() {
       if (field === 'telefono') return formatPhone(referido.telefono ?? '')
       return referido.nombre ?? ''
     },
-    [formatPhone, referidoDrafts],
+    [referidoDrafts],
   )
 
   return (
@@ -1159,6 +1161,19 @@ export function ConexionesActivacionesTabLegacy() {
           </Button>
         }
       />
+
+      {leadContext && (
+        <div className="card" style={{ padding: '0.9rem 1rem' }}>
+          <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>
+            Llegaste desde el lead {leadContext.nombre ?? 'seleccionado'}
+          </div>
+          <div className="drawer-subtitle" style={{ margin: 0 }}>
+            Usa “Nueva activación” para continuar el flujo de Conexiones desde este prospecto.
+            {leadContext.telefono ? ` · ${leadContext.telefono}` : ''}
+            {leadContext.fuente ? ` · ${leadContext.fuente}` : ''}
+          </div>
+        </div>
+      )}
 
       {!configured && (
         <EmptyState
@@ -2230,9 +2245,13 @@ export function ConexionesActivacionesTabLegacy2() {
     let active = true
     const ids = [activation?.regalo_visita_id, activation?.regalo_id].filter(Boolean) as string[]
     if (!activation || ids.length === 0) {
-      setVisitSelected(null)
-      setPremiumSelected(null)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setVisitSelected(null)
+          setPremiumSelected(null)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
     fetchProductosByIds(ids).then(({ data: products, error: fetchError }) => {
       if (!active) return
@@ -2251,11 +2270,19 @@ export function ConexionesActivacionesTabLegacy2() {
     let active = true
     const term = visitSearch.trim()
     if (!term) {
-      setVisitResults([])
-      setVisitSearching(false)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setVisitResults([])
+          setVisitSearching(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
-    setVisitSearching(true)
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setVisitSearching(true)
+      })
+    }, 0)
     const handle = window.setTimeout(() => {
       searchProductos(term).then(({ data: products, error: searchError }) => {
         if (!active) return
@@ -2270,6 +2297,7 @@ export function ConexionesActivacionesTabLegacy2() {
     }, 350)
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
       window.clearTimeout(handle)
     }
   }, [searchProductos, visitSearch])
@@ -2278,11 +2306,19 @@ export function ConexionesActivacionesTabLegacy2() {
     let active = true
     const term = premiumSearch.trim()
     if (!term) {
-      setPremiumResults([])
-      setPremiumSearching(false)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setPremiumResults([])
+          setPremiumSearching(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
-    setPremiumSearching(true)
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setPremiumSearching(true)
+      })
+    }, 0)
     const handle = window.setTimeout(() => {
       searchProductos(term).then(({ data: products, error: searchError }) => {
         if (!active) return
@@ -2297,6 +2333,7 @@ export function ConexionesActivacionesTabLegacy2() {
     }, 350)
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
       window.clearTimeout(handle)
     }
   }, [premiumSearch, searchProductos])
@@ -2684,6 +2721,8 @@ export function ConexionesActivacionesTabLegacy2() {
 
 function ConexionesActivacionesTab() {
   const { t, i18n } = useTranslation()
+  const location = useLocation()
+  const navigate = useNavigate()
   const { session } = useAuth()
   const { usersById } = useUsers()
   const { showToast } = useToast()
@@ -2692,6 +2731,7 @@ function ConexionesActivacionesTab() {
   const [hasDistribuidorScope, setHasDistribuidorScope] = useState(false)
   const { viewMode, distributionUserIds } = useViewMode()
   const { currentUser } = useUsers()
+  const sessionUserId = session?.user.id ?? null
   const [currentUserLabel, setCurrentUserLabel] = useState<string | null>(null)
   const [programId, setProgramId] = useState<string | null>(null)
   const [activaciones, setActivaciones] = useState<CiActivacion[]>([])
@@ -2720,7 +2760,6 @@ function ConexionesActivacionesTab() {
   const [ownerSearching, setOwnerSearching] = useState(false)
   const [wizardError, setWizardError] = useState<string | null>(null)
   const [wizardSaving, setWizardSaving] = useState(false)
-  const [distributionIds, setDistributionIds] = useState<string[]>([])
   const [ownerEditOpen, setOwnerEditOpen] = useState(false)
   const [ownerEditType, setOwnerEditType] = useState<'cliente' | 'prospecto'>('cliente')
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null)
@@ -2730,6 +2769,11 @@ function ConexionesActivacionesTab() {
   const [ownerEditSaving, setOwnerEditSaving] = useState(false)
   const [ownerEditError, setOwnerEditError] = useState<string | null>(null)
   const [ownerEditPhone, setOwnerEditPhone] = useState<string | null>(null)
+  const leadContext = (
+    location.state as {
+      fromLead?: { id?: string | null; nombre?: string | null; telefono?: string | null; fuente?: string | null }
+    } | null
+  )?.fromLead ?? null
 
   const dateTimeFormat = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -2794,13 +2838,13 @@ function ConexionesActivacionesTab() {
         : 'mine'
 
   const loadRoleAndProgram = useCallback(async () => {
-    if (!configured || !session?.user.id) return
+    if (!configured || !sessionUserId) return
     setError(null)
     const [roleResult, programResult] = await Promise.all([
       supabase
         .from('usuarios')
         .select('rol, nombre, apellido, codigo_distribuidor')
-        .eq('id', session.user.id)
+        .eq('id', sessionUserId)
         .maybeSingle(),
       supabase
         .from('programas')
@@ -2818,7 +2862,7 @@ function ConexionesActivacionesTab() {
     const nextRole = roleResult.data?.rol ?? null
     setRole(nextRole)
     const nameLabel = [roleResult.data?.nombre, roleResult.data?.apellido].filter(Boolean).join(' ').trim()
-    setCurrentUserLabel(nameLabel || session.user.id)
+    setCurrentUserLabel(nameLabel || sessionUserId)
     const nextDistribuidorCode = roleResult.data?.codigo_distribuidor ?? null
     setHasDistribuidorScope(nextRole === 'admin' || nextRole === 'distribuidor' || Boolean(nextDistribuidorCode))
 
@@ -2828,10 +2872,10 @@ function ConexionesActivacionesTab() {
       return
     }
     setProgramId(programResult.data.id)
-  }, [configured, session?.user.id, t])
+  }, [configured, sessionUserId, t])
 
   const loadActivaciones = useCallback(async () => {
-    if (!configured || !session?.user.id || !programId) return
+    if (!configured || !sessionUserId || !programId) return
     setLoading(true)
     setError(null)
 
@@ -2844,7 +2888,7 @@ function ConexionesActivacionesTab() {
       const { data: assignments } = await supabase
         .from('tele_vendedor_assignments')
         .select('vendedor_id')
-        .eq('tele_id', session.user.id)
+        .eq('tele_id', sessionUserId)
       const ids = (assignments ?? []).map((a) => a.vendedor_id)
 
       if (ids.length === 0) {
@@ -2857,7 +2901,7 @@ function ConexionesActivacionesTab() {
     } else if (role === 'supervisor_telemercadeo') {
       // Supervisor sees all activaciones across the full team (no representante filter)
     } else if (role === 'vendedor' || (hasDistribuidorScope && effectiveScope === 'mine')) {
-      query = query.eq('representante_id', session.user.id)
+      query = query.eq('representante_id', sessionUserId)
     } else if (hasDistribuidorScope && effectiveScope === 'distribution') {
       if (role === 'admin') {
         // Admin: see all activaciones (no representante filter)
@@ -2869,7 +2913,7 @@ function ConexionesActivacionesTab() {
         const { data } = await supabase
           .from('usuarios')
           .select('codigo_distribuidor')
-          .eq('id', session.user.id)
+          .eq('id', sessionUserId)
           .maybeSingle()
         codigoDistribuidor = (data as { codigo_distribuidor?: string | null } | null)?.codigo_distribuidor ?? null
       }
@@ -2880,10 +2924,10 @@ function ConexionesActivacionesTab() {
           .eq('activo', true)
         if (codigoDistribuidor) {
           distQuery = distQuery.or(
-            `codigo_distribuidor.eq.${codigoDistribuidor},distribuidor_padre_id.eq.${session.user.id}`,
+            `codigo_distribuidor.eq.${codigoDistribuidor},distribuidor_padre_id.eq.${sessionUserId}`,
           )
         } else {
-          distQuery = distQuery.eq('distribuidor_padre_id', session.user.id)
+          distQuery = distQuery.eq('distribuidor_padre_id', sessionUserId)
         }
         const { data, error: distError } = await distQuery
         if (distError) {
@@ -2892,8 +2936,7 @@ function ConexionesActivacionesTab() {
           distIds = (data ?? []).map((row) => row.id)
         }
       }
-      if (session.user.id && !distIds.includes(session.user.id)) distIds.push(session.user.id)
-      setDistributionIds(distIds)
+      if (sessionUserId && !distIds.includes(sessionUserId)) distIds.push(sessionUserId)
       if (distIds.length === 0) {
         setActivaciones([])
         setReferidosCount({})
@@ -3013,52 +3056,74 @@ function ConexionesActivacionesTab() {
     setLoading(false)
   }, [
     configured,
-    session?.user.id,
+    sessionUserId,
     programId,
     role,
+    hasDistribuidorScope,
     effectiveScope,
     tab,
     limit,
     cutoffDate,
-    distributionIds,
     distributionUserIds,
     currentUser?.codigo_distribuidor,
   ])
 
   useEffect(() => {
-    loadRoleAndProgram()
+    const timeoutId = window.setTimeout(() => {
+      void loadRoleAndProgram()
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
   }, [loadRoleAndProgram])
 
   useEffect(() => {
     if (!programId || !role) return
-    loadActivaciones()
+    const timeoutId = window.setTimeout(() => {
+      void loadActivaciones()
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
   }, [loadActivaciones, programId, role, distributionUserIds])
 
   useEffect(() => {
-    if (!wizardOpen) {
-      setWizardStep(1)
-      setWizardError(null)
-      setOwnerSearch('')
-      setOwnerResults([])
-      setWizardOwnerId(null)
-      setWizardOwnerType('cliente')
-      setWizardOwnerLabel(null)
-    }
+    if (wizardOpen) return
+
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setWizardStep(1)
+        setWizardError(null)
+        setOwnerSearch('')
+        setOwnerResults([])
+        setWizardOwnerId(null)
+        setWizardOwnerType('cliente')
+        setWizardOwnerLabel(null)
+      })
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
   }, [wizardOpen])
 
   useEffect(() => {
     let active = true
     const term = ownerSearch.trim()
     if (!wizardOpen || term.length < 2) {
-      setOwnerResults([])
-      setOwnerSearching(false)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setOwnerResults([])
+          setOwnerSearching(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
-    setOwnerSearching(true)
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setOwnerSearching(true)
+      })
+    }, 0)
     const handle = window.setTimeout(() => {
       const run = async () => {
         const table = wizardOwnerType === 'cliente' ? 'clientes' : 'leads'
-        let query = supabase
+        const query = supabase
           .from(table)
           .select('id, nombre, apellido, telefono')
           .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
@@ -3081,6 +3146,7 @@ function ConexionesActivacionesTab() {
     }, 350)
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
       window.clearTimeout(handle)
     }
   }, [ownerSearch, wizardOpen, wizardOwnerType])
@@ -3089,20 +3155,24 @@ function ConexionesActivacionesTab() {
     if (!ownerEditOpen || !selectedActivation) return
     const ownerId = selectedActivation.cliente_id ?? selectedActivation.lead_id ?? null
     const ownerTable = selectedActivation.cliente_id ? 'clientes' : 'leads'
-    if (selectedActivation.cliente_id) {
-      setOwnerEditType('cliente')
-      setOwnerEditId(selectedActivation.cliente_id)
-    } else if (selectedActivation.lead_id) {
-      setOwnerEditType('prospecto')
-      setOwnerEditId(selectedActivation.lead_id)
-    } else {
-      setOwnerEditType('cliente')
-      setOwnerEditId(null)
-    }
-    setOwnerEditSearch('')
-    setOwnerEditResults([])
-    setOwnerEditError(null)
-    setOwnerEditPhone(null)
+    const nextOwnerType = selectedActivation.cliente_id
+      ? 'cliente'
+      : selectedActivation.lead_id
+        ? 'prospecto'
+        : 'cliente'
+    const nextOwnerEditId = ownerId
+
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setOwnerEditType(nextOwnerType)
+        setOwnerEditId(nextOwnerEditId)
+        setOwnerEditSearch('')
+        setOwnerEditResults([])
+        setOwnerEditError(null)
+        setOwnerEditPhone(null)
+      })
+    }, 0)
+
     if (ownerId && configured) {
       void supabase
         .from(ownerTable)
@@ -3111,17 +3181,27 @@ function ConexionesActivacionesTab() {
         .maybeSingle()
         .then(({ data }) => { if (data) setOwnerEditPhone((data as { telefono: string | null }).telefono ?? null) })
     }
+
+    return () => window.clearTimeout(timeoutId)
   }, [ownerEditOpen, selectedActivation, configured])
 
   useEffect(() => {
     let active = true
     const term = ownerEditSearch.trim()
     if (!ownerEditOpen || term.length < 2) {
-      setOwnerEditResults([])
-      setOwnerEditSearching(false)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setOwnerEditResults([])
+          setOwnerEditSearching(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
-    setOwnerEditSearching(true)
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setOwnerEditSearching(true)
+      })
+    }, 0)
     const handle = window.setTimeout(() => {
       const run = async () => {
         const table = ownerEditType === 'cliente' ? 'clientes' : 'leads'
@@ -3148,6 +3228,7 @@ function ConexionesActivacionesTab() {
     }, 350)
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
       window.clearTimeout(handle)
     }
   }, [ownerEditOpen, ownerEditSearch, ownerEditType])
@@ -3274,7 +3355,40 @@ function ConexionesActivacionesTab() {
     setDetailOpen(true)
   }
 
-  const handleReactivate = async (activationId: string) => {
+  useEffect(() => {
+    if (!leadContext || detailOpen || filteredActivaciones.length === 0) return
+
+    const normalize = (value?: string | null) =>
+      (value ?? '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase()
+
+    const byLeadId =
+      (leadContext.id
+        ? filteredActivaciones.find((row) => row.lead_id === leadContext.id)
+        : null) ?? null
+
+    const byName =
+      byLeadId ??
+      (leadContext.nombre
+        ? filteredActivaciones.find((row) => normalize(getOwnerLabel(row)) === normalize(leadContext.nombre))
+        : null) ??
+      null
+
+    if (!byName) return
+
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        handleOpenDetail(byName)
+      })
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [detailOpen, filteredActivaciones, getOwnerLabel, leadContext])
+
+  const handleReactivate = useCallback(async (activationId: string) => {
     if (!configured) return
     const { error: updateError } = await supabase
       .from('ci_activaciones')
@@ -3286,7 +3400,7 @@ function ConexionesActivacionesTab() {
     }
     showToast(t('conexiones.activaciones.actions.reactivated'))
     await loadActivaciones()
-  }
+  }, [configured, loadActivaciones, showToast, t])
 
   const canEditOwner = false
   const canCreateActivation = role === 'admin' || role === 'distribuidor' || role === 'vendedor'
@@ -3439,7 +3553,7 @@ function ConexionesActivacionesTab() {
         ],
       }
     })
-  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, representanteMap, effectiveScope, t])
+  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, representanteMap, effectiveScope, handleReactivate, t])
 
   const canAccess = role !== 'telemercadeo'
 
@@ -3465,6 +3579,24 @@ function ConexionesActivacionesTab() {
           </div>
         }
       />
+
+      {leadContext && (
+        <div className="card" style={{ padding: '0.9rem 1rem' }}>
+          <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>
+            Llegaste desde el lead {leadContext.nombre ?? 'seleccionado'}
+          </div>
+          <div className="drawer-subtitle" style={{ margin: 0 }}>
+            Si ya tiene activación, se abre automáticamente. Si no, puedes iniciar una nueva aquí.
+            {leadContext.telefono ? ` · ${leadContext.telefono}` : ''}
+            {leadContext.fuente ? ` · ${leadContext.fuente}` : ''}
+          </div>
+          <div style={{ marginTop: '0.65rem' }}>
+            <Button variant="ghost" type="button" onClick={() => navigate(-1)}>
+              Volver al lead
+            </Button>
+          </div>
+        </div>
+      )}
 
       {!configured && (
         <EmptyState
@@ -3668,7 +3800,10 @@ function ConexionesActivacionesTab() {
         currentRole={role}
         canEditOwner={canEditOwner}
         isClosed={selectedActivation ? isClosed(selectedActivation) : false}
-        onClose={() => setDetailOpen(false)}
+        onClose={() => {
+          setDetailOpen(false)
+          if (leadContext) navigate(-1)
+        }}
         onEditOwner={() => setOwnerEditOpen(true)}
         onReactivate={() => selectedActivation && handleReactivate(selectedActivation.id)}
         onRefresh={loadActivaciones}

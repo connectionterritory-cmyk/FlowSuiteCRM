@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Button } from './Button'
 import { supabase } from '../lib/supabase/client'
 import { Modal } from './Modal'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/useAuth'
 import { getOrganizationName } from '../lib/whatsappTemplates'
-import { useToast } from './Toast'
-import { useViewMode } from '../data/ViewModeProvider'
-import { useUsers } from '../data/UsersProvider'
+import { useToast } from './useToast'
+import { useViewMode } from '../data/useViewMode'
+import { useUsers } from '../data/useUsers'
 
 type TopbarProps = {
   title: string
@@ -35,9 +35,10 @@ export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: Topba
 
   useEffect(() => {
     if (!orgOpen) return
-    const current = getOrganizationName(session?.user?.user_metadata)
-    setOrgName(current)
-    setOrgError(null)
+    startTransition(() => {
+      setOrgName(getOrganizationName(session?.user?.user_metadata))
+      setOrgError(null)
+    })
   }, [orgOpen, session?.user?.user_metadata])
 
   useEffect(() => {

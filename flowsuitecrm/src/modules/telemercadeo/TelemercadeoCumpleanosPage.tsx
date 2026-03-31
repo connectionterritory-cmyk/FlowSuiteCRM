@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Button } from '../../components/Button'
 import { useMessaging } from '../../hooks/useMessaging'
-import { ClienteCard, diasParaCumple, nombreCompleto, type Cliente } from './TelemercadeoShared'
+import { ClienteCard, type Cliente } from './TelemercadeoShared'
+import { diasParaCumple, nombreCompleto } from './telemercadeoSharedUtils'
 import { TelemercadeoCallModal } from './TelemercadeoCallModal'
 import { useTelemercadeoClientes } from './telemercadeoData'
 

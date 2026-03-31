@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/useAuth'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import {
   getActivationState,
@@ -154,6 +154,7 @@ type ConexionesHookOptions = {
 export const useConexiones = (options?: ConexionesHookOptions) => {
   const { session } = useAuth()
   const configured = isSupabaseConfigured
+  const sessionUserId = session?.user.id ?? null
   const { autoLoad = true, mode = 'activaciones' } = options ?? {}
   const [activaciones, setActivaciones] = useState<CiActivacion[]>([])
   const [referidos, setReferidos] = useState<CiReferido[]>([])
@@ -182,7 +183,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     setRepresentante(null)
     setRepresentantesMap({})
 
-    const userId = session?.user.id ?? null
+    const userId = sessionUserId
     if (!userId) {
       setError('Auth required')
       setClientes([])
@@ -251,7 +252,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       .limit(1)
       .maybeSingle()
 
-    let activation = activationResult.data as CiActivacion | null
+    const activation = activationResult.data as CiActivacion | null
 
     if (activationResult.error) {
       setError(activationResult.error.message)
@@ -313,7 +314,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     setRepresentantesMap({})
 
     setLoading(false)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   const loadEmbajadores = useCallback(async () => {
     if (!configured) return
@@ -323,8 +324,8 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       supabase.from('embajadores').select('id, nombre, apellido, email, telefono, fecha_nacimiento'),
       supabase.from('periodos_programa').select('*'),
       supabase.from('embajador_programas').select('*'),
-      session?.user.id
-        ? supabase.from('usuarios').select('rol').eq('id', session.user.id).maybeSingle()
+      sessionUserId
+        ? supabase.from('usuarios').select('rol').eq('id', sessionUserId).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ])
 
@@ -343,22 +344,25 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     setProgramas((programasResult.data as EmbajadorProgramaRecord[]) ?? [])
     setRole((roleResult.data as { rol?: string } | null)?.rol ?? null)
     setLoadingEmbajadores(false)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   useEffect(() => {
     if (!autoLoad) return
-    if (mode === 'activaciones' || mode === 'all') {
-      loadConexiones()
-    }
-    if (mode === 'embajadores' || mode === 'all') {
-      loadEmbajadores()
-    }
+    const handle = window.setTimeout(() => {
+      if (mode === 'activaciones' || mode === 'all') {
+        void loadConexiones()
+      }
+      if (mode === 'embajadores' || mode === 'all') {
+        void loadEmbajadores()
+      }
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [autoLoad, loadConexiones, loadEmbajadores, mode])
 
   const createActivacion = useCallback(
     async (input: CreateActivacionInput): Promise<ConexionesResult<{ activacion: CiActivacion; referidos: CiReferido[] }>> => {
       if (!configured) return { data: null, error: 'Supabase not configured' }
-      if (!session?.user.id) return { data: null, error: 'Auth required' }
+      if (!sessionUserId) return { data: null, error: 'Auth required' }
 
       const normalizedReferidos = input.referidos.map(normalizeReferido).filter((row) => row.nombre && row.telefono)
       const estado = getActivationState({
@@ -368,8 +372,8 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       })
 
       const activationPayload = {
-        representante_id: session.user.id,
-        owner_id: session.user.id,
+        representante_id: sessionUserId,
+        owner_id: sessionUserId,
         programa_id: programaId,
         cliente_id: input.clienteId,
         lead_id: input.leadId,
@@ -396,9 +400,6 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
 
       let referidosData: CiReferido[] = []
       if (normalizedReferidos.length > 0) {
-        if (!session.user.id) {
-          return { data: null, error: 'Error de asignación: No se pudo identificar al vendedor/distribuidor gestor' }
-        }
         const referidosPayload = normalizedReferidos.map((row) => ({
           activacion_id: activationData.id,
           nombre: row.nombre,
@@ -406,7 +407,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
           relacion: row.relacion,
           estado: 'pendiente',
           modo_gestion: 'vendedor_directo',
-          gestionado_por_usuario_id: session.user.id,
+          gestionado_por_usuario_id: sessionUserId,
         }))
         const { data, error: referidosError } = await supabase
           .from('ci_referidos')
@@ -427,7 +428,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       }
       return { data: { activacion: activationData as CiActivacion, referidos: referidosData }, error: null }
     },
-    [configured, session?.user.id, programaId],
+    [configured, programaId, sessionUserId],
   )
 
   const updateActivacion = useCallback(
@@ -453,14 +454,14 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
   const createActivacionOwner = useCallback(
     async (input: { clienteId?: string | null; leadId?: string | null }): Promise<ConexionesResult<CiActivacion>> => {
       if (!configured) return { data: null, error: 'Supabase not configured' }
-      if (!session?.user.id) return { data: null, error: 'Auth required' }
+      if (!sessionUserId) return { data: null, error: 'Auth required' }
       const program = programaId
       if (!program) return { data: null, error: 'Programa no encontrado' }
       const { data, error: insertError } = await supabase
         .from('ci_activaciones')
         .insert({
-          representante_id: session.user.id,
-          owner_id: session.user.id,
+          representante_id: sessionUserId,
+          owner_id: sessionUserId,
           estado: 'activo',
           programa_id: program,
           cliente_id: input.clienteId ?? null,
@@ -475,7 +476,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       setReferidos([])
       return { data: data as CiActivacion, error: null }
     },
-    [configured, programaId, session?.user.id],
+    [configured, programaId, sessionUserId],
   )
 
   const updateReferido = useCallback(
@@ -503,11 +504,11 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
   const addReferido = useCallback(
     async (activacionId: string, row: ReferidoFormRow): Promise<ConexionesResult<CiReferido>> => {
       if (!configured) return { data: null, error: 'Supabase not configured' }
-      if (!session?.user.id) return { data: null, error: 'Auth required' }
+      if (!sessionUserId) return { data: null, error: 'Auth required' }
       const payload = normalizeReferido(row)
       const { data, error: insertError } = await supabase
         .from('ci_referidos')
-        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', modo_gestion: 'vendedor_directo', owner_id: session.user.id, gestionado_por_usuario_id: session.user.id })
+        .insert({ activacion_id: activacionId, ...payload, estado: 'pendiente', modo_gestion: 'vendedor_directo', owner_id: sessionUserId, gestionado_por_usuario_id: sessionUserId })
         .select('id, activacion_id, nombre, telefono, relacion, estado, lead_id, notas, calificacion, modo_gestion, asignado_a')
         .single()
       if (insertError || !data) {
@@ -519,7 +520,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       setReferidos((prev) => [data as CiReferido, ...prev])
       return { data: data as CiReferido, error: null }
     },
-    [configured, session?.user.id],
+    [configured, sessionUserId],
   )
 
   const searchProductos = useCallback(

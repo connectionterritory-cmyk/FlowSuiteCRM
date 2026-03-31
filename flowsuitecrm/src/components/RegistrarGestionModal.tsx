@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './Button'
-import { LABEL_STYLE, INPUT_STYLE } from './FormControls'
+import { LABEL_STYLE, INPUT_STYLE } from './formControlStyles'
+import { GESTION_TYPES_BY_ROLE, buildGestionAutoSummary } from './gestionUtils'
 import { Modal } from './Modal'
+import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 
 export type GestionRole = 'admin' | 'distribuidor' | 'vendedor' | 'telemercadeo'
 
@@ -44,6 +46,8 @@ export type GestionContactoRef = {
   telefono?: string | null
   email?: string | null
   subtitle?: string | null
+  searchDisabled?: boolean
+  searchDisabledReason?: string | null
 }
 
 export type GestionOrigen = {
@@ -68,19 +72,7 @@ type ResultadoOption = {
   label: string
 }
 
-type TipoOption = {
-  value: GestionTipo
-  label: string
-}
-
-export const GESTION_TYPES_BY_ROLE: Record<GestionRole, GestionTipo[]> = {
-  admin: ['llamada', 'whatsapp', 'nota', 'seguimiento', 'visita', 'email', 'cita_completada', 'venta', 'referidos', 'envio_material'],
-  distribuidor: ['llamada', 'whatsapp', 'nota', 'seguimiento', 'visita', 'email', 'venta'],
-  vendedor: ['llamada', 'whatsapp', 'nota', 'seguimiento', 'visita', 'email', 'cita_completada', 'venta', 'referidos', 'envio_material'],
-  telemercadeo: ['llamada', 'whatsapp', 'nota', 'seguimiento'],
-}
-
-const TIPO_OPTIONS: TipoOption[] = [
+const TIPO_OPTIONS: { value: GestionTipo; label: string }[] = [
   { value: 'llamada', label: 'Llamada' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'nota', label: 'Nota' },
@@ -155,14 +147,6 @@ const FIELD_GROUP_STYLE: React.CSSProperties = {
   gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
 }
 
-export function buildGestionAutoSummary(tipo: GestionTipo, resultado: GestionResultado | null) {
-  const tipoLabel = TIPO_OPTIONS.find((option) => option.value === tipo)?.label ?? tipo
-  const resultadoLabel = Object.values(RESULTADO_OPTIONS_BY_TYPE)
-    .flat()
-    .find((option) => option.value === resultado)?.label
-  return resultadoLabel ? `${tipoLabel} — ${resultadoLabel}` : tipoLabel
-}
-
 function createInitialDraft({
   contacto,
   role,
@@ -204,6 +188,28 @@ type RegistrarGestionModalProps = {
   origenId?: string
 }
 
+type SearchResultRow = {
+  id: string
+  nombre: string | null
+  apellido: string | null
+  telefono?: string | null
+  telefono_casa?: string | null
+  email?: string | null
+  hycite_id?: string | null
+  estado_pipeline?: string | null
+  vendedor_id?: string | null
+  lead_id?: string | null
+  estado?: string | null
+  estado_presentacion?: string | null
+  activacion_id?: string | null
+  programa_id?: string | null
+  representante_id?: string | null
+  cliente_id?: string | null
+  propietario_tipo?: string | null
+  propietario_id?: string | null
+  ciclo_numero?: number | null
+}
+
 export function RegistrarGestionModal({
   open,
   role,
@@ -218,13 +224,245 @@ export function RegistrarGestionModal({
   const [draft, setDraft] = useState<GestionDraft>(() =>
     createInitialDraft({ contacto, role, tipoDefault, moduloOrigen, origenId }),
   )
+  const [selectedContacto, setSelectedContacto] = useState<GestionContactoRef | null>(contacto)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [searchResults, setSearchResults] = useState<GestionContactoRef[]>([])
   const [showFollowup, setShowFollowup] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setDraft(createInitialDraft({ contacto, role, tipoDefault, moduloOrigen, origenId }))
-    setShowFollowup(false)
+    startTransition(() => {
+      setDraft(createInitialDraft({ contacto, role, tipoDefault, moduloOrigen, origenId }))
+      setSelectedContacto(contacto)
+      setSearchQuery('')
+      setSearchResults([])
+      setShowFollowup(false)
+    })
   }, [contacto, moduloOrigen, open, origenId, role, tipoDefault])
+
+  useEffect(() => {
+    if (!open || selectedContacto) return
+    const handle = window.setTimeout(() => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }, 40)
+    return () => window.clearTimeout(handle)
+  }, [open, selectedContacto])
+
+  useEffect(() => {
+    if (!open || selectedContacto || !isSupabaseConfigured) return
+    const term = searchQuery.trim()
+    if (term.length < 2) {
+      startTransition(() => {
+        setSearchResults([])
+      })
+      return
+    }
+
+    let cancelled = false
+    const handle = window.setTimeout(async () => {
+      setSearching(true)
+      const pattern = `%${term}%`
+      const [clientesRes, leadsRes, ciReferidosRes, referidos4en14Res] = await Promise.all([
+        supabase
+          .from('clientes')
+          .select('id, nombre, apellido, telefono, telefono_casa, email, hycite_id, vendedor_id')
+          .or(`nombre.ilike.${pattern},apellido.ilike.${pattern},telefono.ilike.${pattern},telefono_casa.ilike.${pattern},email.ilike.${pattern},hycite_id.ilike.${pattern}`)
+          .limit(6),
+        supabase
+          .from('leads')
+          .select('id, nombre, apellido, telefono, email, estado_pipeline, vendedor_id')
+          .or(`nombre.ilike.${pattern},apellido.ilike.${pattern},telefono.ilike.${pattern},email.ilike.${pattern}`)
+          .limit(6),
+        supabase
+          .from('ci_referidos')
+          .select('id, nombre, telefono, lead_id, estado, activacion_id')
+          .or(`nombre.ilike.${pattern},telefono.ilike.${pattern}`)
+          .limit(4),
+        supabase
+          .from('programa_4en14_referidos')
+          .select('id, nombre, telefono, lead_id, estado_presentacion, programa_id')
+          .or(`nombre.ilike.${pattern},telefono.ilike.${pattern}`)
+          .limit(4),
+      ])
+
+      if (cancelled) return
+
+      const ciRows = (ciReferidosRes.data as SearchResultRow[] | null) ?? []
+      const referidos4en14Rows = (referidos4en14Res.data as SearchResultRow[] | null) ?? []
+      const activacionIds = [...new Set(ciRows.map((row) => row.activacion_id).filter((value): value is string => Boolean(value)))]
+      const programaIds = [...new Set(referidos4en14Rows.map((row) => row.programa_id).filter((value): value is string => Boolean(value)))]
+
+      const [activacionesRes, programasRes] = await Promise.all([
+        activacionIds.length > 0
+          ? supabase
+              .from('ci_activaciones')
+              .select('id, representante_id, cliente_id, lead_id')
+              .in('id', activacionIds)
+          : Promise.resolve({ data: [] as SearchResultRow[] }),
+        programaIds.length > 0
+          ? supabase
+              .from('programa_4en14')
+              .select('id, propietario_tipo, propietario_id, vendedor_id, ciclo_numero')
+              .in('id', programaIds)
+          : Promise.resolve({ data: [] as SearchResultRow[] }),
+      ])
+
+      if (cancelled) return
+
+      const activaciones = ((activacionesRes.data as SearchResultRow[] | null) ?? [])
+      const programas = ((programasRes.data as SearchResultRow[] | null) ?? [])
+      const activacionMap = new Map(activaciones.map((row) => [row.id, row]))
+      const programaMap = new Map(programas.map((row) => [row.id, row]))
+
+      const userIds = [
+        ...new Set([
+          ...((clientesRes.data as SearchResultRow[] | null) ?? []).map((row) => row.vendedor_id ?? null),
+          ...((leadsRes.data as SearchResultRow[] | null) ?? []).map((row) => row.vendedor_id ?? null),
+          ...activaciones.map((row) => row.representante_id ?? null),
+          ...programas.map((row) => row.vendedor_id ?? null),
+          ...programas.map((row) =>
+            row.propietario_tipo === 'vendedor' || row.propietario_tipo === 'usuario' ? row.propietario_id ?? null : null,
+          ),
+        ].filter((value): value is string => Boolean(value))),
+      ]
+      const clienteOwnerIds = [
+        ...new Set([
+          ...activaciones.map((row) => row.cliente_id ?? null),
+          ...programas.map((row) => (row.propietario_tipo === 'cliente' ? row.propietario_id ?? null : null)),
+        ].filter((value): value is string => Boolean(value))),
+      ]
+      const leadOwnerIds = [
+        ...new Set([
+          ...activaciones.map((row) => row.lead_id ?? null),
+          ...programas.map((row) => (row.propietario_tipo === 'lead' ? row.propietario_id ?? null : null)),
+        ].filter((value): value is string => Boolean(value))),
+      ]
+      const embajadorIds = [
+        ...new Set(programas
+          .map((row) => (row.propietario_tipo === 'embajador' ? row.propietario_id ?? null : null))
+          .filter((value): value is string => Boolean(value))),
+      ]
+
+      const [usuariosRes, clientesOwnersRes, leadsOwnersRes, embajadoresRes] = await Promise.all([
+        userIds.length > 0
+          ? supabase.from('usuarios').select('id, nombre, apellido').in('id', userIds)
+          : Promise.resolve({ data: [] as SearchResultRow[] }),
+        clienteOwnerIds.length > 0
+          ? supabase.from('clientes').select('id, nombre, apellido').in('id', clienteOwnerIds)
+          : Promise.resolve({ data: [] as SearchResultRow[] }),
+        leadOwnerIds.length > 0
+          ? supabase.from('leads').select('id, nombre, apellido').in('id', leadOwnerIds)
+          : Promise.resolve({ data: [] as SearchResultRow[] }),
+        embajadorIds.length > 0
+          ? supabase.from('embajadores').select('id, nombre, apellido').in('id', embajadorIds)
+          : Promise.resolve({ data: [] as SearchResultRow[] }),
+      ])
+
+      if (cancelled) return
+
+      const buildNameMap = (rows: SearchResultRow[] | null | undefined) =>
+        new Map(
+          (rows ?? []).map((row) => [
+            row.id,
+            [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.id,
+          ]),
+        )
+
+      const userMap = buildNameMap(usuariosRes.data as SearchResultRow[] | null)
+      const clienteMap = buildNameMap(clientesOwnersRes.data as SearchResultRow[] | null)
+      const leadMap = buildNameMap(leadsOwnersRes.data as SearchResultRow[] | null)
+      const embajadorMap = buildNameMap(embajadoresRes.data as SearchResultRow[] | null)
+
+      const clientes = ((clientesRes.data as SearchResultRow[] | null) ?? []).map((row) => ({
+        tipo: 'cliente' as const,
+        id: row.id,
+        nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Cliente',
+        telefono: row.telefono ?? row.telefono_casa ?? null,
+        email: row.email ?? null,
+        subtitle: [
+          row.hycite_id ? `Cliente · Hycite ${row.hycite_id}` : 'Cliente',
+          row.vendedor_id ? `Vendedor ${userMap.get(row.vendedor_id) ?? row.vendedor_id}` : null,
+        ].filter(Boolean).join(' · '),
+      }))
+
+      const leads = ((leadsRes.data as SearchResultRow[] | null) ?? []).map((row) => ({
+        tipo: 'lead' as const,
+        id: row.id,
+        nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Lead',
+        telefono: row.telefono ?? null,
+        email: row.email ?? null,
+        subtitle: [
+          row.estado_pipeline ? `Lead · ${row.estado_pipeline}` : 'Lead',
+          row.vendedor_id ? `Vendedor ${userMap.get(row.vendedor_id) ?? row.vendedor_id}` : null,
+        ].filter(Boolean).join(' · '),
+      }))
+
+      const referidosConexiones = ciRows.map((row) => {
+        const activacion = row.activacion_id ? activacionMap.get(row.activacion_id) : null
+        const referidoPor = activacion?.cliente_id
+          ? clienteMap.get(activacion.cliente_id)
+          : activacion?.lead_id
+            ? leadMap.get(activacion.lead_id)
+            : null
+        const vendedor = activacion?.representante_id ? userMap.get(activacion.representante_id) : null
+        return {
+          tipo: 'lead' as const,
+          id: row.lead_id ?? row.id,
+          nombre: row.nombre?.trim() || 'Referido sin nombre',
+          telefono: row.telefono ?? null,
+          email: null,
+          subtitle: [
+            row.lead_id ? `Conexiones · ${row.estado ?? 'pendiente'}` : 'Conexiones · sin lead vinculado',
+            referidoPor ? `Referido por ${referidoPor}` : null,
+            vendedor ? `Vendedor ${vendedor}` : null,
+          ].filter(Boolean).join(' · '),
+          searchDisabled: !row.lead_id,
+          searchDisabledReason: row.lead_id ? null : 'Este referido aún no está vinculado a un lead.',
+        }
+      })
+
+      const referidos4en14 = referidos4en14Rows.map((row) => {
+        const programa = row.programa_id ? programaMap.get(row.programa_id) : null
+        const referidoPor = programa?.propietario_id
+          ? programa.propietario_tipo === 'cliente'
+            ? clienteMap.get(programa.propietario_id)
+            : programa.propietario_tipo === 'lead'
+              ? leadMap.get(programa.propietario_id)
+              : programa.propietario_tipo === 'embajador'
+                ? embajadorMap.get(programa.propietario_id)
+                : userMap.get(programa.propietario_id)
+          : null
+        const vendedor = programa?.vendedor_id ? userMap.get(programa.vendedor_id) : null
+        return {
+          tipo: 'lead' as const,
+          id: row.lead_id ?? row.id,
+          nombre: row.nombre?.trim() || 'Referido sin nombre',
+          telefono: row.telefono ?? null,
+          email: null,
+          subtitle: [
+            row.lead_id
+              ? `4 en 14 · ${programa?.ciclo_numero ? `Ciclo ${programa.ciclo_numero}` : row.estado_presentacion ?? 'pendiente'}`
+              : '4 en 14 · sin lead vinculado',
+            referidoPor ? `Referido por ${referidoPor}` : null,
+            vendedor ? `Vendedor ${vendedor}` : null,
+          ].filter(Boolean).join(' · '),
+          searchDisabled: !row.lead_id,
+          searchDisabledReason: row.lead_id ? null : 'Este referido de 4 en 14 aún no está vinculado a un lead.',
+        }
+      })
+
+      setSearchResults([...clientes, ...leads, ...referidosConexiones, ...referidos4en14])
+      setSearching(false)
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [open, searchQuery, selectedContacto])
 
   const allowedTypes = useMemo(() => {
     const allowed = new Set(GESTION_TYPES_BY_ROLE[role])
@@ -239,6 +477,17 @@ export function RegistrarGestionModal({
   const requiresResultado = draft.tipo !== 'nota'
   const showMontoPrometido = draft.resultado === 'promesa_pago'
   const canSubmit = Boolean(draft.contactoId && (!requiresResultado || draft.resultado))
+
+  const handleSelectContacto = (nextContacto: GestionContactoRef) => {
+    setSelectedContacto(nextContacto)
+    setDraft((current) => ({
+      ...current,
+      contactoTipo: nextContacto.tipo,
+      contactoId: nextContacto.id,
+    }))
+    setSearchResults([])
+    setSearchQuery('')
+  }
 
   const handleSubmit = async () => {
     const nextDraft = {
@@ -270,18 +519,92 @@ export function RegistrarGestionModal({
       <div style={{ display: 'grid', gap: '1rem' }}>
         <div style={{ padding: '0.85rem', borderRadius: '0.75rem', border: '1px solid var(--color-input-border)', background: 'var(--color-surface-strong)' }}>
           <div style={LABEL_STYLE}>Contacto</div>
-          {contacto ? (
+          {selectedContacto ? (
             <div style={{ marginTop: '0.45rem', display: 'grid', gap: '0.2rem' }}>
-              <strong>{contacto.nombre}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <strong>{selectedContacto.nombre}</strong>
+                {!contacto && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedContacto(null)
+                      setDraft((current) => ({ ...current, contactoId: '', contactoTipo: 'cliente' }))
+                    }}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    Cambiar
+                  </button>
+                )}
+              </div>
               <span style={{ color: 'var(--color-text-muted)', fontSize: '0.88rem' }}>
-                {contacto.tipo.toUpperCase()}
-                {contacto.telefono ? ` · ${contacto.telefono}` : ''}
-                {contacto.email ? ` · ${contacto.email}` : ''}
+                {selectedContacto.tipo.toUpperCase()}
+                {selectedContacto.telefono ? ` · ${selectedContacto.telefono}` : ''}
+                {selectedContacto.email ? ` · ${selectedContacto.email}` : ''}
               </span>
+              {selectedContacto.subtitle && (
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>{selectedContacto.subtitle}</span>
+              )}
             </div>
           ) : (
-            <div style={{ marginTop: '0.45rem', color: 'var(--color-text-muted)', fontSize: '0.88rem' }}>
-              La búsqueda global del contacto se conectará en la siguiente fase.
+            <div style={{ marginTop: '0.6rem', display: 'grid', gap: '0.65rem' }}>
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Buscar cliente o lead por nombre, teléfono, email o cuenta"
+                style={INPUT_STYLE}
+              />
+              <div style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                Busca desde aquí sin entrar primero al módulo.
+              </div>
+              {searching && (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Buscando contactos...</div>
+              )}
+              {!searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>No encontré coincidencias todavía.</div>
+              )}
+              {searchResults.length > 0 && (
+                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                  {searchResults.map((result) => (
+                    <button
+                      key={`${result.tipo}-${result.id}`}
+                      type="button"
+                      onClick={() => {
+                        if (result.searchDisabled) return
+                        handleSelectContacto(result)
+                      }}
+                      disabled={result.searchDisabled}
+                      style={{
+                        textAlign: 'left',
+                        padding: '0.8rem 0.9rem',
+                        borderRadius: '0.75rem',
+                        border: '1px solid var(--color-input-border)',
+                        background: result.searchDisabled ? 'var(--color-surface-strong)' : 'var(--color-surface)',
+                        color: 'var(--color-text)',
+                        cursor: result.searchDisabled ? 'not-allowed' : 'pointer',
+                        display: 'grid',
+                        gap: '0.2rem',
+                        opacity: result.searchDisabled ? 0.72 : 1,
+                      }}
+                    >
+                      <strong>{result.nombre}</strong>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: '0.84rem' }}>
+                        {result.tipo.toUpperCase()}
+                        {result.telefono ? ` · ${result.telefono}` : ''}
+                        {result.email ? ` · ${result.email}` : ''}
+                      </span>
+                      {result.subtitle && (
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{result.subtitle}</span>
+                      )}
+                      {result.searchDisabledReason && (
+                        <span style={{ color: '#f59e0b', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {result.searchDisabledReason}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

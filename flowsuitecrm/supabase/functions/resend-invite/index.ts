@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 
 type ResendInvitePayload = {
   email: string | null
+  organizacion?: string | null
 }
 
 const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
@@ -83,7 +84,7 @@ serve(async (req) => {
     })
   }
 
-  const organizacion = (payload as any).organizacion || 'Royal Prestige'
+  const organizacion = payload.organizacion || 'Royal Prestige'
 
   const { data: inviteData, error: inviteError } = await supabaseClient.auth.admin.inviteUserByEmail(
     payload.email,

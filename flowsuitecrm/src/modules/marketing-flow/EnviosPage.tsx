@@ -8,11 +8,11 @@ import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
 import { Modal } from '../../components/Modal'
 import { MessageModal } from '../../components/MessageModal'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { CitaModal, type CitaForm } from '../citas/CitaModal'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 
 type CampaignRecord = {
   id: string
@@ -38,9 +38,10 @@ type MkMessageRow = {
 
 export function EnviosPage() {
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const [searchParams] = useSearchParams()
   const { showToast } = useToast()
-  const { hasDistribuidorScope, distributionUserIds } = useViewMode()
+  const { hasDistribuidorScope, viewMode } = useViewMode()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -80,17 +81,17 @@ export function EnviosPage() {
   const isBirthdayCampaign = selectedCampaign?.segmento_key === 'cumpleanos_clientes'
 
   const loadRole = useCallback(async () => {
-    if (!configured || !session?.user.id) {
+    if (!configured || !sessionUserId) {
       setRole(null)
       return
     }
     const { data } = await supabase
       .from('usuarios')
       .select('rol')
-      .eq('id', session.user.id)
+      .eq('id', sessionUserId)
       .maybeSingle()
     setRole((data as { rol?: string } | null)?.rol ?? null)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   const isMarketingManager = role === 'admin' || role === 'distribuidor' || role === 'supervisor_telemercadeo'
 
@@ -108,8 +109,8 @@ export function EnviosPage() {
       .from('mk_messages')
       .select('id, contacto_id, contacto_tipo, telefono, nombre, mensaje_texto, status, sent_at, responded_at, response_id')
       .eq('campaign_id', campaignId)
-    if (!isMarketingManager && session?.user.id) {
-      query = query.eq('owner_id', session.user.id)
+    if (!isMarketingManager && sessionUserId) {
+      query = query.eq('owner_id', sessionUserId)
     }
     const { data, error: msgError } = await query.order('created_at', { ascending: true })
     if (msgError) {
@@ -166,17 +167,17 @@ export function EnviosPage() {
     }
     setMessages(rows)
     setLoading(false)
-  }, [campaignId, configured, isMarketingManager, selectedCampaign, session?.user.id])
+  }, [campaignId, configured, isMarketingManager, selectedCampaign, sessionUserId])
 
   const loadCampaigns = useCallback(async () => {
-    if (!configured || !session?.user.id) return
+    if (!configured || !sessionUserId) return
     let query = supabase
       .from('mk_campaigns')
       .select('id, nombre, estado, segmento_key, segment_params, owner_id')
       .order('created_at', { ascending: false })
       .limit(200)
     if (!isMarketingManager) {
-      query = query.eq('owner_id', session.user.id)
+      query = query.eq('owner_id', sessionUserId)
     }
     const { data, error: fetchError } = await query
     if (fetchError) {
@@ -184,41 +185,52 @@ export function EnviosPage() {
     } else {
       setCampaigns((data as CampaignRecord[] | null) ?? [])
     }
-  }, [configured, isMarketingManager, session?.user.id])
+  }, [configured, isMarketingManager, sessionUserId])
 
   useEffect(() => {
-    if (configured) loadRole()
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadRole()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadRole])
 
   useEffect(() => {
-    loadMessages()
+    const handle = window.setTimeout(() => {
+      void loadMessages()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [loadMessages])
 
   useEffect(() => {
-    loadCampaigns()
+    const handle = window.setTimeout(() => {
+      void loadCampaigns()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [loadCampaigns])
 
   useEffect(() => {
     const campaignParam = searchParams.get('campana')
     if (campaignParam) {
-      setCampaignId(campaignParam)
+      const handle = window.setTimeout(() => {
+        setCampaignId(campaignParam)
+      }, 0)
+      return () => window.clearTimeout(handle)
     }
   }, [searchParams])
 
-  const isOwner = Boolean(selectedCampaign?.owner_id && selectedCampaign?.owner_id === session?.user.id)
+  const isOwner = Boolean(selectedCampaign?.owner_id && selectedCampaign?.owner_id === sessionUserId)
   const canWriteCampaign =
     isOwner
-    || (hasDistribuidorScope
-      && Boolean(selectedCampaign?.owner_id)
-      && distributionUserIds.includes(selectedCampaign?.owner_id ?? ''))
+    || (hasDistribuidorScope && viewMode === 'distributor')
   const canSend = Boolean(campaignId) && selectedCampaign?.estado === 'activa' && canWriteCampaign
   const permissionTooltip = !canWriteCampaign ? 'Solo el responsable de la campaña puede ejecutar envíos' : undefined
 
-  const handleOpenMessage = (message: MkMessageRow) => {
+  const handleOpenMessage = useCallback((message: MkMessageRow) => {
     if (!canSend) return
     setActiveMessage(message)
     setMessageOpen(true)
-  }
+  }, [canSend])
 
   const handleCloseMessage = async () => {
     setMessageOpen(false)
@@ -232,7 +244,7 @@ export function EnviosPage() {
       return
     }
     const nowIso = new Date().toISOString()
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('mk_messages')
       .update({
         sent_at: activeMessage.sent_at ?? nowIso,
@@ -240,24 +252,32 @@ export function EnviosPage() {
         abierto_at: nowIso,
       })
       .eq('id', activeMessage.id)
+      .select('id')
     if (updateError) {
       showToast(updateError.message, 'error')
+    } else if (!updatedRows || updatedRows.length === 0) {
+      showToast('No se pudo actualizar el envío. Revisa permisos o responsable de la campaña.', 'error')
     } else {
       void loadMessages()
     }
     setActiveMessage(null)
   }
 
-  const handleMarkSent = async (message: MkMessageRow) => {
+  const handleMarkSent = useCallback(async (message: MkMessageRow) => {
     if (!configured || !canSend) return
     const nowIso = new Date().toISOString()
     const sentAt = message.sent_at ?? nowIso
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('mk_messages')
       .update({ sent_at: sentAt, status: 'enviado' })
       .eq('id', message.id)
+      .select('id')
     if (updateError) {
       showToast(updateError.message, 'error')
+      return
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      showToast('No se pudo actualizar el envío. Revisa permisos o responsable de la campaña.', 'error')
       return
     }
     setMessages((prev) =>
@@ -265,7 +285,7 @@ export function EnviosPage() {
     )
     showToast('Envio registrado')
     void loadMessages()
-  }
+  }, [canSend, configured, loadMessages, showToast])
 
   const RESULTADO_OPTIONS = [
     { value: 'sin_respuesta', label: 'Sin respuesta' },
@@ -283,7 +303,7 @@ export function EnviosPage() {
     { value: 'venta_cerrada', label: 'Venta cerrada' },
   ]
 
-  const openResponseModal = (message: MkMessageRow) => {
+  const openResponseModal = useCallback((message: MkMessageRow) => {
     if (!message.id) return
     if (!message.contacto_id) {
       showToast('Este mensaje no tiene contacto asociado.', 'error')
@@ -297,7 +317,7 @@ export function EnviosPage() {
     setResponseMessageId(message.id)
     setResponseForm({ resultado: '', notas: '', followup_at: '', monto_prometido: '' })
     setResponseOpen(true)
-  }
+  }, [showToast])
 
   const closeResponseModal = () => {
     if (responseSaving) return
@@ -313,7 +333,7 @@ export function EnviosPage() {
     montoPrm: number | null,
     notasText: string | null,
   ) => {
-    if (!configured || !contact || !session?.user.id) return
+    if (!configured || !contact || !sessionUserId) return
     const { contacto_tipo, contacto_id } = contact
 
     if (resultado === 'cita_agendada') {
@@ -324,7 +344,7 @@ export function EnviosPage() {
         }).eq('id', contacto_id)
         await supabase.from('lead_notas').insert({
           lead_id: contacto_id,
-          usuario_id: session.user.id,
+          usuario_id: sessionUserId,
           nota: ['Cita agendada via campaña', notasText].filter(Boolean).join(': '),
           tipo: 'seguimiento',
         })
@@ -337,7 +357,7 @@ export function EnviosPage() {
           cliente_id: contacto_id,
           contenido: ['Cita agendada via campaña', notasText].filter(Boolean).join(': '),
           canal: 'whatsapp',
-          enviado_por: session.user.id,
+          enviado_por: sessionUserId,
         })
       }
     }
@@ -345,7 +365,7 @@ export function EnviosPage() {
     if (resultado === 'pago_prometido' && contacto_tipo === 'cliente') {
       await supabase.from('llamadas_telemercadeo').insert({
         cliente_id: contacto_id,
-        telemercadista_id: session.user.id,
+        telemercadista_id: sessionUserId,
         resultado: 'pago_prometido',
         notas: notasText,
         followup_at: followupAt,
@@ -358,7 +378,7 @@ export function EnviosPage() {
         }).eq('id', contacto_id)
       }
     }
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   const saveResponse = async () => {
     if (!configured || !responseMessageId || !responseForm.resultado) return null
@@ -369,7 +389,7 @@ export function EnviosPage() {
       notas: responseForm.notas.trim() || null,
       followup_at: responseForm.followup_at || null,
       monto_prometido: responseForm.monto_prometido ? Number(responseForm.monto_prometido) : null,
-      registrado_por: session?.user.id ?? null,
+      registrado_por: sessionUserId,
     }
     const { data, error: upsertError } = await supabase
       .from('mk_responses')
@@ -383,12 +403,15 @@ export function EnviosPage() {
     }
     const responseId = (data as { id?: string } | null)?.id ?? null
     if (responseId) {
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from('mk_messages')
         .update({ responded_at: new Date().toISOString(), response_id: responseId, status: 'respondido' })
         .eq('id', responseMessageId)
+        .select('id')
       if (updateError) {
         showToast(updateError.message, 'error')
+      } else if (!updatedRows || updatedRows.length === 0) {
+        showToast('No se pudo actualizar el mensaje respondido. Revisa permisos.', 'error')
       }
     }
     setRespondedMessageIds((prev) => new Set(prev).add(responseMessageId))
@@ -444,9 +467,28 @@ export function EnviosPage() {
     setCitaOpen(true)
   }
 
+  const normalizeStatus = useCallback((row: MkMessageRow) => {
+    const raw = row.status ?? ''
+    if (!raw) return row.sent_at ? 'enviado' : 'pendiente'
+    if (raw === 'sent') return 'enviado'
+    if (raw === 'procesando') return 'pendiente'
+    return raw
+  }, [])
+  const isSentStatus = useCallback(
+    (row: MkMessageRow) => {
+      const status = normalizeStatus(row)
+      return status === 'enviado' || status === 'respondido'
+    },
+    [normalizeStatus]
+  )
+  const isPendingStatus = useCallback(
+    (row: MkMessageRow) => normalizeStatus(row) === 'pendiente',
+    [normalizeStatus]
+  )
+
   const totalMessages = messages.length
-  const sentCount = messages.filter((row) => Boolean(row.sent_at)).length
-  const pendingCount = Math.max(0, totalMessages - sentCount)
+  const sentCount = messages.filter((row) => isSentStatus(row)).length
+  const pendingCount = messages.filter((row) => isPendingStatus(row)).length
   const hasResults = totalMessages > 0
 
   const toggleFilter = (next: 'sent' | 'pending') => {
@@ -462,10 +504,10 @@ export function EnviosPage() {
   const displayedMessages = useMemo(() => {
     let list = messages
     if (statusFilter === 'sent') {
-      list = list.filter((row) => Boolean(row.sent_at))
+      list = list.filter((row) => isSentStatus(row))
     }
     if (statusFilter === 'pending') {
-      list = list.filter((row) => !row.sent_at)
+      list = list.filter((row) => isPendingStatus(row))
     }
     if (isBirthdayCampaign && daySort) {
       const sorted = [...list]
@@ -482,19 +524,19 @@ export function EnviosPage() {
       return sorted
     }
     return list
-  }, [birthDayByClienteId, daySort, isBirthdayCampaign, messages, statusFilter])
+  }, [birthDayByClienteId, daySort, isBirthdayCampaign, isPendingStatus, isSentStatus, messages, statusFilter])
 
-  const statusLabels: Record<string, string> = {
+  const statusLabels = useMemo<Record<string, string>>(() => ({
     pendiente: 'Pendiente',
     enviado: 'Enviado',
     respondido: 'Respondido',
-  }
+  }), [])
 
   const rows = useMemo<DataTableRow[]>(() => {
     return displayedMessages.map((message) => {
       const fullName = message.nombre ?? '-'
       const telefono = message.telefono ?? '-'
-      const status = message.status ?? 'pendiente'
+      const status = normalizeStatus(message)
       const statusLabel = statusLabels[status] ?? status
       const responded = Boolean(message.response_id) || Boolean(message.responded_at) || respondedMessageIds.has(message.id)
       const alreadySent = Boolean(message.sent_at)
@@ -543,7 +585,19 @@ export function EnviosPage() {
         ],
       }
     })
-  }, [birthDayByClienteId, canSend, displayedMessages, isBirthdayCampaign, respondedMessageIds, statusLabels])
+  }, [
+    birthDayByClienteId,
+    canSend,
+    displayedMessages,
+    handleMarkSent,
+    handleOpenMessage,
+    isBirthdayCampaign,
+    normalizeStatus,
+    openResponseModal,
+    permissionTooltip,
+    respondedMessageIds,
+    statusLabels,
+  ])
 
   return (
     <div className="page-stack">

@@ -1,9 +1,9 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { startTransition, type FormEvent, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase/client'
 import { Button } from '../../components/Button'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth } from '../../auth/useAuth'
 import logoFull from '../../assets/FlowSuiteCRM_Vector_Antigravity.svg'
 
 export function ResetPasswordPage() {
@@ -19,7 +19,12 @@ export function ResetPasswordPage() {
   useEffect(() => {
     if (loading) return
     if (!session && !success) {
-      setError(t('auth.resetInvalid'))
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setError(t('auth.resetInvalid'))
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
   }, [loading, session, success, t])
 

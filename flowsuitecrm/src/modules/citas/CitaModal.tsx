@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { isMissingLeadAddressColumnError, LEADS_SEARCH_BASE_SELECT, LEADS_SEARCH_EXTENDED_SELECT } from '../../lib/leadsSchema'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 import { buildContactRef, getContactTable } from '../../lib/contactRefs'
 import type { ContactKind } from '../../types/contacts'
 
@@ -201,6 +201,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
   const { showToast } = useToast()
   const { session } = useAuth()
   const { distributionUserIds, hasDistribuidorScope, viewMode } = useViewMode()
+  const sessionUserId = session?.user.id ?? null
   const mountedRef = useRef(false)
   const userEditedRef = useRef(false)
   const [form, setForm] = useState<CitaForm>(emptyForm)
@@ -282,27 +283,33 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       next.assigned_to = assignedOptions[0]?.id ?? ''
     }
     if (!next.owner_id) {
-      next.owner_id = session?.user.id ?? ''
+      next.owner_id = sessionUserId ?? ''
     }
     const nextCierreTarea = {
       ...emptyCierreTarea,
-      asignado_a: next.assigned_to || session?.user.id || '',
+      asignado_a: next.assigned_to || sessionUserId || '',
     }
-    setForm(next)
-    setContactSearch(next.contacto_nombre || '')
-    setContactResults([])
-    setShowSearch(!Boolean(next.contacto_id))
-    setInitialEstado(next.estado || '')
-    setCierreActividad(emptyCierreActividad)
-    setCierreTarea(nextCierreTarea)
-    setInitialSnapshot(buildDirtySnapshot({
-      form: next,
-      cierreActividad: emptyCierreActividad,
-      cierreTarea: nextCierreTarea,
-    }))
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setForm(next)
+        setContactSearch(next.contacto_nombre || '')
+        setContactResults([])
+        setShowSearch(!next.contacto_id)
+        setInitialEstado(next.estado || '')
+        setCierreActividad(emptyCierreActividad)
+        setCierreTarea(nextCierreTarea)
+        setInitialSnapshot(buildDirtySnapshot({
+          form: next,
+          cierreActividad: emptyCierreActividad,
+          cierreTarea: nextCierreTarea,
+        }))
+      })
+    }, 0)
 
     // If editing an existing cita, refresh address from the linked contact
-    if (!next.contacto_id || !isSupabaseConfigured) return
+    if (!next.contacto_id || !isSupabaseConfigured) {
+      return () => window.clearTimeout(timeoutId)
+    }
     let active = true
     const table = next.contacto_tipo === 'lead' ? 'leads' : 'clientes'
     const addressSelect =
@@ -349,24 +356,29 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       })
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
     }
-  }, [assignedOptions, initialData, open, session?.user.id])
+  }, [assignedOptions, initialData, open, sessionUserId])
 
   useEffect(() => {
-    if (!open || !isSupabaseConfigured || !session?.user.id) {
-      setRole(null)
-      return
+    if (!open || !isSupabaseConfigured || !sessionUserId) {
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setRole(null)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
     const loadRole = async () => {
       const { data } = await supabase
         .from('usuarios')
         .select('rol')
-        .eq('id', session.user.id)
+        .eq('id', sessionUserId)
         .maybeSingle()
       setRole((data as { rol?: string } | null)?.rol ?? null)
     }
     void loadRole()
-  }, [open, session?.user.id])
+  }, [open, sessionUserId])
 
   const selectedContactLabel = useMemo(() => {
     if (!form.contacto_id) return ''
@@ -385,9 +397,13 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     if (!open) return
     const term = contactSearch.trim()
     if (!showSearch || term.length < 2) {
-      setContactResults([])
-      setContactLoading(false)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setContactResults([])
+          setContactLoading(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
     let active = true
     const handle = setTimeout(async () => {
@@ -399,10 +415,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, distribuidor_id')
           .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
           .limit(10)
-        if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && session?.user.id) {
-          query = query.eq('vendedor_id', session.user.id)
-        } else if (role === 'distribuidor' && viewMode === 'seller' && session?.user.id) {
-          query = query.eq('vendedor_id', session.user.id)
+        if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && sessionUserId) {
+          query = query.eq('vendedor_id', sessionUserId)
+        } else if (role === 'distribuidor' && viewMode === 'seller' && sessionUserId) {
+          query = query.eq('vendedor_id', sessionUserId)
         } else if (hasDistribuidorScope && distributionUserIds.length > 0 && role !== 'supervisor_telemercadeo') {
           query = query.in('vendedor_id', distributionUserIds)
         }
@@ -431,10 +447,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             .is('deleted_at', null)
             .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
             .limit(10)
-          if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && session?.user.id) {
-            query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
-          } else if (role === 'distribuidor' && viewMode === 'seller' && session?.user.id) {
-            query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
+          if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && sessionUserId) {
+            query = query.or(`vendedor_id.eq.${sessionUserId},owner_id.eq.${sessionUserId}`)
+          } else if (role === 'distribuidor' && viewMode === 'seller' && sessionUserId) {
+            query = query.or(`vendedor_id.eq.${sessionUserId},owner_id.eq.${sessionUserId}`)
           } else if (hasDistribuidorScope && distributionUserIds.length > 0 && role !== 'supervisor_telemercadeo') {
             query = query.in('vendedor_id', distributionUserIds)
           }
@@ -479,7 +495,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       active = false
       clearTimeout(handle)
     }
-  }, [contactSearch, distributionUserIds, form.contacto_tipo, hasDistribuidorScope, open, role, session?.user.id, showSearch, viewMode])
+  }, [contactSearch, distributionUserIds, form.contacto_tipo, hasDistribuidorScope, open, role, sessionUserId, showSearch, viewMode])
 
   const handleSelectContact = (contact: ContactSearchResult) => {
     updateForm((prev) => ({

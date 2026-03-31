@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { useMessaging } from '../../hooks/useMessaging'
 import {
   ClienteCard,
+  type Cliente,
+  type SegmentoTab,
+} from './TelemercadeoShared'
+import {
   nombreCompleto,
   resultadoLabel,
   resultadoColor,
   formatFechaCorta,
-  type Cliente,
-  type SegmentoTab,
-} from './TelemercadeoShared'
+} from './telemercadeoSharedUtils'
 import { TelemercadeoCallModal } from './TelemercadeoCallModal'
 import { useTelemercadeoClientes } from './telemercadeoData'
 import { supabase } from '../../lib/supabase/client'
-import { useUsers } from '../../data/UsersProvider'
+import { useUsers } from '../../data/useUsers'
 
 type LastCall = {
   resultado: string
@@ -36,7 +38,9 @@ export function TelemercadeoCarteraPage() {
   // Batch-load the most recent call per client
   useEffect(() => {
     if (clientes.length === 0) {
-      setLastCallMap({})
+      startTransition(() => {
+        setLastCallMap({})
+      })
       return
     }
     const ids = clientes.map((c) => c.id)
@@ -85,7 +89,10 @@ export function TelemercadeoCarteraPage() {
       setSeguimientosHoyIds(hoy)
       setPromesasVencidasIds(vencidas)
     }
-    load()
+    const handle = window.setTimeout(() => {
+      void load()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [clientes])
 
   // Count per segment (unfiltered, for badges)

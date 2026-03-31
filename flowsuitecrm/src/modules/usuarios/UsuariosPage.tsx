@@ -6,10 +6,10 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
 import { EmptyState } from '../../components/EmptyState'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 import { getOrganizationName } from '../../lib/whatsappTemplates'
 
 type UsuarioRecord = {
@@ -36,6 +36,8 @@ type TeleAssignment = {
     email: string | null
   }
 }
+
+type UsuarioRow = DataTableRow & { originalData?: UsuarioRecord }
 
 const initialForm = {
   nombre: '',
@@ -74,7 +76,7 @@ export function UsuariosPage() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const [selectedRow, setSelectedRow] = useState<(DataTableRow & { originalData?: UsuarioRecord }) | null>(null)
+  const [selectedRow, setSelectedRow] = useState<UsuarioRow | null>(null)
 
   const [teleAssignments, setTeleAssignments] = useState<TeleAssignment[]>([])
   const [teleAssignSearch, setTeleAssignSearch] = useState('')
@@ -100,8 +102,9 @@ export function UsuariosPage() {
         if (!active) return
         setRole((data as { rol?: string } | null)?.rol ?? null)
       } finally {
-        if (!active) return
-        setRoleLoading(false)
+        if (active) {
+          setRoleLoading(false)
+        }
       }
     }
     cargarRol()
@@ -330,7 +333,7 @@ export function UsuariosPage() {
     setDeleting(false)
   }
 
-  const rows = useMemo<(DataTableRow & { originalData?: UsuarioRecord })[]>(() => {
+  const rows = useMemo<UsuarioRow[]>(() => {
     return filteredUsuarios.map((usuario) => {
       const fullName = [usuario.nombre, usuario.apellido].filter(Boolean).join(' ') || '-'
       const codigo = [usuario.codigo_vendedor, usuario.codigo_distribuidor]
@@ -569,7 +572,7 @@ export function UsuariosPage() {
             ]}
             rows={rows as DataTableRow[]}
             emptyLabel={emptyLabel}
-            onRowClick={setSelectedRow as any}
+            onRowClick={(row) => setSelectedRow(row as UsuarioRow)}
           />
 
           <Modal

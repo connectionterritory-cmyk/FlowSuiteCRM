@@ -6,10 +6,10 @@ import { CalificacionPanel } from '../../components/CalificacionPanel'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { IconWhatsapp } from '../../components/icons'
-import { useToast } from '../../components/Toast'
-import { useUsers } from '../../data/UsersProvider'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useToast } from '../../components/useToast'
+import { useUsers } from '../../data/useUsers'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 import { EmptyState } from '../../components/EmptyState'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useMessaging } from '../../hooks/useMessaging'
@@ -81,6 +81,7 @@ export function PipelinePage() {
   const configured = isSupabaseConfigured
   const { usersById, currentRole } = useUsers()
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
 
@@ -183,8 +184,8 @@ export function PipelinePage() {
     setLoading(true)
     setError(null)
     let query = supabase.from('leads').select('id, nombre, apellido, email, telefono, fecha_nacimiento, estado_pipeline, next_action, next_action_date, fuente, programa_id, embajador_id, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, vendedor_id').is('deleted_at', null)
-    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
-      query = query.or(`owner_id.eq.${session.user.id},vendedor_id.eq.${session.user.id}`)
+    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && sessionUserId) {
+      query = query.or(`owner_id.eq.${sessionUserId},vendedor_id.eq.${sessionUserId}`)
     }
     if (hasDistribuidorScope && viewMode === 'distributor') {
       if (distributionUserIds.length === 0) {
@@ -203,16 +204,18 @@ export function PipelinePage() {
       setLeads(data ?? [])
     }
     setLoading(false)
-  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, session?.user.id, viewMode])
+  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, sessionUserId, viewMode])
 
   useEffect(() => {
-    if (configured) {
-      loadLeads()
-      supabase
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadLeads()
+      void supabase
         .from('clientes')
         .select('id, nombre, apellido')
         .then(({ data }) => setClientes((data as ClienteOption[]) ?? []))
-    }
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadLeads])
 
   const normalizeStage = (stage: string | null): string => {
@@ -280,7 +283,7 @@ export function PipelinePage() {
     const byStage: Record<string, number> = {}
     stages.forEach((s) => { byStage[s] = groupedLeads[s]?.length ?? 0 })
     return { total: leads.length, overdue: overdueCount, byStage }
-  }, [leads, groupedLeads, stages, today])
+  }, [groupedLeads, leads, normalizeDateKey, stages, today])
 
   // --- Drag & drop ---
   const handleDragStart = (event: DragEvent<HTMLDivElement>, leadId: string) => {

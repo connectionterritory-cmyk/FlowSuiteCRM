@@ -6,11 +6,11 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
 import { EmptyState } from '../../components/EmptyState'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useUsers } from '../../data/UsersProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
+import { useViewMode } from '../../data/useViewMode'
 import { toCanonicalContactDraft } from '../../lib/contactRefs'
 
 type VentaRecord = {
@@ -188,6 +188,7 @@ export function VentasPage() {
   const [selectedVentaTransacciones, setSelectedVentaTransacciones] = useState<VentaTransaccion[]>([])
   const [detailTab, setDetailTab] = useState<'resumen' | 'articulos' | 'transacciones'>('resumen')
   const configured = isSupabaseConfigured
+  const sessionUserId = session?.user.id ?? null
 
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
@@ -214,8 +215,8 @@ export function VentasPage() {
       .from('ventas')
       .select('id, numero_nota_pedido, cliente_id, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
       .order('created_at', { ascending: false })
-    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && session?.user.id) {
-      query = query.eq('vendedor_id', session.user.id)
+    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && sessionUserId) {
+      query = query.eq('vendedor_id', sessionUserId)
     }
     if (hasDistribuidorScope && viewMode === 'distributor') {
       if (distributionUserIds.length === 0) {
@@ -233,7 +234,7 @@ export function VentasPage() {
       setVentas(data ?? [])
     }
     setLoading(false)
-  }, [configured, currentRole, session?.user.id, distributionUserIds, hasDistribuidorScope, viewMode])
+  }, [configured, currentRole, sessionUserId, distributionUserIds, hasDistribuidorScope, viewMode])
 
   const loadOptions = useCallback(async () => {
     if (!configured) return
@@ -263,10 +264,12 @@ export function VentasPage() {
   }, [])
 
   useEffect(() => {
-    if (configured) {
-      loadVentas()
-      loadOptions()
-    }
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadVentas()
+      void loadOptions()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadVentas, loadOptions])
 
   useEffect(() => {

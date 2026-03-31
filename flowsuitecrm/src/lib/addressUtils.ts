@@ -106,7 +106,8 @@ function normalizeAddressParts(parts: AddressParts): AddressParts {
         estado_region = estado_region ?? parsed.estado_region
         codigo_postal = codigo_postal ?? parsed.codigo_postal
       }
-    } catch {
+    } catch (error) {
+      void error
     }
   }
   return { direccion, ciudad, estado_region, codigo_postal }

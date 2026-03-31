@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
-import { useViewMode } from '../data/ViewModeProvider'
-import { useAuth } from '../auth/AuthProvider'
-import { useUsers } from '../data/UsersProvider'
+import { useViewMode } from '../data/useViewMode'
+import { useAuth } from '../auth/useAuth'
+import { useUsers } from '../data/useUsers'
 
 type DashboardMetrics = {
   leadsNew: number
@@ -43,6 +43,12 @@ type ScopedEquipmentResult = {
 type ComponentCountResult = {
   count: number
   error: Error | null
+}
+
+type ComponentCountQuery = {
+  lt: (column: string, value: string) => ComponentCountQuery
+  gte: (column: string, value: string) => ComponentCountQuery
+  lte: (column: string, value: string) => ComponentCountQuery
 }
 
 const defaultMetrics: DashboardMetrics = {
@@ -107,7 +113,7 @@ const countScopedComponents = async ({
   applyDateFilter,
 }: {
   equipmentIds: string[]
-  applyDateFilter: (query: any) => any
+  applyDateFilter: (query: ComponentCountQuery) => ComponentCountQuery
 }): Promise<ComponentCountResult> => {
   if (equipmentIds.length === 0) {
     return { count: 0, error: null }
@@ -116,15 +122,15 @@ const countScopedComponents = async ({
   let total = 0
 
   for (const chunk of chunkArray(equipmentIds, IN_CHUNK_SIZE)) {
-    let query = supabase
+    const query = supabase
       .from('componentes_equipo')
       .select('id', { count: 'exact', head: true })
       .eq('activo', true)
       .in('equipo_instalado_id', chunk)
 
-    query = applyDateFilter(query)
+    const filteredQuery = applyDateFilter(query as unknown as ComponentCountQuery) as typeof query
 
-    const { count, error } = await query
+    const { count, error } = await filteredQuery
     if (error) {
       return { count: 0, error: new Error(error.message) }
     }
@@ -306,18 +312,15 @@ export function useDashboardMetrics() {
 
         const dueSoonEnd = toDateString(new Date(today.getTime() + 30 * 86400000))
 
-        let overduePromise = supabase
-          .from('componentes_equipo')
-          .select('id', { count: 'exact', head: true })
-          .lt('fecha_proximo_cambio', todayString)
-          .eq('activo', true)
+        let overduePromise: PromiseLike<{ count?: number | null; error: { message?: string } | null }> = Promise.resolve({
+          count: 0,
+          error: null,
+        })
 
-        let dueSoonPromise = supabase
-          .from('componentes_equipo')
-          .select('id', { count: 'exact', head: true })
-          .gte('fecha_proximo_cambio', todayString)
-          .lte('fecha_proximo_cambio', dueSoonEnd)
-          .eq('activo', true)
+        let dueSoonPromise: PromiseLike<{ count?: number | null; error: { message?: string } | null }> = Promise.resolve({
+          count: 0,
+          error: null,
+        })
 
         const clientesQuery = supabase
           .from('clientes')
@@ -334,7 +337,20 @@ export function useDashboardMetrics() {
           error: null,
         })
 
-        if (scope.kind === 'self' && scope.userId) {
+        if (scope.kind === 'global') {
+          overduePromise = supabase
+            .from('componentes_equipo')
+            .select('id', { count: 'exact', head: true })
+            .lt('fecha_proximo_cambio', todayString)
+            .eq('activo', true)
+
+          dueSoonPromise = supabase
+            .from('componentes_equipo')
+            .select('id', { count: 'exact', head: true })
+            .gte('fecha_proximo_cambio', todayString)
+            .lte('fecha_proximo_cambio', dueSoonEnd)
+            .eq('activo', true)
+        } else if (scope.kind === 'self' && scope.userId) {
           leadsCountPromise = leadsCountPromise.or(`owner_id.eq.${scope.userId},vendedor_id.eq.${scope.userId}`)
           opportunitiesCountPromise = opportunitiesCountPromise.eq('owner_id', scope.userId)
           ventasPromise = ventasPromise.eq('vendedor_id', scope.userId)

@@ -6,10 +6,10 @@ import { EmptyState } from '../../components/EmptyState'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 import { estimateSegmentTargets, fetchSegmentTargets, getSegmentsByFuente, type CampaignSegmentParams, type Fuente } from './segments'
 import type { LeadScope } from './leadSegments'
 
@@ -385,7 +385,7 @@ export function CampanasPage() {
       active = false
       clearTimeout(timer)
     }
-  }, [audienceReady, buildSegmentParams, formOpen, formValues.audiencia, formValues.lead_source, formValues.segmento_key, leadSourceOptions.length, scope])
+  }, [audienceReady, buildSegmentParams, formOpen, formValues.audiencia, formValues.lead_source, formValues.owner_id, formValues.programa_id, formValues.segmento_key, formValues.vendedor_id, leadSourceOptions.length, scope])
 
   const materializeCampaignTargets = useCallback(async (campaign: CampaignRecord, fuente: Fuente, segmentKey: string) => {
     const targets = await fetchSegmentTargets({

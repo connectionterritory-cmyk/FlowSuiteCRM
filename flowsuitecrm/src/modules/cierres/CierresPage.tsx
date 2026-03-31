@@ -4,8 +4,8 @@ import { SectionHeader } from '../../components/SectionHeader'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
-import { useToast } from '../../components/Toast'
-import { useAuth } from '../../auth/AuthProvider'
+import { useToast } from '../../components/useToast'
+import { useAuth } from '../../auth/useAuth'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { LEAD_PIPELINE_FALLBACK_STAGES, getLeadStageBadgeVariant, getLeadStageLabel } from '../../constants/pipeline'
 import { getOpportunityStageBadgeVariant, getOpportunityStageLabel } from '../../constants/opportunities'
@@ -64,7 +64,7 @@ export function CierresPage() {
 
   const formatDateKey = useCallback(
     (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(date),
-    []
+    [timeZone]
   )
 
   const dateKeyToUtc = useCallback((dateKey: string) => {

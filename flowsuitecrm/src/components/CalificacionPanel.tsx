@@ -1,12 +1,13 @@
-import { type ClipboardEvent, useEffect, useMemo, useState } from 'react'
+import { startTransition, type ClipboardEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase/client'
 import { isMissingLeadAddressColumnError } from '../lib/leadsSchema'
 import { ContactoTimeline } from './ContactoTimeline'
-import { useToast } from './Toast'
+import { useToast } from './useToast'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
-import { useModalHost } from '../modals/ModalProvider'
+import { useModalHost } from '../modals/useModalHost'
 
 type LeadCalificacion = {
   id: string
@@ -21,7 +22,10 @@ type LeadCalificacion = {
   codigo_postal?: string | null
   fecha_nacimiento?: string | null
   fuente?: string | null
+  embajador_id?: string | null
+  referido_por_cliente_id?: string | null
   owner_id?: string | null
+  vendedor_id?: string | null
   next_action?: string | null
   estado_civil?: string | null
   nombre_conyuge?: string | null
@@ -40,11 +44,41 @@ type CalificacionPanelProps = {
   lead: LeadCalificacion | null
   ownerName?: string | null
   fuenteLabel?: string | null
+  recomendadoPor?: string | null
   canManage?: boolean
   onOpenManage?: (lead: LeadCalificacion, mode: 'delete' | 'reassign' | 'restore') => void
   onClose: () => void
   onSaved: () => Promise<void>
 }
+
+type LeadContextState = {
+  loading: boolean
+  origenPrincipal: string
+  referidoPor: string | null
+  vendedor: string | null
+  conexiones: {
+    linked: boolean
+    resumen: string | null
+  }
+  programa4en14: {
+    linked: boolean
+    resumen: string | null
+  }
+  referidos: {
+    total: number
+    items: {
+      id: string
+      nombre: string
+      telefono: string | null
+      origen: 'Conexiones' | '4 en 14'
+      estado: string | null
+      leadId: string | null
+      programaLabel?: string | null
+    }[]
+  }
+}
+
+type LeadDetailTab = 'resumen' | 'referidos' | 'programas' | 'historial'
 
 const initialForm = {
   nombre: '',
@@ -67,17 +101,74 @@ const initialForm = {
   tipo_vivienda: '',
 }
 
+function buildInitialFormValues(lead: LeadCalificacion | null) {
+  if (!lead) return initialForm
+
+  let nombre = lead.nombre ?? ''
+  let apellido = lead.apellido ?? ''
+  if (!apellido && nombre.trim().includes(' ')) {
+    const parts = nombre.trim().split(/\s+/)
+    nombre = parts.shift() ?? nombre
+    apellido = parts.join(' ')
+  }
+
+  return {
+    nombre,
+    apellido,
+    email: lead.email ?? '',
+    telefono: lead.telefono ?? '',
+    direccion: lead.direccion ?? '',
+    apartamento: lead.apartamento ?? '',
+    ciudad: lead.ciudad ?? '',
+    estado_region: lead.estado_region ?? '',
+    codigo_postal: lead.codigo_postal ?? '',
+    fecha_nacimiento: lead.fecha_nacimiento ?? '',
+    estado_civil: lead.estado_civil ?? '',
+    nombre_conyuge: lead.nombre_conyuge ?? '',
+    telefono_conyuge: lead.telefono_conyuge ?? '',
+    situacion_laboral: lead.situacion_laboral ?? '',
+    ninos_en_casa: lead.ninos_en_casa ? 'si' : 'no',
+    cantidad_ninos: lead.cantidad_ninos ? String(lead.cantidad_ninos) : '',
+    tiene_productos_rp: lead.tiene_productos_rp ? 'si' : 'no',
+    tipo_vivienda: lead.tipo_vivienda ?? '',
+  }
+}
+
+function buildInitialContextState({
+  ownerName,
+  lead,
+  fuenteLabel,
+  recomendadoPor,
+}: {
+  ownerName?: string | null
+  lead: LeadCalificacion
+  fuenteLabel?: string | null
+  recomendadoPor?: string | null
+}): LeadContextState {
+  return {
+    loading: true,
+    origenPrincipal: fuenteLabel ?? lead.fuente ?? 'Lead directo',
+    referidoPor: recomendadoPor?.trim() || null,
+    vendedor: ownerName ?? lead.vendedor_id ?? lead.owner_id ?? null,
+    conexiones: { linked: false, resumen: null },
+    programa4en14: { linked: false, resumen: null },
+    referidos: { total: 0, items: [] },
+  }
+}
+
 export function CalificacionPanel({
   open,
   lead,
   ownerName,
   fuenteLabel,
+  recomendadoPor,
   canManage = false,
   onOpenManage,
   onClose,
   onSaved,
 }: CalificacionPanelProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const { openGestionModal } = useModalHost()
   const [formValues, setFormValues] = useState(initialForm)
@@ -85,44 +176,448 @@ export function CalificacionPanel({
   const [error, setError] = useState<string | null>(null)
   const [showActions, setShowActions] = useState(false)
   const [parsedAddr, setParsedAddr] = useState<ParsedAddress | null>(null)
+  const [activeTab, setActiveTab] = useState<LeadDetailTab>('resumen')
+  const [context, setContext] = useState<LeadContextState>({
+    loading: false,
+    origenPrincipal: '-',
+    referidoPor: null,
+    vendedor: null,
+    conexiones: { linked: false, resumen: null },
+    programa4en14: { linked: false, resumen: null },
+    referidos: { total: 0, items: [] },
+  })
 
   useEffect(() => {
     if (!lead) return
-    let nombre = lead.nombre ?? ''
-    let apellido = lead.apellido ?? ''
-    if (!apellido && nombre.trim().includes(' ')) {
-      const parts = nombre.trim().split(/\s+/)
-      nombre = parts.shift() ?? nombre
-      apellido = parts.join(' ')
-    }
-    setFormValues({
-      nombre,
-      apellido,
-      email: lead.email ?? '',
-      telefono: lead.telefono ?? '',
-      direccion: lead.direccion ?? '',
-      apartamento: lead.apartamento ?? '',
-      ciudad: lead.ciudad ?? '',
-      estado_region: lead.estado_region ?? '',
-      codigo_postal: lead.codigo_postal ?? '',
-      fecha_nacimiento: lead.fecha_nacimiento ?? '',
-      estado_civil: lead.estado_civil ?? '',
-      nombre_conyuge: lead.nombre_conyuge ?? '',
-      telefono_conyuge: lead.telefono_conyuge ?? '',
-      situacion_laboral: lead.situacion_laboral ?? '',
-      ninos_en_casa: lead.ninos_en_casa ? 'si' : 'no',
-      cantidad_ninos: lead.cantidad_ninos ? String(lead.cantidad_ninos) : '',
-      tiene_productos_rp: lead.tiene_productos_rp ? 'si' : 'no',
-      tipo_vivienda: lead.tipo_vivienda ?? '',
+    startTransition(() => {
+      setFormValues(buildInitialFormValues(lead))
+      setShowActions(false)
+      setParsedAddr(null)
+      setActiveTab('resumen')
     })
-    setShowActions(false)
-    setParsedAddr(null)
   }, [lead])
+
+  useEffect(() => {
+    if (!open || !lead) return
+
+    let active = true
+    const vendedorLabel = ownerName ?? lead.vendedor_id ?? lead.owner_id ?? null
+    const fallbackOrigen = fuenteLabel ?? lead.fuente ?? 'Lead directo'
+    const initialReferidoPor = recomendadoPor?.trim() || null
+
+    startTransition(() => {
+      setContext(buildInitialContextState({ ownerName, lead, fuenteLabel, recomendadoPor }))
+    })
+
+    const loadContext = async () => {
+      const [conexionesRes, programaReferidosRes] = await Promise.all([
+        supabase
+          .from('ci_referidos')
+          .select('id, activacion_id, estado')
+          .eq('lead_id', lead.id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('programa_4en14_referidos')
+          .select('id, programa_id, estado_presentacion, fecha_demo')
+          .eq('lead_id', lead.id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ])
+
+      if (!active) return
+
+      const conexionesRows = (conexionesRes.data as { activacion_id?: string | null; estado?: string | null }[] | null) ?? []
+      const programaReferidosRows =
+        (programaReferidosRes.data as { programa_id?: string | null; estado_presentacion?: string | null; fecha_demo?: string | null }[] | null) ?? []
+
+      const [ownedActivacionesRes, ownedProgramasRes] = await Promise.all([
+        supabase
+          .from('ci_activaciones')
+          .select('id')
+          .eq('lead_id', lead.id),
+        supabase
+          .from('programa_4en14')
+          .select('id, ciclo_numero')
+          .eq('propietario_tipo', 'lead')
+          .eq('propietario_id', lead.id),
+      ])
+
+      if (!active) return
+
+      const ownedActivacionIds = (
+        (ownedActivacionesRes.data as { id: string }[] | null) ?? []
+      ).map((row) => row.id)
+      let ownedProgramas = (ownedProgramasRes.data as { id: string; ciclo_numero?: number | null }[] | null) ?? []
+
+      if (ownedActivacionIds.length === 0 || ownedProgramas.length === 0) {
+        const duplicateLeadIds = new Set<string>()
+        if (lead.telefono?.trim()) {
+          const { data: duplicateByPhone } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('telefono', lead.telefono.trim())
+            .is('deleted_at', null)
+          ;((duplicateByPhone as { id: string }[] | null) ?? []).forEach((row) => duplicateLeadIds.add(row.id))
+        }
+        if (lead.nombre?.trim() && lead.apellido?.trim()) {
+          const { data: duplicateByName } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('nombre', lead.nombre.trim())
+            .eq('apellido', lead.apellido.trim())
+            .is('deleted_at', null)
+          ;((duplicateByName as { id: string }[] | null) ?? []).forEach((row) => duplicateLeadIds.add(row.id))
+        }
+
+        duplicateLeadIds.delete(lead.id)
+
+        if (duplicateLeadIds.size > 0) {
+          const alternateLeadIds = [...duplicateLeadIds]
+          const [altActivacionesRes, altProgramasRes] = await Promise.all([
+            ownedActivacionIds.length === 0
+              ? supabase
+                  .from('ci_activaciones')
+                  .select('id')
+                  .in('lead_id', alternateLeadIds)
+              : Promise.resolve({ data: [] }),
+            ownedProgramas.length === 0
+              ? supabase
+                  .from('programa_4en14')
+                  .select('id, ciclo_numero')
+                  .eq('propietario_tipo', 'lead')
+                  .in('propietario_id', alternateLeadIds)
+              : Promise.resolve({ data: [] }),
+          ])
+
+          if (!active) return
+
+          const altActivacionIds = ((altActivacionesRes.data as { id: string }[] | null) ?? []).map((row) => row.id)
+          const altProgramas = (altProgramasRes.data as { id: string; ciclo_numero?: number | null }[] | null) ?? []
+
+          if (ownedActivacionIds.length === 0) ownedActivacionIds.push(...altActivacionIds)
+          if (ownedProgramas.length === 0) ownedProgramas = altProgramas
+        }
+      }
+
+      const ownedProgramaIds = ownedProgramas.map((row) => row.id)
+
+      const [generatedCiReferidosRes, generatedCiReferidosCountRes, generated4en14ReferidosRes, generated4en14ReferidosCountRes] = await Promise.all([
+        ownedActivacionIds.length > 0
+          ? supabase
+              .from('ci_referidos')
+              .select('id, nombre, telefono, estado, lead_id, created_at')
+              .in('activacion_id', ownedActivacionIds)
+              .order('created_at', { ascending: false })
+              .limit(5)
+          : Promise.resolve({ data: [] }),
+        ownedActivacionIds.length > 0
+          ? supabase
+              .from('ci_referidos')
+              .select('id', { count: 'exact', head: true })
+              .in('activacion_id', ownedActivacionIds)
+          : Promise.resolve({ count: 0 }),
+        ownedProgramaIds.length > 0
+          ? supabase
+              .from('programa_4en14_referidos')
+              .select('id, nombre, telefono, estado_presentacion, lead_id, programa_id, created_at')
+              .in('programa_id', ownedProgramaIds)
+              .order('created_at', { ascending: false })
+              .limit(5)
+          : Promise.resolve({ data: [] }),
+        ownedProgramaIds.length > 0
+          ? supabase
+              .from('programa_4en14_referidos')
+              .select('id', { count: 'exact', head: true })
+              .in('programa_id', ownedProgramaIds)
+          : Promise.resolve({ count: 0 }),
+      ])
+
+      if (!active) return
+
+      const generatedCiReferidos =
+        (generatedCiReferidosRes.data as {
+          id: string
+          nombre?: string | null
+          telefono?: string | null
+          estado?: string | null
+          lead_id?: string | null
+        }[] | null) ?? []
+      const generatedCiReferidosCount = generatedCiReferidosCountRes.count ?? generatedCiReferidos.length
+      const generated4en14Referidos =
+        (generated4en14ReferidosRes.data as {
+          id: string
+          nombre?: string | null
+          telefono?: string | null
+          estado_presentacion?: string | null
+          lead_id?: string | null
+          programa_id?: string | null
+        }[] | null) ?? []
+      const generated4en14ReferidosCount = generated4en14ReferidosCountRes.count ?? generated4en14Referidos.length
+
+      const programaLabelById = new Map(
+        ownedProgramas.map((row) => [row.id, row.ciclo_numero ? `Ciclo ${row.ciclo_numero}` : 'Programa activo']),
+      )
+
+      const referidosItems = [
+        ...generatedCiReferidos.map((row) => ({
+          id: `ci-${row.id}`,
+          nombre: row.nombre?.trim() || 'Referido sin nombre',
+          telefono: row.telefono ?? null,
+          origen: 'Conexiones' as const,
+          estado: row.estado ?? null,
+          leadId: row.lead_id ?? null,
+          programaLabel: null,
+        })),
+        ...generated4en14Referidos.map((row) => ({
+          id: `4en14-${row.id}`,
+          nombre: row.nombre?.trim() || 'Referido sin nombre',
+          telefono: row.telefono ?? null,
+          origen: '4 en 14' as const,
+          estado: row.estado_presentacion ?? null,
+          leadId: row.lead_id ?? null,
+          programaLabel: row.programa_id ? (programaLabelById.get(row.programa_id) ?? 'Programa activo') : null,
+        })),
+      ]
+
+      let conexionesResumen: string | null = null
+      let conexionesReferidoPor = initialReferidoPor
+
+      if (conexionesRows.length > 0) {
+        const activacionIds = [...new Set(conexionesRows.map((row) => row.activacion_id).filter((value): value is string => Boolean(value)))]
+        const latest = conexionesRows[0]
+        if (activacionIds.length > 0) {
+          const { data: activaciones } = await supabase
+            .from('ci_activaciones')
+            .select('id, representante_id, cliente_id, lead_id, estado')
+            .in('id', activacionIds)
+
+          if (!active) return
+
+          const activacion = ((activaciones as {
+            id: string
+            representante_id?: string | null
+            cliente_id?: string | null
+            lead_id?: string | null
+            estado?: string | null
+          }[] | null) ?? [])[0]
+
+          if (activacion) {
+            const lookups: PromiseLike<{ kind: 'usuario' | 'cliente' | 'lead'; name: string | null }>[] = []
+            if (activacion.representante_id) {
+              lookups.push(
+                supabase
+                  .from('usuarios')
+                  .select('nombre, apellido')
+                  .eq('id', activacion.representante_id)
+                  .maybeSingle()
+                  .then(({ data }) => ({
+                    kind: 'usuario' as const,
+                    name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                  })),
+              )
+            }
+            if (activacion.cliente_id) {
+              lookups.push(
+                supabase
+                  .from('clientes')
+                  .select('nombre, apellido')
+                  .eq('id', activacion.cliente_id)
+                  .maybeSingle()
+                  .then(({ data }) => ({
+                    kind: 'cliente' as const,
+                    name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                  })),
+              )
+            } else if (activacion.lead_id) {
+              lookups.push(
+                supabase
+                  .from('leads')
+                  .select('nombre, apellido')
+                  .eq('id', activacion.lead_id)
+                  .maybeSingle()
+                  .then(({ data }) => ({
+                    kind: 'lead' as const,
+                    name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                  })),
+              )
+            }
+
+            const lookupResults = await Promise.all(lookups)
+            if (!active) return
+
+            const representante = lookupResults.find((row) => row.kind === 'usuario')?.name ?? null
+            const owner =
+              lookupResults.find((row) => row.kind === 'cliente')?.name ??
+              lookupResults.find((row) => row.kind === 'lead')?.name ??
+              null
+
+            conexionesResumen = [
+              `Estado ${latest.estado ?? activacion.estado ?? 'pendiente'}`,
+              representante ? `Vendedor ${representante}` : null,
+            ].filter(Boolean).join(' · ')
+
+            if (!conexionesReferidoPor && owner) conexionesReferidoPor = owner
+          }
+        }
+      }
+
+      let programaResumen: string | null = null
+      if (programaReferidosRows.length > 0) {
+        const programaIds = [...new Set(programaReferidosRows.map((row) => row.programa_id).filter((value): value is string => Boolean(value)))]
+        if (programaIds.length > 0) {
+          const { data: programas } = await supabase
+            .from('programa_4en14')
+            .select('id, propietario_tipo, propietario_id, vendedor_id, ciclo_numero, estado')
+            .in('id', programaIds)
+
+          if (!active) return
+
+          const programa = ((programas as {
+            id: string
+            propietario_tipo?: string | null
+            propietario_id?: string | null
+            vendedor_id?: string | null
+            ciclo_numero?: number | null
+            estado?: string | null
+          }[] | null) ?? [])[0]
+
+          if (programa) {
+            let vendedorPrograma: string | null = null
+            let ownerPrograma: string | null = null
+
+            const lookups: PromiseLike<{ kind: 'vendedor' | 'owner'; name: string | null }>[] = []
+            if (programa.vendedor_id) {
+              lookups.push(
+                supabase
+                  .from('usuarios')
+                  .select('nombre, apellido')
+                  .eq('id', programa.vendedor_id)
+                  .maybeSingle()
+                  .then(({ data }) => ({
+                    kind: 'vendedor' as const,
+                    name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                  })),
+              )
+            }
+            if (programa.propietario_id) {
+              if (programa.propietario_tipo === 'cliente') {
+                lookups.push(
+                  supabase
+                    .from('clientes')
+                    .select('nombre, apellido')
+                    .eq('id', programa.propietario_id)
+                    .maybeSingle()
+                    .then(({ data }) => ({
+                      kind: 'owner' as const,
+                      name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                    })),
+                )
+              } else if (programa.propietario_tipo === 'lead') {
+                lookups.push(
+                  supabase
+                    .from('leads')
+                    .select('nombre, apellido')
+                    .eq('id', programa.propietario_id)
+                    .maybeSingle()
+                    .then(({ data }) => ({
+                      kind: 'owner' as const,
+                      name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                    })),
+                )
+              } else if (programa.propietario_tipo === 'embajador') {
+                lookups.push(
+                  supabase
+                    .from('embajadores')
+                    .select('nombre, apellido')
+                    .eq('id', programa.propietario_id)
+                    .maybeSingle()
+                    .then(({ data }) => ({
+                      kind: 'owner' as const,
+                      name: [data?.nombre, data?.apellido].filter(Boolean).join(' ').trim() || null,
+                    })),
+                )
+              }
+            }
+
+            const lookupResults = await Promise.all(lookups)
+            if (!active) return
+
+            vendedorPrograma = lookupResults.find((row) => row.kind === 'vendedor')?.name ?? null
+            ownerPrograma = lookupResults.find((row) => row.kind === 'owner')?.name ?? null
+
+            programaResumen = [
+              programa.ciclo_numero ? `Ciclo ${programa.ciclo_numero}` : 'Programa activo',
+              programaReferidosRows[0]?.estado_presentacion
+                ? `Estado ${programaReferidosRows[0].estado_presentacion}`
+                : programa.estado
+                  ? `Estado ${programa.estado}`
+                  : null,
+              ownerPrograma ? `Referido por ${ownerPrograma}` : null,
+              vendedorPrograma ? `Vendedor ${vendedorPrograma}` : null,
+            ].filter(Boolean).join(' · ')
+          }
+        }
+      }
+
+      const nextOrigenPrincipal =
+        conexionesRows.length > 0
+          ? 'Conexiones'
+          : programaReferidosRows.length > 0
+            ? '4 en 14'
+            : fallbackOrigen
+
+      const conexionesLinked = conexionesRows.length > 0 || ownedActivacionIds.length > 0 || generatedCiReferidosCount > 0
+      const programaLinked = programaReferidosRows.length > 0 || ownedProgramaIds.length > 0 || generated4en14ReferidosCount > 0
+
+      if (!conexionesResumen && conexionesLinked) {
+        conexionesResumen = generatedCiReferidosCount > 0
+          ? `${generatedCiReferidosCount} referidos en la lista`
+          : 'Participando'
+      }
+
+      if (!programaResumen && programaLinked) {
+        programaResumen = generated4en14ReferidosCount > 0
+          ? `${generated4en14ReferidosCount} referidos en el ciclo`
+          : ownedProgramas[0]?.ciclo_numero
+            ? `Ciclo ${ownedProgramas[0].ciclo_numero}`
+            : 'Participando'
+      }
+
+      setContext({
+        loading: false,
+        origenPrincipal: nextOrigenPrincipal,
+        referidoPor: conexionesReferidoPor,
+        vendedor: vendedorLabel,
+        conexiones: {
+          linked: conexionesLinked,
+          resumen: conexionesResumen,
+        },
+        programa4en14: {
+          linked: programaLinked,
+          resumen: programaResumen,
+        },
+        referidos: {
+          total: ownedActivacionIds.length + ownedProgramaIds.length > 0
+            ? generatedCiReferidosCount + generated4en14ReferidosCount
+            : 0,
+          items: referidosItems,
+        },
+      })
+    }
+
+    void loadContext()
+
+    return () => {
+      active = false
+    }
+  }, [open, lead, ownerName, fuenteLabel, recomendadoPor])
 
   const fullName = useMemo(() => {
     if (!lead) return '-'
     return [lead.nombre, lead.apellido].filter(Boolean).join(' ') || '-'
   }, [lead])
+  const programCount = Number(context.conexiones.linked) + Number(context.programa4en14.linked)
 
   const isDeleted = Boolean(lead?.deleted_at)
 
@@ -192,14 +687,21 @@ export function CalificacionPanel({
       .eq('id', lead.id)
 
     if (updateError && isMissingLeadAddressColumnError(updateError.message)) {
-      const {
-        direccion: _direccion,
-        apartamento: _apartamento,
-        ciudad: _ciudad,
-        estado_region: _estadoRegion,
-        codigo_postal: _codigoPostal,
-        ...fallbackPayload
-      } = payload
+      const fallbackPayload = {
+        nombre: payload.nombre,
+        apellido: payload.apellido,
+        email: payload.email,
+        telefono: payload.telefono,
+        estado_civil: payload.estado_civil,
+        nombre_conyuge: payload.nombre_conyuge,
+        telefono_conyuge: payload.telefono_conyuge,
+        situacion_laboral: payload.situacion_laboral,
+        ninos_en_casa: payload.ninos_en_casa,
+        cantidad_ninos: payload.cantidad_ninos,
+        tiene_productos_rp: payload.tiene_productos_rp,
+        tipo_vivienda: payload.tipo_vivienda,
+        ...(lead.fecha_nacimiento !== undefined ? { fecha_nacimiento: payload.fecha_nacimiento } : {}),
+      }
       ;({ error: updateError } = await supabase
         .from('leads')
         .update(fallbackPayload)
@@ -222,6 +724,16 @@ export function CalificacionPanel({
     if (action === 'done') {
       onClose()
     }
+  }
+
+  const leadNavigationState = {
+    fromLead: {
+      id: lead.id,
+      nombre: fullName,
+      telefono: lead.telefono ?? null,
+      email: lead.email ?? null,
+      fuente: fuenteLabel ?? lead.fuente ?? null,
+    },
   }
 
   return (
@@ -318,6 +830,50 @@ export function CalificacionPanel({
         </header>
 
         <div className="drawer-body">
+          <div className="drawer-section">
+            <h4>Contexto</h4>
+            <div className="form-grid">
+              <div className="form-field">
+                <span>Origen principal</span>
+                <strong>{context.loading ? 'Cargando...' : context.origenPrincipal || '-'}</strong>
+              </div>
+              <div className="form-field">
+                <span>Vendedor</span>
+                <strong>{context.loading ? 'Cargando...' : context.vendedor || '-'}</strong>
+              </div>
+              <div className="form-field">
+                <span>Referido por</span>
+                <strong>{context.loading ? 'Cargando...' : context.referidoPor || 'Sin referencia directa'}</strong>
+              </div>
+              <div className="form-field">
+                <span>Fuente base</span>
+                <strong>{fuenteLabel ?? lead.fuente ?? '-'}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="drawer-section" style={{ paddingTop: 0 }}>
+            <div className="template-tabs" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+              {[
+                { key: 'resumen', label: 'Resumen' },
+                { key: 'referidos', label: `Referidos (${context.referidos.total})` },
+                { key: 'programas', label: `Programas (${programCount})` },
+                { key: 'historial', label: 'Historial' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`template-tab ${activeTab === tab.key ? 'active' : ''}`.trim()}
+                  onClick={() => setActiveTab(tab.key as LeadDetailTab)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activeTab === 'resumen' && (
+            <>
           <div className="drawer-section">
             <h4>{t('leads.calificacion.generalTitle')}</h4>
             <div className="form-grid">
@@ -488,10 +1044,151 @@ export function CalificacionPanel({
             </div>
             {error && <div className="form-error">{error}</div>}
           </div>
+            </>
+          )}
+
+          {activeTab === 'referidos' && (
+          <div className="drawer-section">
+            <h4>Referidos</h4>
+            {context.loading ? (
+              <p className="drawer-subtitle">Cargando referidos...</p>
+            ) : context.referidos.total === 0 ? (
+              <p className="drawer-subtitle">Este lead todavía no tiene referidos visibles en Conexiones o 4 en 14.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                <p className="drawer-subtitle" style={{ margin: 0 }}>
+                  {context.referidos.total} referido{context.referidos.total === 1 ? '' : 's'} visible{context.referidos.total === 1 ? '' : 's'} desde este lead.
+                </p>
+                {context.referidos.items.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      border: '1px solid var(--border-color, #243244)',
+                      background: 'rgba(15, 23, 42, 0.35)',
+                      borderRadius: '0.85rem',
+                      padding: '0.85rem 1rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: '1 1 18rem' }}>
+                      <div style={{ fontWeight: 700 }}>{item.nombre}</div>
+                      <div className="drawer-subtitle" style={{ marginTop: '0.15rem' }}>
+                        {item.origen}
+                        {item.programaLabel ? ` · ${item.programaLabel}` : ''}
+                        {item.estado ? ` · ${item.estado}` : ''}
+                        {item.telefono ? ` · ${item.telefono}` : ''}
+                      </div>
+                    </div>
+                    {item.leadId ? (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={() =>
+                          openGestionModal({
+                            contacto: {
+                              tipo: 'lead',
+                              id: item.leadId!,
+                              nombre: item.nombre,
+                              telefono: item.telefono,
+                              email: null,
+                              subtitle: `${item.origen}${item.programaLabel ? ` · ${item.programaLabel}` : ''}`,
+                            },
+                            moduloOrigen: 'leads',
+                            origenId: lead.id,
+                            onSubmit: async (draft) => {
+                              showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
+                            },
+                          })
+                        }
+                      >
+                        + Gestión
+                      </button>
+                    ) : (
+                      <span className="drawer-subtitle" style={{ margin: 0 }}>
+                        Sin lead vinculado
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
+
+          {activeTab === 'programas' && (
+          <div className="drawer-section">
+            <h4>Programas</h4>
+            <div style={{ display: 'grid', gap: '0.85rem' }}>
+              <div
+                style={{
+                  border: '1px solid var(--border-color, #243244)',
+                  background: 'rgba(15, 23, 42, 0.35)',
+                  borderRadius: '0.85rem',
+                  padding: '0.9rem 1rem',
+                  display: 'grid',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Conexiones</div>
+                <div className="drawer-subtitle" style={{ margin: 0 }}>
+                  {context.loading
+                    ? 'Cargando...'
+                    : context.conexiones.linked
+                      ? context.conexiones.resumen ?? 'Participando'
+                      : 'Aún no participa en Conexiones.'}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => navigate('/conexiones-infinitas', { state: leadNavigationState })}
+                  >
+                    {context.conexiones.linked ? 'Abrir programa' : 'Iniciar en Conexiones'}
+                  </button>
+                </div>
+              </div>
+              <div
+                style={{
+                  border: '1px solid var(--border-color, #243244)',
+                  background: 'rgba(15, 23, 42, 0.35)',
+                  borderRadius: '0.85rem',
+                  padding: '0.9rem 1rem',
+                  display: 'grid',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>4 en 14</div>
+                <div className="drawer-subtitle" style={{ margin: 0 }}>
+                  {context.loading
+                    ? 'Cargando...'
+                    : context.programa4en14.linked
+                      ? context.programa4en14.resumen ?? 'Participando'
+                      : 'Aún no participa en 4 en 14.'}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => navigate('/4en14', { state: leadNavigationState })}
+                  >
+                    {context.programa4en14.linked ? 'Abrir programa' : 'Iniciar en 4 en 14'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          )}
+
+          {activeTab === 'historial' && (
           <div className="drawer-section">
             <h4>Historial</h4>
             <ContactoTimeline contactoTipo="lead" contactoId={lead.id} emptyLabel="Sin historial de actividades para este prospecto" />
           </div>
+          )}
           {showActions && (
             <div className="drawer-section">
               <div className="calificacion-next-actions">

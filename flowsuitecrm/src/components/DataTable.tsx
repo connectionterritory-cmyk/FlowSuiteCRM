@@ -34,18 +34,22 @@ export function DataTable({
 }: DataTableProps) {
   const { t } = useTranslation()
   const [page, setPage] = useState(0)
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+  const safePage = Math.min(page, totalPages - 1)
 
   useEffect(() => {
-    setPage(0)
+    const handle = window.setTimeout(() => {
+      setPage(0)
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [rows.length, pageSize])
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
   const canPaginate = rows.length > pageSize
 
   const pageRows = useMemo(() => {
-    const start = page * pageSize
+    const start = safePage * pageSize
     return rows.slice(start, start + pageSize)
-  }, [page, pageSize, rows])
+  }, [pageSize, rows, safePage])
 
   const handlePrev = () => setPage((prev) => Math.max(0, prev - 1))
   const handleNext = () => setPage((prev) => Math.min(totalPages - 1, prev + 1))
@@ -109,13 +113,13 @@ export function DataTable({
             {t('common.previous')}
           </button>
           <span className="pagination-label">
-            {t('common.page')} {page + 1} {t('common.of')} {totalPages}
+            {t('common.page')} {safePage + 1} {t('common.of')} {totalPages}
           </span>
           <button
             type="button"
             className="btn ghost"
             onClick={handleNext}
-            disabled={page + 1 >= totalPages}
+            disabled={safePage + 1 >= totalPages}
           >
             {t('common.next')}
           </button>

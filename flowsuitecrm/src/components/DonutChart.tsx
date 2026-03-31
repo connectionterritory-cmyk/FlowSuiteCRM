@@ -15,14 +15,13 @@ export function DonutChart({ data, emptyLabel }: DonutChartProps) {
     return <div className="chart-empty">{emptyLabel ?? 'No data'}</div>
   }
 
-  let currentAngle = 0
-  const segments = data.map((slice) => {
+  const segments = data.reduce<{ nextAngle: number; values: string[] }>((acc, slice) => {
     const angle = (slice.value / total) * 360
-    const start = currentAngle
-    const end = currentAngle + angle
-    currentAngle += angle
-    return `${slice.color} ${start}deg ${end}deg`
-  })
+    const start = acc.nextAngle
+    const end = start + angle
+    acc.values.push(`${slice.color} ${start}deg ${end}deg`)
+    return { nextAngle: end, values: acc.values }
+  }, { nextAngle: 0, values: [] }).values
 
   return (
     <div className="donut-wrapper">

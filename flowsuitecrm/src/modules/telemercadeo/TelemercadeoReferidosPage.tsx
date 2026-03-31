@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useMessaging } from '../../hooks/useMessaging'
-import { resultadoColor, resultadoLabel, formatFechaCorta } from './TelemercadeoShared'
+import { resultadoColor, resultadoLabel, formatFechaCorta } from './telemercadeoSharedUtils'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
-import { useToast } from '../../components/Toast'
-import { useModalHost } from '../../modals/ModalProvider'
+import { useToast } from '../../components/useToast'
+import { useModalHost } from '../../modals/useModalHost'
 
 type CiReferido = {
   id: string
@@ -72,7 +72,10 @@ export function TelemercadeoReferidosPage() {
   }, [configured, filtro])
 
   useEffect(() => {
-    cargar()
+    const handle = window.setTimeout(() => {
+      void cargar()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [cargar])
 
   const abrirModal = (ref: CiReferido) => {
@@ -100,7 +103,7 @@ export function TelemercadeoReferidosPage() {
     } else {
       showToast('Contacto registrado')
       setModalOpen(false)
-      cargar()
+      void cargar()
     }
     setGuardando(false)
   }

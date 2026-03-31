@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '../../components/Badge'
 import { EmptyState } from '../../components/EmptyState'
 import { SectionHeader } from '../../components/SectionHeader'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { useUsers } from '../../data/useUsers'
+import { useViewMode } from '../../data/useViewMode'
 import { ProductDetailDrawer } from './ProductDetailDrawer'
 
 export type CatalogProduct = {
@@ -26,7 +28,7 @@ export type CatalogProduct = {
   reemplazado_por_nombre: string | null
   cuota_minima: number | null
   con_financiamiento: boolean | null
-  foto_galeria_url: string | null
+  visible_catalogo: boolean
 }
 
 const STATUS_FILTERS = ['all', 'activo', 'descontinuado', 'reemplazado'] as const
@@ -40,6 +42,10 @@ const getStatusTone = (estado: CatalogProduct['estado']) => {
 
 export function CatalogoProductosPage() {
   const { t } = useTranslation()
+  const { currentRole } = useUsers()
+  const { viewMode } = useViewMode()
+  const canEdit = (currentRole === 'admin' || currentRole === 'distribuidor') && viewMode !== 'seller'
+
   const [products, setProducts] = useState<CatalogProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,9 +57,13 @@ export function CatalogoProductosPage() {
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      setError(t('catalogo.errors.notConfigured'))
-      setLoading(false)
-      return
+      const timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setError(t('catalogo.errors.notConfigured'))
+          setLoading(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
     }
 
     let active = true
@@ -136,6 +146,11 @@ export function CatalogoProductosPage() {
     setDrawerOpen(true)
   }
 
+  const handleProductSaved = (updated: CatalogProduct) => {
+    setProducts((ps) => ps.map((p) => (p.id === updated.id ? updated : p)))
+    setDrawerOpen(false)
+  }
+
   const handleViewReplacement = (productId: string | null) => {
     if (!productId) return
     const replacement = products.find((product) => product.id === productId)
@@ -148,7 +163,7 @@ export function CatalogoProductosPage() {
       <SectionHeader
         title={t('catalogo.title')}
         subtitle={t('catalogo.subtitle')}
-        action={<Badge label={t('catalogo.readOnly')} tone="blue" />}
+        action={canEdit ? undefined : <Badge label={t('catalogo.readOnly')} tone="blue" />}
       />
 
       <div
@@ -291,8 +306,10 @@ export function CatalogoProductosPage() {
                       justifyContent: 'center',
                     }}
                   >
-{product.estado && product.estado !== 'activo' && (
+                    {product.estado && product.estado !== 'activo' && (
+                      <div style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', zIndex: 1 }}>
                         <Badge label={t(`catalogo.status.${product.estado}`)} tone={getStatusTone(product.estado)} />
+                      </div>
                     )}
                     {product.foto_principal_url ? (
                       <img
@@ -359,6 +376,8 @@ export function CatalogoProductosPage() {
         product={selectedProduct}
         onClose={() => setDrawerOpen(false)}
         onViewReplacement={handleViewReplacement}
+        canEdit={canEdit}
+        onSaved={handleProductSaved}
       />
     </div>
   )

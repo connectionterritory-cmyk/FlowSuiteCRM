@@ -6,13 +6,14 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { useAuth } from '../../auth/AuthProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useViewMode } from '../../data/useViewMode'
 import { fetchSegmentTargets, getSegmentsByFuente, type Fuente, type SegmentTarget } from './segments'
 
 export function SegmentosPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
+  const sessionUserId = session?.user.id ?? null
   const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
@@ -24,25 +25,25 @@ export function SegmentosPage() {
   const [targets, setTargets] = useState<SegmentTarget[]>([])
 
   const loadRole = useCallback(async () => {
-    if (!configured || !session?.user.id) {
+    if (!configured || !sessionUserId) {
       setRole(null)
       return
     }
     const { data } = await supabase
       .from('usuarios')
       .select('rol')
-      .eq('id', session.user.id)
+      .eq('id', sessionUserId)
       .maybeSingle()
     setRole((data as { rol?: string } | null)?.rol ?? null)
-  }, [configured, session?.user.id])
+  }, [configured, sessionUserId])
 
   const scope = useMemo(() => ({
     role,
     viewMode,
     hasDistribuidorScope,
     distributionUserIds,
-    userId: session?.user.id ?? null,
-  }), [distributionUserIds, hasDistribuidorScope, role, session?.user.id, viewMode])
+    userId: sessionUserId,
+  }), [distributionUserIds, hasDistribuidorScope, role, sessionUserId, viewMode])
 
   const segmentsForFuente = useMemo(
     () => getSegmentsByFuente(fuente),
@@ -69,15 +70,25 @@ export function SegmentosPage() {
   }, [configured, fuente, scope, selectedSegment])
 
   useEffect(() => {
-    if (configured) loadRole()
+    if (!configured) return
+    const handle = window.setTimeout(() => {
+      void loadRole()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [configured, loadRole])
 
   useEffect(() => {
-    loadCounts()
+    const handle = window.setTimeout(() => {
+      void loadCounts()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [loadCounts, role])
 
   useEffect(() => {
-    loadSelected()
+    const handle = window.setTimeout(() => {
+      void loadSelected()
+    }, 0)
+    return () => window.clearTimeout(handle)
   }, [loadSelected, role])
 
   const rows = useMemo<DataTableRow[]>(() => {

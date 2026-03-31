@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMessaging } from '../../hooks/useMessaging'
-import { ClienteCard, nombreCompleto, type Cliente } from './TelemercadeoShared'
+import { ClienteCard, type Cliente } from './TelemercadeoShared'
+import { nombreCompleto } from './telemercadeoSharedUtils'
 import { TelemercadeoCallModal } from './TelemercadeoCallModal'
 import { useTelemercadeoEquipos } from './telemercadeoData'
 

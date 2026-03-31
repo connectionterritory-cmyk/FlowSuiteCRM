@@ -1,5 +1,6 @@
-import { type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { StatCard } from '../../components/StatCard'
@@ -7,12 +8,12 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
 import { Badge } from '../../components/Badge'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
-import { useAuth } from '../../auth/AuthProvider'
-import { useUsers } from '../../data/UsersProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
 import { useMessaging } from '../../hooks/useMessaging'
 import { CitaModal, type CitaForm } from '../citas/CitaModal'
 
@@ -118,6 +119,8 @@ const stripPhone = (value: string) => value.replace(/\D/g, '')
 
 export function Programa4en14Page() {
   const { t, i18n } = useTranslation()
+  const location = useLocation()
+  const navigate = useNavigate()
   const { session } = useAuth()
   const { usersById } = useUsers()
   const { showToast } = useToast()
@@ -156,13 +159,18 @@ export function Programa4en14Page() {
   const demoInitializedRef = useRef(false)
   const demoQualifiedSeenRef = useRef<Set<string>>(new Set())
   const referralNameRefs = useRef<Array<HTMLInputElement | null>>([])
+  const leadContext = (
+    location.state as {
+      fromLead?: { id?: string | null; nombre?: string | null; telefono?: string | null; fuente?: string | null }
+    } | null
+  )?.fromLead ?? null
 
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(i18n.language),
     [i18n.language],
   )
 
-  const handleAgendarCita4en14 = (ref: ReferidoRecord) => {
+  const handleAgendarCita4en14 = useCallback((ref: ReferidoRecord) => {
     if (!ref.lead_id) return
     const now = new Date()
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
@@ -179,7 +187,7 @@ export function Programa4en14Page() {
     })
     setCitaReferidoId(ref.id)
     setCitaOpen(true)
-  }
+  }, [session?.user.id])
 
   const handleCitaSaved4en14 = async (citaId?: string) => {
     setCitaOpen(false)
@@ -789,6 +797,7 @@ export function Programa4en14Page() {
     getLeadForReferido,
     getLeadScore,
     giftSubmittingId,
+    handleAgendarCita4en14,
     handleDeliverGift,
     openCalificacionPanel,
     openEmail,
@@ -803,6 +812,40 @@ export function Programa4en14Page() {
     toggleCycleExpanded,
     usersById,
   ])
+
+  useEffect(() => {
+    if (!leadContext || cycles.length === 0) return
+
+    const normalize = (value?: string | null) =>
+      (value ?? '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase()
+
+    const matchingCycle =
+      (leadContext.id
+        ? cycles.find((cycle) => cycle.propietario_tipo === 'lead' && cycle.propietario_id === leadContext.id)
+        : null) ??
+      (leadContext.nombre
+        ? cycles.find((cycle) => {
+            if (cycle.propietario_tipo !== 'lead' || !cycle.propietario_id) return false
+            const ownerName = ownerMap.lead.get(cycle.propietario_id) ?? null
+            return normalize(ownerName) === normalize(leadContext.nombre)
+          })
+        : null) ??
+      null
+
+    if (!matchingCycle) return
+
+    const timeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setExpandedCycles(new Set([matchingCycle.id]))
+      })
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [cycles, leadContext, ownerMap])
 
   const emptyLabel = loadingData ? t('common.loading') : t('common.noData')
   const vendedorName = session?.user.id ? usersById[session.user.id] ?? session.user.id : '-'
@@ -980,6 +1023,24 @@ export function Programa4en14Page() {
         subtitle={t('programa4en14.subtitle')}
         action={<Button onClick={handleOpenForm}>{t('programa4en14.actions.newCycle')}</Button>}
       />
+
+      {leadContext && (
+        <div className="card" style={{ padding: '0.9rem 1rem' }}>
+          <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>
+            Llegaste desde el lead {leadContext.nombre ?? 'seleccionado'}
+          </div>
+          <div className="drawer-subtitle" style={{ margin: 0 }}>
+            Usa “Nuevo ciclo” para continuar el flujo de 4 en 14 desde este prospecto.
+            {leadContext.telefono ? ` · ${leadContext.telefono}` : ''}
+            {leadContext.fuente ? ` · ${leadContext.fuente}` : ''}
+          </div>
+          <div style={{ marginTop: '0.65rem' }}>
+            <Button variant="ghost" type="button" onClick={() => navigate(-1)}>
+              Volver al lead
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="stat-grid">
         <StatCard

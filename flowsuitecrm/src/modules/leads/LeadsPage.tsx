@@ -7,13 +7,13 @@ import { Modal } from '../../components/Modal'
 import { CalificacionPanel } from '../../components/CalificacionPanel'
 import { EmptyState } from '../../components/EmptyState'
 import { IconRestore, IconSwap, IconTrash, IconWhatsapp } from '../../components/icons'
-import { useToast } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { LEADS_BASE_SELECT, LEADS_EXTENDED_SELECT, isMissingLeadAddressColumnError } from '../../lib/leadsSchema'
 import { formatProperName } from '../../lib/textFormat'
-import { useAuth } from '../../auth/AuthProvider'
-import { useUsers } from '../../data/UsersProvider'
-import { useViewMode } from '../../data/ViewModeProvider'
+import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
+import { useViewMode } from '../../data/useViewMode'
 import { useMessaging } from '../../hooks/useMessaging'
 import {
   LEAD_PIPELINE_FOLLOWUP_STAGES,
@@ -677,7 +677,7 @@ export function LeadsPage() {
           (!filtroFechaHasta || dateValue <= filtroFechaHasta))
       return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey, getLeadVendedorKey])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -966,7 +966,7 @@ export function LeadsPage() {
         detail: [],
       }
     })
-  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, getRecomendadoPor, isTrashView, normalizeStage, openManageModal, openWhatsapp, t, visibleLeads])
+  }, [canDeleteLeads, canReassignLeads, getFuenteLabel, getVendedorLabel, getLeadVendedorId, getRecomendadoPor, isTrashView, normalizeStage, openManageModal, openWhatsapp, t, visibleLeads, formatDateKey])
 
   const emptyLabel = loading
     ? t('common.loading')
@@ -2025,6 +2025,7 @@ export function LeadsPage() {
         lead={selectedLead}
         ownerName={selectedLead ? getVendedorLabel(getLeadVendedorId(selectedLead)) : undefined}
         fuenteLabel={selectedLead ? getFuenteLabel(selectedLead.fuente) : undefined}
+        recomendadoPor={selectedLead ? getRecomendadoPor(selectedLead) : undefined}
         canManage={canDeleteLeads || canReassignLeads}
         onOpenManage={(lead, mode) => openManageModal(lead as LeadRecord, mode)}
         onClose={() => setSelectedLead(null)}

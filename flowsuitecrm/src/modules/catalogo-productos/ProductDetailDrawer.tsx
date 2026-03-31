@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '../../components/Badge'
 import { Button } from '../../components/Button'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import type { CatalogProduct } from './CatalogoProductosPage'
+import { ProductEditForm } from './ProductEditForm'
+import type { EditForm } from './ProductEditForm'
+import { buildEditForm } from './productEditFormUtils'
 
 type ProductImage = {
   id: string
@@ -17,6 +20,8 @@ type ProductDetailDrawerProps = {
   open: boolean
   onClose: () => void
   onViewReplacement: (productId: string | null) => void
+  canEdit: boolean
+  onSaved: (updated: CatalogProduct) => void
 }
 
 const getStatusTone = (estado: CatalogProduct['estado']) => {
@@ -24,16 +29,40 @@ const getStatusTone = (estado: CatalogProduct['estado']) => {
   return 'neutral'
 }
 
-export function ProductDetailDrawer({ product, open, onClose, onViewReplacement }: ProductDetailDrawerProps) {
+export function ProductDetailDrawer({
+  product,
+  open,
+  onClose,
+  onViewReplacement,
+  canEdit,
+  onSaved,
+}: ProductDetailDrawerProps) {
   const { t } = useTranslation()
   const [images, setImages] = useState<ProductImage[]>([])
   const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
+    const resetTimeoutId = window.setTimeout(() => {
+      startTransition(() => {
+        setIsEditing(false)
+        setSaveError(null)
+      })
+    }, 0)
+
     if (!open || !product || !isSupabaseConfigured) {
-      setImages([])
-      setActiveImageIndex(0)
-      return
+      const emptyTimeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setImages([])
+          setActiveImageIndex(0)
+        })
+      }, 0)
+      return () => {
+        window.clearTimeout(resetTimeoutId)
+        window.clearTimeout(emptyTimeoutId)
+      }
     }
 
     let active = true
@@ -46,7 +75,6 @@ export function ProductDetailDrawer({ product, open, onClose, onViewReplacement 
         .order('orden', { ascending: true })
 
       if (!active) return
-
       setImages((imagesResult.data as ProductImage[] | null) ?? [])
       setActiveImageIndex(0)
     }
@@ -55,14 +83,15 @@ export function ProductDetailDrawer({ product, open, onClose, onViewReplacement 
 
     return () => {
       active = false
+      window.clearTimeout(resetTimeoutId)
     }
   }, [open, product])
 
   const formatPrice = (value: number | null) => {
     if (value == null) return t('catalogo.contactSales')
-    return new Intl.NumberFormat('es-MX', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'MXN',
+      currency: 'USD',
       maximumFractionDigits: 2,
     }).format(value)
   }
@@ -91,6 +120,61 @@ export function ProductDetailDrawer({ product, open, onClose, onViewReplacement 
     return []
   }, [images, product, t])
 
+  const handleFormSave = async (values: EditForm) => {
+    if (!product || !isSupabaseConfigured) return
+    setSaving(true)
+    setSaveError(null)
+
+    const precioNum = values.precio_publico !== '' ? parseFloat(values.precio_publico) : null
+    const cuotaNum = values.cuota_minima !== '' ? parseFloat(values.cuota_minima) : null
+    const beneficiosArr = values.beneficios
+      .split('\n')
+      .map((b) => b.trim())
+      .filter(Boolean)
+
+    const { error } = await supabase
+      .from('productos')
+      .update({
+        nombre: values.nombre || null,
+        estado: values.estado,
+        // precio_publico es alias de v_catalogo_vendedor → columna real: productos.precio
+        precio: precioNum != null && !isNaN(precioNum) ? precioNum : null,
+        cuota_minima: cuotaNum != null && !isNaN(cuotaNum) ? cuotaNum : null,
+        con_financiamiento: values.con_financiamiento,
+        visible_catalogo: values.visible_catalogo,
+        descripcion_corta: values.descripcion_corta || null,
+        descripcion_larga: values.descripcion_larga || null,
+        beneficios: beneficiosArr,
+      })
+      .eq('id', product.id)
+
+    setSaving(false)
+
+    if (error) {
+      setSaveError(error.message)
+    } else {
+      setIsEditing(false)
+      const updatedProduct: CatalogProduct = {
+        ...product,
+        nombre: values.nombre || null,
+        estado: values.estado,
+        precio_publico: precioNum ?? null,
+        cuota_minima: cuotaNum ?? null,
+        con_financiamiento: values.con_financiamiento,
+        visible_catalogo: values.visible_catalogo,
+        descripcion_corta: values.descripcion_corta || null,
+        descripcion_larga: values.descripcion_larga || null,
+        beneficios: beneficiosArr,
+      }
+      onSaved(updatedProduct)
+    }
+  }
+
+  const handleCancel = () => {
+    setIsEditing(false)
+    setSaveError(null)
+  }
+
   if (!open || !product) return null
 
   const activeImage = gallery[activeImageIndex] ?? gallery[0] ?? null
@@ -107,12 +191,20 @@ export function ProductDetailDrawer({ product, open, onClose, onViewReplacement 
               {product.codigo ? ` · ${product.codigo}` : ''}
             </div>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label={t('common.close')}>
-            ×
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {canEdit && !isEditing && (
+              <Button type="button" variant="ghost" onClick={() => { setIsEditing(true); setSaveError(null) }}>
+                {t('common.edit')}
+              </Button>
+            )}
+            <button type="button" className="icon-button" onClick={onClose} aria-label={t('common.close')}>
+              ×
+            </button>
+          </div>
         </header>
 
         <div className="drawer-body" style={{ display: 'grid', gap: '1rem' }}>
+          {/* Galería — siempre visible */}
           <div
             style={{
               borderRadius: '1rem',
@@ -124,7 +216,7 @@ export function ProductDetailDrawer({ product, open, onClose, onViewReplacement 
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
               <Badge label={t(`catalogo.status.${product.estado ?? 'activo'}`)} tone={getStatusTone(product.estado)} />
-              {product.cuota_minima != null && (
+              {product.cuota_minima != null && !isEditing && (
                 <div style={{ color: '#1d4ed8', fontWeight: 700, fontSize: '0.9rem' }}>
                   {t('catalogo.fromPerMonth', { value: formatPrice(product.cuota_minima) })}
                 </div>
@@ -186,58 +278,82 @@ export function ProductDetailDrawer({ product, open, onClose, onViewReplacement 
             )}
           </div>
 
-          <div className="card" style={{ display: 'grid', gap: '0.85rem' }}>
-            <div style={{ display: 'grid', gap: '0.25rem' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#047857' }}>
-                {formatPrice(product.precio_publico)}
+          {isEditing ? (
+            <ProductEditForm
+              initialValues={buildEditForm(product)}
+              onSave={handleFormSave}
+              onCancel={handleCancel}
+              saving={saving}
+              error={saveError}
+            />
+          ) : (
+            /* Vista de solo lectura */
+            <div style={{ display: 'grid', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '1.25rem', background: 'linear-gradient(135deg, rgba(4, 120, 87, 0.05) 0%, rgba(4, 120, 87, 0.15) 100%)', borderRadius: '0.75rem', border: '1px solid rgba(4, 120, 87, 0.2)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>
+                  {t('catalogo.fields.precioPublico')}
+                </span>
+                <div style={{ fontSize: '2rem', fontWeight: 800, color: '#064e3b', lineHeight: 1.1 }}>
+                  {formatPrice(product.precio_publico)}
+                </div>
+                {product.cuota_minima != null && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#047857', fontWeight: 500 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="5" width="20" height="14" rx="2" />
+                      <path d="M2 10h20" />
+                    </svg>
+                    {t('catalogo.fromPerMonth', { value: formatPrice(product.cuota_minima) })}
+                  </div>
+                )}
               </div>
-              {product.cuota_minima != null && (
-                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.92rem' }}>
-                  {t('catalogo.fromPerMonth', { value: formatPrice(product.cuota_minima) })}
+
+              {(product.descripcion_corta || product.descripcion_larga) && (
+                <div style={{ display: 'grid', gap: '0.5rem', color: 'var(--color-text)', lineHeight: 1.6 }}>
+                  {product.descripcion_corta && <p style={{ margin: 0, fontWeight: 500 }}>{product.descripcion_corta}</p>}
+                  {product.descripcion_larga && <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>{product.descripcion_larga}</p>}
+                </div>
+              )}
+
+              {product.beneficios && product.beneficios.length > 0 && (
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  <strong style={{ fontSize: '0.95rem', color: 'var(--color-text)' }}>{t('catalogo.benefits')}</strong>
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '0.5rem' }}>
+                    {product.beneficios.map((benefit: string) => (
+                      <li key={benefit} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: 'var(--color-text-muted)' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '0.15rem' }}>
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        <span style={{ lineHeight: 1.4 }}>{benefit}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {product.estado === 'reemplazado' && product.reemplazado_por_id && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: '0.7rem',
+                    background: 'var(--color-surface-strong)',
+                    border: '1px solid var(--color-input-border)',
+                    borderRadius: '0.9rem',
+                    padding: '0.9rem',
+                  }}
+                >
+                  <div style={{ color: 'var(--color-text)', fontWeight: 600 }}>{t('catalogo.replacementNotice')}</div>
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+                    {product.reemplazado_por_nombre
+                      ? `${product.reemplazado_por_nombre}${product.reemplazado_por_codigo ? ` · ${product.reemplazado_por_codigo}` : ''}`
+                      : t('catalogo.replacementPending')}
+                  </div>
+                  <Button type="button" onClick={() => onViewReplacement(product.reemplazado_por_id)}>
+                    {t('catalogo.viewReplacement')}
+                  </Button>
                 </div>
               )}
             </div>
-
-            {product.descripcion_corta && <p style={{ margin: 0 }}>{product.descripcion_corta}</p>}
-
-            {product.descripcion_larga && (
-              <p style={{ margin: 0, color: 'var(--color-text-muted, #6b7280)' }}>{product.descripcion_larga}</p>
-            )}
-
-            {product.beneficios && product.beneficios.length > 0 && (
-              <div style={{ display: 'grid', gap: '0.45rem' }}>
-                <strong>{t('catalogo.benefits')}</strong>
-                <ul style={{ margin: 0, paddingLeft: '1rem', color: 'var(--color-text-muted)' }}>
-                  {product.beneficios.map((benefit: string) => (
-                    <li key={benefit}>{benefit}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {product.estado === 'reemplazado' && product.reemplazado_por_id && (
-              <div
-                style={{
-                  display: 'grid',
-                  gap: '0.7rem',
-                  background: 'var(--color-surface-strong)',
-                  border: '1px solid var(--color-input-border)',
-                  borderRadius: '0.9rem',
-                  padding: '0.9rem',
-                }}
-              >
-                <div style={{ color: 'var(--color-text)', fontWeight: 600 }}>{t('catalogo.replacementNotice')}</div>
-                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                  {product.reemplazado_por_nombre
-                    ? `${product.reemplazado_por_nombre}${product.reemplazado_por_codigo ? ` · ${product.reemplazado_por_codigo}` : ''}`
-                    : t('catalogo.replacementPending')}
-                </div>
-                <Button type="button" onClick={() => onViewReplacement(product.reemplazado_por_id)}>
-                  {t('catalogo.viewReplacement')}
-                </Button>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </aside>
       </div>
