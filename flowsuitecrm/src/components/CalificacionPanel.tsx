@@ -6,6 +6,7 @@ import { ContactoTimeline } from './ContactoTimeline'
 import { useToast } from './Toast'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
+import { useModalHost } from '../modals/ModalProvider'
 
 type LeadCalificacion = {
   id: string
@@ -78,6 +79,7 @@ export function CalificacionPanel({
 }: CalificacionPanelProps) {
   const { t } = useTranslation()
   const { showToast } = useToast()
+  const { openGestionModal } = useModalHost()
   const [formValues, setFormValues] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -233,7 +235,32 @@ export function CalificacionPanel({
       >
         <header className="drawer-header">
           <div>
-            <h3 id="calificacion-title">{t('leads.calificacion.title')}</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <h3 id="calificacion-title" style={{ margin: 0 }}>{t('leads.calificacion.title')}</h3>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() =>
+                  openGestionModal({
+                    contacto: {
+                      tipo: 'lead',
+                      id: lead.id,
+                      nombre: fullName,
+                      telefono: lead.telefono ?? null,
+                      email: lead.email ?? null,
+                      subtitle: `${fuenteLabel ?? lead.fuente ?? 'Lead'} · piloto`,
+                    },
+                    moduloOrigen: 'leads',
+                    origenId: lead.id,
+                    onSubmit: async (draft) => {
+                      showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
+                    },
+                  })
+                }
+              >
+                + Gestión
+              </button>
+            </div>
             <p className="drawer-subtitle">{fullName}</p>
             {(fuenteLabel || ownerName || lead.next_action) && (
               <p className="drawer-subtitle calificacion-meta">

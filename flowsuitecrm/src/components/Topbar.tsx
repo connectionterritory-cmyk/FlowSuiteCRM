@@ -9,7 +9,6 @@ import { getOrganizationName } from '../lib/whatsappTemplates'
 import { useToast } from './Toast'
 import { useViewMode } from '../data/ViewModeProvider'
 import { useUsers } from '../data/UsersProvider'
-import { useModalHost } from '../modals/ModalProvider'
 
 type TopbarProps = {
   title: string
@@ -25,7 +24,6 @@ export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: Topba
   const { showToast } = useToast()
   const { viewMode, setViewMode, hasDistribuidorScope } = useViewMode()
   const { currentUser } = useUsers()
-  const { openGestionModal } = useModalHost()
   const isMasterAdmin = session?.user?.email === 'royalflorida@gmail.com'
   const [signingOut, setSigningOut] = useState(false)
   const [orgOpen, setOrgOpen] = useState(false)
@@ -93,20 +91,6 @@ export function Topbar({ title, theme, onToggleTheme, onMobileNavToggle }: Topba
         <h1 className="topbar-title">{title}</h1>
       </div>
       <div className="topbar-actions">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() =>
-            openGestionModal({
-              moduloOrigen: 'topbar',
-              onSubmit: async (draft) => {
-                showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
-              },
-            })
-          }
-        >
-          + Gestión
-        </Button>
         {isMasterAdmin ? (
           <div className="topbar-segment" role="status" aria-label="Administrador master">
             <span style={{ fontWeight: 600 }}>ADMINISTRADOR MASTER</span>
