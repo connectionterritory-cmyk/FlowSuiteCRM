@@ -76,6 +76,7 @@ export function TelemercadeoCallModal({
   const [historial, setHistorial] = useState<LlamadaHistorial[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
   const [guionAbierto, setGuionAbierto] = useState(false)
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set())
 
   // Reset form fields when modal opens for a new client
   useEffect(() => {
@@ -85,12 +86,14 @@ export function TelemercadeoCallModal({
     setFechaFollowup('')
     setMontoProme('')
     setGuionAbierto(false)
+    setExpandedHistoryIds(new Set())
   }, [open, cliente?.id])
 
   // Load call history when modal opens
   useEffect(() => {
     if (!open || !cliente?.id) {
       setHistorial([])
+      setExpandedHistoryIds(new Set())
       return
     }
     let active = true
@@ -104,6 +107,7 @@ export function TelemercadeoCallModal({
         .limit(6)
       if (!active) return
       setHistorial((data as LlamadaHistorial[]) ?? [])
+      setExpandedHistoryIds(new Set())
       setLoadingHistorial(false)
     }
     load()
@@ -394,18 +398,67 @@ export function TelemercadeoCallModal({
                       {ll.followup_at && ` · Seguimiento: ${ll.followup_at}`}
                     </p>
                     {ll.notas && (
-                      <p
-                        style={{
-                          margin: '0.15rem 0 0',
-                          fontSize: '0.75rem',
-                          color: 'var(--color-text)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {ll.notas}
-                      </p>
+                      <div style={{ marginTop: '0.15rem' }}>
+                        {expandedHistoryIds.has(ll.id) ? (
+                          <>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: '0.75rem',
+                                color: 'var(--color-text)',
+                                whiteSpace: 'pre-wrap',
+                                lineHeight: '1.45',
+                              }}
+                            >
+                              {ll.notas}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedHistoryIds((current) => {
+                                  const next = new Set(current)
+                                  next.delete(ll.id)
+                                  return next
+                                })
+                              }
+                              style={{
+                                marginTop: '0.35rem',
+                                padding: 0,
+                                border: 'none',
+                                background: 'transparent',
+                                color: color,
+                                fontSize: '0.73rem',
+                                cursor: 'pointer',
+                                fontWeight: 700,
+                              }}
+                            >
+                              Ver menos
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedHistoryIds((current) => {
+                                const next = new Set(current)
+                                next.add(ll.id)
+                                return next
+                              })
+                            }
+                            style={{
+                              padding: 0,
+                              border: 'none',
+                              background: 'transparent',
+                              color: color,
+                              fontSize: '0.73rem',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                            }}
+                          >
+                            Ver detalle
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

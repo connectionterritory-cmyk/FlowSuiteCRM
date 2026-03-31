@@ -62,12 +62,14 @@ export function ContactoTimeline({ contactoTipo, contactoId, limit = 10, emptyLa
   const { usersById } = useUsers()
   const [items, setItems] = useState<ContactoActividad[]>([])
   const [loading, setLoading] = useState(false)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
     const load = async () => {
       if (!contactoId) {
         setItems([])
+        setExpandedIds(new Set())
         return
       }
       setLoading(true)
@@ -85,6 +87,7 @@ export function ContactoTimeline({ contactoTipo, contactoId, limit = 10, emptyLa
       } else {
         setItems((data as ContactoActividad[] | null) ?? [])
       }
+      setExpandedIds(new Set())
       setLoading(false)
     }
     void load()
@@ -143,13 +146,63 @@ export function ContactoTimeline({ contactoTipo, contactoId, limit = 10, emptyLa
                   ))}
                 </div>
               )}
-              {item.contenido && <div style={{ marginTop: '0.45rem', fontSize: '0.82rem' }}>{item.contenido}</div>}
+              {item.contenido && (
+                <div style={{ marginTop: '0.45rem' }}>
+                  {expandedIds.has(item.id) ? (
+                    <>
+                      <div style={{ fontSize: '0.82rem', whiteSpace: 'pre-wrap' }}>{item.contenido}</div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedIds((current) => {
+                            const next = new Set(current)
+                            next.delete(item.id)
+                            return next
+                          })
+                        }
+                        style={{
+                          marginTop: '0.4rem',
+                          padding: 0,
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#93c5fd',
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Colapsar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedIds((current) => {
+                          const next = new Set(current)
+                          next.add(item.id)
+                          return next
+                        })
+                      }
+                      style={{
+                        padding: 0,
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#93c5fd',
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Ver detalle
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
       </div>
     )
-  }, [emptyLabel, items, loading, usersById])
+  }, [emptyLabel, expandedIds, items, loading, usersById])
 
   return content
 }
