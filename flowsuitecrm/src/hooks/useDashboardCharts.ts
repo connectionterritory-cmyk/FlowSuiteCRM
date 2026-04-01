@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
-import { useViewMode } from '../data/ViewModeProvider'
-import { useAuth } from '../auth/AuthProvider'
-import { useUsers } from '../data/UsersProvider'
+import { useViewMode } from '../data/useViewMode'
+import { useAuth } from '../auth/useAuth'
+import { useUsers } from '../data/useUsers'
 
 type SalesPoint = {
   label: string

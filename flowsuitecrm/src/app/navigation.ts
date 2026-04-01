@@ -138,6 +138,11 @@ export const programSubItems: NavSubItem[] = [
 
 export const telemercadeoSubItems: NavSubItem[] = [
   {
+    key: 'telemercadeo-gestiones',
+    labelKey: 'nav.telemercadeoGestiones',
+    path: '/telemercadeo/gestiones',
+  },
+  {
     key: 'telemercadeo-cartera',
     labelKey: 'nav.telemercadeoCartera',
     path: '/telemercadeo/cartera',

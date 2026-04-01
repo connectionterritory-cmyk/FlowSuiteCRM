@@ -5,8 +5,8 @@ import { navItems, programSubItems, telemercadeoSubItems } from '../app/navigati
 import logoFull from '../assets/FlowSuiteCRM_Vector_Antigravity.svg'
 import logoMark from '../assets/FlowSuiteCRM_Isotype_48px.png'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
-import { useAuth } from '../auth/AuthProvider'
-import { useViewMode } from '../data/ViewModeProvider'
+import { useAuth } from '../auth/useAuth'
+import { useViewMode } from '../data/useViewMode'
 
 type SidebarProps = {
   collapsed: boolean

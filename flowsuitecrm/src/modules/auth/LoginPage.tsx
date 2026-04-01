@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase/client'
 import { Button } from '../../components/Button'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth } from '../../auth/useAuth'
 import logoFull from '../../assets/FlowSuiteCRM_Vector_Antigravity.svg'
 
 export function LoginPage() {

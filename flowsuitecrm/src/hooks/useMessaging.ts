@@ -1,7 +1,7 @@
 import { createElement, useCallback, useMemo, useState } from 'react'
 import { MessageModal } from '../components/MessageModal'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
-import { useOptionalModalHost } from '../modals/ModalProvider'
+import { useOptionalModalHost } from '../modals/useModalHost'
 
 type ActiveMessage = {
   channel: MessagingChannel

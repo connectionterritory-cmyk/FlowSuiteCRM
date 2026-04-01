@@ -127,6 +127,48 @@ Helper functions con `security definer` + `set search_path = 'public', 'extensio
 - Tipos conocidos: `cita_completada`, y otros insertados desde `HoyPage`
 - Sin migración documentada — **requiere migración 0066 urgente**
 
+### AD-012: Arquitectura canónica de mensajería saliente (n8n)
+
+**Decisión (2026-03-20):** El sistema de mensajería saliente se construye sobre tablas existentes. No se crea una tabla nueva de mensajería.
+
+#### Roles por tabla
+
+| Tabla | Rol canónico | Lo que NO hace |
+|---|---|---|
+| `mk_messages` | **Cola de salida** — cada fila es un mensaje pendiente o enviado. n8n lee aquí, envía, y escribe el resultado. | No es la fuente de datos del destinatario |
+| `mk_responses` | **Tabla canónica de respuestas** — resultado de cada mensaje (`resultado`, `followup_at`, `monto_prometido`). Una respuesta por mensaje (UNIQUE `message_id`). | No registra el historial completo de actividad |
+| `crm_tareas` | **Fuente operativa de recordatorios** — n8n puede leer tareas `pendientes` con `fecha_vencimiento <= today` para disparar mensajes. Después de enviar, actualiza `estado = 'completada'`. | No es la cola de envío — no tiene `telefono` ni `canal` directos |
+| `clientes` / `leads` | **Contexto y destinatario** — fuente de `telefono`, `nombre`, estado del pipeline. Se consultan via JOIN desde `mk_messages` o `crm_tareas`. | No son colas de mensajes |
+| `notasrp` / `lead_notas` | **Log de historial de comunicación** — registro post-envío para auditoría CRM. | No controlan el flujo de envío |
+
+#### Flujo A — Campañas (funciona hoy, sin cambios)
+```
+mk_campaigns → mk_messages (status='pendiente')
+  → n8n lee + envía
+  → UPDATE mk_messages SET status='enviado', sent_at=now()
+  → INSERT mk_responses (resultado, followup_at)
+```
+
+#### Flujo B — Recordatorios por vencimiento (funciona hoy, sin cambios)
+```
+crm_tareas (estado='pendiente', fecha_vencimiento<=today)
+  → n8n lee + JOIN clientes/leads para telefono
+  → n8n envía
+  → UPDATE crm_tareas SET estado='completada', completada_at=now(), completada_por=<bot-uuid>
+  → INSERT notasrp (cliente) o lead_notas (lead) para log de historial
+```
+
+#### Restricción conocida
+`mk_messages.campaign_id` es `NOT NULL`. Los mensajes ad-hoc (no de campaña, ej. recordatorios que se quieran loggear en `mk_messages`) necesitan una **campaña de sistema estática** como catch-all. Esta campaña se crea via `INSERT` desde el frontend o desde n8n — no requiere migración.
+
+#### Campo pendiente (no bloqueante)
+`mk_messages` no tiene `scheduled_at`. Sin ese campo, n8n no puede diferenciar "enviar ahora" de "enviar en fecha futura". Agregar `scheduled_at timestamp with time zone` es seguro (SAFE-003) y se puede hacer via `ALTER TABLE mk_messages ADD COLUMN IF NOT EXISTS scheduled_at timestamp with time zone`. Esta es la única adición que agrega valor concreto al flujo — queda como mejora opcional, no prerequisito.
+
+#### Reglas permanentes
+- `mk_messages` es la única cola de salida. No crear `mensaje_salida`, `outbox`, `envios_pendientes` ni ninguna tabla equivalente.
+- `mk_responses` es la única tabla de resultados. No duplicar en `notasrp` el resultado — `notasrp` es el log humano-legible, no el registro de control.
+- n8n escribe en `mk_messages.status`, `mk_messages.sent_at`, `mk_responses`, y opcionalmente en `notasrp`/`lead_notas`. No escribe en ninguna otra tabla sin una decisión explícita.
+
 ---
 
 ## 3. Contradicciones detectadas
@@ -225,8 +267,9 @@ Los módulos BLK-001 y BLK-002 fueron **desbloqueados** en Fase 0 (2026-03-20). 
 - **Bloqueaba por:** CON-002 (schema real desconocido)
 - **Resolución (Fase 0):** Schema real confirmado via REST API + OpenAPI spec. CON-002 CERRADA.
 - **Schema real confirmado:** `id, cliente_id, equipo_instalado_id, fecha_servicio, hora_cita, tipo, tipo_servicio, observaciones, venta_id, vendedor_id, created_at, updated_at`
-- **Estado actual:** `ServicioClientePage.tsx` usa las columnas correctas. Migración 0063 puede proceder.
-- **Codex puede:** Leer `servicios` con las columnas confirmadas. Proponer migración 0063 de documentación. `ALTER TABLE servicios ADD COLUMN` permitido solo después de migración 0063 aplicada.
+- **Baseline documental:** `docs/schema-baselines/servicios_remote_confirmed.sql` — columnas y tipos confirmados. Defaults, FK ON DELETE, CHECK constraints y RLS marcados como `[NO CONFIRMADO]`.
+- **Migración 0063:** **NO EXISTE todavía.** No promover el baseline a `supabase/migrations/` hasta verificar en Dashboard los datos marcados como `[NO CONFIRMADO]`.
+- **Codex puede:** Leer `servicios` con las columnas confirmadas. Consultar el baseline documental. **No puede** crear `0063_document_servicios.sql` hasta que los `[NO CONFIRMADO]` estén resueltos.
 
 ### BLK-003: `ventas` RLS — BLOQUEADA
 - **Bloqueada por:** CON-005 (migración 0050 corrupta)
@@ -308,8 +351,8 @@ Esta tabla es autoritativa. Cualquier discrepancia con código existente debe re
 | Componentes de equipo | `componentes_equipo` | `cliente_componentes` (legacy 0002, agua) |
 | Catálogo de productos | `productos` + `product_images` | — |
 | Campañas | `mk_campaigns` | — |
-| Mensajes de campaña | `mk_messages` | — |
-| Respuestas de campaña | `mk_responses` | — |
+| Cola de mensajes salientes (n8n) | `mk_messages` | — |
+| Respuestas y resultados de mensajes | `mk_responses` | — |
 | Notas de clientes | `notasrp` | — |
 | Notas de leads | `lead_notas` | — |
 | Historial unificado | `contacto_actividades` | `notasrp` + `lead_notas` (legacy por tipo) |
@@ -332,7 +375,7 @@ Estas tablas **existen en Supabase** y son usadas activamente, pero no tienen `C
 | `leads` | RLS en 0004, 0010, 0047, 0048, 0055 | ALTA — tabla central |
 | `clientes` | ADD COLUMN en 0001, 0018, 0024, 0028 | ALTA — tabla central |
 | `usuarios` | FK en todas las migraciones | ALTA — tabla central |
-| `servicios` | ADD COLUMN hora_cita en 0028; usado en frontend | ALTA — bloqueada (CON-002) |
+| `servicios` | ADD COLUMN hora_cita en 0028; usado en frontend | ALTA — BLK-002 desbloqueado, baseline en docs/schema-baselines/ |
 | `ventas` | RLS en 0044; RLS corrupta en 0050 | ALTA — bloqueada (CON-005) |
 | `lead_notas` | ADD COLUMN en 0021, índices en 0015 | MEDIA |
 | `tele_vendedor_assignments` | RLS en 0006, 0044 | MEDIA |
@@ -391,7 +434,7 @@ Estos cambios deben ser aprobados explícitamente por el arquitecto antes de imp
 | ID | Cambio | Razón | Estado |
 |---|---|---|---|
 | ~~RH-001~~ | ~~Resolver CON-001 (is_org_member)~~ | — | ✅ CERRADA — Fase 0 confirmó que no existe. Nunca usar. |
-| RH-002 | Aplicar migración 0063 (`servicios` documentación) | Schema real ya confirmado (CON-002 cerrada). Migración puede ejecutarse. | Listo para ejecutar |
+| RH-002 | Crear migración 0063 (`servicios` documentación) | Baseline en `docs/schema-baselines/servicios_remote_confirmed.sql`. Pendiente confirmar en Dashboard: defaults, FK ON DELETE, CHECK constraints, RLS. | Baseline listo — migración bloqueada hasta verificación |
 | RH-003 | Reconstruir 0050 (ventas RLS) | Archivo corrupto — requiere inspección de políticas activas en Dashboard | Abierta |
 | RH-004 | Mejorar / refactorizar `v_agenda_hoy` (migración 0067) | BLK-001 desbloqueado. Decidir qué columnas/fuentes incluir en la nueva versión | Listo para diseño |
 | RH-005 | Documentar y crear RLS para `crm_tareas` | Tabla activa sin políticas documentadas — riesgo de exposición | Abierta |
@@ -413,7 +456,7 @@ Ordenadas por prioridad. Las marcadas con ⚠️ requieren revisión humana (sec
 |---|---|---|---|---|
 | `0061_document_leads.sql` | `CREATE TABLE IF NOT EXISTS leads (...)` | Documentación | — | Listo |
 | `0062_document_clientes.sql` | `CREATE TABLE IF NOT EXISTS clientes (...)` | Documentación | — | Listo |
-| `0063_document_servicios.sql` | `CREATE TABLE IF NOT EXISTS servicios (...)` con schema real | Documentación | RH-002 (listo) | **Desbloqueado en Fase 0** |
+| `0063_document_servicios.sql` | `CREATE TABLE IF NOT EXISTS servicios (...)` con schema real | Documentación | ⚠️ RH-002 — verificar defaults/FK/RLS | Baseline documental en `docs/schema-baselines/` — migración ejecutable **pendiente** |
 | `0064_document_equipos.sql` | `CREATE TABLE IF NOT EXISTS equipos_instalados + componentes_equipo` | Documentación | — | Listo |
 | `0065_document_crm_tareas.sql` | `CREATE TABLE IF NOT EXISTS crm_tareas (...)` + RLS | DDL + RLS | ⚠️ RH-005 | Requiere aprobación |
 | `0066_document_contacto_actividades.sql` | `CREATE TABLE IF NOT EXISTS contacto_actividades (...)` + RLS | DDL + RLS | ⚠️ RH-006 | Requiere aprobación |
@@ -442,4 +485,4 @@ Ordenadas por prioridad. Las marcadas con ⚠️ requieren revisión humana (sec
 | Versión | Fecha | Cambios |
 |---|---|---|
 | 1.0 | 2026-03-20 | Documento inicial — basado en análisis validado contra SQL real (migraciones 0001–0060) |
-| 1.1 | 2026-03-20 | Fase 0 ejecutada — CON-001/002/003/004 CERRADAS. CON-006 agregada. BLK-001/002 DESBLOQUEADOS. LEG-001–004 marcadas IRRELEVANTES (tablas no existen en remote). AD-001/002 actualizadas con columnas reales. AD-005/010/011 actualizadas. P8 agregado. RH-001/007/008 cerradas. Backlog 0080/0081 eliminados. |
+| 1.1 | 2026-03-20 | Fase 0 ejecutada — CON-001/002/003/004 CERRADAS. CON-006 agregada. BLK-001/002 DESBLOQUEADOS. LEG-001–004 marcadas IRRELEVANTES (tablas no existen en remote). AD-001/002 actualizadas con columnas reales. AD-005/010/011 actualizadas. P8 agregado. RH-001/007/008 cerradas. Backlog 0080/0081 eliminados. AD-012 agregado. schema-baselines/ formalizado. |

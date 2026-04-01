@@ -136,6 +136,7 @@
     "programa4en14": "4 en 14",
     "servicioCliente": "Servicio al cliente",
     "telemercadeo": "Telemercadeo",
+    "telemercadeoGestiones": "Gestiones",
     "telemercadeoCartera": "Cartera",
     "telemercadeoCumpleanos": "Cumpleaños",
     "telemercadeoFiltros": "Filtros de agua",
@@ -173,18 +174,28 @@
       "allCategories": "Todas",
       "status": {
         "all": "Todos los estados",
-        "active": "Activos",
-        "offer": "En oferta",
-        "discontinued": "Descontinuados",
-        "replaced": "Reemplazados"
+        "activo": "Activos",
+        "descontinuado": "Descontinuados",
+        "reemplazado": "Reemplazados"
       }
     },
     "status": {
-      "active": "Activo",
-      "offer": "Oferta",
-      "discontinued": "Descontinuado",
-      "replaced": "Reemplazado",
-      "draft": "Borrador"
+      "activo": "Activo",
+      "borrador": "Borrador",
+      "descontinuado": "Descontinuado",
+      "reemplazado": "Reemplazado"
+    },
+    "fields": {
+      "nombre": "Nombre",
+      "estado": "Estado",
+      "precioPublico": "Precio público (USD)",
+      "cuotaMinima": "Cuota mínima (USD)",
+      "conFinanciamiento": "Con financiamiento",
+      "visibleCatalogo": "Visible en catálogo público",
+      "descripcionCorta": "Descripción corta",
+      "descripcionLarga": "Descripción larga",
+      "beneficios": "Beneficios (uno por línea)",
+      "beneficiosPlaceholder": "Ahorra energía\nCertificación NSF\nGarantía 5 años"
     },
     "errors": {
       "title": "No se pudo cargar el catálogo",
@@ -695,6 +706,11 @@
     "detailsTitle": "Detalle del producto",
     "editingLabel": "Modo edicion",
     "editingHelp": "Ajusta los campos y guarda los cambios.",
+    "sections": {
+      "general": "Datos generales",
+      "costos": "Costos internos",
+      "precio": "Precio y recargos"
+    },
     "form": {
       "title": "Nuevo producto"
     },
@@ -714,9 +730,19 @@
       "foto": "Foto",
       "activo": "Activo"
     },
+    "placeholders": {
+      "categoria": "Ej. Filtracion",
+      "subcategoria": "Ej. Repuestos filtros",
+      "linea": "Ej. Innove"
+    },
     "estado": {
       "activo": "Activo",
       "inactivo": "Inactivo"
+    },
+    "status": {
+      "subiendo": "Subiendo imagen...",
+      "guardando": "Guardando producto...",
+      "actualizando": "Guardando detalle..."
     },
     "columns": {
       "foto": "Foto",
@@ -738,7 +764,14 @@
       "upload": "Seleccionar archivo",
       "instructions": "Se detectan bloques dobles y se calculan costos por nivel segun categoria de compra.",
       "summaryTitle": "Resumen de importacion",
-      "summary": "Total: {{total}} · Procesados: {{procesados}} · Errores: {{errores}}"
+      "summary": "Total: {{total}} · Procesados: {{procesados}} · Errores: {{errores}}",
+      "errors": {
+        "noRecords": "No se encontraron registros validos.",
+        "process": "Error al procesar el archivo."
+      }
+    },
+    "errors": {
+      "noAccess": "No tienes acceso a Productos."
     }
   },
   "programas": {
@@ -1328,10 +1361,16 @@
       "name": "Nombre",
       "email": "Email",
       "role": "Rol",
-      "avatar": "Foto"
+      "avatar": "Foto",
+      "location": "Ubicación",
+      "pais": "País",
+      "estadoRegion": "Estado / Departamento",
+      "ciudad": "Ciudad"
     },
     "actions": {
-      "savePhoto": "Guardar foto"
+      "savePhoto": "Guardar foto",
+      "saveLocation": "Guardar ubicación",
+      "locationSaved": "Ubicación guardada correctamente."
     }
   },
   "usuarios": {

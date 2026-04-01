@@ -123,8 +123,10 @@ Ningún cambio — migraciones, frontend, índices, vistas — puede aplicarse s
 |---|---|
 | Causa original | CON-002 — schema real desconocido |
 | Resolución | Schema confirmado via REST API: `id, cliente_id, equipo_instalado_id, fecha_servicio, hora_cita, tipo, tipo_servicio, observaciones, venta_id, vendedor_id, created_at, updated_at`. CON-002 CERRADA. |
+| Baseline documental | `docs/schema-baselines/servicios_remote_confirmed.sql` — columnas y tipos confirmados. Defaults, FK ON DELETE, CHECK y RLS marcados `[NO CONFIRMADO]`. |
+| Migración 0063 | **NO EXISTE.** No crear hasta verificar `[NO CONFIRMADO]` en Dashboard. |
 | Archivos | `flowsuitecrm/src/modules/servicio-cliente/ServicioClientePage.tsx` |
-| Ahora permitido | Consultar `servicios` con columnas confirmadas. Ejecutar migración 0063 de documentación. `ALTER TABLE servicios ADD COLUMN` permitido **después** de aplicar 0063. |
+| Ahora permitido | Consultar `servicios` con las columnas confirmadas. Leer el baseline. `ALTER TABLE servicios ADD COLUMN` permitido solo **después** de crear y aplicar la migración 0063. |
 
 ### BLK-003 — `ventas` RLS
 
@@ -170,7 +172,7 @@ Solo `CREATE TABLE IF NOT EXISTS`. Idempotente. Sin datos. Sin DROP.
 ```
 [ ] 0061_document_leads.sql              — leads (schema de AD-001 v1.1)
 [ ] 0062_document_clientes.sql           — clientes (schema de AD-002 v1.1)
-[ ] 0063_document_servicios.sql          — servicios (schema confirmado Fase 0) ← DESBLOQUEADO
+[ ] 0063_document_servicios.sql          — servicios ← baseline en docs/schema-baselines/ — pendiente verificar defaults/FK/RLS en Dashboard antes de promover
 [ ] 0064_document_equipos.sql            — equipos_instalados + componentes_equipo
 ```
 
@@ -229,6 +231,9 @@ Un PR es seguro si cumple **todas** las siguientes condiciones. Si falla una, el
 | Migración + frontend relacionado | 1 `.sql` + archivos de 1 módulo |
 | Frontend puro (sin DB) | 1 módulo completo o 1 componente |
 | Documentación | Sin límite de tamaño |
+| `docs/schema-baselines/*.sql` | Sin límite — son documentación, no migraciones ejecutables |
+
+> **Regla `schema-baselines`:** Los archivos en `docs/schema-baselines/` son documentación técnica. **No son migraciones.** No se ejecutan contra el remote. No se colocan en `supabase/migrations/`. Solo se promueven a migración cuando todos los datos marcados `[NO CONFIRMADO]` en el baseline hayan sido verificados en Dashboard.
 
 ### 5.3 Naming de migraciones
 

@@ -136,6 +136,7 @@
     "programa4en14": "4 in 14",
     "servicioCliente": "Customer service",
     "telemercadeo": "Telemarketing",
+    "telemercadeoGestiones": "Gestiones",
     "telemercadeoCartera": "Portfolio",
     "telemercadeoCumpleanos": "Birthdays",
     "telemercadeoFiltros": "Water filters",
@@ -185,6 +186,18 @@
       "discontinued": "Discontinued",
       "replaced": "Replaced",
       "draft": "Draft"
+    },
+    "fields": {
+      "nombre": "Name",
+      "estado": "Status",
+      "precioPublico": "Public Price (USD)",
+      "cuotaMinima": "Minimum Quota (USD)",
+      "conFinanciamiento": "With Financing",
+      "visibleCatalogo": "Visible in public catalog",
+      "descripcionCorta": "Short description",
+      "descripcionLarga": "Long description",
+      "beneficios": "Benefits (one per line)",
+      "beneficiosPlaceholder": "Saves energy\nNSF Certification\n5 Year Warranty"
     },
     "errors": {
       "title": "We could not load the catalog",
@@ -662,28 +675,74 @@
     "title": "Products",
     "subtitle": "Catalog and availability.",
     "detailsTitle": "Product details",
+    "editingLabel": "Editing mode",
+    "editingHelp": "Update the fields and save your changes.",
+    "sections": {
+      "general": "General details",
+      "costos": "Internal costs",
+      "precio": "Pricing and fees"
+    },
     "form": {
       "title": "New product"
     },
     "fields": {
       "codigo": "Code",
       "nombre": "Name",
-      "categoria": "Category",
+      "categoria": "Primary category",
+      "linea": "Line",
+      "categoriaCompra": "Purchase category",
+      "subcategoria": "Subcategory",
+      "costoN1": "Cost N1",
+      "costoN2": "Cost N2",
+      "costoN3": "Cost N3",
+      "costoN4": "Cost N4",
+      "recargo": "Tariff surcharge",
       "precio": "Price",
       "foto": "Photo",
       "activo": "Active"
     },
+    "placeholders": {
+      "categoria": "e.g. Filtration",
+      "subcategoria": "e.g. Filter parts",
+      "linea": "e.g. Innove"
+    },
     "estado": {
       "activo": "Active",
       "inactivo": "Inactive"
+    },
+    "status": {
+      "subiendo": "Uploading image...",
+      "guardando": "Saving product...",
+      "actualizando": "Saving details..."
     },
     "columns": {
       "foto": "Photo",
       "codigo": "Code",
       "nombre": "Name",
       "categoria": "Category",
+      "subcategoria": "Subcategory",
+      "categoriaCompra": "Purchase category",
+      "linea": "Line",
+      "costoN3": "Cost N3",
+      "recargo": "Surcharge",
       "precio": "Price",
       "activo": "Active"
+    },
+    "import": {
+      "action": "Import list",
+      "title": "Import price list",
+      "subtitle": "Upload the N3 price list in CSV/XLSX format.",
+      "upload": "Select file",
+      "instructions": "Double blocks are detected and costs are calculated by purchase category.",
+      "summaryTitle": "Import summary",
+      "summary": "Total: {{total}} · Processed: {{procesados}} · Errors: {{errores}}",
+      "errors": {
+        "noRecords": "No valid records found.",
+        "process": "Error while processing the file."
+      }
+    },
+    "errors": {
+      "noAccess": "You do not have access to Products."
     }
   },
   "programas": {
@@ -1271,10 +1330,16 @@
       "name": "Name",
       "email": "Email",
       "role": "Role",
-      "avatar": "Photo"
+      "avatar": "Photo",
+      "location": "Location",
+      "pais": "Country",
+      "estadoRegion": "State / Department",
+      "ciudad": "City"
     },
     "actions": {
-      "savePhoto": "Save photo"
+      "savePhoto": "Save photo",
+      "saveLocation": "Save location",
+      "locationSaved": "Location saved successfully."
     }
   },
   "usuarios": {

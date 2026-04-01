@@ -11,10 +11,10 @@ import {
 } from '../lib/whatsappTemplates'
 import { canonicalizeTemplate, PLACEHOLDER_OPTIONS, resolveTemplate } from '../lib/messagePlaceholders'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
-import { useToast } from './Toast'
+import { useToast } from './useToast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
-import { useUsers } from '../data/UsersProvider'
-import { useAuth } from '../auth/AuthProvider'
+import { useUsers } from '../data/useUsers'
+import { useAuth } from '../auth/useAuth'
 import { getMessagingContactRef } from '../lib/contactRefs'
 
 type MessageModalProps = {

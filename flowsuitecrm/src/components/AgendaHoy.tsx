@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
-import { useAuth } from '../auth/AuthProvider'
-import { useUsers } from '../data/UsersProvider'
-import { useViewMode } from '../data/ViewModeProvider'
+import { useAuth } from '../auth/useAuth'
+import { useUsers } from '../data/useUsers'
+import { useViewMode } from '../data/useViewMode'
 import { Badge } from './Badge'
 import { Button } from './Button'
 
