@@ -5,11 +5,12 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { CalificacionPanel } from '../../components/CalificacionPanel'
+import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { EmptyState } from '../../components/EmptyState'
 import { IconRestore, IconSwap, IconTrash, IconWhatsapp } from '../../components/icons'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
-import { LEADS_BASE_SELECT, LEADS_EXTENDED_SELECT, isMissingLeadAddressColumnError } from '../../lib/leadsSchema'
+import { LEADS_BASE_SELECT, LEADS_COMPAT_SELECT, LEADS_EXTENDED_SELECT, isMissingLeadAddressColumnError, isMissingLeadReferidorColumnError } from '../../lib/leadsSchema'
 import { formatProperName } from '../../lib/textFormat'
 import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/useUsers'
@@ -37,6 +38,10 @@ type LeadRecord = {
   fecha_nacimiento: string | null
   fuente: string | null
   programa_id: string | null
+  // Canónico (modelo nuevo)
+  referidor_tipo?: 'cliente' | 'lead' | 'embajador' | null
+  referidor_id?: string | null
+  // Legacy — mantener mientras lectores no migrados los usen
   embajador_id: string | null
   referido_por_cliente_id?: string | null
   owner_id: string | null
@@ -57,6 +62,7 @@ type LeadRecord = {
   deleted_at?: string | null
   deleted_by?: string | null
   deleted_reason?: string | null
+  persona_id?: string | null
 }
 
 type LeadMobileRecord = {
@@ -96,7 +102,10 @@ const initialForm = {
   fecha_nacimiento: '',
   fuente: '',
   programa_id: '',
-  embajador_id: '',
+  // Referidor — modelo canónico. embajador_id se mantiene en el payload por compatibilidad legacy.
+  referidor_tipo: '' as '' | 'cliente' | 'lead' | 'embajador',
+  referidor_id: '',
+  embajador_id: '',   // legacy — sincronizado por trigger en DB
   owner_id: '',
   estado_pipeline: 'nuevo',
   next_action: '',
@@ -161,6 +170,7 @@ export function LeadsPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null)
+  const [perfilPersonaId, setPerfilPersonaId] = useState<string | null>(null)
   const [manageLead, setManageLead] = useState<LeadRecord | null>(null)
   const [manageOpen, setManageOpen] = useState(false)
   const [manageMode, setManageMode] = useState<'delete' | 'reassign' | 'restore'>('delete')
@@ -196,6 +206,7 @@ export function LeadsPage() {
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
+  const [isTablet, setIsTablet] = useState(() => window.innerWidth > 720 && window.innerWidth <= 1024)
   const [sortCol, setSortCol] = useState<number | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [visibleCount, setVisibleCount] = useState(200)
@@ -335,6 +346,10 @@ export function LeadsPage() {
     if (fetchError && isMissingLeadAddressColumnError(fetchError.message)) {
       ;({ data, error: fetchError } = await buildLeadQuery(LEADS_BASE_SELECT))
     }
+    // Fallback nivel 2: referidor_tipo/referidor_id no existen (migración 0069 no aplicada)
+    if (fetchError && isMissingLeadReferidorColumnError(fetchError.message)) {
+      ;({ data, error: fetchError } = await buildLeadQuery(LEADS_COMPAT_SELECT))
+    }
 
     if (fetchError) {
       setError(fetchError.message)
@@ -352,12 +367,17 @@ export function LeadsPage() {
       return
     }
     let active = true
-    const embajadorIds = Array.from(
-      new Set(leads.map((lead) => lead.embajador_id).filter((value): value is string => Boolean(value)))
-    )
-    const clienteIds = Array.from(
-      new Set(leads.map((lead) => lead.referido_por_cliente_id).filter((value): value is string => Boolean(value)))
-    )
+    // Canónico — recoger IDs por tipo desde referidor_id
+    const embajadorIds = Array.from(new Set([
+      ...leads.filter((l) => l.referidor_tipo === 'embajador' && l.referidor_id).map((l) => l.referidor_id as string),
+      // Fallback legacy para registros no migrados
+      ...leads.filter((l) => !l.referidor_tipo && l.embajador_id).map((l) => l.embajador_id as string),
+    ]))
+    const clienteIds = Array.from(new Set([
+      ...leads.filter((l) => l.referidor_tipo === 'cliente' && l.referidor_id).map((l) => l.referidor_id as string),
+      // Fallback legacy para registros no migrados
+      ...leads.filter((l) => !l.referidor_tipo && l.referido_por_cliente_id).map((l) => l.referido_por_cliente_id as string),
+    ]))
 
     const loadMaps = async () => {
       if (embajadorIds.length === 0) {
@@ -427,7 +447,10 @@ export function LeadsPage() {
   }, [manageOpen, manageMode, loadOwnerOptions])
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 720)
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 720)
+      setIsTablet(window.innerWidth > 720 && window.innerWidth <= 1024)
+    }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
@@ -608,6 +631,15 @@ export function LeadsPage() {
 
   const getRecomendadoPor = useCallback(
     (lead: LeadRecord) => {
+      // Leer del modelo canónico primero; fallback a legacy mientras haya lectores no migrados
+      const tipo = lead.referidor_tipo ?? null
+      const id   = lead.referidor_id   ?? null
+
+      if (tipo === 'embajador' && id && embajadorMap[id])   return embajadorMap[id]
+      if (tipo === 'cliente'   && id && clienteReferidoMap[id]) return clienteReferidoMap[id]
+      // tipo 'lead': sin mapa de lookup hoy — mostrar vacío (Fase 3 completa lo resolverá)
+
+      // Fallback legacy para registros no migrados
       if (lead.embajador_id && embajadorMap[lead.embajador_id]) return embajadorMap[lead.embajador_id]
       if (lead.referido_por_cliente_id && clienteReferidoMap[lead.referido_por_cliente_id]) {
         return clienteReferidoMap[lead.referido_por_cliente_id]
@@ -1005,7 +1037,19 @@ export function LeadsPage() {
       fecha_nacimiento: formValues.fecha_nacimiento || null,
       fuente: toNull(fuenteValue),
       programa_id: toNull(formValues.programa_id),
-      embajador_id: toNull(formValues.embajador_id),
+      // Canónico — tomar del selector de tipo o derivar del campo embajador_id legacy
+      referidor_tipo: toNull(formValues.referidor_tipo)
+        ?? (toNull(formValues.embajador_id) ? 'embajador' : null),
+      referidor_id: toNull(formValues.referidor_id)
+        ?? toNull(formValues.embajador_id)
+        ?? null,
+      // Legacy — mantener para lectores aún no migrados (trigger en DB también sincroniza)
+      embajador_id: formValues.referidor_tipo === 'embajador'
+        ? (toNull(formValues.referidor_id) ?? toNull(formValues.embajador_id))
+        : null,
+      referido_por_cliente_id: formValues.referidor_tipo === 'cliente'
+        ? toNull(formValues.referidor_id)
+        : null,
       owner_id: ownerId,
       vendedor_id: ownerId,
       estado_pipeline: formValues.estado_pipeline,
@@ -1620,7 +1664,7 @@ export function LeadsPage() {
       </div>
 
       {/* TABLA / CARDS */}
-      {isMobile ? (
+      {(isMobile || isTablet) ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {leadsOrdenados.length === 0 ? (
             <div
@@ -1870,9 +1914,24 @@ export function LeadsPage() {
             <input value={formValues.programa_id} onChange={handleChange('programa_id')} />
           </label>
           <label className="form-field">
-            <span>{t('leads.fields.embajadorId')}</span>
-            <input value={formValues.embajador_id} onChange={handleChange('embajador_id')} />
+            <span>{t('leads.fields.referidorTipo')}</span>
+            <select value={formValues.referidor_tipo} onChange={handleChange('referidor_tipo')}>
+              <option value="">{t('common.none') || 'Sin referidor'}</option>
+              <option value="cliente">Cliente</option>
+              <option value="lead">Prospecto</option>
+              <option value="embajador">{t('leads.fields.embajadorId')}</option>
+            </select>
           </label>
+          {formValues.referidor_tipo !== '' && (
+            <label className="form-field">
+              <span>{t('leads.fields.referidorId')}</span>
+              <input
+                value={formValues.referidor_id}
+                onChange={handleChange('referidor_id')}
+                placeholder="ID del referidor"
+              />
+            </label>
+          )}
           <label className="form-field">
             <span>{t('leads.fields.ownerId')}</span>
             <input value={ownerName} readOnly />
@@ -2028,8 +2087,13 @@ export function LeadsPage() {
         recomendadoPor={selectedLead ? getRecomendadoPor(selectedLead) : undefined}
         canManage={canDeleteLeads || canReassignLeads}
         onOpenManage={(lead, mode) => openManageModal(lead as LeadRecord, mode)}
+        onVerPerfil={selectedLead?.persona_id ? () => setPerfilPersonaId(selectedLead.persona_id ?? null) : undefined}
         onClose={() => setSelectedLead(null)}
         onSaved={loadLeads}
+      />
+      <PersonaPerfilPanel
+        personaId={perfilPersonaId}
+        onClose={() => setPerfilPersonaId(null)}
       />
       <ModalRenderer />
     </div>

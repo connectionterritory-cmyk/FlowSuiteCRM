@@ -1,4 +1,4 @@
-import { startTransition, type ClipboardEvent, useEffect, useMemo, useState } from 'react'
+import { startTransition, type ClipboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase/client'
@@ -22,6 +22,8 @@ type LeadCalificacion = {
   codigo_postal?: string | null
   fecha_nacimiento?: string | null
   fuente?: string | null
+  referidor_tipo?: 'cliente' | 'lead' | 'embajador' | null
+  referidor_id?: string | null
   embajador_id?: string | null
   referido_por_cliente_id?: string | null
   owner_id?: string | null
@@ -37,6 +39,7 @@ type LeadCalificacion = {
   tipo_vivienda?: string | null
   deleted_at?: string | null
   deleted_reason?: string | null
+  persona_id?: string | null
 }
 
 type CalificacionPanelProps = {
@@ -46,7 +49,9 @@ type CalificacionPanelProps = {
   fuenteLabel?: string | null
   recomendadoPor?: string | null
   canManage?: boolean
+  focusAddress?: boolean
   onOpenManage?: (lead: LeadCalificacion, mode: 'delete' | 'reassign' | 'restore') => void
+  onVerPerfil?: () => void
   onClose: () => void
   onSaved: () => Promise<void>
 }
@@ -163,7 +168,9 @@ export function CalificacionPanel({
   fuenteLabel,
   recomendadoPor,
   canManage = false,
+  focusAddress = false,
   onOpenManage,
+  onVerPerfil,
   onClose,
   onSaved,
 }: CalificacionPanelProps) {
@@ -176,6 +183,16 @@ export function CalificacionPanel({
   const [error, setError] = useState<string | null>(null)
   const [showActions, setShowActions] = useState(false)
   const [parsedAddr, setParsedAddr] = useState<ParsedAddress | null>(null)
+  const addressBannerRef = useRef<HTMLDivElement>(null)
+
+  // Scroll the address section into view when opening with missing geo data
+  useEffect(() => {
+    if (!open || !focusAddress) return
+    const timer = setTimeout(() => {
+      addressBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, focusAddress])
   const [activeTab, setActiveTab] = useState<LeadDetailTab>('resumen')
   const [context, setContext] = useState<LeadContextState>({
     loading: false,
@@ -389,14 +406,14 @@ export function CalificacionPanel({
         if (activacionIds.length > 0) {
           const { data: activaciones } = await supabase
             .from('ci_activaciones')
-            .select('id, representante_id, cliente_id, lead_id, estado')
+            .select('id, vendedor_id, cliente_id, lead_id, estado')
             .in('id', activacionIds)
 
           if (!active) return
 
           const activacion = ((activaciones as {
             id: string
-            representante_id?: string | null
+            vendedor_id?: string | null
             cliente_id?: string | null
             lead_id?: string | null
             estado?: string | null
@@ -404,12 +421,12 @@ export function CalificacionPanel({
 
           if (activacion) {
             const lookups: PromiseLike<{ kind: 'usuario' | 'cliente' | 'lead'; name: string | null }>[] = []
-            if (activacion.representante_id) {
+            if (activacion.vendedor_id) {
               lookups.push(
                 supabase
                   .from('usuarios')
                   .select('nombre, apellido')
-                  .eq('id', activacion.representante_id)
+                  .eq('id', activacion.vendedor_id)
                   .maybeSingle()
                   .then(({ data }) => ({
                     kind: 'usuario' as const,
@@ -749,6 +766,11 @@ export function CalificacionPanel({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <h3 id="calificacion-title" style={{ margin: 0 }}>{t('leads.calificacion.title')}</h3>
+              {lead.persona_id && onVerPerfil && (
+                <button type="button" className="btn ghost" onClick={onVerPerfil}>
+                  Ver perfil
+                </button>
+              )}
               <button
                 type="button"
                 className="btn ghost"
@@ -893,6 +915,25 @@ export function CalificacionPanel({
                 <span>{t('leads.fields.telefono')}</span>
                 <input value={formValues.telefono} onChange={handleChange('telefono')} />
               </label>
+              {focusAddress && (!formValues.ciudad || !formValues.codigo_postal) && (
+                <div
+                  ref={addressBannerRef}
+                  style={{
+                    gridColumn: '1 / -1',
+                    padding: '0.6rem 0.9rem',
+                    background: '#fef3c7',
+                    border: '1px solid #fcd34d',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.82rem',
+                    color: '#92400e',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  ⚠ Completa ciudad y ZIP para validar la zona antes de gestionar
+                </div>
+              )}
               <label className="form-field">
                 <span>{t('leads.calificacion.general.direccion')}</span>
                 <input
