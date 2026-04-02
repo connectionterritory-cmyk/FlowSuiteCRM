@@ -167,6 +167,16 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         moduloOrigen={gestionIntent?.moduloOrigen}
         origenId={gestionIntent?.origenId}
         onClose={closeGestionModal}
+        onSendMessage={(contacto) => {
+          openMessageModal({
+            channel: 'whatsapp',
+            contact: {
+              nombre: contacto.nombre,
+              telefono: contacto.telefono ?? null,
+              email: contacto.email ?? null,
+            },
+          })
+        }}
         onCreateCita={(contacto) => {
           const selfOption = currentUser
             ? [{

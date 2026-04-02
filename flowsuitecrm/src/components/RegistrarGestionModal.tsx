@@ -182,11 +182,19 @@ type RegistrarGestionModalProps = {
   onClose: () => void
   onSubmit: (draft: GestionDraft) => void | Promise<void>
   onCreateCita?: (contacto: GestionContactoRef) => void
+  onSendMessage?: (contacto: GestionContactoRef) => void
   submitting?: boolean
   contacto?: GestionContactoRef | null
   tipoDefault?: GestionTipo
   moduloOrigen?: string
   origenId?: string
+}
+
+type ActividadRow = {
+  id: string
+  tipo: string
+  resumen: string | null
+  fecha_actividad: string
 }
 
 type SearchResultRow = {
@@ -217,6 +225,7 @@ export function RegistrarGestionModal({
   onClose,
   onSubmit,
   onCreateCita,
+  onSendMessage,
   submitting = false,
   contacto = null,
   tipoDefault,
@@ -233,6 +242,7 @@ export function RegistrarGestionModal({
   const [showFollowup, setShowFollowup] = useState(false)
   const [showCitaPrompt, setShowCitaPrompt] = useState(false)
   const [savedContacto, setSavedContacto] = useState<GestionContactoRef | null>(null)
+  const [recentActividades, setRecentActividades] = useState<ActividadRow[]>([])
   const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -245,6 +255,7 @@ export function RegistrarGestionModal({
       setShowFollowup(false)
       setShowCitaPrompt(false)
       setSavedContacto(null)
+      setRecentActividades([])
     })
   }, [contacto, moduloOrigen, open, origenId, role, tipoDefault])
 
@@ -470,6 +481,30 @@ export function RegistrarGestionModal({
     }
   }, [open, searchQuery, selectedContacto])
 
+  const contactoId = selectedContacto?.id ?? null
+  const contactoTipo = selectedContacto?.tipo ?? null
+  useEffect(() => {
+    if (!open || !contactoId || !contactoTipo || !isSupabaseConfigured) {
+      setRecentActividades([])
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('contacto_actividades')
+      .select('id, tipo, resumen, fecha_actividad')
+      .eq('contacto_tipo', contactoTipo)
+      .eq('contacto_id', contactoId)
+      .order('fecha_actividad', { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        if (cancelled) return
+        setRecentActividades((data as ActividadRow[] | null) ?? [])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, contactoId, contactoTipo])
+
   const allowedTypes = useMemo(() => {
     const allowed = new Set(GESTION_TYPES_BY_ROLE[role])
     return TIPO_OPTIONS.filter((option) => allowed.has(option.value))
@@ -573,18 +608,29 @@ export function RegistrarGestionModal({
             <div style={{ marginTop: '0.45rem', display: 'grid', gap: '0.2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <strong>{selectedContacto.nombre}</strong>
-                {!contacto && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedContacto(null)
-                      setDraft((current) => ({ ...current, contactoId: '', contactoTipo: 'cliente' }))
-                    }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 700 }}
-                  >
-                    Cambiar
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {onSendMessage && (
+                    <button
+                      type="button"
+                      onClick={() => onSendMessage(selectedContacto)}
+                      style={{ background: 'transparent', border: '1px solid var(--color-border, #374151)', borderRadius: '0.4rem', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.78rem', padding: '0.15rem 0.55rem' }}
+                    >
+                      Mensaje rápido
+                    </button>
+                  )}
+                  {!contacto && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedContacto(null)
+                        setDraft((current) => ({ ...current, contactoId: '', contactoTipo: 'cliente' }))
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      Cambiar
+                    </button>
+                  )}
+                </div>
               </div>
               <span style={{ color: 'var(--color-text-muted)', fontSize: '0.88rem' }}>
                 {selectedContacto.tipo.toUpperCase()}
@@ -593,6 +639,19 @@ export function RegistrarGestionModal({
               </span>
               {selectedContacto.subtitle && (
                 <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>{selectedContacto.subtitle}</span>
+              )}
+              {recentActividades.length > 0 && (
+                <div style={{ marginTop: '0.4rem', display: 'grid', gap: '0.15rem', borderTop: '1px solid var(--color-border, #374151)', paddingTop: '0.4rem' }}>
+                  {recentActividades.map((act) => (
+                    <div key={act.id} style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      <span>{act.fecha_actividad.slice(0, 10)}</span>
+                      <span>·</span>
+                      <span>{act.tipo}</span>
+                      <span>·</span>
+                      <span>{act.resumen ? (act.resumen.length > 60 ? `${act.resumen.slice(0, 60)}…` : act.resumen) : '—'}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           ) : (
