@@ -4,7 +4,7 @@ import { OrgProvider } from './contexts/org'
 import AppShell from './components/AppShell'
 import Login from './pages/Login'
 import Pipeline from './pages/Pipeline'
-import Cliente360 from './pages/Cliente360'
+
 import Servicio from './pages/Servicio'
 import Agua from './pages/Agua'
 import Cartera from './pages/Cartera'
@@ -43,7 +43,7 @@ function AppRoutes() {
         <Route element={<AppShell />}>
           <Route path="/" element={<Navigate to="/pipeline" replace />} />
           <Route path="/pipeline" element={<Pipeline />} />
-          <Route path="/cliente-360" element={<Cliente360 />} />
+
           <Route path="/servicio" element={<Servicio />} />
           <Route path="/agua" element={<Agua />} />
           <Route path="/cartera" element={<Cartera />} />

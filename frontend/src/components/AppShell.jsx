@@ -6,7 +6,7 @@ import { Badge } from './ui/badge'
 
 const navItems = [
   { to: '/pipeline', label: 'Pipeline' },
-  { to: '/cliente-360', label: 'Cliente 360' },
+
   { to: '/servicio', label: 'Servicio' },
   { to: '/agua', label: 'Agua' },
   { to: '/cartera', label: 'Cartera' },
