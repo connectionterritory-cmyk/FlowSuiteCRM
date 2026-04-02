@@ -24,6 +24,10 @@ build/
 backup.sql
 !outputs/*.sql
 !supabase/migrations/*.sql
+outputs/*.csv
+skills/
+tmp-workflow*.json
+*.pdf
 
 # Editor
 .vscode/
