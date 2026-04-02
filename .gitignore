@@ -22,6 +22,7 @@ build/
 *.dump
 *.sql
 backup.sql
+!outputs/*.sql
 
 # Editor
 .vscode/
