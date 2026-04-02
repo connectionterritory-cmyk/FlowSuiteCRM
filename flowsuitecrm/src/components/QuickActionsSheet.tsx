@@ -172,6 +172,10 @@ export function QuickActionsSheet({ open, onClose, initialAction = null }: Quick
       estado_pipeline: 'nuevo',
       owner_id: sessionUserId,
       vendedor_id: sessionUserId,
+      // Canónico
+      referidor_tipo: leadForm.referidoPorClienteId ? 'cliente' : null,
+      referidor_id:   leadForm.referidoPorClienteId || null,
+      // Legacy — mantener para lectores aún no migrados
       referido_por_cliente_id: leadForm.referidoPorClienteId || null,
     })
     if (error) {

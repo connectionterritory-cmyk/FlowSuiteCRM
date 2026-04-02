@@ -517,12 +517,17 @@
       "email": "Correo electrónico",
       "telefono": "Telefono",
       "fechaNacimiento": "Fecha de nacimiento",
-      "referidoPor": "Quien lo refirio",
+      "referidoPor": "Referido por",
       "fuente": "¿Cómo nos conoció?",
       "fuenteOtro": "¿De dónde exactamente?",
       "programaId": "Programa",
-      "embajadorId": "Referido por",
-      "ownerId": "Vendedor",
+      "embajadorId": "Embajador",
+      "ownerId": "Propietario del registro",
+      "ownerIdShort": "Propietario",
+      "vendedorIdLeads": "Emprendedor asignado",
+      "vendedorIdShort": "Asignado a",
+      "referidorTipo": "Tipo de referidor",
+      "referidorId": "Referido por",
       "estadoPipeline": "Etapa de seguimiento",
       "nextAction": "¿Qué sigue?",
       "nextActionDate": "Fecha del próximo paso"
@@ -1006,7 +1011,15 @@
       "fechaInicio": "Fecha inicio",
       "fechaFin": "Fecha fin",
       "nombrePeriodo": "Nombre del periodo",
-      "anio": "Ano del programa"
+      "anio": "Ano del programa",
+      "origenLabel": "Prospecto o cliente de origen",
+      "origenPlaceholder": "Buscar por nombre o telefono",
+      "origenHint": "Busca el prospecto o cliente que aplicara como embajador",
+      "origenVinculado": "Datos del {{tipo}} vinculado (solo lectura)",
+      "origenLimpiar": "Cambiar origen",
+      "estado": "Estado",
+      "fechaAceptacion": "Fecha de aceptacion",
+      "notasInscripcion": "Notas de inscripcion"
     },
     "errors": {
       "noActivePeriod": "No hay un periodo activo.",
@@ -1050,8 +1063,22 @@
         "no_interes": "No interes"
       }
     },
+    "estado": {
+      "todos": "Todos los estados",
+      "pendiente": "Pendiente",
+      "activo": "Activo",
+      "inactivo": "Inactivo",
+      "rechazado": "Rechazado"
+    },
+    "origen": {
+      "prospecto": "Prospecto",
+      "cliente": "Cliente",
+      "sinVincular": "Sin vincular"
+    },
     "columns": {
       "embajador": "Embajador",
+      "estado": "Estado",
+      "origen": "Origen",
       "periodo": "Periodo",
       "conexiones": "Conexiones",
       "ventas": "Ventas",

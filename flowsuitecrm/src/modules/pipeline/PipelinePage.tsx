@@ -27,6 +27,8 @@ type LeadCard = {
   next_action_date: string | null
   fuente: string | null
   programa_id: string | null
+  referidor_tipo?: 'cliente' | 'lead' | 'embajador' | null
+  referidor_id?: string | null
   embajador_id: string | null
   owner_id: string | null
   estado_civil: string | null
@@ -183,7 +185,7 @@ export function PipelinePage() {
     if (!configured) return
     setLoading(true)
     setError(null)
-    let query = supabase.from('leads').select('id, nombre, apellido, email, telefono, fecha_nacimiento, estado_pipeline, next_action, next_action_date, fuente, programa_id, embajador_id, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, vendedor_id').is('deleted_at', null)
+    let query = supabase.from('leads').select('id, nombre, apellido, email, telefono, fecha_nacimiento, estado_pipeline, next_action, next_action_date, fuente, programa_id, referidor_tipo, referidor_id, embajador_id, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda, vendedor_id').is('deleted_at', null)
     if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && sessionUserId) {
       query = query.or(`owner_id.eq.${sessionUserId},vendedor_id.eq.${sessionUserId}`)
     }

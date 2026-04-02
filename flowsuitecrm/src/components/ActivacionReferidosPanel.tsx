@@ -17,12 +17,12 @@ import { formatProperName } from '../lib/textFormat'
 import type { CiActivacion, CiReferido } from '../hooks/useConexiones'
 import { CitaModal, type CitaForm } from '../modules/citas/CitaModal'
 import { buildReferidoEmbudo, getReferidoStageLabel } from '../lib/referidos/transiciones'
+import { useModalHost } from '../modals/useModalHost'
 
 type Props = {
   open: boolean
   activation: CiActivacion | null
   ownerLabel: string
-  ownerClienteId: string | null
   currentUserId: string | null
   currentRole: string | null
   canEditOwner: boolean
@@ -155,7 +155,6 @@ export function ActivacionReferidosPanel({
   open,
   activation,
   ownerLabel,
-  ownerClienteId,
   currentUserId,
   currentRole,
   canEditOwner,
@@ -167,6 +166,7 @@ export function ActivacionReferidosPanel({
 }: Props) {
   const { t } = useTranslation()
   const { openWhatsapp, openSms, ModalRenderer } = useMessaging()
+  const { openGestionModal } = useModalHost()
   const { showToast } = useToast()
   const configured = isSupabaseConfigured
 
@@ -184,6 +184,8 @@ export function ActivacionReferidosPanel({
   const [newRef, setNewRef] = useState<NewRefForm>(EMPTY_NEW_REF)
   // Calificacion
   const [calificacionLead, setCalificacionLead] = useState<CalificacionLead | null>(null)
+  const [focusAddress, setFocusAddress] = useState(false)
+  const [leadGeoMap, setLeadGeoMap] = useState<Record<string, { ciudad: string | null; codigo_postal: string | null }>>({})
   const [citaOpen, setCitaOpen] = useState(false)
   const [citaInitial, setCitaInitial] = useState<Partial<CitaForm>>({})
   const [citaReferidoId, setCitaReferidoId] = useState<string | null>(null)
@@ -193,7 +195,7 @@ export function ActivacionReferidosPanel({
       currentUserId &&
       (
         activation.owner_id === currentUserId ||
-        activation.representante_id === currentUserId ||
+        activation.vendedor_id === currentUserId ||
         currentRole === 'admin' ||
         currentRole === 'distribuidor'
       )
@@ -222,6 +224,23 @@ export function ActivacionReferidosPanel({
       const drafts: Record<string, string> = {}
       for (const r of rows) drafts[r.id] = r.notas ?? ''
       setNotasDrafts(drafts)
+
+      const leadIds = rows.filter((r) => r.lead_id).map((r) => r.lead_id as string)
+      if (leadIds.length > 0) {
+        const { data: geoData } = await supabase
+          .from('leads')
+          .select('id, ciudad, codigo_postal')
+          .in('id', leadIds)
+        if (geoData) {
+          const geoMap: Record<string, { ciudad: string | null; codigo_postal: string | null }> = {}
+          for (const row of geoData as { id: string; ciudad: string | null; codigo_postal: string | null }[]) {
+            geoMap[row.id] = { ciudad: row.ciudad, codigo_postal: row.codigo_postal }
+          }
+          setLeadGeoMap(geoMap)
+        }
+      } else {
+        setLeadGeoMap({})
+      }
     }
     setLoading(false)
   }, [configured, activation])
@@ -265,6 +284,7 @@ export function ActivacionReferidosPanel({
         setNewRefOpen(false)
         setNewRef(EMPTY_NEW_REF)
         setCalificacionLead(null)
+        setLeadGeoMap({})
         setOwnerInfo(null)
         setOwnerInfoOpen(false)
       })
@@ -293,20 +313,22 @@ export function ActivacionReferidosPanel({
     setNotasSaving((prev) => ({ ...prev, [referidoId]: false }))
   }
 
-  const handleTakeReferido = async (referidoId: string) => {
+  const _handleTakeReferido = async (referidoId: string) => {
     if (!configured) return
     await supabase.from('ci_referidos').update({ modo_gestion: 'vendedor_directo' }).eq('id', referidoId)
     await loadReferidos()
   }
+  void _handleTakeReferido
 
-  const handleReturnReferido = async (referidoId: string) => {
+  const _handleReturnReferido = async (referidoId: string) => {
     if (!configured) return
     await supabase.from('ci_referidos').update({ modo_gestion: 'telemercadeo' }).eq('id', referidoId)
     await loadReferidos()
   }
+  void _handleReturnReferido
 
   const handleCreateLead = async (ref: CiReferido) => {
-    if (!configured || !currentUserId) return
+    if (!configured || !currentUserId || !activation) return
     const form = leadForms[ref.id]
     if (!form) return
     setLeadForms((prev) => ({ ...prev, [ref.id]: { ...form, saving: true, error: null } }))
@@ -333,7 +355,19 @@ export function ActivacionReferidosPanel({
         owner_id: currentUserId,
         vendedor_id: currentUserId,
       }
-      if (ownerClienteId) leadPayload.referido_por_cliente_id = ownerClienteId
+      // Resolver referidor desde la activación — puede ser cliente o lead
+      const referidorTipo = activation.cliente_id
+        ? 'cliente'
+        : activation.lead_id
+          ? 'lead'
+          : null
+      const referidorId = activation.cliente_id ?? activation.lead_id ?? null
+      if (referidorTipo && referidorId) {
+        leadPayload.referidor_tipo = referidorTipo
+        leadPayload.referidor_id   = referidorId
+      }
+      // Campo legacy — mantener para lectores aún no migrados
+      if (activation.cliente_id) leadPayload.referido_por_cliente_id = activation.cliente_id
 
       const { data: newLead, error: leadError } = await supabase
         .from('leads')
@@ -377,7 +411,7 @@ export function ActivacionReferidosPanel({
       const { data, error: fetchError } = await supabase
         .from('leads')
         .select(
-          'id, nombre, apellido, email, telefono, fuente, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda',
+          'id, nombre, apellido, email, telefono, direccion, apartamento, ciudad, estado_region, codigo_postal, fuente, owner_id, estado_civil, nombre_conyuge, telefono_conyuge, situacion_laboral, ninos_en_casa, cantidad_ninos, tiene_productos_rp, tipo_vivienda',
         )
         .eq('id', ref.lead_id)
         .maybeSingle()
@@ -390,9 +424,12 @@ export function ActivacionReferidosPanel({
           apellido: nameSplit.apellido || null,
           telefono: ref.telefono,
         })
+        setFocusAddress(false)
         return
       }
       setCalificacionLead(data as CalificacionLead)
+      const hasGeo = !!(data as { ciudad?: string | null }).ciudad || !!(data as { codigo_postal?: string | null }).codigo_postal
+      setFocusAddress(!hasGeo)
     },
     [configured, showToast, t],
   )
@@ -667,7 +704,7 @@ export function ActivacionReferidosPanel({
                 const embudo = buildReferidoEmbudo(ref)
                 // Option A: referidos start as vendedor_directo.
                 // Representante/admin/distribuidor can send to tele or recover from tele.
-                const isRepresentante = activation?.representante_id === currentUserId
+                const isRepresentante = activation?.vendedor_id === currentUserId
                 const canManageGestion =
                   !isClosed &&
                   (isRepresentante ||
@@ -675,6 +712,8 @@ export function ActivacionReferidosPanel({
                     currentRole === 'distribuidor')
                 const canSendToTele = canManageGestion && isVendedorDirecto
                 const canRecoverFromTele = canManageGestion && !isVendedorDirecto
+                void canSendToTele
+                void canRecoverFromTele
                 const noteValue = notasDrafts[ref.id] ?? ''
                 const notePreview = noteValue.trim().length > 0 ? noteValue.trim().slice(0, 80) : ''
                 const nextStep =
@@ -737,6 +776,33 @@ export function ActivacionReferidosPanel({
                                 Lead
                               </span>
                             )}
+                            {ref.lead_id && (() => {
+                              const geo = leadGeoMap[ref.lead_id]
+                              if (!geo) return null
+                              const missingCiudad = !geo.ciudad
+                              const missingZip = !geo.codigo_postal
+                              if (!missingCiudad && !missingZip) {
+                                return (
+                                  <span className="arp-relacion-chip" style={{ background: '#d1fae5', color: '#065f46' }}>
+                                    Listo para gestionar
+                                  </span>
+                                )
+                              }
+                              return (
+                                <>
+                                  {missingCiudad && (
+                                    <span className="arp-relacion-chip" style={{ background: '#fef3c7', color: '#92400e' }}>
+                                      Falta ciudad
+                                    </span>
+                                  )}
+                                  {missingZip && (
+                                    <span className="arp-relacion-chip" style={{ background: '#fef3c7', color: '#92400e' }}>
+                                      Falta ZIP
+                                    </span>
+                                  )}
+                                </>
+                              )
+                            })()}
                           </div>
                           {notePreview && !isDetailOpen && (
                             <div className="drawer-subtitle" style={{ margin: 0 }}>
@@ -784,52 +850,23 @@ export function ActivacionReferidosPanel({
                         className="arp-row-actions"
                         style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}
                       >
-                        <button
-                          type="button"
-                          className="arp-icon-btn arp-icon-btn--wa"
-                          title="WhatsApp"
-                          disabled={!ref.telefono || isTeleReadOnly}
-                          onClick={() =>
-                            openWhatsapp({
-                              nombre: ref.nombre ?? '',
-                              telefono: ref.telefono ?? '',
-                              recomendadoPor: ownerLabel ?? '',
-                            })
-                          }
-                        >
-                          WA
-                        </button>
-                        <button
-                          type="button"
-                          className="arp-icon-btn arp-icon-btn--sms"
-                          title="SMS"
-                          disabled={!ref.telefono || isTeleReadOnly}
-                          onClick={() =>
-                            openSms({ nombre: ref.nombre ?? '', telefono: ref.telefono ?? '' })
-                          }
-                        >
-                          SMS
-                        </button>
-                        {!ref.cita_id && ref.lead_id && !isTeleReadOnly && (
-                          <button
-                            type="button"
-                            className="arp-icon-btn"
-                            title="Agendar cita de presentación"
-                            onClick={() => handleAgendarCita(ref)}
-                          >
-                            + Cita
-                          </button>
-                        )}
                         {ref.lead_id ? (
-                          <button
-                            type="button"
-                            className="arp-icon-btn arp-icon-btn--calificar"
-                            title={t('conexiones.referidosPanel.calificar')}
-                            disabled={isTeleReadOnly}
-                            onClick={() => openCalificacion(ref)}
-                          >
-                            {t('conexiones.referidosPanel.leadDone')}
-                          </button>
+                          (() => {
+                            const geo = leadGeoMap[ref.lead_id]
+                            const missingGeo = !geo?.ciudad || !geo?.codigo_postal
+                            return (
+                              <button
+                                type="button"
+                                className="arp-icon-btn arp-icon-btn--calificar"
+                                title="Completar datos de zona y calificar lead"
+                                disabled={isTeleReadOnly}
+                                onClick={() => openCalificacion(ref)}
+                                style={missingGeo ? { borderColor: '#fcd34d', color: '#92400e' } : undefined}
+                              >
+                                {missingGeo ? '⚠ Completar datos' : 'Ver calificación'}
+                              </button>
+                            )
+                          })()
                         ) : (
                           <button
                             type="button"
@@ -848,29 +885,74 @@ export function ActivacionReferidosPanel({
                               }
                             }}
                           >
-                            + {t('conexiones.referidosPanel.createLead')}
+                            Activar y completar datos
                           </button>
                         )}
-                        {canSendToTele && (
+
+                        <button
+                          type="button"
+                          className="arp-icon-btn arp-icon-btn--wa"
+                          title="WhatsApp"
+                          disabled={!ref.telefono || isTeleReadOnly}
+                          onClick={() =>
+                            openWhatsapp({
+                              nombre: ref.nombre ?? '',
+                              telefono: ref.telefono ?? '',
+                              recomendadoPor: ownerLabel ?? '',
+                            })
+                          }
+                        >
+                          WA
+                        </button>
+
+                        {ref.lead_id && (
                           <button
                             type="button"
                             className="arp-icon-btn"
-                            onClick={() => handleReturnReferido(ref.id)}
-                            title={t('conexiones.referidosPanel.actions.sendToTele')}
+                            title="Registrar llamada"
+                            disabled={isTeleReadOnly}
+                            onClick={() => {
+                              const telefono = ref.telefono
+                              const leadId = ref.lead_id
+                              if (!leadId) return
+                              openGestionModal({
+                                contacto: { 
+                                  tipo: 'lead', 
+                                  id: leadId, 
+                                  nombre: ref.nombre ?? '', 
+                                  telefono: telefono || undefined 
+                                },
+                                tipoDefault: 'llamada',
+                                moduloOrigen: 'conexiones_infinitas',
+                              })
+                            }}
                           >
-                            {t('conexiones.referidosPanel.actions.sendToTele')}
+                            Llamada
                           </button>
                         )}
-                        {canRecoverFromTele && (
+
+                        {!ref.cita_id && ref.lead_id && !isTeleReadOnly && (
                           <button
                             type="button"
-                            className="arp-icon-btn arp-icon-btn--calificar"
-                            onClick={() => handleTakeReferido(ref.id)}
-                            title={t('conexiones.referidosPanel.actions.recoverFromTele')}
+                            className="arp-icon-btn"
+                            title="Agendar cita de presentación"
+                            onClick={() => handleAgendarCita(ref)}
                           >
-                            {t('conexiones.referidosPanel.actions.recoverFromTele')}
+                            + Cita
                           </button>
                         )}
+
+                        <button
+                          type="button"
+                          className="arp-icon-btn arp-icon-btn--sms"
+                          title="SMS"
+                          disabled={!ref.telefono || isTeleReadOnly}
+                          onClick={() =>
+                            openSms({ nombre: ref.nombre ?? '', telefono: ref.telefono ?? '' })
+                          }
+                        >
+                          SMS
+                        </button>
                       </div>
                     </div>
 
@@ -1031,9 +1113,14 @@ export function ActivacionReferidosPanel({
         lead={calificacionLead}
         ownerName={ownerLabel}
         fuenteLabel="Conexiones Infinitas"
-        onClose={() => setCalificacionLead(null)}
+        focusAddress={focusAddress}
+        onClose={() => {
+          setCalificacionLead(null)
+          setFocusAddress(false)
+        }}
         onSaved={async () => {
           setCalificacionLead(null)
+          setFocusAddress(false)
         }}
       />
 

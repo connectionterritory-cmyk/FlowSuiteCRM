@@ -977,7 +977,15 @@
       "fechaInicio": "Start date",
       "fechaFin": "End date",
       "nombrePeriodo": "Period name",
-      "anio": "Program year"
+      "anio": "Program year",
+      "origenLabel": "Source prospect or client",
+      "origenPlaceholder": "Search by name or phone",
+      "origenHint": "Find the prospect or client who will enroll as an ambassador",
+      "origenVinculado": "{{tipo}} data (read-only)",
+      "origenLimpiar": "Change source",
+      "estado": "Status",
+      "fechaAceptacion": "Acceptance date",
+      "notasInscripcion": "Enrollment notes"
     },
     "errors": {
       "noActivePeriod": "No active period available.",
@@ -1021,8 +1029,22 @@
         "no_interes": "Not interested"
       }
     },
+    "estado": {
+      "todos": "All statuses",
+      "pendiente": "Pending",
+      "activo": "Active",
+      "inactivo": "Inactive",
+      "rechazado": "Rejected"
+    },
+    "origen": {
+      "prospecto": "Prospect",
+      "cliente": "Client",
+      "sinVincular": "Not linked"
+    },
     "columns": {
       "embajador": "Ambassador",
+      "estado": "Status",
+      "origen": "Source",
       "periodo": "Period",
       "conexiones": "Connections",
       "ventas": "Sales",

@@ -15,7 +15,8 @@ create index if not exists idx_productos_visible_catalogo
   on public.productos(id)
   where visible_catalogo = true;
 
--- 3. Recreate v_productos_publicos including the new column and filters
+-- 3. Recreate v_productos_publicos — same columns as original (0044)
+--    plus visible_catalogo, filtered to active + visible only.
 drop view if exists public.v_productos_publicos;
 
 create view public.v_productos_publicos
@@ -31,17 +32,9 @@ as
     subcategoria,
     linea_producto,
     precio,
-    precio_publico,
     activo,
     foto_url,
-    foto_principal_url,
     visible_catalogo,
-    estado,
-    descripcion_corta,
-    descripcion_larga,
-    beneficios,
-    cuota_minima,
-    con_financiamiento,
     created_at
   from public.productos
   where activo = true

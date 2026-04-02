@@ -599,8 +599,8 @@ export function HoyPage() {
         .lte('fecha_venta', end),
       supabase
         .from('ci_referidos')
-        .select('estado, activacion:ci_activaciones!inner(representante_id)')
-        .eq('activacion.representante_id', vendedorId),
+        .select('estado, activacion:ci_activaciones!inner(vendedor_id)')
+        .eq('activacion.vendedor_id', vendedorId),
       // ── Clients ───────────────────────────────────────────
       supabase
         .from('clientes')

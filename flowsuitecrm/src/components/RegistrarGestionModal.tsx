@@ -299,7 +299,7 @@ export function RegistrarGestionModal({
         activacionIds.length > 0
           ? supabase
               .from('ci_activaciones')
-              .select('id, representante_id, cliente_id, lead_id')
+              .select('id, vendedor_id, cliente_id, lead_id')
               .in('id', activacionIds)
           : Promise.resolve({ data: [] as SearchResultRow[] }),
         programaIds.length > 0
@@ -407,7 +407,7 @@ export function RegistrarGestionModal({
           : activacion?.lead_id
             ? leadMap.get(activacion.lead_id)
             : null
-        const vendedor = activacion?.representante_id ? userMap.get(activacion.representante_id) : null
+        const vendedor = activacion?.vendedor_id ? userMap.get(activacion.vendedor_id) : null
         return {
           tipo: 'lead' as const,
           id: row.lead_id ?? row.id,
