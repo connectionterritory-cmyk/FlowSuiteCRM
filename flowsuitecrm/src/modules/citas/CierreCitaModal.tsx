@@ -1,5 +1,5 @@
-import type { CitaForm, CierreActividad, CierreTarea, AssignedOption } from './CitaModal'
-import { PRODUCTOS_OPTIONS, RESULTADO_OPTIONS, TAREA_PRIORIDAD_OPTIONS, TAREA_TIPO_OPTIONS } from './CitaModal'
+import type { CitaForm, CierreActividad, CierreTarea, AssignedOption } from './citaOptions'
+import { PRODUCTOS_OPTIONS, RESULTADO_OPTIONS, TAREA_PRIORIDAD_OPTIONS, TAREA_TIPO_OPTIONS } from './citaOptions'
 
 type CierreCitaModalProps = {
   estado: string
