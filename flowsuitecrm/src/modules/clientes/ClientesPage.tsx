@@ -53,6 +53,7 @@ type ClienteRecord = {
   activo: boolean | null
   origen: string | null
   created_at: string | null
+  persona_id: string | null
 }
 
 type ClienteNota = {
@@ -91,6 +92,7 @@ const CLIENTES_LIST_SELECT = [
   'estado_cuenta',  // account status (not financial — required for filtroEstado and stats)
   'origen',
   'created_at',
+  'persona_id',
   // Excluded (sensitive): numero_cuenta_financiera, codigo_vendedor_hycite
 ].join(', ')
 
@@ -627,7 +629,7 @@ export function ClientesPage() {
         supabase
           .from('clientes')
           .select(
-            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen',
+            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id',
           )
           .eq('id', selectedRow.id)
           .maybeSingle(),
