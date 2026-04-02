@@ -86,3 +86,16 @@ export function buildGestionAutoSummary(tipo: GestionTipo, resultado: GestionRes
     .find((option) => option.value === resultado)?.label
   return resultadoLabel ? `${tipoLabel} - ${resultadoLabel}` : tipoLabel
 }
+
+const CITA_CTA_RULES = new Set([
+  'llamada:cita_agendada',
+  'whatsapp:cita_agendada',
+  'seguimiento:reagendado',
+  'visita:reagendado',
+  'cita_completada:reagendado',
+])
+
+export function shouldOfferCitaCTA(tipo: GestionTipo, resultado: GestionResultado | null) {
+  if (!resultado) return false
+  return CITA_CTA_RULES.has(`${tipo}:${resultado}`)
+}

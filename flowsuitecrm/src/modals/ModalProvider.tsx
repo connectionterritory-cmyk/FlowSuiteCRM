@@ -83,9 +83,18 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         moduloOrigen={gestionIntent?.moduloOrigen}
         origenId={gestionIntent?.origenId}
         onClose={closeGestionModal}
+        onCreateCita={(contacto) => {
+          openCitaModal({
+            initialData: {
+              contacto_tipo: contacto.tipo,
+              contacto_id: contacto.id,
+              contacto_nombre: contacto.nombre,
+              contacto_telefono: contacto.telefono ?? '',
+            },
+          })
+        }}
         onSubmit={async (draft) => {
           await gestionIntent?.onSubmit?.(draft)
-          closeGestionModal()
         }}
       />
     </ModalHostContext.Provider>

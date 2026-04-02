@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './Button'
 import { LABEL_STYLE, INPUT_STYLE } from './formControlStyles'
-import { GESTION_TYPES_BY_ROLE, buildGestionAutoSummary } from './gestionUtils'
+import { GESTION_TYPES_BY_ROLE, buildGestionAutoSummary, shouldOfferCitaCTA } from './gestionUtils'
 import { Modal } from './Modal'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 
@@ -181,6 +181,7 @@ type RegistrarGestionModalProps = {
   role: GestionRole
   onClose: () => void
   onSubmit: (draft: GestionDraft) => void | Promise<void>
+  onCreateCita?: (contacto: GestionContactoRef) => void
   submitting?: boolean
   contacto?: GestionContactoRef | null
   tipoDefault?: GestionTipo
@@ -215,6 +216,7 @@ export function RegistrarGestionModal({
   role,
   onClose,
   onSubmit,
+  onCreateCita,
   submitting = false,
   contacto = null,
   tipoDefault,
@@ -229,6 +231,8 @@ export function RegistrarGestionModal({
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<GestionContactoRef[]>([])
   const [showFollowup, setShowFollowup] = useState(false)
+  const [showCitaPrompt, setShowCitaPrompt] = useState(false)
+  const [savedContacto, setSavedContacto] = useState<GestionContactoRef | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -239,6 +243,8 @@ export function RegistrarGestionModal({
       setSearchQuery('')
       setSearchResults([])
       setShowFollowup(false)
+      setShowCitaPrompt(false)
+      setSavedContacto(null)
     })
   }, [contacto, moduloOrigen, open, origenId, role, tipoDefault])
 
@@ -495,7 +501,19 @@ export function RegistrarGestionModal({
       resumen: draft.resumen.trim() || buildGestionAutoSummary(draft.tipo, draft.resultado),
       contenido: draft.contenido.trim(),
     }
-    await onSubmit(nextDraft)
+    try {
+      await onSubmit(nextDraft)
+    } catch {
+      return
+    }
+
+    if (selectedContacto && onCreateCita && shouldOfferCitaCTA(nextDraft.tipo, nextDraft.resultado)) {
+      setSavedContacto(selectedContacto)
+      setShowCitaPrompt(true)
+      return
+    }
+
+    onClose()
   }
 
   return (
@@ -506,17 +524,49 @@ export function RegistrarGestionModal({
       description={contacto ? `${contacto.nombre}${contacto.subtitle ? ` · ${contacto.subtitle}` : ''}` : 'Registrar acción comercial o de seguimiento'}
       size="lg"
       actions={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="button" onClick={handleSubmit} disabled={submitting || !canSubmit}>
-            {submitting ? 'Guardando...' : 'Registrar gestión'}
-          </Button>
-        </>
+        showCitaPrompt ? (
+          <>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cerrar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (savedContacto && onCreateCita) {
+                  onCreateCita(savedContacto)
+                }
+                onClose()
+              }}
+            >
+              Crear cita
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleSubmit} disabled={submitting || !canSubmit}>
+              {submitting ? 'Guardando...' : 'Registrar gestión'}
+            </Button>
+          </>
+        )
       }
     >
       <div style={{ display: 'grid', gap: '1rem' }}>
+        {showCitaPrompt && (
+          <div
+            style={{
+              padding: '0.75rem 1rem',
+              borderRadius: '0.75rem',
+              border: '1px solid var(--color-border, #374151)',
+              background: 'rgba(59,130,246,0.08)',
+              color: 'var(--color-text, #e2e8f0)',
+            }}
+          >
+            ¿Quieres crear una cita ahora?
+          </div>
+        )}
         <div style={{ padding: '0.85rem', borderRadius: '0.75rem', border: '1px solid var(--color-input-border)', background: 'var(--color-surface-strong)' }}>
           <div style={LABEL_STYLE}>Contacto</div>
           {selectedContacto ? (
