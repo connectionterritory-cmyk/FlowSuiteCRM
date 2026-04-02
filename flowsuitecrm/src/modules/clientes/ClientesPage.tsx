@@ -54,6 +54,8 @@ type ClienteRecord = {
   origen: string | null
   created_at: string | null
   persona_id: string | null
+  next_action: string | null
+  next_action_date: string | null
 }
 
 type ClienteNota = {
@@ -93,6 +95,8 @@ const CLIENTES_LIST_SELECT = [
   'origen',
   'created_at',
   'persona_id',
+  'next_action',
+  'next_action_date',
   // Excluded (sensitive): numero_cuenta_financiera, codigo_vendedor_hycite
 ].join(', ')
 
@@ -113,6 +117,8 @@ const initialForm = {
   distribuidor_id: '',
   fecha_nacimiento: '',
   estado_cuenta: 'actual',
+  next_action: '',
+  next_action_date: '',
 }
 
 const BIRTH_YEAR_DEFAULT = 2000
@@ -629,7 +635,7 @@ export function ClientesPage() {
         supabase
           .from('clientes')
           .select(
-            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id',
+            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
           )
           .eq('id', selectedRow.id)
           .maybeSingle(),
@@ -736,6 +742,8 @@ export function ClientesPage() {
       distribuidor_id: cliente.distribuidor_id ?? '',
       fecha_nacimiento: cliente.fecha_nacimiento ?? '',
       estado_cuenta: cliente.estado_cuenta ?? 'actual',
+      next_action: cliente.next_action ?? '',
+      next_action_date: cliente.next_action_date ?? '',
     })
     setParsedAddr(null)
     setBirthMonth(birth.month)
@@ -816,6 +824,8 @@ export function ClientesPage() {
       fecha_nacimiento: birthDate,
       estado_cuenta: formValues.estado_cuenta,
       activo: formValues.estado_cuenta === 'actual',
+      next_action: toNull(formValues.next_action as string),
+      next_action_date: toNull(formValues.next_action_date as string),
     }
     const { error: opError } = editingId
       ? await supabase.from('clientes').update(basePayload).eq('id', editingId)
@@ -1570,6 +1580,14 @@ export function ClientesPage() {
               <option value="inactivo">Inactivo</option>
             </select>
           </label>
+          <label className="form-field">
+            <span>Próxima acción</span>
+            <input value={formValues.next_action as string} onChange={handleChange('next_action')} placeholder="Ej: Llamar para confirmar pedido" />
+          </label>
+          <label className="form-field">
+            <span>Fecha próxima acción</span>
+            <input type="date" value={formValues.next_action_date as string} onChange={handleChange('next_action_date')} />
+          </label>
           {editingCliente && (editingCliente.nivel || (editingCliente.monto_moroso ?? 0) > 0 || (editingCliente.dias_atraso ?? 0) > 0 || editingCliente.fecha_ultimo_pedido) && (
             <div style={{ gridColumn: '1 / -1', padding: '0.75rem', background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '0.375rem' }}>
               <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
@@ -1716,6 +1734,13 @@ export function ClientesPage() {
             },
             { label: 'Codigo vendedor', value: selectedClienteDetail.codigo_vendedor_hycite ?? '-' },
             { label: 'Origen', value: selectedClienteDetail.origen ?? '-' },
+            { label: 'Próxima acción', value: selectedClienteDetail.next_action ?? '-' },
+            {
+              label: 'Fecha próx. acción',
+              value: selectedClienteDetail.next_action_date
+                ? new Date(selectedClienteDetail.next_action_date + 'T00:00:00').toLocaleDateString('es')
+                : '-',
+            },
           ]
         })()}
         tabs={selectedClienteDetail ? [
