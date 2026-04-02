@@ -23,6 +23,7 @@ build/
 *.sql
 backup.sql
 !outputs/*.sql
+!supabase/migrations/*.sql
 
 # Editor
 .vscode/
