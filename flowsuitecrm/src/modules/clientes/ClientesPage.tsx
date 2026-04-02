@@ -5,6 +5,7 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
+import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { EmptyState } from '../../components/EmptyState'
 import { IconWhatsapp } from '../../components/icons'
@@ -218,6 +219,7 @@ export function ClientesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [parsedAddr, setParsedAddr] = useState<ParsedAddress | null>(null)
   const [selectedRow, setSelectedRow] = useState<DataTableRow | null>(null)
+  const [perfilPersonaId, setPerfilPersonaId] = useState<string | null>(null)
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { openGestionModal } = useModalHost()
   const configured = isSupabaseConfigured
@@ -1784,11 +1786,25 @@ export function ClientesPage() {
                   Editar
                 </Button>
               )}
+              {selectedClienteDetail.persona_id && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}
+                >
+                  Ver perfil
+                </Button>
+              )}
             </div>
           ) : null
         }
       />
       <ModalRenderer />
+
+      <PersonaPerfilPanel
+        personaId={perfilPersonaId}
+        onClose={() => setPerfilPersonaId(null)}
+      />
 
       {/* MODAL DUPLICADOS */}
       <Modal
