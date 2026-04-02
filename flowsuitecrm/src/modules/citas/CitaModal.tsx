@@ -265,7 +265,8 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       active = false
       window.clearTimeout(timeoutId)
     }
-  }, [assignedOptions, initialData, open, sessionUserId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData, open, sessionUserId])
 
   useEffect(() => {
     if (!open || !isSupabaseConfigured || !sessionUserId) {

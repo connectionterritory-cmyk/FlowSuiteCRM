@@ -16,7 +16,7 @@ import {
 export { useModalHost, useOptionalModalHost } from './useModalHost'
 
 export function ModalProvider({ children }: { children: React.ReactNode }) {
-  const { currentRole } = useUsers()
+  const { currentRole, currentUser } = useUsers()
   const [messageIntent, setMessageIntent] = useState<MessageModalIntent | null>(null)
   const [citaIntent, setCitaIntent] = useState<CitaModalIntent | null>(null)
   const [gestionIntent, setGestionIntent] = useState<GestionModalIntent | null>(null)
@@ -84,6 +84,12 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         origenId={gestionIntent?.origenId}
         onClose={closeGestionModal}
         onCreateCita={(contacto) => {
+          const selfOption = currentUser
+            ? [{
+                id: currentUser.id,
+                label: [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') || currentUser.email || currentUser.id,
+              }]
+            : []
           openCitaModal({
             initialData: {
               contacto_tipo: contacto.tipo,
@@ -91,6 +97,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
               contacto_nombre: contacto.nombre,
               contacto_telefono: contacto.telefono ?? '',
             },
+            assignedOptions: selfOption,
           })
         }}
         onSubmit={async (draft) => {
