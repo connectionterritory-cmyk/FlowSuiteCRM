@@ -11,7 +11,7 @@ import {
 export type CiActivacion = {
   id: string
   fecha_activacion: string | null
-  representante_id: string | null
+  vendedor_id: string | null
   cliente_id: string | null
   lead_id: string | null
   owner_id?: string | null
@@ -90,6 +90,8 @@ export type CreateActivacionInput = {
   referidos: ReferidoFormRow[]
 }
 
+export type EmbajadorEstado = 'pendiente' | 'activo' | 'inactivo' | 'rechazado'
+
 export type EmbajadorRecord = {
   id: string
   nombre: string | null
@@ -97,6 +99,19 @@ export type EmbajadorRecord = {
   email: string | null
   telefono: string | null
   fecha_nacimiento: string | null
+  // Campos agregados en 0070/0071
+  org_id: string | null
+  lead_id: string | null
+  cliente_id: string | null
+  estado: EmbajadorEstado
+  fecha_aceptacion: string | null
+  aceptado_por: string | null
+  notas_inscripcion: string | null
+  persona_id: string | null
+  // Datos del origen (JOIN)
+  lead?: { id: string; nombre: string | null; apellido: string | null; telefono: string | null } | null
+  cliente?: { id: string; nombre: string | null; apellido: string | null; telefono: string | null } | null
+  aceptado_por_usuario?: { id: string; nombre: string | null; apellido: string | null } | null
 }
 
 export type PeriodoRecord = {
@@ -245,7 +260,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     const activationResult = await supabase
       .from('ci_activaciones')
       .select('*')
-      .eq('representante_id', userId)
+      .eq('vendedor_id', userId)
       .eq('estado', 'activo')
       .eq('programa_id', activeProgramId)
       .order('created_at', { ascending: false })
@@ -321,7 +336,13 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     setLoadingEmbajadores(true)
     setErrorEmbajadores(null)
     const [embajadoresResult, periodosResult, programasResult, roleResult] = await Promise.all([
-      supabase.from('embajadores').select('id, nombre, apellido, email, telefono, fecha_nacimiento'),
+      supabase.from('embajadores').select(`
+        id, nombre, apellido, email, telefono, fecha_nacimiento,
+        org_id, lead_id, cliente_id, estado, fecha_aceptacion, aceptado_por, notas_inscripcion, persona_id,
+        lead:leads(id, nombre, apellido, telefono),
+        cliente:clientes(id, nombre, apellido, telefono),
+        aceptado_por_usuario:usuarios!aceptado_por(id, nombre, apellido)
+      `),
       supabase.from('periodos_programa').select('*'),
       supabase.from('embajador_programas').select('*'),
       sessionUserId
@@ -339,7 +360,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       )
     }
 
-    setEmbajadores((embajadoresResult.data as EmbajadorRecord[]) ?? [])
+    setEmbajadores((embajadoresResult.data as unknown as EmbajadorRecord[]) ?? [])
     setPeriodos((periodosResult.data as PeriodoRecord[]) ?? [])
     setProgramas((programasResult.data as EmbajadorProgramaRecord[]) ?? [])
     setRole((roleResult.data as { rol?: string } | null)?.rol ?? null)
@@ -372,7 +393,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       })
 
       const activationPayload = {
-        representante_id: sessionUserId,
+        vendedor_id: sessionUserId,
         owner_id: sessionUserId,
         programa_id: programaId,
         cliente_id: input.clienteId,
@@ -460,7 +481,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
       const { data, error: insertError } = await supabase
         .from('ci_activaciones')
         .insert({
-          representante_id: sessionUserId,
+          vendedor_id: sessionUserId,
           owner_id: sessionUserId,
           estado: 'activo',
           programa_id: program,
@@ -617,8 +638,33 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     return { data: lead, error: null }
   }, [configured])
 
-  const createLeadFromReferido = useCallback(async (payload: { referidoId: string; nombre: string; apellido: string | null; telefono: string; owner_id: string; vendedor_id: string; referido_por_cliente_id: string | null }) => {
+  const createLeadFromReferido = useCallback(async (payload: {
+    referidoId: string
+    nombre: string
+    apellido: string | null
+    telefono: string
+    owner_id: string
+    vendedor_id: string
+    // Modelo canónico — preferir estos cuando están disponibles
+    referidor_tipo?: 'cliente' | 'lead' | 'embajador' | null
+    referidor_id?: string | null
+    // Campo legacy — mantener para lectores aún no migrados
+    referido_por_cliente_id: string | null
+  }) => {
     if (!configured) return { data: null, error: 'Supabase not configured' }
+
+    // Resolver campos canónicos: usar los explícitos si vienen, sino derivar del legacy
+    const referidorTipo =
+      payload.referidor_tipo !== undefined
+        ? payload.referidor_tipo
+        : payload.referido_por_cliente_id
+          ? 'cliente'
+          : null
+    const referidorId =
+      payload.referidor_id !== undefined
+        ? payload.referidor_id
+        : payload.referido_por_cliente_id ?? null
+
     const { data: leadData, error: leadError } = await supabase
       .from('leads')
       .insert({
@@ -629,6 +675,10 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
         estado_pipeline: 'nuevo',
         owner_id: payload.owner_id,
         vendedor_id: payload.vendedor_id,
+        // Canónico
+        referidor_tipo: referidorTipo,
+        referidor_id:   referidorId,
+        // Legacy — mantener para lectores aún no migrados
         referido_por_cliente_id: payload.referido_por_cliente_id,
       })
       .select('id, nombre, apellido, telefono')
@@ -672,11 +722,46 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     return { data: data?.signedUrl ?? null, error: null }
   }, [configured])
 
-  const createEmbajador = useCallback(async (payload: { nombre: string | null; apellido: string | null; email: string | null; telefono: string | null; fecha_nacimiento: string | null }) => {
+  const createEmbajador = useCallback(async (payload: {
+    nombre: string | null
+    apellido: string | null
+    email: string | null
+    telefono: string | null
+    fecha_nacimiento: string | null
+    lead_id: string | null
+    cliente_id: string | null
+    estado: EmbajadorEstado
+    fecha_aceptacion: string | null
+    notas_inscripcion: string | null
+  }) => {
     if (!configured) return { data: null, error: 'Supabase not configured' }
     const { error: insertError } = await supabase.from('embajadores').insert(payload)
     if (insertError) {
       return { data: null, error: insertError.message }
+    }
+    return { data: true, error: null }
+  }, [configured])
+
+  const updateEmbajador = useCallback(async (id: string, payload: {
+    nombre?: string | null
+    apellido?: string | null
+    email?: string | null
+    telefono?: string | null
+    fecha_nacimiento?: string | null
+    lead_id?: string | null
+    cliente_id?: string | null
+    estado?: EmbajadorEstado
+    fecha_aceptacion?: string | null
+    aceptado_por?: string | null
+    notas_inscripcion?: string | null
+  }) => {
+    if (!configured) return { data: null, error: 'Supabase not configured' }
+    const { error: updateError } = await supabase
+      .from('embajadores')
+      .update(payload)
+      .eq('id', id)
+    if (updateError) {
+      return { data: null, error: updateError.message }
     }
     return { data: true, error: null }
   }, [configured])
@@ -818,6 +903,7 @@ export const useConexiones = (options?: ConexionesHookOptions) => {
     uploadActivationPhoto,
     createSignedPhotoUrl,
     createEmbajador,
+    updateEmbajador,
     createPeriodo,
     registerEmbajadorPrograma,
     saveConexiones,

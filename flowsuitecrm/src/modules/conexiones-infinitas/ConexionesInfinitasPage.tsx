@@ -8,9 +8,10 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
 import { ActivacionReferidosPanel } from '../../components/ActivacionReferidosPanel'
+import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { useToast } from '../../components/useToast'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
-import { useConexiones, type CiActivacion, type CiReferido, type GiftProduct } from '../../hooks/useConexiones'
+import { useConexiones, type CiActivacion, type CiReferido, type GiftProduct, type EmbajadorEstado } from '../../hooks/useConexiones'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { CONEXIONES_INFINITAS_DIFUSION, replaceTemplateVariables } from '../../lib/whatsappTemplates'
 import { IconMail, IconSms, IconWhatsapp } from '../../components/icons'
@@ -71,6 +72,11 @@ const initialEmbajadorForm = {
   email: '',
   telefono: '',
   fecha_nacimiento: '',
+  lead_id: '',
+  cliente_id: '',
+  estado: 'pendiente' as EmbajadorEstado,
+  fecha_aceptacion: '',
+  notas_inscripcion: '',
 }
 
 const currentYear = new Date().getFullYear()
@@ -350,16 +356,16 @@ export function ConexionesActivacionesTabLegacy() {
   )
 
   const activationOwner = useMemo(() => {
-    if (!selectedActivation?.representante_id) return null
-    return representantesMap[selectedActivation.representante_id] ?? null
+    if (!selectedActivation?.vendedor_id) return null
+    return representantesMap[selectedActivation.vendedor_id] ?? null
   }, [representantesMap, selectedActivation])
 
   const activationOwnerName = useMemo(() => {
-    if (!selectedActivation?.representante_id) return ''
+    if (!selectedActivation?.vendedor_id) return ''
     return (
       activationOwner?.nombre ??
-      usersById[selectedActivation.representante_id] ??
-      selectedActivation.representante_id
+      usersById[selectedActivation.vendedor_id] ??
+      selectedActivation.vendedor_id
     )
   }, [activationOwner, selectedActivation, usersById])
 
@@ -870,6 +876,10 @@ export function ConexionesActivacionesTabLegacy() {
         telefono: referido.telefono,
         owner_id: session.user.id,
         vendedor_id: session.user.id,
+        // Canónico — resuelve cliente o lead como referidor
+        referidor_tipo: selectedActivation.cliente_id ? 'cliente' : selectedActivation.lead_id ? 'lead' : null,
+        referidor_id:   selectedActivation.cliente_id ?? selectedActivation.lead_id ?? null,
+        // Legacy — mantener para lectores aún no migrados
         referido_por_cliente_id: selectedActivation.cliente_id ?? null,
       })
       if (leadError) {
@@ -1026,6 +1036,10 @@ export function ConexionesActivacionesTabLegacy() {
       telefono: referido.telefono,
       owner_id: session.user.id,
       vendedor_id: session.user.id,
+      // Canónico — resuelve cliente o lead como referidor
+      referidor_tipo: selectedActivation?.cliente_id ? 'cliente' : selectedActivation?.lead_id ? 'lead' : null,
+      referidor_id:   selectedActivation?.cliente_id ?? selectedActivation?.lead_id ?? null,
+      // Legacy — mantener para lectores aún no migrados
       referido_por_cliente_id: referidoPorClienteId,
     })
 
@@ -1040,8 +1054,8 @@ export function ConexionesActivacionesTabLegacy() {
 
   const activationRows = useMemo<DataTableRow[]>(() => {
     return activaciones.map((activation) => {
-      const repName = activation.representante_id
-        ? usersById[activation.representante_id] ?? activation.representante_id
+      const repName = activation.vendedor_id
+        ? usersById[activation.vendedor_id] ?? activation.vendedor_id
         : '-'
       const ownerName = activation.cliente_id
         ? clientesMap.get(activation.cliente_id) ?? activation.cliente_id
@@ -1675,8 +1689,8 @@ export function ConexionesActivacionesTabLegacy() {
                   <div className="detail-row">
                     <dt>{t('conexiones.activaciones.columns.representante')}</dt>
                     <dd>
-                      {selectedActivation.representante_id
-                        ? usersById[selectedActivation.representante_id] ?? selectedActivation.representante_id
+                      {selectedActivation.vendedor_id
+                        ? usersById[selectedActivation.vendedor_id] ?? selectedActivation.vendedor_id
                         : '-'}
                     </dd>
                   </div>
@@ -2737,7 +2751,7 @@ function ConexionesActivacionesTab() {
   const [activaciones, setActivaciones] = useState<CiActivacion[]>([])
   const [ownerClienteMap, setOwnerClienteMap] = useState<Record<string, string>>({})
   const [ownerLeadMap, setOwnerLeadMap] = useState<Record<string, string>>({})
-  const [representanteMap, setRepresentanteMap] = useState<Record<string, string>>({})
+  const [vendedorMap, setRepresentanteMap] = useState<Record<string, string>>({})
   const [referidosCount, setReferidosCount] = useState<Record<string, number>>({})
   const [tab, setTab] = useState<'activa' | 'cerrada'>('activa')
   const [loading, setLoading] = useState(false)
@@ -2881,7 +2895,7 @@ function ConexionesActivacionesTab() {
 
     let query = supabase
       .from('ci_activaciones')
-      .select('id, representante_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
+      .select('id, vendedor_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
       .eq('programa_id', programId)
 
     if (role === 'telemercadeo') {
@@ -2897,11 +2911,11 @@ function ConexionesActivacionesTab() {
         setLoading(false)
         return
       }
-      query = query.in('representante_id', ids)
+      query = query.in('vendedor_id', ids)
     } else if (role === 'supervisor_telemercadeo') {
       // Supervisor sees all activaciones across the full team (no representante filter)
     } else if (role === 'vendedor' || (hasDistribuidorScope && effectiveScope === 'mine')) {
-      query = query.eq('representante_id', sessionUserId)
+      query = query.eq('vendedor_id', sessionUserId)
     } else if (hasDistribuidorScope && effectiveScope === 'distribution') {
       if (role === 'admin') {
         // Admin: see all activaciones (no representante filter)
@@ -2943,7 +2957,7 @@ function ConexionesActivacionesTab() {
         setLoading(false)
         return
       }
-      query = query.in('representante_id', distIds)
+      query = query.in('vendedor_id', distIds)
       }
     }
 
@@ -2989,7 +3003,7 @@ function ConexionesActivacionesTab() {
     }
 
     const representanteIds = Array.from(
-      new Set(rows.map((row) => row.representante_id).filter((value): value is string => Boolean(value))),
+      new Set(rows.map((row) => row.vendedor_id).filter((value): value is string => Boolean(value))),
     )
     const clienteIds = Array.from(
       new Set(rows.map((row) => row.cliente_id).filter((value): value is string => Boolean(value))),
@@ -3242,15 +3256,15 @@ function ConexionesActivacionesTab() {
         : row.lead_id
           ? ownerLeadMap[row.lead_id] ?? row.lead_id
           : ''
-      const repLabel = row.representante_id
-        ? representanteMap[row.representante_id] ?? row.representante_id
+      const repLabel = row.vendedor_id
+        ? vendedorMap[row.vendedor_id] ?? row.vendedor_id
         : ''
       return (
         ownerLabel.toLowerCase().includes(term) ||
         repLabel.toLowerCase().includes(term)
       )
     })
-  }, [activaciones, ownerClienteMap, ownerLeadMap, representanteMap, search])
+  }, [activaciones, ownerClienteMap, ownerLeadMap, vendedorMap, search])
 
   const handleSortAct = (colIndex: number) => {
     if (sortColAct === colIndex) {
@@ -3291,7 +3305,7 @@ function ConexionesActivacionesTab() {
       const estado = isClosed(row)
         ? t('conexiones.activaciones.status.closed')
         : t('conexiones.activaciones.status.active')
-      const repLabel = row.representante_id ? representanteMap[row.representante_id] ?? '-' : '-'
+      const repLabel = row.vendedor_id ? vendedorMap[row.vendedor_id] ?? '-' : '-'
       const values = effectiveScope === 'distribution'
         ? [ownerLabel, refs, progreso, lastActivity, estado, repLabel]
         : [ownerLabel, refs, progreso, lastActivity, estado]
@@ -3470,14 +3484,14 @@ function ConexionesActivacionesTab() {
     const { data, error: createError } = await supabase
       .from('ci_activaciones')
       .insert({
-        representante_id: session.user.id,
+        vendedor_id: session.user.id,
         owner_id: null,
         cliente_id: wizardOwnerType === 'cliente' ? wizardOwnerId : null,
         lead_id: wizardOwnerType === 'prospecto' ? wizardOwnerId : null,
         estado: 'activo',
         programa_id: programId,
       })
-      .select('id, representante_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
+      .select('id, vendedor_id, estado, updated_at, created_at, programa_id, cliente_id, lead_id')
       .single()
     if (createError || !data) {
       setWizardError(createError?.message ?? t('toast.error'))
@@ -3495,7 +3509,7 @@ function ConexionesActivacionesTab() {
   const listRows = useMemo<DataTableRow[]>(() => {
     return sortedActivaciones.map((row) => {
       const ownerLabel = getOwnerLabel(row)
-      const repLabel = row.representante_id ? representanteMap[row.representante_id] ?? '-' : '-'
+      const repLabel = row.vendedor_id ? vendedorMap[row.vendedor_id] ?? '-' : '-'
       const lastActivityValue = row.updated_at ?? row.created_at
       const lastActivityLabel = formatRelativeTime(lastActivityValue)
       const lastActivityFull = formatDateTime(lastActivityValue)
@@ -3553,7 +3567,7 @@ function ConexionesActivacionesTab() {
         ],
       }
     })
-  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, representanteMap, effectiveScope, handleReactivate, t])
+  }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, vendedorMap, effectiveScope, handleReactivate, t])
 
   const canAccess = role !== 'telemercadeo'
 
@@ -3715,9 +3729,9 @@ function ConexionesActivacionesTab() {
                           : t('conexiones.activaciones.status.active')}
                       </span>
                     </div>
-                    {effectiveScope === 'distribution' && row.representante_id && (
+                    {effectiveScope === 'distribution' && row.vendedor_id && (
                       <p className="form-hint">
-                        {t('conexiones.activaciones.labels.representante')}: {representanteMap[row.representante_id] ?? '-'}
+                        {t('conexiones.activaciones.labels.representante')}: {vendedorMap[row.vendedor_id] ?? '-'}
                       </p>
                     )}
                     <p className="form-hint">
@@ -3795,7 +3809,6 @@ function ConexionesActivacionesTab() {
         open={detailOpen}
         activation={selectedActivation}
         ownerLabel={selectedActivation ? getOwnerLabel(selectedActivation) : ''}
-        ownerClienteId={selectedActivation?.cliente_id ?? null}
         currentUserId={session?.user.id ?? null}
         currentRole={role}
         canEditOwner={canEditOwner}
@@ -4028,7 +4041,7 @@ function ConexionesActivacionesTab() {
                   {session?.user.id
                     ? usersById[session.user.id] ??
                     currentUserLabel ??
-                    representanteMap[session.user.id] ??
+                    vendedorMap[session.user.id] ??
                     session.user.id
                     : '-'}
                 </span>
@@ -4062,6 +4075,7 @@ function ConexionesEmbajadoresTab() {
   } = useConexiones({ mode: 'embajadores', autoLoad: true })
   const { embajadores, periodos, programas, role } = embajadoresData
   const [embajadorOpen, setEmbajadorOpen] = useState(false)
+  const [perfilPersonaId, setPerfilPersonaId] = useState<string | null>(null)
   const [periodoOpen, setPeriodoOpen] = useState(false)
   const [registroOpen, setRegistroOpen] = useState(false)
   const [conexionOpen, setConexionOpen] = useState(false)
@@ -4075,9 +4089,14 @@ function ConexionesEmbajadoresTab() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [busquedaEmb, setBusquedaEmb] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('')
   const [sortColEmb, setSortColEmb] = useState<number | null>(null)
   const [sortDirEmb, setSortDirEmb] = useState<'asc' | 'desc'>('asc')
   const [isMobileEmb, setIsMobileEmb] = useState(false)
+  const [origenSearch, setOrigenSearch] = useState('')
+  const [origenResults, setOrigenResults] = useState<OwnerCandidate[]>([])
+  const [origenSearching, setOrigenSearching] = useState(false)
+  const [origenSeleccionado, setOrigenSeleccionado] = useState<OwnerCandidate | null>(null)
   const conexionNameRefs = useRef<Array<HTMLInputElement | null>>([])
 
   useEffect(() => {
@@ -4087,6 +4106,55 @@ function ConexionesEmbajadoresTab() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // Búsqueda debounced de origen (lead o cliente) para el formulario de nuevo embajador
+  useEffect(() => {
+    let active = true
+    const term = origenSearch.trim()
+    if (!embajadorOpen || term.length < 2) {
+      const id = window.setTimeout(() => {
+        startTransition(() => {
+          setOrigenResults([])
+          setOrigenSearching(false)
+        })
+      }, 0)
+      return () => window.clearTimeout(id)
+    }
+    const loadingId = window.setTimeout(() => {
+      startTransition(() => setOrigenSearching(true))
+    }, 0)
+    const handle = window.setTimeout(() => {
+      const run = async () => {
+        const [leadsRes, clientesRes] = await Promise.all([
+          supabase
+            .from('leads')
+            .select('id, nombre, apellido, telefono')
+            .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
+            .is('deleted_at', null)
+            .limit(8),
+          supabase
+            .from('clientes')
+            .select('id, nombre, apellido, telefono')
+            .or(`nombre.ilike.%${term}%,apellido.ilike.%${term}%,telefono.ilike.%${term}%`)
+            .eq('activo', true)
+            .limit(8),
+        ])
+        if (!active) return
+        const results: OwnerCandidate[] = [
+          ...((leadsRes.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }>).map((r) => ({ ...r, type: 'prospecto' as const })),
+          ...((clientesRes.data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }>).map((r) => ({ ...r, type: 'cliente' as const })),
+        ]
+        setOrigenResults(results)
+        setOrigenSearching(false)
+      }
+      void run()
+    }, 350)
+    return () => {
+      active = false
+      window.clearTimeout(loadingId)
+      window.clearTimeout(handle)
+    }
+  }, [origenSearch, embajadorOpen])
+
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(i18n.language),
     [i18n.language],
@@ -4095,8 +4163,37 @@ function ConexionesEmbajadoresTab() {
   const embajadorMap = useMemo(() => {
     const map = new Map<string, string>()
     embajadores.forEach((embajador) => {
-      const name = [embajador.nombre, embajador.apellido].filter(Boolean).join(' ') || embajador.id
+      const origin = embajador.lead ?? embajador.cliente
+      const name = origin
+        ? [origin.nombre, origin.apellido].filter(Boolean).join(' ') || embajador.id
+        : [embajador.nombre, embajador.apellido].filter(Boolean).join(' ') || embajador.id
       map.set(embajador.id, name)
+    })
+    return map
+  }, [embajadores])
+
+  const embajadorEstadoMap = useMemo(() => {
+    const map = new Map<string, EmbajadorEstado>()
+    embajadores.forEach((e) => map.set(e.id, e.estado))
+    return map
+  }, [embajadores])
+
+  const embajadorPersonaIdMap = useMemo(() => {
+    const map = new Map<string, string>()
+    embajadores.forEach((e) => { if (e.persona_id) map.set(e.id, e.persona_id) })
+    return map
+  }, [embajadores])
+
+  const embajadorOrigenMap = useMemo(() => {
+    const map = new Map<string, { tipo: 'prospecto' | 'cliente'; nombre: string } | null>()
+    embajadores.forEach((e) => {
+      if (e.lead) {
+        map.set(e.id, { tipo: 'prospecto', nombre: [e.lead.nombre, e.lead.apellido].filter(Boolean).join(' ') || e.lead.id })
+      } else if (e.cliente) {
+        map.set(e.id, { tipo: 'cliente', nombre: [e.cliente.nombre, e.cliente.apellido].filter(Boolean).join(' ') || e.cliente.id })
+      } else {
+        map.set(e.id, null)
+      }
     })
     return map
   }, [embajadores])
@@ -4112,13 +4209,21 @@ function ConexionesEmbajadoresTab() {
   const activePeriod = useMemo(() => periodos.find((periodo) => periodo.activo), [periodos])
 
   const filteredProgramas = useMemo(() => {
-    if (!busquedaEmb.trim()) return programas
-    const term = busquedaEmb.trim().toLowerCase()
-    return programas.filter((p) => {
-      const name = p.embajador_id ? (embajadorMap.get(p.embajador_id) ?? '').toLowerCase() : ''
-      return name.includes(term)
-    })
-  }, [programas, busquedaEmb, embajadorMap])
+    let result = programas
+    if (busquedaEmb.trim()) {
+      const term = busquedaEmb.trim().toLowerCase()
+      result = result.filter((p) => {
+        const name = p.embajador_id ? (embajadorMap.get(p.embajador_id) ?? '').toLowerCase() : ''
+        return name.includes(term)
+      })
+    }
+    if (filtroEstado) {
+      result = result.filter((p) =>
+        p.embajador_id ? embajadorEstadoMap.get(p.embajador_id) === filtroEstado : false,
+      )
+    }
+    return result
+  }, [programas, busquedaEmb, filtroEstado, embajadorMap, embajadorEstadoMap])
 
   const handleSortEmb = (colIndex: number) => {
     if (sortColEmb === colIndex) {
@@ -4134,10 +4239,10 @@ function ConexionesEmbajadoresTab() {
     return [...filteredProgramas].sort((a, b) => {
       let valA = 0
       let valB = 0
-      if (sortColEmb === 2) {
+      if (sortColEmb === 4) {
         valA = Number(a.total_conexiones_anual ?? a.total_conexiones ?? a.conexiones ?? 0)
         valB = Number(b.total_conexiones_anual ?? b.total_conexiones ?? b.conexiones ?? 0)
-      } else if (sortColEmb === 3) {
+      } else if (sortColEmb === 5) {
         valA = Number(a.total_ventas_generadas_anual ?? a.ventas_generadas ?? 0)
         valB = Number(b.total_ventas_generadas_anual ?? b.ventas_generadas ?? 0)
       }
@@ -4150,6 +4255,8 @@ function ConexionesEmbajadoresTab() {
   const exportarCSVEmb = () => {
     const headers = [
       t('conexiones.columns.embajador'),
+      t('conexiones.columns.estado'),
+      t('conexiones.columns.origen'),
       t('conexiones.columns.periodo'),
       t('conexiones.columns.conexiones'),
       t('conexiones.columns.ventas'),
@@ -4157,11 +4264,16 @@ function ConexionesEmbajadoresTab() {
     ]
     const csvRows = filteredProgramas.map((p) => {
       const name = p.embajador_id ? embajadorMap.get(p.embajador_id) ?? p.embajador_id : '-'
+      const estado = p.embajador_id ? (embajadorEstadoMap.get(p.embajador_id) ?? '-') : '-'
+      const origenData = p.embajador_id ? embajadorOrigenMap.get(p.embajador_id) : undefined
+      const origen = origenData
+        ? `${t(`conexiones.origen.${origenData.tipo}`)} - ${origenData.nombre}`
+        : t('conexiones.origen.sinVincular')
       const periodo = p.periodo_id ? periodoMap.get(p.periodo_id) ?? p.periodo_id : '-'
       const conexiones = Number(p.total_conexiones_anual ?? p.total_conexiones ?? p.conexiones ?? 0)
       const ventas = Number(p.total_ventas_generadas_anual ?? p.ventas_generadas ?? 0)
       const nivel = p.nivel ?? '-'
-      return [name, periodo, conexiones, ventas, nivel]
+      return [name, estado, origen, periodo, conexiones, ventas, nivel]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
     })
@@ -4200,12 +4312,36 @@ function ConexionesEmbajadoresTab() {
       const nivelKey = programa.nivel ? `conexiones.levels.${programa.nivel}` : ''
       const translatedNivel = programa.nivel ? t(nivelKey) : '-'
       const nivelLabel = programa.nivel && translatedNivel === nivelKey ? programa.nivel : translatedNivel
+      const estado = programa.embajador_id ? embajadorEstadoMap.get(programa.embajador_id) : undefined
+      const estadoBadgeStyle: Record<string, string> = {
+        pendiente: 'rgba(234,179,8,0.18)',
+        activo:    'rgba(34,197,94,0.18)',
+        inactivo:  'rgba(148,163,184,0.18)',
+        rechazado: 'rgba(239,68,68,0.18)',
+      }
+      const estadoTextStyle: Record<string, string> = {
+        pendiente: '#92400e',
+        activo:    '#166534',
+        inactivo:  '#475569',
+        rechazado: '#991b1b',
+      }
+      const origenData = programa.embajador_id ? embajadorOrigenMap.get(programa.embajador_id) : undefined
       return {
         id: programa.id,
         cells: [
           <div className="conexiones-embajador-cell">
             <div className="conexiones-embajador-row">
               <span className="conexiones-embajador-name">{embajadorName}</span>
+              {programa.embajador_id && embajadorPersonaIdMap.has(programa.embajador_id) && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="conexiones-add-button"
+                  onClick={() => setPerfilPersonaId(embajadorPersonaIdMap.get(programa.embajador_id!) ?? null)}
+                >
+                  Ver perfil
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 type="button"
@@ -4231,6 +4367,35 @@ function ConexionesEmbajadoresTab() {
               {isGold && <span className="conexiones-progress-icon">🏆</span>}
             </div>
           </div>,
+          estado ? (
+            <span style={{
+              fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px',
+              borderRadius: '9999px', textTransform: 'uppercase',
+              background: estadoBadgeStyle[estado] ?? 'rgba(148,163,184,0.18)',
+              color: estadoTextStyle[estado] ?? '#475569',
+            }}>
+              {t(`conexiones.estado.${estado}`)}
+            </span>
+          ) : '-',
+          origenData ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}>
+              <span style={{
+                fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px',
+                borderRadius: '9999px', textTransform: 'uppercase',
+                background: origenData.tipo === 'prospecto' ? 'rgba(99,102,241,0.15)' : 'rgba(20,184,166,0.15)',
+                color: origenData.tipo === 'prospecto' ? '#4338ca' : '#0f766e',
+              }}>
+                {t(`conexiones.origen.${origenData.tipo}`)}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                {origenData.nombre}
+              </span>
+            </span>
+          ) : (
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
+              {t('conexiones.origen.sinVincular')}
+            </span>
+          ),
           periodoName,
           numberFormat.format(connectionsNumber),
           numberFormat.format(ventasNumber),
@@ -4238,13 +4403,13 @@ function ConexionesEmbajadoresTab() {
         ],
       }
     })
-  }, [embajadorMap, numberFormat, periodoMap, sortedProgramas, t])
+  }, [embajadorEstadoMap, embajadorMap, embajadorOrigenMap, embajadorPersonaIdMap, numberFormat, periodoMap, sortedProgramas, t])
 
   const emptyLabel = loadingEmbajadores ? t('common.loading') : t('common.noData')
   const vendedorName = session?.user.id ? usersById[session.user.id] ?? session.user.id : '-'
   const conexionCount = conexionRows.filter((row) => row.nombre.trim() !== '').length
   const handleEmbajadorChange = (field: keyof typeof initialEmbajadorForm) =>
-    (event: ChangeEvent<HTMLInputElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       setEmbajadorForm((prev) => ({ ...prev, [field]: event.target.value }))
     }
 
@@ -4301,11 +4466,16 @@ function ConexionesEmbajadoresTab() {
     setFormError(null)
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
     const payload = {
-      nombre: toNull(embajadorForm.nombre),
-      apellido: toNull(embajadorForm.apellido),
+      nombre: origenSeleccionado ? (origenSeleccionado.nombre ?? null) : toNull(embajadorForm.nombre),
+      apellido: origenSeleccionado ? (origenSeleccionado.apellido ?? null) : toNull(embajadorForm.apellido),
       email: toNull(embajadorForm.email),
-      telefono: toNull(embajadorForm.telefono),
+      telefono: origenSeleccionado ? (origenSeleccionado.telefono ?? null) : toNull(embajadorForm.telefono),
       fecha_nacimiento: embajadorForm.fecha_nacimiento || null,
+      lead_id: origenSeleccionado?.type === 'prospecto' ? origenSeleccionado.id : null,
+      cliente_id: origenSeleccionado?.type === 'cliente' ? origenSeleccionado.id : null,
+      estado: embajadorForm.estado,
+      fecha_aceptacion: embajadorForm.estado === 'activo' ? (embajadorForm.fecha_aceptacion || null) : null,
+      notas_inscripcion: toNull(embajadorForm.notas_inscripcion),
     }
 
     const { error } = await createEmbajador(payload)
@@ -4316,6 +4486,9 @@ function ConexionesEmbajadoresTab() {
     } else {
       setEmbajadorOpen(false)
       setEmbajadorForm(initialEmbajadorForm)
+      setOrigenSeleccionado(null)
+      setOrigenSearch('')
+      setOrigenResults([])
       await loadEmbajadores()
       showToast(t('toast.success'))
     }
@@ -4495,14 +4668,25 @@ function ConexionesEmbajadoresTab() {
       {errorEmbajadores && <div className="form-error">{errorEmbajadores}</div>}
       {loadingEmbajadores && <div className="form-hint">{t('common.loading')}</div>}
 
-      {/* Search */}
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+      {/* Search + filtro estado */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input
-          style={{ flex: 1, fontSize: '0.875rem' }}
+          style={{ flex: 1, minWidth: '160px', fontSize: '0.875rem' }}
           placeholder="Buscar embajador..."
           value={busquedaEmb}
           onChange={(e) => setBusquedaEmb(e.target.value)}
         />
+        <select
+          style={{ fontSize: '0.875rem' }}
+          value={filtroEstado}
+          onChange={(e) => setFiltroEstado(e.target.value)}
+        >
+          <option value="">{t('conexiones.estado.todos')}</option>
+          <option value="pendiente">{t('conexiones.estado.pendiente')}</option>
+          <option value="activo">{t('conexiones.estado.activo')}</option>
+          <option value="inactivo">{t('conexiones.estado.inactivo')}</option>
+          <option value="rechazado">{t('conexiones.estado.rechazado')}</option>
+        </select>
         <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)', whiteSpace: 'nowrap' }}>
           {filteredProgramas.length} de {programas.length}
         </span>
@@ -4595,6 +4779,8 @@ function ConexionesEmbajadoresTab() {
         <DataTable
           columns={[
             t('conexiones.columns.embajador'),
+            t('conexiones.columns.estado'),
+            t('conexiones.columns.origen'),
             t('conexiones.columns.periodo'),
             t('conexiones.columns.conexiones'),
             t('conexiones.columns.ventas'),
@@ -4602,7 +4788,7 @@ function ConexionesEmbajadoresTab() {
           ]}
           rows={rows}
           emptyLabel={emptyLabel}
-          sortableColumns={[2, 3]}
+          sortableColumns={[4, 5]}
           sortColIndex={sortColEmb ?? undefined}
           sortDir={sortDirEmb}
           onSort={handleSortEmb}
@@ -4614,6 +4800,9 @@ function ConexionesEmbajadoresTab() {
         onClose={() => {
           setEmbajadorOpen(false)
           setFormError(null)
+          setOrigenSeleccionado(null)
+          setOrigenSearch('')
+          setOrigenResults([])
         }}
         actions={
           <>
@@ -4627,21 +4816,120 @@ function ConexionesEmbajadoresTab() {
         }
       >
         <form id="embajador-form" className="form-grid" onSubmit={handleCreateEmbajador}>
+
+          {/* ── Búsqueda de origen ── */}
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <span>{t('conexiones.form.origenLabel')}</span>
+            {origenSeleccionado ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', border: '1px solid var(--color-border)', borderRadius: '0.375rem', background: 'var(--color-surface-alt, rgba(0,0,0,0.04))' }}>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: '9999px', textTransform: 'uppercase',
+                    background: origenSeleccionado.type === 'prospecto' ? 'rgba(99,102,241,0.15)' : 'rgba(20,184,166,0.15)',
+                    color: origenSeleccionado.type === 'prospecto' ? '#4338ca' : '#0f766e',
+                  }}>
+                    {t(`conexiones.origen.${origenSeleccionado.type}`)}
+                  </span>
+                  <span style={{ flex: 1, fontWeight: 500 }}>
+                    {[origenSeleccionado.nombre, origenSeleccionado.apellido].filter(Boolean).join(' ')}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                    {origenSeleccionado.telefono ?? ''}
+                  </span>
+                  <button
+                    type="button"
+                    style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.25rem' }}
+                    onClick={() => { setOrigenSeleccionado(null); setOrigenSearch('') }}
+                  >
+                    {t('conexiones.form.origenLimpiar')}
+                  </button>
+                </div>
+                <span className="form-hint" style={{ fontSize: '0.75rem' }}>
+                  {t('conexiones.form.origenVinculado', { tipo: t(`conexiones.origen.${origenSeleccionado.type}`) })}
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <input
+                  value={origenSearch}
+                  onChange={(e) => setOrigenSearch(e.target.value)}
+                  placeholder={t('conexiones.form.origenPlaceholder')}
+                  autoComplete="off"
+                />
+                {origenSearch.trim().length >= 2 && (
+                  <div className="ci-owner-results">
+                    {origenSearching ? (
+                      <span className="ci-owner-empty">{t('common.loading')}</span>
+                    ) : origenResults.length === 0 ? (
+                      <span className="ci-owner-empty">{t('common.noData')}</span>
+                    ) : (
+                      origenResults.map((candidate) => {
+                        const name = [candidate.nombre, candidate.apellido].filter(Boolean).join(' ') || candidate.id
+                        return (
+                          <button
+                            key={`${candidate.type}-${candidate.id}`}
+                            type="button"
+                            className="ci-owner-option"
+                            onClick={() => {
+                              setOrigenSeleccionado(candidate)
+                              setOrigenSearch('')
+                              setOrigenResults([])
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <span style={{
+                                fontSize: '0.65rem', fontWeight: 700, padding: '1px 5px', borderRadius: '9999px', textTransform: 'uppercase',
+                                background: candidate.type === 'prospecto' ? 'rgba(99,102,241,0.15)' : 'rgba(20,184,166,0.15)',
+                                color: candidate.type === 'prospecto' ? '#4338ca' : '#0f766e',
+                              }}>
+                                {t(`conexiones.origen.${candidate.type}`)}
+                              </span>
+                              {name}
+                            </span>
+                            <span className="ci-owner-meta">{candidate.telefono ?? '-'}</span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
+                {!origenSearch.trim() && (
+                  <span className="form-hint" style={{ fontSize: '0.75rem' }}>
+                    {t('conexiones.form.origenHint')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Identidad (read-only si hay origen vinculado) ── */}
           <label className="form-field">
             <span>{t('conexiones.form.nombre')}</span>
-            <input value={embajadorForm.nombre} onChange={handleEmbajadorChange('nombre')} />
+            <input
+              value={origenSeleccionado ? (origenSeleccionado.nombre ?? '') : embajadorForm.nombre}
+              onChange={origenSeleccionado ? undefined : handleEmbajadorChange('nombre')}
+              readOnly={!!origenSeleccionado}
+            />
           </label>
           <label className="form-field">
             <span>{t('conexiones.form.apellido')}</span>
-            <input value={embajadorForm.apellido} onChange={handleEmbajadorChange('apellido')} />
+            <input
+              value={origenSeleccionado ? (origenSeleccionado.apellido ?? '') : embajadorForm.apellido}
+              onChange={origenSeleccionado ? undefined : handleEmbajadorChange('apellido')}
+              readOnly={!!origenSeleccionado}
+            />
+          </label>
+          <label className="form-field">
+            <span>{t('conexiones.form.telefono')}</span>
+            <input
+              value={origenSeleccionado ? (origenSeleccionado.telefono ?? '') : embajadorForm.telefono}
+              onChange={origenSeleccionado ? undefined : handleEmbajadorChange('telefono')}
+              readOnly={!!origenSeleccionado}
+            />
           </label>
           <label className="form-field">
             <span>{t('conexiones.form.email')}</span>
             <input type="email" value={embajadorForm.email} onChange={handleEmbajadorChange('email')} />
-          </label>
-          <label className="form-field">
-            <span>{t('conexiones.form.telefono')}</span>
-            <input value={embajadorForm.telefono} onChange={handleEmbajadorChange('telefono')} />
           </label>
           <label className="form-field">
             <span>{t('conexiones.form.fechaNacimiento')}</span>
@@ -4651,6 +4939,39 @@ function ConexionesEmbajadoresTab() {
               onChange={handleEmbajadorChange('fecha_nacimiento')}
             />
           </label>
+
+          {/* ── Estado de inscripción ── */}
+          <label className="form-field">
+            <span>{t('conexiones.form.estado')}</span>
+            <select value={embajadorForm.estado} onChange={handleEmbajadorChange('estado')}>
+              <option value="pendiente">{t('conexiones.estado.pendiente')}</option>
+              <option value="activo">{t('conexiones.estado.activo')}</option>
+              <option value="inactivo">{t('conexiones.estado.inactivo')}</option>
+              <option value="rechazado">{t('conexiones.estado.rechazado')}</option>
+            </select>
+          </label>
+          {embajadorForm.estado === 'activo' && (
+            <label className="form-field">
+              <span>{t('conexiones.form.fechaAceptacion')}</span>
+              <input
+                type="date"
+                value={embajadorForm.fecha_aceptacion}
+                onChange={handleEmbajadorChange('fecha_aceptacion')}
+              />
+            </label>
+          )}
+
+          {/* ── Notas ── */}
+          <label className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <span>{t('conexiones.form.notasInscripcion')}</span>
+            <textarea
+              value={embajadorForm.notas_inscripcion}
+              onChange={handleEmbajadorChange('notas_inscripcion')}
+              rows={2}
+              style={{ resize: 'vertical' }}
+            />
+          </label>
+
           <label className="form-field">
             <span>{t('conexiones.form.vendedor')}</span>
             <input value={vendedorName} readOnly />
@@ -4871,6 +5192,10 @@ function ConexionesEmbajadoresTab() {
         {conexionError && <div className="form-error">{conexionError}</div>}
       </Modal>
       <ModalRenderer />
+      <PersonaPerfilPanel
+        personaId={perfilPersonaId}
+        onClose={() => setPerfilPersonaId(null)}
+      />
     </div>
   )
 }
