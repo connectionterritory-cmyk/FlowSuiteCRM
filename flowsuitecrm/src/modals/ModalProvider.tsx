@@ -62,12 +62,20 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
       setAssignedOptionsFallback([])
       return
     }
+    type UserRow = { id: string; nombre: string | null; apellido: string | null; email: string | null; rol: string | null }
+    const toOption = (row: UserRow) => {
+      const name = [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id
+      const rolLabel = row.rol ? ` · ${row.rol}` : ''
+      return { id: row.id, label: `${name}${rolLabel}` }
+    }
+    const selfOption = currentUser ? toOption(currentUser as UserRow) : { id: sessionUserId, label: 'Yo' }
+
     let active = true
     const loadAssignedOptions = async () => {
       if (currentRole === 'admin' || currentRole === 'distribuidor') {
         let query = supabase
           .from('usuarios')
-          .select('id, nombre, apellido, email')
+          .select('id, nombre, apellido, email, rol')
           .eq('activo', true)
         if (hasDistribuidorScope && distributionUserIds.length > 0) {
           query = query.in('id', distributionUserIds)
@@ -75,14 +83,11 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await query
         if (!active) return
         if (error) {
-          setAssignedOptionsFallback([{ id: sessionUserId, label: 'Yo' }])
+          setAssignedOptionsFallback([selfOption])
           return
         }
-        const options = (data ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
-          id: row.id,
-          label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
-        }))
-        setAssignedOptionsFallback(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
+        const options = (data ?? []).map((row) => toOption(row as UserRow))
+        setAssignedOptionsFallback(options.length > 0 ? options : [selfOption])
         return
       }
 
@@ -95,16 +100,13 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         if (vendedorIds.length > 0) {
           const { data: vendedores } = await supabase
             .from('usuarios')
-            .select('id, nombre, apellido, email')
+            .select('id, nombre, apellido, email, rol')
             .in('id', vendedorIds)
             .eq('activo', true)
           if (!active) return
           const options = [
-            { id: sessionUserId, label: 'Yo' },
-            ...(vendedores ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
-              id: row.id,
-              label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
-            })),
+            selfOption,
+            ...(vendedores ?? []).map((row) => toOption(row as UserRow)),
           ]
           setAssignedOptionsFallback(options)
           return
@@ -114,25 +116,22 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
       if (currentRole === 'supervisor_telemercadeo') {
         const { data } = await supabase
           .from('usuarios')
-          .select('id, nombre, apellido, email')
+          .select('id, nombre, apellido, email, rol')
           .eq('activo', true)
         if (!active) return
-        const options = (data ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
-          id: row.id,
-          label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
-        }))
-        setAssignedOptionsFallback(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
+        const options = (data ?? []).map((row) => toOption(row as UserRow))
+        setAssignedOptionsFallback(options.length > 0 ? options : [selfOption])
         return
       }
 
-      setAssignedOptionsFallback([{ id: sessionUserId, label: 'Yo' }])
+      setAssignedOptionsFallback([selfOption])
     }
 
     void loadAssignedOptions()
     return () => {
       active = false
     }
-  }, [currentRole, distributionUserIds, hasDistribuidorScope, sessionUserId])
+  }, [currentRole, currentUser, distributionUserIds, hasDistribuidorScope, sessionUserId])
 
   const value = useMemo<ModalHostValue>(() => ({
     openMessageModal,
