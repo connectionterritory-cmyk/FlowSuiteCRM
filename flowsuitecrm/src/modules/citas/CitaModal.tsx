@@ -9,9 +9,10 @@ import { formatProperName, formatProperText, formatStateRegion } from '../../lib
 import { useAuth } from '../../auth/useAuth'
 import { useViewMode } from '../../data/useViewMode'
 import { buildContactRef, getContactTable } from '../../lib/contactRefs'
+import { CierreCitaModal } from './CierreCitaModal'
 import type { ContactKind } from '../../types/contacts'
 
-type AssignedOption = {
+export type AssignedOption = {
   id: string
   label: string
 }
@@ -95,7 +96,7 @@ const CONTACTO_TIPO_OPTIONS = [
   { value: 'lead', label: 'Lead / Prospecto' },
 ]
 
-const RESULTADO_OPTIONS = [
+export const RESULTADO_OPTIONS = [
   { value: 'realizada', label: 'Visita realizada' },
   { value: 'venta', label: 'Venta' },
   { value: 'no_contacto', label: 'No contacto' },
@@ -104,7 +105,7 @@ const RESULTADO_OPTIONS = [
   { value: 'otro', label: 'Otro' },
 ]
 
-const PRODUCTOS_OPTIONS = [
+export const PRODUCTOS_OPTIONS = [
   { value: 'purificador_aire', label: 'Purificador de aire' },
   { value: 'multipana', label: 'Multipana' },
   { value: 'filtro_agua', label: 'Filtro de agua' },
@@ -112,7 +113,7 @@ const PRODUCTOS_OPTIONS = [
   { value: 'otro', label: 'Otro' },
 ]
 
-const TAREA_TIPO_OPTIONS = [
+export const TAREA_TIPO_OPTIONS = [
   { value: 'llamada', label: 'Llamada' },
   { value: 'visita', label: 'Visita' },
   { value: 'enviar_material', label: 'Enviar material' },
@@ -122,13 +123,14 @@ const TAREA_TIPO_OPTIONS = [
   { value: 'otro', label: 'Otro' },
 ]
 
-const TAREA_PRIORIDAD_OPTIONS = [
+export const TAREA_PRIORIDAD_OPTIONS = [
   { value: 'baja', label: 'Baja' },
   { value: 'media', label: 'Media' },
   { value: 'alta', label: 'Alta' },
 ]
 
-type CierreActividad = {
+
+export type CierreActividad = {
   resumen: string
   demo_realizada: boolean
   muestra_entregada: boolean
@@ -137,7 +139,7 @@ type CierreActividad = {
   productos_interes: string[]
 }
 
-type CierreTarea = {
+export type CierreTarea = {
   crear_tarea: boolean
   tipo: string
   descripcion: string
@@ -585,10 +587,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       if (cierreActividad.productos_interes.length > 0) {
         metadata.productos_interes = cierreActividad.productos_interes
       }
-      const resumen =
-        cierreActividad.resumen.trim() ||
-        RESULTADO_OPTIONS.find((o) => o.value === form.resultado)?.label ||
-        'Cita completada'
+        const resumen =
+          cierreActividad.resumen.trim() ||
+          RESULTADO_OPTIONS.find((o) => o.value === form.resultado)?.label ||
+          'Cita completada'
       // Unique index on (cita_id) where tipo='cita_completada' prevents duplicates
       const { error: actividadError } = await supabase.from('contacto_actividades').insert({
         contacto_tipo: form.contacto_tipo,
@@ -739,241 +741,19 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             ))}
           </select>
         </label>
-        {form.estado === 'completada' && (
-          <>
-            <label className="form-field">
-              <span>Resultado <span style={{ color: 'var(--color-error, #dc2626)' }}>*</span></span>
-              <select
-                value={form.resultado ?? ''}
-                onChange={(event) => updateForm((prev) => ({ ...prev, resultado: event.target.value }))}
-              >
-                <option value="">Selecciona un resultado…</option>
-                {RESULTADO_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-field">
-              <span>Notas del resultado</span>
-              <textarea
-                rows={3}
-                value={form.resultado_notas ?? ''}
-                onChange={(event) => updateForm((prev) => ({ ...prev, resultado_notas: event.target.value }))}
-                placeholder="Detalle del resultado"
-              />
-            </label>
-
-            {/* ── Resumen corto para el timeline ── */}
-            <label className="form-field" style={{ gridColumn: 'span 2' }}>
-              <span>Resumen de la visita</span>
-              <input
-                value={cierreActividad.resumen}
-                onChange={(e) => updateCierreActividad((prev) => ({ ...prev, resumen: e.target.value }))}
-                placeholder="Ej: Demo realizada, 20 referidos, interés en purificador"
-              />
-            </label>
-
-            {/* ── Checkboxes: qué pasó ── */}
-            <div className="form-field" style={{ gridColumn: 'span 2' }}>
-              <span>¿Qué pasó en la visita?</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
-                {(
-                  [
-                    { key: 'demo_realizada', label: 'Demo realizada' },
-                    { key: 'muestra_entregada', label: 'Muestra entregada' },
-                    { key: 'referidos_obtenidos', label: 'Referidos obtenidos' },
-                  ] as const
-                ).map(({ key, label }) => (
-                  <label
-                    key={key}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={cierreActividad[key]}
-                      onChange={(e) =>
-                        updateCierreActividad((prev) => ({ ...prev, [key]: e.target.checked }))
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
-                {cierreActividad.referidos_obtenidos && (
-                  <input
-                    type="number"
-                    min="0"
-                    max="999"
-                    value={cierreActividad.referidos_count}
-                    onChange={(e) =>
-                      updateCierreActividad((prev) => ({ ...prev, referidos_count: e.target.value }))
-                    }
-                    placeholder="Cantidad"
-                    style={{ width: 90 }}
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* ── Productos de interés (solo si demo) ── */}
-            {cierreActividad.demo_realizada && (
-              <div className="form-field" style={{ gridColumn: 'span 2' }}>
-                <span>Productos de interés</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
-                  {PRODUCTOS_OPTIONS.map((producto) => (
-                    <label
-                      key={producto.value}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
-                    >
-                      <input
-                      type="checkbox"
-                      checked={cierreActividad.productos_interes.includes(producto.value)}
-                      onChange={(e) =>
-                        updateCierreActividad((prev) => ({
-                          ...prev,
-                          productos_interes: e.target.checked
-                            ? [...prev.productos_interes, producto.value]
-                              : prev.productos_interes.filter((p) => p !== producto.value),
-                          }))
-                        }
-                      />
-                      {producto.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Tarea de seguimiento ── */}
-            <div
-              className="form-field"
-              style={{
-                gridColumn: 'span 2',
-                borderTop: '1px solid var(--color-border, #374151)',
-                paddingTop: '0.75rem',
-              }}
-            >
-              <label
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 500 }}
-              >
-                <input
-                  type="checkbox"
-                  checked={cierreTarea.crear_tarea}
-                  onChange={(e) =>
-                    updateCierreTarea((prev) => ({ ...prev, crear_tarea: e.target.checked }))
-                  }
-                />
-                Crear tarea de seguimiento
-              </label>
-              {cierreTarea.crear_tarea && isFollowUpTaskInvalid && (
-                <div
-                  style={{
-                    marginTop: '0.5rem',
-                    color: 'var(--color-error, #dc2626)',
-                    fontSize: '0.875rem',
-                  }}
-                >
-                  Completa tipo, asignado y fecha para crear la tarea.
-                </div>
-              )}
-            </div>
-
-            {cierreTarea.crear_tarea && (
-              <>
-                <label className="form-field">
-                  <span>Tipo de tarea</span>
-                  <select
-                    value={cierreTarea.tipo}
-                    onChange={(e) => updateCierreTarea((prev) => ({ ...prev, tipo: e.target.value }))}
-                  >
-                    {TAREA_TIPO_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>Asignar a</span>
-                  <select
-                    value={cierreTarea.asignado_a}
-                    onChange={(e) =>
-                      updateCierreTarea((prev) => ({ ...prev, asignado_a: e.target.value }))
-                    }
-                  >
-                    {assignedOptions.length === 0 && <option value="">Sin opciones</option>}
-                    {assignedOptions.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>
-                    Fecha <span style={{ color: 'var(--color-error, #dc2626)' }}>*</span>
-                  </span>
-                  <input
-                    type="date"
-                    value={cierreTarea.fecha_vencimiento}
-                    onChange={(e) =>
-                      updateCierreTarea((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))
-                    }
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Hora (opcional)</span>
-                  <input
-                    type="time"
-                    value={cierreTarea.hora_vencimiento}
-                    onChange={(e) =>
-                      updateCierreTarea((prev) => ({ ...prev, hora_vencimiento: e.target.value }))
-                    }
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Prioridad</span>
-                  <select
-                    value={cierreTarea.prioridad}
-                    onChange={(e) =>
-                      updateCierreTarea((prev) => ({ ...prev, prioridad: e.target.value }))
-                    }
-                  >
-                    {TAREA_PRIORIDAD_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>Descripción</span>
-                  <input
-                    value={cierreTarea.descripcion}
-                    onChange={(e) =>
-                      updateCierreTarea((prev) => ({ ...prev, descripcion: e.target.value }))
-                    }
-                    placeholder="Ej: Enviar videos de purificador y multipana"
-                  />
-                </label>
-              </>
-            )}
-          </>
-        )}
-        {(form.resultado === 'reagendar' || form.estado === 'no_show') && (
-          <label className="form-field">
-            <span>
-              Fecha del próximo paso <span style={{ color: 'var(--color-error, #dc2626)' }}>*</span>
-            </span>
-            <input
-              type="date"
-              value={form.next_action_date ?? ''}
-              onChange={(event) => updateForm((prev) => ({ ...prev, next_action_date: event.target.value }))}
-            />
-            <div className="form-hint">Se asignará "Reagendar cita" como próxima acción en el contacto.</div>
-          </label>
-        )}
+        <CierreCitaModal
+          estado={form.estado}
+          resultado={form.resultado ?? null}
+          resultado_notas={form.resultado_notas ?? null}
+          next_action_date={form.next_action_date ?? null}
+          cierreActividad={cierreActividad}
+          cierreTarea={cierreTarea}
+          assignedOptions={assignedOptions}
+          isFollowUpTaskInvalid={isFollowUpTaskInvalid}
+          onFormPatch={(patch) => updateForm((prev) => ({ ...prev, ...patch }))}
+          onCierreActividadChange={updateCierreActividad}
+          onCierreTareaChange={updateCierreTarea}
+        />
         {/* CONTACTO — obligatorio, ligado a cliente o lead real */}
         <div className="form-field">
           <span>Tipo de contacto</span>
