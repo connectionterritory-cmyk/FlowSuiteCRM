@@ -28,6 +28,7 @@ outputs/*.csv
 skills/
 tmp-workflow*.json
 *.pdf
+memory.md
 
 # Editor
 .vscode/
