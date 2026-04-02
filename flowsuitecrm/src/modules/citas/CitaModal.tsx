@@ -2,7 +2,8 @@ import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/useToast'
-import { isMissingLeadAddressColumnError, LEADS_SEARCH_BASE_SELECT, LEADS_SEARCH_EXTENDED_SELECT } from '../../lib/leadsSchema'
+import { applyContactScope } from '../../lib/contactSearch'
+import { useLeadSearch } from '../../hooks/useLeadSearch'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
 import { useAuth } from '../../auth/useAuth'
@@ -207,8 +208,8 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
   const [form, setForm] = useState<CitaForm>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [contactSearch, setContactSearch] = useState('')
-  const [contactResults, setContactResults] = useState<ContactSearchResult[]>([])
-  const [contactLoading, setContactLoading] = useState(false)
+  const [clientResults, setClientResults] = useState<ContactSearchResult[]>([])
+  const [clientLoading, setClientLoading] = useState(false)
   const [showSearch, setShowSearch] = useState(true)
   const [role, setRole] = useState<string | null>(null)
   const [cierreActividad, setCierreActividad] = useState<CierreActividad>(emptyCierreActividad)
@@ -293,7 +294,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       startTransition(() => {
         setForm(next)
         setContactSearch(next.contacto_nombre || '')
-        setContactResults([])
+        setClientResults([])
         setShowSearch(!next.contacto_id)
         setInitialEstado(next.estado || '')
         setCierreActividad(emptyCierreActividad)
@@ -393,102 +394,55 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     return null
   }, [role, viewMode])
 
+  const leadSearch = useLeadSearch(contactSearch, {
+    enabled: open && showSearch && form.contacto_tipo === 'lead',
+    role,
+    viewMode,
+    sessionUserId,
+    hasDistribuidorScope,
+    distributionUserIds,
+  })
+
   useEffect(() => {
     if (!open) return
     const term = contactSearch.trim()
-    if (!showSearch || term.length < 2) {
+    if (!showSearch || form.contacto_tipo !== 'cliente' || term.length < 2) {
       const timeoutId = window.setTimeout(() => {
         startTransition(() => {
-          setContactResults([])
-          setContactLoading(false)
+          setClientResults([])
+          setClientLoading(false)
         })
       }, 0)
       return () => window.clearTimeout(timeoutId)
     }
     let active = true
     const handle = setTimeout(async () => {
-      setContactLoading(true)
+      setClientLoading(true)
       const searchValue = `%${term}%`
-      if (form.contacto_tipo === 'cliente') {
-        let query = supabase
-          .from('clientes')
-          .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, distribuidor_id')
-          .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
-          .limit(10)
-        if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && sessionUserId) {
-          query = query.eq('vendedor_id', sessionUserId)
-        } else if (role === 'distribuidor' && viewMode === 'seller' && sessionUserId) {
-          query = query.eq('vendedor_id', sessionUserId)
-        } else if (hasDistribuidorScope && distributionUserIds.length > 0 && role !== 'supervisor_telemercadeo') {
-          query = query.in('vendedor_id', distributionUserIds)
-        }
-        const { data, error } = await query
-        if (!active) return
-        if (error) {
-          setContactResults([])
-        } else {
-          const results = (data ?? []).map((row) => ({
-            id: row.id,
-            tipo: 'cliente' as const,
-            nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Cliente',
-            telefono: row.telefono ?? null,
-            direccion: row.direccion ?? null,
-            ciudad: row.ciudad ?? null,
-            estado_region: row.estado_region ?? null,
-            zip: row.codigo_postal ?? null,
-          }))
-          setContactResults(results)
-        }
+      let query = supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal, vendedor_id, distribuidor_id')
+        .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
+        .limit(10)
+      query = applyContactScope(query, { role, viewMode, sessionUserId, hasDistribuidorScope, distributionUserIds })
+      const { data, error } = await query
+      if (!active) return
+      if (error) {
+        setClientResults([])
       } else {
-        const buildLeadSearchQuery = (selectClause: string) => {
-          let query = supabase
-            .from('leads')
-            .select(selectClause)
-            .is('deleted_at', null)
-            .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
-            .limit(10)
-          if (role && role !== 'admin' && role !== 'distribuidor' && role !== 'supervisor_telemercadeo' && role !== 'telemercadeo' && sessionUserId) {
-            query = query.or(`vendedor_id.eq.${sessionUserId},owner_id.eq.${sessionUserId}`)
-          } else if (role === 'distribuidor' && viewMode === 'seller' && sessionUserId) {
-            query = query.or(`vendedor_id.eq.${sessionUserId},owner_id.eq.${sessionUserId}`)
-          } else if (hasDistribuidorScope && distributionUserIds.length > 0 && role !== 'supervisor_telemercadeo') {
-            query = query.in('vendedor_id', distributionUserIds)
-          }
-          return query
-        }
-        let { data, error } = await buildLeadSearchQuery(LEADS_SEARCH_EXTENDED_SELECT)
-        if (error && isMissingLeadAddressColumnError(error.message)) {
-          ;({ data, error } = await buildLeadSearchQuery(LEADS_SEARCH_BASE_SELECT))
-        }
-        if (!active) return
-        if (error) {
-          setContactResults([])
-        } else {
-          const results = ((data as Array<{
-            id: string
-            nombre: string | null
-            apellido: string | null
-            telefono: string | null
-            direccion?: string | null
-            apartamento?: string | null
-            ciudad?: string | null
-            estado_region?: string | null
-            codigo_postal?: string | null
-          }> | null) ?? []).map((row) => ({
-            id: row.id,
-            tipo: 'lead' as const,
-            nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Lead',
-            telefono: row.telefono ?? null,
-            direccion: row.direccion ?? null,
-            apartamento: row.apartamento ?? null,
-            ciudad: row.ciudad ?? null,
-            estado_region: row.estado_region ?? null,
-            zip: row.codigo_postal ?? null,
-          }))
-          setContactResults(results)
-        }
+        const results = (data ?? []).map((row) => ({
+          id: row.id,
+          tipo: 'cliente' as const,
+          nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Cliente',
+          telefono: row.telefono ?? null,
+          direccion: row.direccion ?? null,
+          ciudad: row.ciudad ?? null,
+          estado_region: row.estado_region ?? null,
+          zip: row.codigo_postal ?? null,
+        }))
+        setClientResults(results)
       }
-      setContactLoading(false)
+      setClientLoading(false)
     }, 300)
 
     return () => {
@@ -496,6 +450,25 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       clearTimeout(handle)
     }
   }, [contactSearch, distributionUserIds, form.contacto_tipo, hasDistribuidorScope, open, role, sessionUserId, showSearch, viewMode])
+
+  const leadResults = useMemo(
+    () =>
+      leadSearch.results.map((row) => ({
+        id: row.id,
+        tipo: 'lead' as const,
+        nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Lead',
+        telefono: row.telefono ?? null,
+        direccion: row.direccion ?? null,
+        apartamento: row.apartamento ?? null,
+        ciudad: row.ciudad ?? null,
+        estado_region: row.estado_region ?? null,
+        zip: row.codigo_postal ?? null,
+      })),
+    [leadSearch.results]
+  )
+
+  const contactResults = form.contacto_tipo === 'lead' ? leadResults : clientResults
+  const contactLoading = form.contacto_tipo === 'lead' ? leadSearch.loading : clientLoading
 
   const handleSelectContact = (contact: ContactSearchResult) => {
     updateForm((prev) => ({
@@ -511,7 +484,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       zip: contact.zip ?? prev.zip,
     }))
     setContactSearch(contact.nombre)
-    setContactResults([])
+    setClientResults([])
     setShowSearch(false)
   }
 
@@ -1016,7 +989,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                 contacto_telefono: '',
               }))
               setContactSearch('')
-              setContactResults([])
+              setClientResults([])
               setShowSearch(true)
             }}
           >
@@ -1045,7 +1018,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                   onClick={() => {
                     setShowSearch(true)
                     setContactSearch('')
-                    setContactResults([])
+                    setClientResults([])
                   }}
                 >
                   Cambiar
@@ -1061,7 +1034,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                       if (form.contacto_id) {
                         setShowSearch(false)
                         setContactSearch(form.contacto_nombre)
-                        setContactResults([])
+                        setClientResults([])
                       }
                     }, 150)
                   }}
