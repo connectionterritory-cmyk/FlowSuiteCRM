@@ -1,11 +1,14 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MessageModal } from '../components/MessageModal'
 import {
   RegistrarGestionModal,
   type GestionRole,
 } from '../components/RegistrarGestionModal'
 import { CitaModal } from '../modules/citas/CitaModal'
+import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useUsers } from '../data/useUsers'
+import { useAuth } from '../auth/useAuth'
+import { useViewMode } from '../data/useViewMode'
 import {
   ModalHostContext,
   type CitaModalIntent,
@@ -17,9 +20,14 @@ export { useModalHost, useOptionalModalHost } from './useModalHost'
 
 export function ModalProvider({ children }: { children: React.ReactNode }) {
   const { currentRole, currentUser } = useUsers()
+  const { session } = useAuth()
+  const { distributionUserIds, hasDistribuidorScope } = useViewMode()
   const [messageIntent, setMessageIntent] = useState<MessageModalIntent | null>(null)
   const [citaIntent, setCitaIntent] = useState<CitaModalIntent | null>(null)
   const [gestionIntent, setGestionIntent] = useState<GestionModalIntent | null>(null)
+  const [assignedOptionsFallback, setAssignedOptionsFallback] = useState<{ id: string; label: string }[]>([])
+
+  const sessionUserId = session?.user.id ?? null
 
   const openMessageModal = useCallback((intent: MessageModalIntent) => {
     setMessageIntent(intent)
@@ -48,6 +56,83 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
   const currentGestionRole: GestionRole = currentRole === 'admin' || currentRole === 'distribuidor' || currentRole === 'vendedor' || currentRole === 'telemercadeo'
     ? currentRole
     : 'vendedor'
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !sessionUserId || !currentRole) {
+      setAssignedOptionsFallback([])
+      return
+    }
+    let active = true
+    const loadAssignedOptions = async () => {
+      if (currentRole === 'admin' || currentRole === 'distribuidor') {
+        let query = supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, email')
+          .eq('activo', true)
+        if (hasDistribuidorScope && distributionUserIds.length > 0) {
+          query = query.in('id', distributionUserIds)
+        }
+        const { data, error } = await query
+        if (!active) return
+        if (error) {
+          setAssignedOptionsFallback([{ id: sessionUserId, label: 'Yo' }])
+          return
+        }
+        const options = (data ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+          id: row.id,
+          label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+        }))
+        setAssignedOptionsFallback(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
+        return
+      }
+
+      if (currentRole === 'telemercadeo') {
+        const { data: assignments } = await supabase
+          .from('tele_vendedor_assignments')
+          .select('vendedor_id')
+          .eq('tele_id', sessionUserId)
+        const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
+        if (vendedorIds.length > 0) {
+          const { data: vendedores } = await supabase
+            .from('usuarios')
+            .select('id, nombre, apellido, email')
+            .in('id', vendedorIds)
+            .eq('activo', true)
+          if (!active) return
+          const options = [
+            { id: sessionUserId, label: 'Yo' },
+            ...(vendedores ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+              id: row.id,
+              label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+            })),
+          ]
+          setAssignedOptionsFallback(options)
+          return
+        }
+      }
+
+      if (currentRole === 'supervisor_telemercadeo') {
+        const { data } = await supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, email')
+          .eq('activo', true)
+        if (!active) return
+        const options = (data ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+          id: row.id,
+          label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+        }))
+        setAssignedOptionsFallback(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
+        return
+      }
+
+      setAssignedOptionsFallback([{ id: sessionUserId, label: 'Yo' }])
+    }
+
+    void loadAssignedOptions()
+    return () => {
+      active = false
+    }
+  }, [currentRole, distributionUserIds, hasDistribuidorScope, sessionUserId])
 
   const value = useMemo<ModalHostValue>(() => ({
     openMessageModal,
@@ -90,6 +175,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
                 label: [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') || currentUser.email || currentUser.id,
               }]
             : []
+          const fallbackOptions = assignedOptionsFallback.length > 0 ? assignedOptionsFallback : selfOption
           openCitaModal({
             initialData: {
               contacto_tipo: contacto.tipo,
@@ -97,7 +183,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
               contacto_nombre: contacto.nombre,
               contacto_telefono: contacto.telefono ?? '',
             },
-            assignedOptions: selfOption,
+            assignedOptions: fallbackOptions,
           })
         }}
         onSubmit={async (draft) => {
