@@ -171,6 +171,14 @@ const buildBirthDate = (month: string, day: string) => {
   return `${BIRTH_YEAR_DEFAULT}-${month}-${day}`
 }
 
+const getBirthMonth = (value: string | null): number | null => {
+  if (!value) return null
+  const parts = value.split('-')
+  if (parts.length < 2) return null
+  const month = Number(parts[1])
+  return Number.isFinite(month) && month >= 1 && month <= 12 ? month : null
+}
+
 // Segmento de atraso basado en dias_atraso
 function segmentoAtraso(dias: number | null, moroso: number | null): string {
   if (!moroso || moroso === 0) return 'Al día'
@@ -297,6 +305,7 @@ export function ClientesPage() {
   const [filtroEstadoRegion, setFiltroEstadoRegion] = useState('')
   const [filtroCodigoPostal, setFiltroCodigoPostal] = useState('')
   const [filtroEstadoOperativo, setFiltroEstadoOperativo] = useState('todos')
+  const [filtroMesCumple, setFiltroMesCumple] = useState('todos')
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -430,6 +439,14 @@ export function ClientesPage() {
       const matchEstadoOperativo =
         filtroEstadoOperativo === 'todos' || c.estado_operativo === filtroEstadoOperativo
 
+      const birthMonth = getBirthMonth(c.fecha_nacimiento)
+      const matchCumple =
+        filtroMesCumple === 'todos' ||
+        (filtroMesCumple === 'hoy' && c.fecha_nacimiento && diasParaCumple(c.fecha_nacimiento) === 0) ||
+        (filtroMesCumple === 'mes_actual' && birthMonth === new Date().getMonth() + 1) ||
+        (filtroMesCumple.startsWith('mes_') &&
+          birthMonth === Number(filtroMesCumple.replace('mes_', '')))
+
       return (
         matchBusqueda &&
         matchAtraso &&
@@ -438,7 +455,8 @@ export function ClientesPage() {
         matchCiudad &&
         matchEstadoRegion &&
         matchCodigoPostal &&
-        matchEstadoOperativo
+        matchEstadoOperativo &&
+        matchCumple
       )
     })
   }, [
@@ -451,6 +469,7 @@ export function ClientesPage() {
     filtroEstadoRegion,
     filtroCodigoPostal,
     filtroEstadoOperativo,
+    filtroMesCumple,
     getClienteVendedorKey,
   ])
 
@@ -1009,6 +1028,8 @@ export function ClientesPage() {
     setFiltroCiudad('')
     setFiltroEstadoRegion('')
     setFiltroCodigoPostal('')
+    setFiltroEstadoOperativo('todos')
+    setFiltroMesCumple('todos')
   }
 
   const exportarCSV = () => {
@@ -1052,7 +1073,9 @@ export function ClientesPage() {
     filtroVendedor !== 'todos' ||
     filtroCiudad ||
     filtroEstadoRegion ||
-    filtroCodigoPostal
+    filtroCodigoPostal ||
+    filtroEstadoOperativo !== 'todos' ||
+    filtroMesCumple !== 'todos'
 
   const cantFiltrosActivos = [
     busqueda,
@@ -1062,6 +1085,8 @@ export function ClientesPage() {
     filtroCiudad,
     filtroEstadoRegion,
     filtroCodigoPostal,
+    filtroEstadoOperativo !== 'todos' ? '1' : '',
+    filtroMesCumple !== 'todos' ? '1' : '',
   ].filter(Boolean).length
 
   const handleOpenDuplicados = () => {
@@ -1395,6 +1420,49 @@ export function ClientesPage() {
               </select>
             </div>
 
+            {/* Filtro cumpleaños */}
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem',
+                  color: 'var(--color-text-muted, #6b7280)',
+                }}
+              >
+                CUMPLEAÑOS
+              </label>
+              <select
+                value={filtroMesCumple}
+                onChange={(e) => setFiltroMesCumple(e.target.value)}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.875rem',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                <option value="todos">Todos</option>
+                <option value="hoy">Hoy</option>
+                <option value="mes_actual">Mes actual</option>
+                <option value="mes_1">Enero</option>
+                <option value="mes_2">Febrero</option>
+                <option value="mes_3">Marzo</option>
+                <option value="mes_4">Abril</option>
+                <option value="mes_5">Mayo</option>
+                <option value="mes_6">Junio</option>
+                <option value="mes_7">Julio</option>
+                <option value="mes_8">Agosto</option>
+                <option value="mes_9">Septiembre</option>
+                <option value="mes_10">Octubre</option>
+                <option value="mes_11">Noviembre</option>
+                <option value="mes_12">Diciembre</option>
+              </select>
+            </div>
+
             {/* Filtro atraso */}
             <div>
               <label
@@ -1518,6 +1586,17 @@ export function ClientesPage() {
               const matchingRow = rows.find((r) => r.id === cliente.id)
               const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
               const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
+              const diasCumple = cliente.fecha_nacimiento ? diasParaCumple(cliente.fecha_nacimiento) : null
+              const cumpleBadge =
+                diasCumple === null
+                  ? null
+                  : diasCumple <= 0
+                    ? '🎂 Hoy'
+                    : diasCumple <= 7
+                      ? `🎂 En ${diasCumple} días`
+                      : diasCumple <= 30
+                        ? `En ${diasCumple} días`
+                        : null
               return (
                 <div
                   key={cliente.id}
@@ -1533,21 +1612,38 @@ export function ClientesPage() {
                     gap: '0.4rem',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{fullName}</span>
-                    <span
-                      style={{
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: '9999px',
-                        fontSize: '0.7rem',
-                        fontWeight: 600,
-                        background: badgeColor(segmento),
-                        color: badgeTextColor(segmento),
-                        flexShrink: 0,
-                      }}
-                    >
-                      {segmento}
-                    </span>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <span
+                        style={{
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '9999px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          background: badgeColor(segmento),
+                          color: badgeTextColor(segmento),
+                          flexShrink: 0,
+                        }}
+                      >
+                        {segmento}
+                      </span>
+                      {cumpleBadge && (
+                        <span
+                          style={{
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            background: diasCumple === 0 ? '#fef3c7' : '#e0f2fe',
+                            color: diasCumple === 0 ? '#92400e' : '#1e3a8a',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {cumpleBadge}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div
                     style={{
