@@ -1,4 +1,5 @@
 import { startTransition, type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
@@ -25,6 +26,7 @@ import {
 } from '../../lib/addressUtils'
 import { toCanonicalContactDraft } from '../../lib/contactRefs'
 import { formatProperName, formatProperText, formatStateRegion } from '../../lib/textFormat'
+import { diasParaCumple } from '../telemercadeo/telemercadeoSharedUtils'
 
 type ClienteRecord = {
   id: string
@@ -50,6 +52,7 @@ type ClienteRecord = {
   codigo_vendedor_hycite: string | null
   fecha_nacimiento: string | null
   fecha_ultimo_pedido: string | null
+  ultima_fecha_pago: string | null
   activo: boolean | null
   origen: string | null
   created_at: string | null
@@ -68,6 +71,14 @@ type ClienteNota = {
   enviado_en: string | null
   mensaje: string | null
   enviado_por: string | null
+}
+
+type ServicioResumen = {
+  id: string
+  fecha_servicio: string | null
+  hora_cita: string | null
+  tipo_servicio: string | null
+  observaciones: string | null
 }
 
 const CLIENTES_LIST_SELECT = [
@@ -90,6 +101,7 @@ const CLIENTES_LIST_SELECT = [
   'vendedor_id',
   'distribuidor_id',
   'fecha_nacimiento',
+  'ultima_fecha_pago',
   'fecha_ultimo_pedido',
   'activo',
   'estado_cuenta',  // account status (not financial — required for filtroEstado and stats)
@@ -243,6 +255,7 @@ export function ClientesPage() {
   const { session } = useAuth()
   const { usersById, currentRole } = useUsers()
   const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
+  const navigate = useNavigate()
   const VENDEDOR_UNASSIGNED = 'sin_asignar'
   const currentUserLabel = useMemo(() => {
     if (!session?.user) return null
@@ -293,7 +306,9 @@ export function ClientesPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [clienteNotas, setClienteNotas] = useState<ClienteNota[]>([])
   const [notasLoading, setNotasLoading] = useState(false)
-  const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial'>('info')
+  const [clienteServicios, setClienteServicios] = useState<ServicioResumen[]>([])
+  const [serviciosLoading, setServiciosLoading] = useState(false)
+  const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
 
   const loadClientes = useCallback(async () => {
     setLoading(true)
@@ -670,6 +685,8 @@ export function ClientesPage() {
       startTransition(() => {
         setDetailCliente(null)
         setClienteNotas([])
+        setClienteServicios([])
+        setServiciosLoading(false)
       })
       return
     }
@@ -677,14 +694,15 @@ export function ClientesPage() {
     startTransition(() => {
       setDetailLoading(true)
       setNotasLoading(true)
+      setServiciosLoading(true)
       setDetailTab('info')
     })
     const loadDetail = async () => {
-      const [detailRes, notasRes] = await Promise.all([
+      const [detailRes, notasRes, serviciosRes] = await Promise.all([
         supabase
           .from('clientes')
           .select(
-            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
+            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, ultima_fecha_pago, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
           )
           .eq('id', selectedRow.id)
           .maybeSingle(),
@@ -694,6 +712,13 @@ export function ClientesPage() {
           .eq('cliente_id', selectedRow.id)
           .order('created_at', { ascending: false })
           .limit(20),
+        supabase
+          .from('servicios')
+          .select('id, fecha_servicio, hora_cita, tipo_servicio, observaciones')
+          .eq('cliente_id', selectedRow.id)
+          .order('fecha_servicio', { ascending: false })
+          .order('hora_cita', { ascending: false, nullsFirst: false })
+          .limit(3),
       ])
       if (!active) return
       if (detailRes.error) {
@@ -706,8 +731,14 @@ export function ClientesPage() {
       } else {
         setClienteNotas((notasRes.data as ClienteNota[]) ?? [])
       }
+      if (serviciosRes.error) {
+        setClienteServicios([])
+      } else {
+        setClienteServicios((serviciosRes.data as ServicioResumen[]) ?? [])
+      }
       setDetailLoading(false)
       setNotasLoading(false)
+      setServiciosLoading(false)
     }
     const handle = window.setTimeout(() => {
       void loadDetail()
@@ -751,6 +782,50 @@ export function ClientesPage() {
           </div>
         )
       })}
+    </div>
+  )
+
+  const formatDateValue = (value: string | null) => {
+    if (!value) return '-'
+    const dateValue = value.includes('T') ? value : `${value}T00:00:00`
+    return new Date(dateValue).toLocaleDateString('es')
+  }
+
+  const serviciosContent = serviciosLoading ? (
+    <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Cargando...</span>
+  ) : clienteServicios.length === 0 ? (
+    <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Sin servicios recientes</span>
+  ) : (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+      {clienteServicios.map((servicio) => {
+        const fecha = servicio.fecha_servicio ? formatDateValue(servicio.fecha_servicio) : '-'
+        const hora = servicio.hora_cita ?? ''
+        const tipo = servicio.tipo_servicio ? servicio.tipo_servicio.replace(/_/g, ' ') : 'Servicio'
+        const observaciones = servicio.observaciones ?? ''
+        return (
+          <div
+            key={servicio.id}
+            style={{
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.6rem',
+              background: 'rgba(15,23,42,0.04)',
+            }}
+          >
+            <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted, #6b7280)' }}>
+              {fecha}{hora ? ` · ${hora}` : ''} · {tipo}
+            </div>
+            <div style={{ marginTop: '0.2rem', fontSize: '0.82rem' }}>
+              {observaciones.length > 60 ? `${observaciones.slice(0, 60)}…` : (observaciones || 'Sin notas')}
+            </div>
+          </div>
+        )
+      })}
+      <div>
+        <Button variant="ghost" type="button" onClick={() => navigate('/servicio-cliente')}>
+          Ver todos los servicios
+        </Button>
+      </div>
     </div>
   )
 
@@ -1708,10 +1783,67 @@ export function ClientesPage() {
               ) : '-',
             }]
           }
+          if (detailTab === 'cartera') {
+            return [
+              {
+                label: 'Saldo actual',
+                value: selectedClienteDetail.saldo_actual
+                  ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
+                  : '-',
+              },
+              {
+                label: 'Monto moroso',
+                value: selectedClienteDetail.monto_moroso
+                  ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
+                  : '-',
+              },
+              {
+                label: 'Días de atraso',
+                value: segmentoAtraso(
+                  selectedClienteDetail.dias_atraso,
+                  selectedClienteDetail.monto_moroso,
+                ),
+              },
+              { label: 'Última fecha de pago', value: formatDateValue(selectedClienteDetail.ultima_fecha_pago) },
+              { label: 'Último pedido', value: formatDateValue(selectedClienteDetail.fecha_ultimo_pedido) },
+            ]
+          }
+          if (detailTab === 'servicios') {
+            return [{ label: 'Servicios recientes', value: serviciosContent }]
+          }
           return [
             { label: 'Nombre', value: selectedClienteDetail.nombre ?? '-' },
             { label: 'Apellido', value: selectedClienteDetail.apellido ?? '-' },
             { label: 'Email', value: selectedClienteDetail.email ?? '-' },
+            {
+              label: 'Cumpleaños',
+              value: (() => {
+                if (!selectedClienteDetail.fecha_nacimiento) return '-'
+                const dias = diasParaCumple(selectedClienteDetail.fecha_nacimiento)
+                const fechaLabel = new Date(`${selectedClienteDetail.fecha_nacimiento}T00:00:00`).toLocaleDateString('es', {
+                  day: '2-digit',
+                  month: 'short',
+                })
+                const texto = dias === 0
+                  ? `Hoy (${fechaLabel})`
+                  : `${fechaLabel} · en ${dias} días`
+                return (
+                  <span
+                    style={{
+                      padding: '0.15rem 0.6rem',
+                      borderRadius: '9999px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      background: dias === 0 ? '#fef3c7' : '#e0f2fe',
+                      color: dias === 0 ? '#92400e' : '#1e3a8a',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {texto}
+                  </span>
+                )
+              })(),
+            },
             {
               label: 'Telefono movil',
               value: selectedClienteDetail.telefono ? (
@@ -1808,7 +1940,6 @@ export function ClientesPage() {
             },
             { label: 'Nivel', value: selectedClienteDetail.nivel ? String(selectedClienteDetail.nivel) : '-' },
             { label: 'Estado', value: selectedClienteDetail.estado_cuenta ?? '-' },
-            { label: 'Ultimo pedido', value: selectedClienteDetail.fecha_ultimo_pedido ?? '-' },
             {
               label: 'Vendedor',
               value: selectedClienteDetail.vendedor_id
@@ -1830,9 +1961,11 @@ export function ClientesPage() {
           { key: 'info', label: 'Informacion' },
           { key: 'notas', label: 'Notas' },
           { key: 'historial', label: 'Historial' },
+          { key: 'cartera', label: 'Cartera' },
+          { key: 'servicios', label: 'Servicios' },
         ] : undefined}
         activeTab={selectedClienteDetail ? detailTab : undefined}
-        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas' | 'historial') : undefined}
+        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas' | 'historial' | 'cartera' | 'servicios') : undefined}
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (
