@@ -57,8 +57,9 @@ export function formatFechaCorta(dateStr: string): string {
 export function diasParaCumple(fechaNacimiento: string | null): number {
   if (!fechaNacimiento) return 999
   const hoy = new Date()
+  const hoyNorm = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   const nac = new Date(`${fechaNacimiento}T00:00:00`)
   const proxCumple = new Date(hoy.getFullYear(), nac.getMonth(), nac.getDate())
-  if (proxCumple < hoy) proxCumple.setFullYear(hoy.getFullYear() + 1)
-  return Math.ceil((proxCumple.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+  if (proxCumple < hoyNorm) proxCumple.setFullYear(hoy.getFullYear() + 1)
+  return Math.round((proxCumple.getTime() - hoyNorm.getTime()) / (1000 * 60 * 60 * 24))
 }
