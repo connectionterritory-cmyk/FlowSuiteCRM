@@ -75,9 +75,9 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     required: true,
     canonicalAlias: '# DE CLIENTE',
     aliases: [
-      '# DE CLIENTE', 'HYCITE ID', 'HYCITEID', 'CUSTOMER NO', 'CUSTOMER #', 'CUSTOMER#',
-      'N DE CLIENTE', 'NUMERO DE CLIENTE', 'CUENTA', 'CUENTA HYCITE', 'CUENTA FINANCIERA',
-      'N DE CLIEN', 'N DE CLI', 'NO DE CLIENTE', 'CLIENTE #',
+      '# DE CLIENTE', 'HYCITE ID', 'HYCITEID', 'CUSTOMER NO', 'CUSTOMER #', 'CUSTOMER#', 'CUSTOMER ID',
+      'CUSTOMER NUMBER', 'ID CLIENTE', 'ID DE CLIENTE', 'N DE CLIENTE', 'NO DE CLIENTE', 'NUMERO DE CLIENTE',
+      'CUENTA', 'CUENTA HYCITE', 'CUENTA FINANCIERA', 'N DE CLIEN', 'N DE CLI', 'CLIENTE #',
     ],
   },
   {
@@ -92,21 +92,21 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Apellido',
     required: false,
     canonicalAlias: 'APELLIDO PATERNO',
-    aliases: ['APELLIDO PATERNO', 'APELLIDO', 'APELLIDOS', 'LAST NAME', 'APELLIDO MATERNO'],
+    aliases: ['APELLIDO PATERNO', 'APELLIDO', 'APELLIDOS', 'LAST NAME', 'APELLIDO MATERNO', 'SURNAME', 'SECOND LAST NAME'],
   },
   {
     key: 'telefono',
     label: 'Teléfono (móvil)',
     required: false,
     canonicalAlias: 'TELÉFONO MÓVIL',
-    aliases: ['TELEFONO MOVIL', 'TELEFONO MOVIL', 'CELULAR', 'MOVIL', 'MOBILE PHONE', 'MOBILE', 'TELEFONO', 'HOME PHONE'],
+    aliases: ['TELEFONO MOVIL', 'TELEFONO MOVIL', 'CELULAR', 'MOVIL', 'MOBILE PHONE', 'MOBILE', 'TELEFONO', 'PHONE', 'TEL', 'HOME PHONE'],
   },
   {
     key: 'email',
     label: 'Email',
     required: false,
     canonicalAlias: 'CORREO ELECTRÓNICO',
-    aliases: ['CORREO ELECTRONICO', 'CORREO ELECTRONICO', 'EMAIL', 'E-MAIL', 'CORREO'],
+    aliases: ['CORREO ELECTRONICO', 'CORREO ELECTRONICO', 'EMAIL', 'E-MAIL', 'EMAIL ADDRESS', 'CORREO'],
   },
   {
     key: 'estado_cuenta',
@@ -134,7 +134,7 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Fecha de nacimiento',
     required: false,
     canonicalAlias: 'BIRTH DAY',
-    aliases: ['BIRTH DAY', 'BIRTHDAY', 'CUMPLEANOS', 'CUMPLEAÑOS', 'FECHA NACIMIENTO'],
+    aliases: ['BIRTH DAY', 'BIRTHDAY', 'BIRTH DATE', 'DOB', 'CUMPLEANOS', 'CUMPLEAÑOS', 'FECHA NACIMIENTO', 'FECHA DE NACIMIENTO'],
   },
 ]
 
@@ -411,7 +411,13 @@ function autodetectMapping(headers: string[]): Record<string, string> {
     for (const header of headers) {
       if (!header.trim()) continue
       const normalizedHeader = normalizarHeader(header)
-      const matched = field.aliases.some(alias => normalizarHeader(alias) === normalizedHeader)
+      const matched = field.aliases.some(alias => {
+        const normalizedAlias = normalizarHeader(alias)
+        if (normalizedAlias === normalizedHeader) return true
+        if (normalizedAlias.length >= 4 && normalizedHeader.includes(normalizedAlias)) return true
+        if (normalizedHeader.length >= 4 && normalizedAlias.includes(normalizedHeader)) return true
+        return false
+      })
       if (matched && !mapping[field.key]) {
         mapping[field.key] = header
         break
@@ -588,13 +594,29 @@ export function ImportacionesPage() {
 
         const allRows = XLSX.utils.sheet_to_json<SheetRow>(ws, { header: 1, defval: '', raw: false })
         let headerIndex = -1
-        const keywords = ['HYCITE', 'HYCITE ID', 'CLIENTE', 'N DE CLIENTE', 'CUSTOMER', 'NOMBRE', 'NAME', 'APELLIDO', 'LAST NAME', 'CORREO ELECTRONICO', 'ELECTRONICO', 'EMAIL', 'TELEFONO']
+        const keywords = ['HYCITE', 'HYCITE ID', 'CLIENTE', 'N DE CLIENTE', 'CUSTOMER', 'NOMBRE', 'NAME', 'APELLIDO', 'LAST', 'FIRST', 'CORREO ELECTRONICO', 'ELECTRONICO', 'EMAIL', 'PHONE', 'TELEFONO', 'BIRTH', 'BIRTHDAY', 'DOB']
+        const aliasSet = new Set(
+          SYSTEM_FIELDS_DEF.flatMap(field => field.aliases.map(alias => normalizarHeader(alias)))
+        )
+        let bestMatchCount = 0
+        let bestRowIndex = -1
+
         for (let i = 0; i < Math.min(allRows.length, 25); i++) {
           const row = allRows[i]
           if (!row || row.length < 2) continue
-          const rowStr = row.map(cell => normalizarHeader(String(cell ?? ''))).join('|')
-          if (keywords.some(k => rowStr.includes(k))) { headerIndex = i; break }
+          const normalizedCells = row.map(cell => normalizarHeader(String(cell ?? '')))
+          const rowStr = normalizedCells.join('|')
+          if (keywords.some(k => rowStr.includes(k))) {
+            headerIndex = i
+            break
+          }
+          const matchCount = normalizedCells.filter(cell => aliasSet.has(cell)).length
+          if (matchCount > bestMatchCount) {
+            bestMatchCount = matchCount
+            bestRowIndex = i
+          }
         }
+        if (headerIndex === -1 && bestMatchCount >= 2) headerIndex = bestRowIndex
         if (headerIndex === -1 && isBirthdayReport) headerIndex = 7
 
         const raw: SheetRow[] = headerIndex === -1 ? allRows : allRows.slice(headerIndex)
