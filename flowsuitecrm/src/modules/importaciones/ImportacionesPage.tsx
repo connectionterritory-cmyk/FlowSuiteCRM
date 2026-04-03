@@ -75,9 +75,9 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     required: true,
     canonicalAlias: '# DE CLIENTE',
     aliases: [
-      '# DE CLIENTE', 'HYCITE ID', 'HYCITEID', 'CUSTOMER NO', 'CUSTOMER #', 'CUSTOMER#', 'CUSTOMER ID',
-      'CUSTOMER NUMBER', 'ID CLIENTE', 'ID DE CLIENTE', 'N DE CLIENTE', 'NO DE CLIENTE', 'NUMERO DE CLIENTE',
-      'CUENTA', 'CUENTA HYCITE', 'CUENTA FINANCIERA', 'N DE CLIEN', 'N DE CLI', 'CLIENTE #',
+      '# DE CLIENTE', 'HYCITE ID', 'HYCITEID', 'CUSTOMER NO', 'CUSTOMER_NO', 'CUSTOMER #', 'CUSTOMER#', 'CUSTOMER ID',
+      'CUSTOMER NUMBER', 'EXTERNAL ID', 'EXTERNAL_ID', 'ID CLIENTE', 'ID DE CLIENTE', 'N DE CLIENTE', 'NO DE CLIENTE',
+      'NUMERO DE CLIENTE', 'CUENTA', 'CUENTA HYCITE', 'CUENTA FINANCIERA', 'N DE CLIEN', 'N DE CLI', 'CLIENTE #',
     ],
   },
   {
@@ -85,21 +85,21 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Nombre',
     required: false,
     canonicalAlias: 'NOMBRE',
-    aliases: ['NOMBRE', 'NOMBRE 1', 'NOMBRE1', 'CUSTOMER NAME', 'NOMBRE COMPLETO', 'FIRST NAME'],
+    aliases: ['NOMBRE', 'NOMBRE 1', 'NOMBRE1', 'CUSTOMER NAME', 'FULL NAME', 'FULL_NAME', 'NOMBRE COMPLETO', 'FIRST NAME', 'FIRST_NAME'],
   },
   {
     key: 'apellido',
     label: 'Apellido',
     required: false,
     canonicalAlias: 'APELLIDO PATERNO',
-    aliases: ['APELLIDO PATERNO', 'APELLIDO', 'APELLIDOS', 'LAST NAME', 'APELLIDO MATERNO', 'SURNAME', 'SECOND LAST NAME'],
+    aliases: ['APELLIDO PATERNO', 'APELLIDO', 'APELLIDOS', 'LAST NAME', 'LAST_NAME', 'APELLIDO MATERNO', 'SURNAME', 'SECOND LAST NAME'],
   },
   {
     key: 'telefono',
     label: 'Teléfono (móvil)',
     required: false,
     canonicalAlias: 'TELÉFONO MÓVIL',
-    aliases: ['TELEFONO MOVIL', 'TELEFONO MOVIL', 'CELULAR', 'MOVIL', 'MOBILE PHONE', 'MOBILE', 'TELEFONO', 'PHONE', 'TEL', 'HOME PHONE'],
+    aliases: ['TELEFONO MOVIL', 'TELEFONO MOVIL', 'CELULAR', 'MOVIL', 'MOBILE PHONE', 'MOBILE', 'TELEFONO', 'PHONE', 'TEL', 'HOME PHONE', 'PRIMARY PHONE', 'PRIMARY_PHONE'],
   },
   {
     key: 'email',
@@ -134,7 +134,11 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Fecha de nacimiento',
     required: false,
     canonicalAlias: 'BIRTH DAY',
-    aliases: ['BIRTH DAY', 'BIRTHDAY', 'BIRTH DATE', 'DOB', 'CUMPLEANOS', 'CUMPLEAÑOS', 'FECHA NACIMIENTO', 'FECHA DE NACIMIENTO'],
+    aliases: [
+      'BIRTH DAY', 'BIRTHDAY', 'BIRTH DATE', 'BIRTHDAY TEXT', 'BIRTHDAY_TEXT', 'BIRTHDAY MMDD', 'BIRTHDAY_MMDD',
+      'BIRTH_MONTH', 'BIRTH MONTH', 'BIRTH_DAY', 'BIRTH DAY', 'DOB', 'CUMPLEANOS', 'CUMPLEAÑOS',
+      'FECHA NACIMIENTO', 'FECHA DE NACIMIENTO',
+    ],
   },
 ]
 
@@ -201,6 +205,7 @@ function parsearMonto(raw?: string): number {
 
 function normalizarHeader(value: string): string {
   return value
+    .replace(/\ufeff/g, '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .replace(/[º°]/g, '')
@@ -351,6 +356,12 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
       if (mes && dia) fechaNacimiento = `2000-${mes}-${dia}`
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(bdayRaw)) {
       fechaNacimiento = bdayRaw
+    } else {
+      const mmdd = bdayRaw.match(/^(\d{1,2})[\/-](\d{1,2})$/)
+      if (mmdd) {
+        const [, m, d] = mmdd
+        fechaNacimiento = `2000-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+      }
     }
   }
 
