@@ -168,6 +168,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         origenId={gestionIntent?.origenId}
         onClose={closeGestionModal}
         onSendMessage={(contacto) => {
+          closeGestionModal()
           openMessageModal({
             channel: 'whatsapp',
             contact: {
