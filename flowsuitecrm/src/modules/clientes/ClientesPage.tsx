@@ -261,7 +261,7 @@ const getClientesPermissionError = (error: { code?: string | null; message?: str
 export function ClientesPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
-  const { usersById, currentRole } = useUsers()
+  const { usersById, currentRole, currentUser } = useUsers()
   const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const navigate = useNavigate()
   const VENDEDOR_UNASSIGNED = 'sin_asignar'
@@ -277,6 +277,9 @@ export function ClientesPage() {
   }, [session?.user, usersById])
   const isSellerView = hasDistribuidorScope && viewMode === 'seller'
   const canManageClientes = (currentRole === 'admin' || currentRole === 'distribuidor') && !isSellerView
+  const canReassignVendedor = currentRole === 'supervisor_telemercadeo' && !isSellerView
+  const canEditClientes = canManageClientes || canReassignVendedor
+  const isReassignOnly = canReassignVendedor && !canManageClientes
   const canDelete = (currentRole === 'admin' || currentRole === 'distribuidor') && !isSellerView
   const { showToast } = useToast()
   const [clientes, setClientes] = useState<ClienteRecord[]>([])
@@ -318,6 +321,7 @@ export function ClientesPage() {
   const [clienteServicios, setClienteServicios] = useState<ServicioResumen[]>([])
   const [serviciosLoading, setServiciosLoading] = useState(false)
   const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
+  const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; label: string; rol: string | null }>>([])
 
   const loadClientes = useCallback(async () => {
     if (!configured || !sessionUserId || !currentRole) return
@@ -371,6 +375,57 @@ export function ClientesPage() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  useEffect(() => {
+    if (!configured || !currentUser) return
+    let active = true
+    const loadAssignableUsers = async () => {
+      let query = supabase
+        .from('usuarios')
+        .select('id, nombre, apellido, rol, activo, codigo_vendedor, codigo_distribuidor, organizacion')
+      if (currentUser.organizacion) {
+        query = query.eq('organizacion', currentUser.organizacion)
+      } else {
+        query = query.is('organizacion', null)
+      }
+      const { data, error } = await query
+      if (!active) return
+      if (error) {
+        setAssignableUsers([])
+        return
+      }
+      const base = ((data as Array<{
+        id: string
+        nombre: string | null
+        apellido: string | null
+        rol: string | null
+        activo: boolean | null
+        codigo_vendedor?: string | null
+        codigo_distribuidor?: string | null
+      }>) ?? [])
+        .filter((user) => (user.rol === 'vendedor' || user.rol === 'distribuidor') && user.activo !== false)
+        .map((user) => ({
+          id: user.id,
+          label: [
+            [user.nombre, user.apellido].filter(Boolean).join(' ').trim() || user.id,
+            user.codigo_vendedor || user.codigo_distribuidor || null,
+          ]
+            .filter(Boolean)
+            .join(' - '),
+          rol: user.rol,
+        }))
+      const byId = new Map(base.map((item) => [item.id, item]))
+      if (currentUser.id && !byId.has(currentUser.id)) {
+        const label = [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ').trim() || currentUser.id
+        byId.set(currentUser.id, { id: currentUser.id, label, rol: currentUser.rol ?? null })
+      }
+      setAssignableUsers(Array.from(byId.values()))
+    }
+    void loadAssignableUsers()
+    return () => {
+      active = false
+    }
+  }, [configured, currentUser])
 
   // --- VENDEDORES UNICOS para el filtro ---
   const getClienteVendedorLabel = useCallback(
@@ -862,8 +917,8 @@ export function ClientesPage() {
   }
 
   const handleOpenEditForm = (cliente: ClienteRecord) => {
-    if (!canManageClientes) {
-      showToast('Solo Admin/Distribuidor puede editar clientes.', 'error')
+    if (!canEditClientes) {
+      showToast('No tienes permisos para editar clientes.', 'error')
       return
     }
     const birth = splitBirthDate(cliente.fecha_nacimiento ?? null)
@@ -905,10 +960,22 @@ export function ClientesPage() {
     ? getClienteVendedorLabel(formValues.vendedor_id || null)
     : vendedorName
 
+  const vendorSelectOptions = useMemo(() => {
+    const base = assignableUsers
+    const currentId = formValues.vendedor_id
+    if (currentId && !base.some((u) => u.id === currentId)) {
+      return [
+        ...base,
+        { id: currentId, label: usersById[currentId] || currentId, rol: null },
+      ]
+    }
+    return base
+  }, [assignableUsers, formValues.vendedor_id, usersById])
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!canManageClientes) {
-      showToast('Solo Admin/Distribuidor puede editar clientes.', 'error')
+    if (!canEditClientes) {
+      showToast('No tienes permisos para editar clientes.', 'error')
       return
     }
     if (!configured) {
@@ -918,6 +985,11 @@ export function ClientesPage() {
     setSubmitting(true)
     setFormError(null)
     const toNull = (v: string) => (v.trim() === '' ? null : v.trim())
+    if (isReassignOnly && !editingId) {
+      setFormError('No tienes permisos para crear clientes.')
+      setSubmitting(false)
+      return
+    }
     const birthDate = buildBirthDate(birthMonth, birthDay)
     if ((birthMonth || birthDay) && !birthDate) {
       setFormError('Fecha de cumpleaños inválida.')
@@ -971,11 +1043,12 @@ export function ClientesPage() {
       next_action: toNull(formValues.next_action as string),
       next_action_date: toNull(formValues.next_action_date as string),
     }
+    const payload = isReassignOnly ? { vendedor_id: toNull(formValues.vendedor_id) } : basePayload
     const { error: opError } = editingId
-      ? await supabase.from('clientes').update(basePayload).eq('id', editingId)
+      ? await supabase.from('clientes').update(payload).eq('id', editingId)
       : await supabase.from('clientes').insert({
-        ...basePayload,
-        vendedor_id: basePayload.vendedor_id ?? session?.user.id ?? null,
+        ...payload,
+        vendedor_id: (payload as { vendedor_id?: string | null }).vendedor_id ?? session?.user.id ?? null,
         origen: 'manual',
       })
     if (opError) {
@@ -1807,12 +1880,12 @@ export function ClientesPage() {
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.vendedorId')}</span>
-            {canManageClientes && (currentRole === 'admin' || currentRole === 'distribuidor') && !isSellerView ? (
+            {canEditClientes && !isSellerView ? (
               <select value={formValues.vendedor_id} onChange={handleChange('vendedor_id')}>
                 <option value="">Sin asignar</option>
-                {Object.entries(usersById).map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name || id}
+                {vendorSelectOptions.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.label}
                   </option>
                 ))}
               </select>
@@ -2130,7 +2203,7 @@ export function ClientesPage() {
               >
                 + Gestión
               </Button>
-              {canManageClientes && (
+              {canEditClientes && (
                 <Button
                   variant="ghost"
                   type="button"
