@@ -56,6 +56,7 @@ type ClienteRecord = {
   persona_id: string | null
   next_action: string | null
   next_action_date: string | null
+  estado_operativo: string | null
 }
 
 type ClienteNota = {
@@ -97,6 +98,7 @@ const CLIENTES_LIST_SELECT = [
   'persona_id',
   'next_action',
   'next_action_date',
+  'estado_operativo',
   // Excluded (sensitive): numero_cuenta_financiera, codigo_vendedor_hycite
 ].join(', ')
 
@@ -186,6 +188,46 @@ function badgeTextColor(segmento: string): string {
   return '#374151'
 }
 
+type EstadoOperativoVariant = 'activo' | 'en_riesgo' | 'recuperacion' | 'inactivo' | 'cancelado'
+
+const ESTADO_OPERATIVO_LABELS: Record<EstadoOperativoVariant, string> = {
+  activo: 'Activo',
+  en_riesgo: 'En riesgo',
+  recuperacion: 'Recuperación',
+  inactivo: 'Inactivo',
+  cancelado: 'Cancelado',
+}
+
+const ESTADO_OPERATIVO_COLORS: Record<EstadoOperativoVariant, { bg: string; text: string }> = {
+  activo: { bg: '#d1fae5', text: '#065f46' },
+  en_riesgo: { bg: '#fef3c7', text: '#92400e' },
+  recuperacion: { bg: '#dbeafe', text: '#1e40af' },
+  inactivo: { bg: '#f3f4f6', text: '#6b7280' },
+  cancelado: { bg: '#f3f4f6', text: '#6b7280' },
+}
+
+function estadoOperativoBadge(estado: string | null) {
+  if (!estado) return null
+  const key = estado as EstadoOperativoVariant
+  const label = ESTADO_OPERATIVO_LABELS[key] ?? estado
+  const colors = ESTADO_OPERATIVO_COLORS[key] ?? { bg: '#f3f4f6', text: '#374151' }
+  return (
+    <span
+      style={{
+        padding: '0.2rem 0.6rem',
+        borderRadius: '9999px',
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        background: colors.bg,
+        color: colors.text,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
 const getClientesPermissionError = (error: { code?: string | null; message?: string | null } | null) => {
   if (!error) return null
   if (error.code === '42501') return 'Acción no permitida: solo Admin/Distribuidor puede editar clientes.'
@@ -241,6 +283,7 @@ export function ClientesPage() {
   const [filtroCiudad, setFiltroCiudad] = useState('')
   const [filtroEstadoRegion, setFiltroEstadoRegion] = useState('')
   const [filtroCodigoPostal, setFiltroCodigoPostal] = useState('')
+  const [filtroEstadoOperativo, setFiltroEstadoOperativo] = useState('todos')
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -369,6 +412,9 @@ export function ClientesPage() {
       const matchCodigoPostal =
         !filtroCodigoPostal || (c.codigo_postal ?? '').toLowerCase().includes(filtroCodigoPostal.toLowerCase())
 
+      const matchEstadoOperativo =
+        filtroEstadoOperativo === 'todos' || c.estado_operativo === filtroEstadoOperativo
+
       return (
         matchBusqueda &&
         matchAtraso &&
@@ -376,7 +422,8 @@ export function ClientesPage() {
         matchVendedor &&
         matchCiudad &&
         matchEstadoRegion &&
-        matchCodigoPostal
+        matchCodigoPostal &&
+        matchEstadoOperativo
       )
     })
   }, [
@@ -388,6 +435,7 @@ export function ClientesPage() {
     filtroCiudad,
     filtroEstadoRegion,
     filtroCodigoPostal,
+    filtroEstadoOperativo,
     getClienteVendedorKey,
   ])
 
@@ -543,6 +591,7 @@ export function ClientesPage() {
           saldoDisplay,
           morosidadBadge,
           estadoBadge,
+          estadoOperativoBadge(cliente.estado_operativo),
           whatsappAction,
         ],
         detail: [
@@ -1237,6 +1286,40 @@ export function ClientesPage() {
               </select>
             </div>
 
+            {/* Filtro estado operativo */}
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem',
+                  color: 'var(--color-text-muted, #6b7280)',
+                }}
+              >
+                OPERATIVO
+              </label>
+              <select
+                value={filtroEstadoOperativo}
+                onChange={(e) => setFiltroEstadoOperativo(e.target.value)}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.875rem',
+                  background: 'var(--color-input)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                <option value="todos">Todos</option>
+                <option value="activo">Activo</option>
+                <option value="en_riesgo">En riesgo</option>
+                <option value="recuperacion">Recuperación</option>
+                <option value="inactivo">Inactivo</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </div>
+
             {/* Filtro atraso */}
             <div>
               <label
@@ -1447,7 +1530,7 @@ export function ClientesPage() {
         </div>
       ) : (
         <DataTable
-          columns={['Nombre', 'Telefono', 'Cuenta Hycite', 'Vendedor', 'Saldo', 'Morosidad', 'Estado', 'WhatsApp']}
+          columns={['Nombre', 'Telefono', 'Cuenta Hycite', 'Vendedor', 'Saldo', 'Morosidad', 'Estado', 'Operativo', 'WhatsApp']}
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={setSelectedRow}
