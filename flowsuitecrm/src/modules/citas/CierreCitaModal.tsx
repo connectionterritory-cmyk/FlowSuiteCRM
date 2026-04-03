@@ -260,7 +260,7 @@ export function CierreCitaModal({
         </>
       )}
 
-      {(resultado === 'reagendar' || estado === 'no_show') && (
+      {resultado === 'reagendar' && (
         <label className="form-field">
           <span>
             Fecha del próximo paso <span style={{ color: 'var(--color-error, #dc2626)' }}>*</span>

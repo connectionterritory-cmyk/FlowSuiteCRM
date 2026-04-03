@@ -10,6 +10,7 @@ import { useAuth } from '../../auth/useAuth'
 import { useViewMode } from '../../data/useViewMode'
 import { buildContactRef, getContactTable } from '../../lib/contactRefs'
 import { CierreCitaModal } from './CierreCitaModal'
+import type { ContactKind } from '../../types/contacts'
 import type { AssignedOption, CitaForm, CierreActividad, CierreTarea } from './citaOptions'
 import {
   CONTACTO_TIPO_OPTIONS,
