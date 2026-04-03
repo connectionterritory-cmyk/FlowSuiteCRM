@@ -320,8 +320,8 @@ export function ClientesPage() {
   const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
 
   const loadClientes = useCallback(async () => {
-    setLoading(true)
     if (!configured || !sessionUserId || !currentRole) return
+    setLoading(true)
     const userId = sessionUserId
     setError(null)
     let query = supabase
@@ -405,7 +405,7 @@ export function ClientesPage() {
     return clientes.filter((c) => {
       const fullName = `${c.nombre ?? ''} ${c.apellido ?? ''}`.toLowerCase()
       const tel = c.telefono ?? ''
-      const cuenta = c.hycite_id ?? c.numero_cuenta_financiera ?? ''
+      const cuenta = c.hycite_id ?? ''
       const matchBusqueda =
         !busqueda ||
         fullName.includes(busqueda.toLowerCase()) ||
@@ -963,6 +963,7 @@ export function ClientesPage() {
       hycite_id: toNull(formValues.hycite_id),
       numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
       saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),
+      vendedor_id: toNull(formValues.vendedor_id),
       distribuidor_id: toNull(formValues.distribuidor_id),
       fecha_nacimiento: birthDate,
       estado_cuenta: formValues.estado_cuenta,
@@ -972,7 +973,11 @@ export function ClientesPage() {
     }
     const { error: opError } = editingId
       ? await supabase.from('clientes').update(basePayload).eq('id', editingId)
-      : await supabase.from('clientes').insert({ ...basePayload, vendedor_id: session?.user.id ?? null, origen: 'manual' })
+      : await supabase.from('clientes').insert({
+        ...basePayload,
+        vendedor_id: basePayload.vendedor_id ?? session?.user.id ?? null,
+        origen: 'manual',
+      })
     if (opError) {
       const permissionMessage = getClientesPermissionError(opError)
       const errorMessage = permissionMessage ?? opError.message
@@ -1035,7 +1040,7 @@ export function ClientesPage() {
   const exportarCSV = () => {
     const headers = [
       'Nombre', 'Apellido', 'Telefono', 'Email', 'Cuenta Hycite',
-      'Cuenta Financiera', 'Ciudad', 'Estado', 'ZIP',
+      'Ciudad', 'Estado', 'ZIP',
       'Saldo', 'Monto Moroso', 'Dias Atraso', 'Estado Cuenta', 'Vendedor',
     ]
     const csvRows = clientesFiltrados.map((c) => [
@@ -1044,7 +1049,6 @@ export function ClientesPage() {
       c.telefono ?? '',
       c.email ?? '',
       c.hycite_id ?? '',
-      c.numero_cuenta_financiera ?? '',
       c.ciudad ?? '',
       c.estado_region ?? '',
       c.codigo_postal ?? '',
@@ -1803,7 +1807,18 @@ export function ClientesPage() {
           </label>
           <label className="form-field">
             <span>{t('clientes.fields.vendedorId')}</span>
-            <input value={formVendedorName} readOnly />
+            {canManageClientes && (currentRole === 'admin' || currentRole === 'distribuidor') && !isSellerView ? (
+              <select value={formValues.vendedor_id} onChange={handleChange('vendedor_id')}>
+                <option value="">Sin asignar</option>
+                {Object.entries(usersById).map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name || id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input value={formVendedorName} readOnly />
+            )}
           </label>
           <label className="form-field">
             <span>Cumpleaños (día y mes)</span>
