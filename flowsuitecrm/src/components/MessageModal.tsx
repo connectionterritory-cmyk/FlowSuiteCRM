@@ -149,6 +149,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const { currentUser } = useUsers()
   const { session } = useAuth()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const configured = isSupabaseConfigured
 
   const resolvedContact = useMemo<MessagingContact>(
     () =>
@@ -174,6 +175,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [imageUrl, setImageUrl] = useState('')
   const [activeChannel, setActiveChannel] = useState<MessagingChannel>(channel)
   const [sending, setSending] = useState(false)
+  const [useEvolutionApi, setUseEvolutionApi] = useState(false)
 
   const [customTemplates, setCustomTemplates] = useState<CustomWhatsappTemplate[]>(() => loadCustomTemplates())
   const [categoryFilter, setCategoryFilter] = useState<'all' | WhatsappTemplateCategory>('all')
@@ -198,7 +200,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         'Hola {cliente}, soy {vendedor} de {organizacion}.',
         'Te escribo por tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.',
         'Saldo actual: $' + '{saldo_actual}. Moroso: $' + '{monto_moroso}.',
-        'Si ya pagaste, ignora este mensaje. Si necesitas ayuda, escríbeme al {telefono}.',
+        'Si ya pagaste, ignora este mensaje. Si necesitas ayuda, escríbeme al {vendedor_telefono}.',
       ].join('\n'),
     }),
     []
@@ -209,6 +211,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
     const responsableNombre = resolvedContact.responsableNombre ?? currentUserName
     const vendedorNombre = resolvedContact.vendedorNombre
+      ?? resolvedContact.vendedor
       ?? resolvedContact.responsableNombre
       ?? currentUserName
       ?? ''
@@ -220,7 +223,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     return {
       cliente,
       nombre: cliente,
-      telefono: resolvedContact.telefono ?? distributorPhone ?? currentUser?.telefono ?? '',
+      telefono: resolvedContact.telefono ?? '',
       vendedor_nombre: vendedorNombre,
       vendedor_telefono: vendedorTelefono,
       responsable_nombre: responsableNombre,
@@ -521,8 +524,27 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       : resolvedMessage.text
     const sentAt = new Date().toISOString()
     if (activeChannel === 'whatsapp') {
-      const url = resolvedContact.telefono ? buildWhatsappUrl(resolvedContact.telefono, finalMessage) : null
-      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      if (useEvolutionApi && configured) {
+        try {
+          const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+            body: {
+              phone: phoneValue,
+              message: finalMessage,
+            },
+          })
+          if (error) throw error
+          if (data?.error) throw new Error(data.error)
+          showToast('Mensaje enviado por WhatsApp')
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'No se pudo enviar el mensaje.'
+          showToast(message, 'error')
+          setSending(false)
+          return
+        }
+      } else {
+        const url = resolvedContact.telefono ? buildWhatsappUrl(resolvedContact.telefono, finalMessage) : null
+        if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      }
     }
     if (activeChannel === 'sms' && hasPhone) {
       window.open(`sms:${phoneValue}?&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
@@ -946,6 +968,26 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                 )}
               </label>
             </div>
+          )}
+
+          {activeChannel === 'whatsapp' && configured && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginTop: '0.65rem',
+                fontSize: '0.78rem',
+                color: 'var(--color-text-muted, #6b7280)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={useEvolutionApi}
+                onChange={(event) => setUseEvolutionApi(event.target.checked)}
+              />
+              Enviar automáticamente con Evolution API
+            </label>
           )}
 
           {warningMessage && <p className="template-warning">{warningMessage}</p>}
