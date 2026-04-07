@@ -108,8 +108,7 @@ export function TelemercadeoCarteraPage() {
     }
     for (const c of clientes) {
       const d = c.dias_atraso ?? 0
-      const m = c.monto_moroso ?? 0
-      if (m > 0 && d < 31) counts['0_30']++
+      if (d > 0 && d < 31) counts['0_30']++
       if (d >= 31 && d < 61) counts['31_60']++
       if (d >= 61 && d < 91) counts['61_90']++
       if (d >= 91) counts.mas_90++
@@ -123,8 +122,7 @@ export function TelemercadeoCarteraPage() {
     const q = busqueda.trim().toLowerCase()
     return clientes.filter((c) => {
       const d = c.dias_atraso ?? 0
-      const m = c.monto_moroso ?? 0
-      if (segmento === '0_30' && !(m > 0 && d < 31)) return false
+      if (segmento === '0_30' && !(d > 0 && d < 31)) return false
       if (segmento === '31_60' && !(d >= 31 && d < 61)) return false
       if (segmento === '61_90' && !(d >= 61 && d < 91)) return false
       if (segmento === 'mas_90' && !(d >= 91)) return false

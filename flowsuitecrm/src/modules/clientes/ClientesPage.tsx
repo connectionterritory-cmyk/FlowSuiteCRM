@@ -181,13 +181,25 @@ const getBirthMonth = (value: string | null): number | null => {
 
 // Segmento de atraso basado en dias_atraso
 function segmentoAtraso(dias: number | null, moroso: number | null): string {
-  if (!moroso || moroso === 0) return 'Al día'
-  if (!dias) return '0-30 días'
+  if (!dias || dias <= 0) return 'Al día'
   if (dias >= 91) return '+90 días'
   if (dias >= 61) return '61-90 días'
   if (dias >= 31) return '31-60 días'
   if (dias >= 1) return '0-30 días'
   return 'Al día'
+}
+
+function isMoroso(dias: number | null): boolean {
+  return (dias ?? 0) > 0
+}
+
+function normalizeSearch(value: string | null | undefined): string {
+  return (value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function badgeColor(segmento: string): string {
@@ -458,14 +470,15 @@ export function ClientesPage() {
   // --- FILTRADO ---
   const clientesFiltrados = useMemo(() => {
     return clientes.filter((c) => {
-      const fullName = `${c.nombre ?? ''} ${c.apellido ?? ''}`.toLowerCase()
+      const fullName = normalizeSearch(`${c.nombre ?? ''} ${c.apellido ?? ''}`)
       const tel = c.telefono ?? ''
       const cuenta = c.hycite_id ?? ''
+      const busquedaNorm = normalizeSearch(busqueda)
       const matchBusqueda =
-        !busqueda ||
-        fullName.includes(busqueda.toLowerCase()) ||
-        tel.includes(busqueda) ||
-        cuenta.includes(busqueda)
+        !busquedaNorm ||
+        fullName.includes(busquedaNorm) ||
+        tel.includes(busquedaNorm) ||
+        cuenta.includes(busquedaNorm)
 
       const segmento = segmentoAtraso(c.dias_atraso, c.monto_moroso)
       const matchAtraso =
@@ -596,8 +609,8 @@ export function ClientesPage() {
   const stats = useMemo(
     () => ({
       total: clientes.length,
-      alDia: clientes.filter((c) => !c.monto_moroso || c.monto_moroso === 0).length,
-      conMoroso: clientes.filter((c) => c.monto_moroso && c.monto_moroso > 0).length,
+      alDia: clientes.filter((c) => !isMoroso(c.dias_atraso)).length,
+      conMoroso: clientes.filter((c) => isMoroso(c.dias_atraso)).length,
       cancelados: clientes.filter((c) => c.estado_cuenta === 'cancelacion_total').length,
     }),
     [clientes]
