@@ -39,6 +39,7 @@ memory.md
 *.swp
 *.xls
 *.xlsx
+evolution-api/
 
 .agent/
 **/supabase/.temp/
