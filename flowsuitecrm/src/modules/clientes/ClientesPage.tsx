@@ -340,37 +340,47 @@ export function ClientesPage() {
     setLoading(true)
     const userId = sessionUserId
     setError(null)
-    let query = supabase
-      .from('clientes')
-      .select(CLIENTES_LIST_SELECT)
-      .order('created_at', { ascending: false })
-    if (isSellerView || currentRole === 'vendedor') {
-      query = query.eq('vendedor_id', userId)
-    } else if (currentRole === 'admin') {
-      // ADMIN_SCOPE: ALL | SELF
-      // Default (single-tenant): admin sees ALL clients — no vendedor_id filter applied.
-      // To restrict admin to their distributor scope, replace with:
-      // const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
-      // query = query.in('vendedor_id', teamIds)
-    } else if (currentRole === 'distribuidor' && viewMode === 'distributor') {
-      // Distribuidor view: see all clients (no filter).
-    } else if (hasDistribuidorScope && viewMode === 'distributor') {
-      const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
-      const teamFilter = teamIds.length > 0
-        ? `vendedor_id.in.(${teamIds.join(',')})`
-        : `vendedor_id.eq.${userId}`
-      query = query.or(`distribuidor_id.eq.${userId},${teamFilter}`)
-    } else if (currentRole === 'distribuidor') {
-      query = query.or(`distribuidor_id.eq.${userId},vendedor_id.eq.${userId}`)
+    const buildQuery = (from: number) => {
+      let q = supabase
+        .from('clientes')
+        .select(CLIENTES_LIST_SELECT)
+        .order('created_at', { ascending: false })
+        .range(from, from + 999)
+      if (isSellerView || currentRole === 'vendedor') {
+        q = q.eq('vendedor_id', userId)
+      } else if (currentRole === 'admin') {
+        // ADMIN_SCOPE: ALL | SELF
+        // Default (single-tenant): admin sees ALL clients — no vendedor_id filter applied.
+        // To restrict admin to their distributor scope, replace with:
+        // const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
+        // q = q.in('vendedor_id', teamIds)
+      } else if (currentRole === 'distribuidor' || currentRole === 'supervisor_telemercadeo') {
+        // Distribuidor y supervisor_telemercadeo ven todos los clientes (sin filtro de vendedor).
+      } else if (hasDistribuidorScope && viewMode === 'distributor') {
+        const teamIds = distributionUserIds.length > 0 ? distributionUserIds : [userId]
+        const teamFilter = teamIds.length > 0
+          ? `vendedor_id.in.(${teamIds.join(',')})`
+          : `vendedor_id.eq.${userId}`
+        q = q.or(`distribuidor_id.eq.${userId},${teamFilter}`)
+      }
+      return q
     }
-    const { data, error: fetchError } = await query
 
-    if (fetchError) {
-      setError(fetchError.message)
-      setClientes([])
-    } else {
-      setClientes((data ?? []) as unknown as ClienteRecord[])
+    let allData: ClienteRecord[] = []
+    let page = 0
+    while (true) {
+      const { data, error: fetchError } = await buildQuery(page * 1000)
+      if (fetchError) {
+        setError(fetchError.message)
+        setClientes([])
+        setLoading(false)
+        return
+      }
+      allData = [...allData, ...((data ?? []) as unknown as ClienteRecord[])]
+      if ((data ?? []).length < 1000) break
+      page++
     }
+    setClientes(allData)
     setLoading(false)
   }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, isSellerView, sessionUserId, viewMode])
 
