@@ -8,4 +8,5 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-whatsapp]
+[functions.send-message-email]
 verify_jwt = false

@@ -607,41 +607,66 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       ? resolvedMessage.text.trim() + '\n\n' + imageUrl.trim()
       : resolvedMessage.text
     const sentAt = new Date().toISOString()
-    if (activeChannel === 'whatsapp') {
-      if (useEvolutionApi && configured) {
-        try {
-          const { data, error } = await supabase.functions.invoke('send-whatsapp', {
-            body: {
-              phone: phoneValue,
-              message: finalMessage,
-            },
-          })
-          if (error) throw error
-          if (data?.error) throw new Error(data.error)
-          showToast('Mensaje enviado por WhatsApp')
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'No se pudo enviar el mensaje.'
-          showToast(message, 'error')
-          setSending(false)
+    try {
+      if (activeChannel === 'whatsapp') {
+        if (useEvolutionApi && configured) {
+          try {
+            const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+              body: {
+                phone: phoneValue,
+                message: finalMessage,
+              },
+            })
+            if (error) throw error
+            if (data?.error) throw new Error(data.error)
+            showToast('Mensaje enviado por WhatsApp')
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'No se pudo enviar el mensaje.'
+            showToast(message, 'error')
+            return
+          }
+        } else {
+          const url = activeContact.telefono ? buildWhatsappUrl(activeContact.telefono, finalMessage) : null
+          if (url) window.open(url, '_blank', 'noopener,noreferrer')
+        }
+      }
+      if (activeChannel === 'sms' && hasPhone) {
+        window.open(`sms:${phoneValue}?&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
+      }
+      if (activeChannel === 'email' && hasEmail && activeContact.email) {
+        if (!isSupabaseConfigured || !session?.access_token) {
+          showToast('Configura Supabase e inicia sesion para enviar correos.', 'error')
           return
         }
-      } else {
-        const url = activeContact.telefono ? buildWhatsappUrl(activeContact.telefono, finalMessage) : null
-        if (url) window.open(url, '_blank', 'noopener,noreferrer')
+
+        const subject = t('messaging.emailSubject')
+        const { data, error } = await supabase.functions.invoke('send-message-email', {
+          body: {
+            to: activeContact.email,
+            subject,
+            message: finalMessage,
+            contactName: activeContact.nombre,
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        })
+
+        if (error || (data as { error?: string } | null)?.error) {
+          const message = error?.message || (data as { error?: string } | null)?.error || 'No se pudo enviar el correo.'
+          showToast(message, 'error')
+          return
+        }
+
+        showToast('Correo enviado')
       }
+
+      appendHistory({ contactName: activeContact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
+      await saveMessageLog(finalMessage, sentAt)
+      await updateLeadContact()
+    } finally {
+      setSending(false)
     }
-    if (activeChannel === 'sms' && hasPhone) {
-      window.open(`sms:${phoneValue}?&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
-    }
-    if (activeChannel === 'email' && hasEmail && activeContact.email) {
-      const subject = t('messaging.emailSubject')
-      window.open(`mailto:${activeContact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
-    }
-    // Save to history
-    appendHistory({ contactName: activeContact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
-    await saveMessageLog(finalMessage, sentAt)
-    await updateLeadContact()
-    setSending(false)
   }
 
   return (

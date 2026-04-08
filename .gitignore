@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+.supabase-service-key
 
 # Logs
 *.log
