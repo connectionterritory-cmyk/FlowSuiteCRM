@@ -4,6 +4,7 @@ import { Button } from './Button'
 import { Modal } from './Modal'
 import {
   buildWhatsappUrl,
+  baseTemplates,
   loadCustomTemplates,
   saveCustomTemplates,
   type CustomWhatsappTemplate,
@@ -88,9 +89,13 @@ const MESSAGE_TYPE_OPTIONS: { value: MessageType; label: string }[] = [
   { value: 'cambio_repuestos', label: 'Cambio de repuestos' },
 ]
 
-const formatAmount = (value?: number | null) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return ''
-  return Number(value).toFixed(2)
+const formatAmount = (value?: number | string | null) => {
+  if (value === null || value === undefined) return ''
+  const normalized = typeof value === 'string' ? value.replace(/[^0-9.-]/g, '') : value
+  if (normalized === '') return ''
+  const numeric = Number(normalized)
+  if (Number.isNaN(numeric)) return ''
+  return numeric.toFixed(2)
 }
 
 const firstName = (value?: string | null) => {
@@ -140,6 +145,7 @@ const CATEGORY_OPTIONS: { value: WhatsappTemplateCategory; label: string }[] = [
   { value: 'citas', label: 'Citas' },
   { value: 'servicio', label: 'Servicio' },
   { value: 'cambio_repuestos', label: 'Cambio de repuestos' },
+  { value: 'campana', label: 'Campaña' },
 ]
 
 // --- COMPONENT ---
@@ -151,9 +157,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const configured = isSupabaseConfigured
 
-  const resolvedContact = useMemo<MessagingContact>(
-    () =>
-      contact ?? {
+  const resolvedContact = useMemo<MessagingContact>(() => {
+    if (!contact) {
+      return {
         nombre: '',
         telefono: null,
         email: null,
@@ -166,9 +172,20 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         estadoMorosidad: null,
         clienteId: null,
         leadId: null,
-      },
-    [contact]
-  )
+      }
+    }
+    const raw = contact as MessagingContact & Record<string, unknown>
+    return {
+      ...contact,
+      cuentaHycite: contact.cuentaHycite ?? (raw.hycite_id as string | null | undefined) ?? (raw.cuenta_hycite as string | null | undefined) ?? null,
+      saldoActual: contact.saldoActual ?? (raw.saldo_actual as number | string | null | undefined) ?? null,
+      montoMoroso: contact.montoMoroso ?? (raw.monto_moroso as number | string | null | undefined) ?? null,
+      diasAtraso: contact.diasAtraso ?? (raw.dias_atraso as number | null | undefined) ?? null,
+      estadoMorosidad: contact.estadoMorosidad ?? (raw.estado_morosidad as string | null | undefined) ?? null,
+    }
+  }, [contact])
+
+  const [hydratedContact, setHydratedContact] = useState<MessagingContact | null>(null)
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
@@ -206,40 +223,42 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     []
   )
 
+  const activeContact = hydratedContact ?? resolvedContact
+
   const variables = useMemo(() => {
-    const cliente = firstName(resolvedContact.nombre ?? '')
+    const cliente = firstName(activeContact.nombre ?? '')
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
-    const responsableNombre = resolvedContact.responsableNombre ?? currentUserName
-    const vendedorNombre = resolvedContact.vendedorNombre
-      ?? resolvedContact.vendedor
-      ?? resolvedContact.responsableNombre
+    const responsableNombre = activeContact.responsableNombre ?? currentUserName
+    const vendedorNombre = activeContact.vendedorNombre
+      ?? activeContact.vendedor
+      ?? activeContact.responsableNombre
       ?? currentUserName
       ?? ''
-    const recomendadoPorNombre = resolvedContact.recomendadoPorNombre ?? resolvedContact.recomendadoPor ?? ''
-    const vendedorTelefono = resolvedContact.vendedorTelefono
+    const recomendadoPorNombre = activeContact.recomendadoPorNombre ?? activeContact.recomendadoPor ?? ''
+    const vendedorTelefono = activeContact.vendedorTelefono
       ?? distributorPhone
       ?? currentUser?.telefono
       ?? ''
     return {
       cliente,
       nombre: cliente,
-      telefono: resolvedContact.telefono ?? '',
+      telefono: activeContact.telefono ?? '',
       vendedor_nombre: vendedorNombre,
       vendedor_telefono: vendedorTelefono,
       responsable_nombre: responsableNombre,
       recomendado_por_nombre: recomendadoPorNombre,
-      email: resolvedContact.email ?? '',
+      email: activeContact.email ?? '',
       organizacion: currentUser?.organizacion ?? '',
-      cuenta_hycite: resolvedContact.cuentaHycite ?? '',
-      saldo_actual: formatAmount(resolvedContact.saldoActual),
-      monto_moroso: formatAmount(resolvedContact.montoMoroso),
-      dias_atraso: resolvedContact.diasAtraso != null ? String(resolvedContact.diasAtraso) : '',
-      estado_morosidad: resolvedContact.estadoMorosidad ?? '',
-      fuente: resolvedContact.fuente ?? '',
-      programa: resolvedContact.programa ?? '',
-      ciudad: resolvedContact.ciudad ?? '',
+      cuenta_hycite: activeContact.cuentaHycite ?? '',
+      saldo_actual: formatAmount(activeContact.saldoActual),
+      monto_moroso: formatAmount(activeContact.montoMoroso),
+      dias_atraso: activeContact.diasAtraso != null ? String(activeContact.diasAtraso) : '',
+      estado_morosidad: activeContact.estadoMorosidad ?? '',
+      fuente: activeContact.fuente ?? '',
+      programa: activeContact.programa ?? '',
+      ciudad: activeContact.ciudad ?? '',
     }
-  }, [currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, resolvedContact])
+  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone])
 
   const loadUserTemplates = useCallback(() => {
     if (!open) return
@@ -288,6 +307,65 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   }, [open, loadDistributorPhone])
 
   useEffect(() => {
+    setHydratedContact(null)
+    if (!open) return
+    if (!configured) return
+    const clienteId = resolvedContact.clienteId
+    const needsHydration =
+      resolvedContact.saldoActual == null
+      || resolvedContact.montoMoroso == null
+      || resolvedContact.diasAtraso == null
+      || resolvedContact.estadoMorosidad == null
+      || !resolvedContact.cuentaHycite
+    if (!needsHydration) return
+    let cancelled = false
+    const load = async () => {
+      let data: unknown | null = null
+      if (clienteId) {
+        const response = await supabase
+          .from('clientes')
+          .select('saldo_actual, monto_moroso, dias_atraso, estado_morosidad, hycite_id')
+          .eq('id', clienteId)
+          .maybeSingle()
+        data = response.data ?? null
+      }
+      if (!data) {
+        const rawPhone = resolvedContact.telefono ?? ''
+        const phoneDigits = rawPhone ? sanitizePhone(rawPhone) : ''
+        if (phoneDigits.length >= 7) {
+          const response = await supabase
+            .from('clientes')
+            .select('saldo_actual, monto_moroso, dias_atraso, estado_morosidad, hycite_id')
+            .or(`telefono.ilike.%${phoneDigits}%,telefono_casa.ilike.%${phoneDigits}%`)
+            .limit(1)
+            .maybeSingle()
+          data = response.data ?? null
+        }
+      }
+      if (cancelled || !data) return
+      const row = data as {
+        saldo_actual?: number | string | null
+        monto_moroso?: number | string | null
+        dias_atraso?: number | null
+        estado_morosidad?: string | null
+        hycite_id?: string | null
+      }
+      setHydratedContact({
+        ...resolvedContact,
+        saldoActual: resolvedContact.saldoActual ?? row.saldo_actual ?? null,
+        montoMoroso: resolvedContact.montoMoroso ?? row.monto_moroso ?? null,
+        diasAtraso: resolvedContact.diasAtraso ?? row.dias_atraso ?? null,
+        estadoMorosidad: resolvedContact.estadoMorosidad ?? row.estado_morosidad ?? null,
+        cuentaHycite: resolvedContact.cuentaHycite ?? row.hycite_id ?? null,
+      })
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [configured, open, resolvedContact])
+
+  useEffect(() => {
     if (!open || !contact) return
     const preferred = initialTemplateId
       ? customTemplates.find((tmpl) => tmpl.id === initialTemplateId) ?? null
@@ -312,9 +390,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const channelLabel = t(`messaging.channel.${activeChannel}`)
   const hasContact = Boolean(contact)
   const canSendMessage = hasContact && message.trim().length > 0
-  const phoneValue = resolvedContact.telefono ? sanitizePhone(resolvedContact.telefono) : ''
+  const phoneValue = activeContact.telefono ? sanitizePhone(activeContact.telefono) : ''
   const hasPhone = phoneValue.length > 0
-  const hasEmail = Boolean(resolvedContact.email?.trim())
+  const hasEmail = Boolean(activeContact.email?.trim())
   const channelTabs: MessagingChannel[] = ['whatsapp', 'sms', 'email']
   const charCount = message.length
   const charOver = charCount > 1024
@@ -356,10 +434,16 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     setMessageType(inferredMessageType)
   }, [inferredMessageType, open])
 
+  const allTemplates = useMemo<CustomWhatsappTemplate[]>(() => {
+    const base: CustomWhatsappTemplate[] = baseTemplates.map((t) => ({ ...t, custom: false }))
+    const customIds = new Set(customTemplates.map((t) => t.id))
+    return [...base.filter((t) => !customIds.has(t.id)), ...customTemplates]
+  }, [customTemplates])
+
   const filteredTemplates = useMemo(() => {
-    if (categoryFilter === 'all') return customTemplates
-    return customTemplates.filter((template) => template.category === categoryFilter)
-  }, [customTemplates, categoryFilter])
+    if (categoryFilter === 'all') return allTemplates
+    return allTemplates.filter((template) => template.category === categoryFilter)
+  }, [allTemplates, categoryFilter])
 
   // --- VARIABLE INSERTION AT CURSOR ---
   const insertVariable = (variable: string) => {
@@ -468,7 +552,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       const senderName = buildSenderName()
       const messageTypeLabel = MESSAGE_TYPE_LABELS[messageType]
       const summary = `Mensaje ${channelLabel} (${messageTypeLabel})${senderName ? ` por ${senderName}` : ''}.`
-      const contactRef = getMessagingContactRef(resolvedContact)
+      const contactRef = getMessagingContactRef(activeContact)
 
       if (contactRef?.contacto_tipo === 'cliente') {
         const { error } = await supabase.from('notasrp').insert({
@@ -500,11 +584,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         }
       }
     },
-    [activeChannel, buildSenderName, channelLabel, messageType, resolvedContact, session?.user.id, showToast]
+    [activeChannel, activeContact, buildSenderName, channelLabel, messageType, session?.user.id, showToast]
   )
 
   const updateLeadContact = useCallback(async () => {
-    const contactRef = getMessagingContactRef(resolvedContact)
+    const contactRef = getMessagingContactRef(activeContact)
     if (contactRef?.contacto_tipo !== 'lead') return
     const { error } = await supabase
       .from('leads')
@@ -514,7 +598,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       })
       .eq('id', contactRef.contacto_id)
     if (error) showToast(error.message, 'error')
-  }, [resolvedContact, showToast])
+  }, [activeContact, showToast])
 
   const handleSend = async () => {
     if (!hasContact || !canSendMessage || warningMessage) return
@@ -542,19 +626,19 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           return
         }
       } else {
-        const url = resolvedContact.telefono ? buildWhatsappUrl(resolvedContact.telefono, finalMessage) : null
+        const url = activeContact.telefono ? buildWhatsappUrl(activeContact.telefono, finalMessage) : null
         if (url) window.open(url, '_blank', 'noopener,noreferrer')
       }
     }
     if (activeChannel === 'sms' && hasPhone) {
       window.open(`sms:${phoneValue}?&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
     }
-    if (activeChannel === 'email' && hasEmail && resolvedContact.email) {
+    if (activeChannel === 'email' && hasEmail && activeContact.email) {
       const subject = t('messaging.emailSubject')
-      window.open(`mailto:${resolvedContact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
+      window.open(`mailto:${activeContact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalMessage)}`, '_blank', 'noopener,noreferrer')
     }
     // Save to history
-    appendHistory({ contactName: resolvedContact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
+    appendHistory({ contactName: activeContact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
     await saveMessageLog(finalMessage, sentAt)
     await updateLeadContact()
     setSending(false)
@@ -663,7 +747,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
               marginTop: '0.65rem',
             }}
           >
-            MIS PLANTILLAS
+            PLANTILLAS
           </div>
 
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', padding: '0 0.75rem 0.5rem' }}>
@@ -705,7 +789,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           </div>
 
           {filteredTemplates.length === 0 && (
-            <div className="template-empty">No tienes plantillas guardadas.</div>
+            <div className="template-empty">No hay plantillas en esta categoría.</div>
           )}
           {filteredTemplates.map((template) =>
             editingTemplateId === template.id ? (
@@ -802,48 +886,62 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                         fontWeight: 700,
                         padding: '0.05rem 0.35rem',
                         borderRadius: '9999px',
-                        border: '1px solid rgba(16,185,129,0.35)',
-                        color: '#10b981',
+                        border: template.category === 'campana'
+                          ? '1px solid rgba(234,179,8,0.5)'
+                          : template.custom
+                          ? '1px solid rgba(16,185,129,0.35)'
+                          : '1px solid rgba(99,102,241,0.35)',
+                        color: template.category === 'campana'
+                          ? '#b45309'
+                          : template.custom
+                          ? '#10b981'
+                          : '#6366f1',
                       }}
                     >
-                      {CATEGORY_OPTIONS.find((c) => c.value === template.category)?.label ?? 'General'}
+                      {template.category === 'campana'
+                        ? '🎯 Campaña'
+                        : CATEGORY_OPTIONS.find((c) => c.value === template.category)?.label ?? 'General'}
                     </span>
-                    <button
-                      type="button"
-                      aria-label="Editar plantilla"
-                      title="Editar"
-                      onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: 'var(--color-text-muted, #6b7280)',
-                        fontSize: '0.7rem',
-                        padding: '0.1rem 0.25rem',
-                        lineHeight: 1,
-                        borderRadius: '0.2rem',
-                      }}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Eliminar plantilla"
-                      title="Eliminar"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: 'var(--color-text-muted, #6b7280)',
-                        fontSize: '0.75rem',
-                        padding: '0.1rem 0.25rem',
-                        lineHeight: 1,
-                        borderRadius: '0.2rem',
-                      }}
-                    >
-                      ✕
-                    </button>
+                    {template.custom && (
+                      <>
+                        <button
+                          type="button"
+                          aria-label="Editar plantilla"
+                          title="Editar"
+                          onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--color-text-muted, #6b7280)',
+                            fontSize: '0.7rem',
+                            padding: '0.1rem 0.25rem',
+                            lineHeight: 1,
+                            borderRadius: '0.2rem',
+                          }}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Eliminar plantilla"
+                          title="Eliminar"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--color-text-muted, #6b7280)',
+                            fontSize: '0.75rem',
+                            padding: '0.1rem 0.25rem',
+                            lineHeight: 1,
+                            borderRadius: '0.2rem',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 <span
