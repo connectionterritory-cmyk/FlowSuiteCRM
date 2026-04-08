@@ -4,7 +4,7 @@ export function nombreCompleto(c: Cliente): string {
   return [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre'
 }
 
-export function segmentoColor(dias: number | null, moroso: number | null): string {
+export function segmentoColor(dias: number | null, _moroso: number | null): string {
   if (!dias || dias <= 0) return '#10b981'
   if (dias >= 91) return '#7c3aed'
   if (dias >= 61) return '#dc2626'
@@ -12,7 +12,7 @@ export function segmentoColor(dias: number | null, moroso: number | null): strin
   return '#f59e0b'
 }
 
-export function segmentoLabel(dias: number | null, moroso: number | null): string {
+export function segmentoLabel(dias: number | null, _moroso: number | null): string {
   if (!dias || dias <= 0) return 'Al dia'
   if (dias >= 91) return '+90 dias'
   if (dias >= 61) return '61-90 dias'

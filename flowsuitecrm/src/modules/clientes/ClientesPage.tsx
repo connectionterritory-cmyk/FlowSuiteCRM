@@ -180,7 +180,7 @@ const getBirthMonth = (value: string | null): number | null => {
 }
 
 // Segmento de atraso basado en dias_atraso
-function segmentoAtraso(dias: number | null, moroso: number | null): string {
+function segmentoAtraso(dias: number | null, _moroso: number | null): string {
   if (!dias || dias <= 0) return 'Al día'
   if (dias >= 91) return '+90 días'
   if (dias >= 61) return '61-90 días'

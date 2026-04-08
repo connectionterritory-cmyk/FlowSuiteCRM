@@ -178,8 +178,8 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     return {
       ...contact,
       cuentaHycite: contact.cuentaHycite ?? (raw.hycite_id as string | null | undefined) ?? (raw.cuenta_hycite as string | null | undefined) ?? null,
-      saldoActual: contact.saldoActual ?? (raw.saldo_actual as number | string | null | undefined) ?? null,
-      montoMoroso: contact.montoMoroso ?? (raw.monto_moroso as number | string | null | undefined) ?? null,
+      saldoActual: contact.saldoActual ?? (raw.saldo_actual != null ? Number(raw.saldo_actual) : null),
+      montoMoroso: contact.montoMoroso ?? (raw.monto_moroso != null ? Number(raw.monto_moroso) : null),
       diasAtraso: contact.diasAtraso ?? (raw.dias_atraso as number | null | undefined) ?? null,
       estadoMorosidad: contact.estadoMorosidad ?? (raw.estado_morosidad as string | null | undefined) ?? null,
     }
@@ -352,8 +352,8 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       }
       setHydratedContact({
         ...resolvedContact,
-        saldoActual: resolvedContact.saldoActual ?? row.saldo_actual ?? null,
-        montoMoroso: resolvedContact.montoMoroso ?? row.monto_moroso ?? null,
+        saldoActual: resolvedContact.saldoActual ?? (row.saldo_actual != null ? Number(row.saldo_actual) : null),
+        montoMoroso: resolvedContact.montoMoroso ?? (row.monto_moroso != null ? Number(row.monto_moroso) : null),
         diasAtraso: resolvedContact.diasAtraso ?? row.dias_atraso ?? null,
         estadoMorosidad: resolvedContact.estadoMorosidad ?? row.estado_morosidad ?? null,
         cuentaHycite: resolvedContact.cuentaHycite ?? row.hycite_id ?? null,
