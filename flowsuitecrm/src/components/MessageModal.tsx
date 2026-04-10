@@ -253,6 +253,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [useEvolutionApi, setUseEvolutionApi] = useState(false)
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [cloudTemplates, setCloudTemplates] = useState<CloudTemplate[]>([])
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<'all' | WhatsappTemplateCategory>('all')
   const [newTemplateTitle, setNewTemplateTitle] = useState('')
   const [newTemplateCategory, setNewTemplateCategory] = useState<string>('general')
@@ -392,7 +393,12 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
   const loadUserTemplates = useCallback(async () => {
     if (!open) return
+    setTemplatesError(null)
     if (!configured) {
+      setCloudTemplates([])
+      return
+    }
+    if (!session?.user?.id) {
       setCloudTemplates([])
       return
     }
@@ -402,7 +408,14 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       .select('id, nombre, cuerpo, asunto, canal, category, scope, is_system, owner_id, org_id')
       .order('updated_at', { ascending: false })
     if (error) {
-      showToast(error.message, 'error')
+      const message = (error.message || '').toLowerCase()
+      if (message.includes('relation') && message.includes('message_templates')) {
+        setTemplatesError('Plantillas en la nube no disponibles (migración pendiente).')
+      } else if (error.code === '404' || error.code === 'PGRST404') {
+        setTemplatesError('Plantillas en la nube no disponibles.')
+      } else {
+        setTemplatesError('No se pudieron cargar las plantillas.')
+      }
       setCloudTemplates([])
       setTemplatesLoading(false)
       return
@@ -1191,17 +1204,19 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
             <div className="message-card-row"><span>Responsable</span><strong>{activeContact.responsableNombre ?? activeContact.vendedorNombre ?? '-'}</strong></div>
             <div className="message-card-row"><span>Última interacción</span><strong>—</strong></div>
           </div>
-          <div className="message-card">
+          <div className="message-card message-card-history">
             <div className="message-card-title">Historial reciente</div>
-            {contactRef ? (
-              <ContactoTimeline
-                contactoTipo={contactRef.contacto_tipo}
-                contactoId={contactRef.contacto_id}
-                emptyLabel="Sin historial reciente"
-              />
-            ) : (
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>Sin historial disponible.</div>
-            )}
+            <div className="message-history-wrap">
+              {contactRef ? (
+                <ContactoTimeline
+                  contactoTipo={contactRef.contacto_tipo}
+                  contactoId={contactRef.contacto_id}
+                  emptyLabel="Sin historial reciente"
+                />
+              ) : (
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>Sin historial disponible.</div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1310,6 +1325,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
 
             {templatesLoading && (
               <div className="template-empty">Cargando plantillas...</div>
+            )}
+            {!templatesLoading && templatesError && (
+              <div className="template-empty">{templatesError}</div>
             )}
             {!templatesLoading && filteredTemplates.length === 0 && (
               <div className="template-empty">No hay plantillas guardadas.</div>
