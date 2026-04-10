@@ -580,6 +580,14 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       ? 'Cliente'
       : 'Lead'
     : 'Contacto'
+  const saludFinanciera = useMemo(() => {
+    if (contactRef?.contacto_tipo !== 'cliente') return null
+    const saldo = activeContact.saldoActual ?? 0
+    const moroso = activeContact.montoMoroso ?? 0
+    if (moroso > 0) return `Moroso $${Number(moroso).toFixed(2)}`
+    if (saldo > 0) return `Saldo $${Number(saldo).toFixed(2)}`
+    return 'Cuenta al día'
+  }, [activeContact.montoMoroso, activeContact.saldoActual, contactRef?.contacto_tipo])
   const phoneValue = activeContact.telefono ? sanitizePhone(activeContact.telefono) : ''
   const hasPhone = phoneValue.length > 0
   const hasEmail = Boolean(activeContact.email?.trim())
@@ -1171,7 +1179,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         <div>
           <div className="message-modal-contact">{activeContact.nombre || 'Contacto'}</div>
           <div className="message-modal-context">
-            {contactContextLabel}{contactRef?.contacto_id ? ` · ${contactRef.contacto_id}` : ''}
+            {contactContextLabel}{saludFinanciera ? ` · ${saludFinanciera}` : ''}
           </div>
         </div>
         <div className="message-modal-recipient">
