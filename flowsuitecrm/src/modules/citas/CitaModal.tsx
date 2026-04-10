@@ -16,6 +16,7 @@ import {
   CONTACTO_TIPO_OPTIONS,
   ESTADO_OPTIONS,
   RESULTADO_OPTIONS,
+  TIMEZONE_OPTIONS,
   TAREA_TIPO_OPTIONS,
   TIPO_OPTIONS,
 } from './citaOptions'
@@ -30,9 +31,12 @@ type CitaModalProps = {
   assignedOptions?: AssignedOption[]
 }
 
+const DEFAULT_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles'
+
 const emptyForm: CitaForm = {
   owner_id: '',
   start_at: '',
+  timezone: DEFAULT_TIMEZONE,
   tipo: 'servicio',
   estado: 'programada',
   notas: '',
@@ -187,6 +191,9 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     if (!open) return
     userEditedRef.current = false
     const next = { ...emptyForm, ...initialData }
+    if (!next.timezone) {
+      next.timezone = DEFAULT_TIMEZONE
+    }
     if (!next.assigned_to) {
       next.assigned_to = assignedOptions[0]?.id ?? ''
     }
@@ -462,6 +469,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       response_id: form.response_id || null,
       resultado: form.resultado?.trim() || null,
       resultado_notas: form.resultado_notas?.trim() || null,
+      timezone: (form.timezone || DEFAULT_TIMEZONE).trim() || null,
     }
     const request = form.id
       ? supabase.from('citas').update(basePayload).eq('id', form.id).select('id').maybeSingle()
@@ -812,6 +820,22 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
             onChange={(event) => updateForm((prev) => ({ ...prev, zip: event.target.value }))}
             placeholder="12345"
           />
+        </label>
+        <label className="form-field">
+          <span>Zona horaria</span>
+          <select
+            value={form.timezone ?? DEFAULT_TIMEZONE}
+            onChange={(event) => updateForm((prev) => ({ ...prev, timezone: event.target.value }))}
+          >
+            {TIMEZONE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+            {form.timezone && !TIMEZONE_OPTIONS.some((option) => option.value === form.timezone) && (
+              <option value={form.timezone}>{`Otra (${form.timezone})`}</option>
+            )}
+          </select>
         </label>
         <label className="form-field">
           <span>Notas</span>

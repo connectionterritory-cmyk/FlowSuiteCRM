@@ -7,6 +7,7 @@ export type CitaForm = {
   id?: string
   owner_id?: string
   start_at: string
+  timezone?: string
   tipo: string
   estado: string
   notas: string
@@ -100,4 +101,13 @@ export const TAREA_PRIORIDAD_OPTIONS = [
   { value: 'baja', label: 'Baja' },
   { value: 'media', label: 'Media' },
   { value: 'alta', label: 'Alta' },
+]
+
+export const TIMEZONE_OPTIONS = [
+  { value: 'America/Los_Angeles', label: 'Los Angeles (PT)' },
+  { value: 'America/Denver', label: 'Denver (MT)' },
+  { value: 'America/Chicago', label: 'Chicago (CT)' },
+  { value: 'America/New_York', label: 'New York / Florida (ET)' },
+  { value: 'America/Bogota', label: 'Bogota (COT)' },
+  { value: 'America/Mexico_City', label: 'Ciudad de Mexico (CT)' },
 ]
