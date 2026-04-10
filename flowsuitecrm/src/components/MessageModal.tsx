@@ -5,9 +5,6 @@ import { Modal } from './Modal'
 import {
   buildWhatsappUrl,
   baseTemplates,
-  loadCustomTemplates,
-  saveCustomTemplates,
-  type CustomWhatsappTemplate,
   type WhatsappTemplateCategory,
 } from '../lib/whatsappTemplates'
 import {
@@ -23,6 +20,7 @@ import type { MessagingChannel, MessagingContact } from '../types/messaging'
 import { useUsers } from '../data/useUsers'
 import { useAuth } from '../auth/useAuth'
 import { getMessagingContactRef } from '../lib/contactRefs'
+import { ContactoTimeline } from './ContactoTimeline'
 
 type MessageModalProps = {
   open: boolean
@@ -34,44 +32,83 @@ type MessageModalProps = {
 
 const sanitizePhone = (value: string) => value.replace(/\D/g, '')
 
-// --- HISTORIAL ---
-const HISTORY_KEY = 'flowsuite.messaging.history'
-const MAX_HISTORY = 30
-
-type HistoryEntry = {
-  id: string
-  contactName: string
-  channel: MessagingChannel
-  message: string
-  sentAt: string
-}
-
-function loadHistory(): HistoryEntry[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = window.localStorage.getItem(HISTORY_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as HistoryEntry[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function appendHistory(entry: Omit<HistoryEntry, 'id'>): void {
-  if (typeof window === 'undefined') return
-  const prev = loadHistory()
-  const updated = [{ ...entry, id: `h_${Date.now()}` }, ...prev].slice(0, MAX_HISTORY)
-  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
-}
-
-
 type SystemTemplate = {
   id: string
   templateKey: string
   label: string
   message: string
   category: string
+}
+
+type CloudTemplate = {
+  id: string
+  nombre: string
+  cuerpo: string
+  asunto: string | null
+  canal: MessagingChannel | 'all'
+  category: string
+  scope: 'personal' | 'shared'
+  is_system?: boolean | null
+  owner_id?: string | null
+  org_id?: string | null
+}
+
+type UnifiedTemplate = {
+  id: string
+  label: string
+  message: string
+  subject?: string | null
+  category: string
+  channel: MessagingChannel
+  source: 'system' | 'cloud'
+  raw?: CloudTemplate
+}
+
+type LegacyTemplate = {
+  label: string
+  message: string
+  category: string
+  channel: MessagingChannel | 'all'
+  subject: string | null
+}
+
+const LEGACY_TEMPLATES_KEY = 'flowsuite.messaging.customTemplates'
+const LEGACY_MIGRATED_KEY = 'flowsuite.messaging.customTemplatesMigrated'
+
+const normalizeLegacyTemplate = (raw: Record<string, unknown>): LegacyTemplate | null => {
+  const label =
+    String(raw.label ?? raw.title ?? raw.nombre ?? raw.name ?? '').trim()
+  const message =
+    String(raw.message ?? raw.cuerpo ?? raw.content ?? raw.texto ?? '').trim()
+  if (!label || !message) return null
+  const category = String(raw.category ?? raw.categoria ?? raw.tipo ?? 'general').trim() || 'general'
+  const channelRaw = String(raw.canal ?? raw.channel ?? raw.canal_envio ?? '').trim().toLowerCase()
+  const channel = (channelRaw === 'whatsapp' || channelRaw === 'sms' || channelRaw === 'email' || channelRaw === 'telegram' || channelRaw === 'all')
+    ? channelRaw
+    : 'whatsapp'
+  const subject = String(raw.asunto ?? raw.subject ?? '').trim()
+  return {
+    label,
+    message,
+    category,
+    channel,
+    subject: subject || null,
+  }
+}
+
+const loadLegacyTemplates = (): LegacyTemplate[] => {
+  if (typeof window === 'undefined') return []
+  const raw = window.localStorage.getItem(LEGACY_TEMPLATES_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => (typeof item === 'object' && item ? normalizeLegacyTemplate(item as Record<string, unknown>) : null))
+      .filter((item): item is LegacyTemplate => Boolean(item))
+  } catch {
+    return []
+  }
 }
 
 type MessageType =
@@ -127,6 +164,13 @@ const MESSAGE_TYPE_LABELS: Record<MessageType, string> = {
   citas: 'Citas',
   servicio: 'Servicio',
   cambio_repuestos: 'Cambio de repuestos',
+}
+
+const CHANNEL_LABELS: Record<MessagingChannel, string> = {
+  whatsapp: 'WhatsApp',
+  sms: 'SMS',
+  email: 'Email',
+  telegram: 'Telegram',
 }
 
 const inferMessageTypeFromId = (templateId: string | null | undefined): MessageType => {
@@ -194,6 +238,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       montoMoroso: contact.montoMoroso ?? (raw.monto_moroso != null ? Number(raw.monto_moroso) : null),
       diasAtraso: contact.diasAtraso ?? (raw.dias_atraso as number | null | undefined) ?? null,
       estadoMorosidad: contact.estadoMorosidad ?? (raw.estado_morosidad as string | null | undefined) ?? null,
+      telegramChatId: (raw.telegram_chat_id as string | null | undefined) ?? (raw.telegramChatId as string | null | undefined) ?? null,
     }
   }, [contact])
 
@@ -205,22 +250,33 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [activeChannel, setActiveChannel] = useState<MessagingChannel>(channel)
   const [sending, setSending] = useState(false)
   const [useEvolutionApi, setUseEvolutionApi] = useState(false)
-
-  const [customTemplates, setCustomTemplates] = useState<CustomWhatsappTemplate[]>(() => loadCustomTemplates())
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [cloudTemplates, setCloudTemplates] = useState<CloudTemplate[]>([])
   const [categoryFilter, setCategoryFilter] = useState<'all' | WhatsappTemplateCategory>('all')
   const [newTemplateTitle, setNewTemplateTitle] = useState('')
-  const [newTemplateCategory, setNewTemplateCategory] = useState<WhatsappTemplateCategory>('general')
+  const [newTemplateCategory, setNewTemplateCategory] = useState<string>('general')
   const [messageType, setMessageType] = useState<MessageType>('general')
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
   const [editingTemplateTitle, setEditingTemplateTitle] = useState('')
   const [editingTemplateMessage, setEditingTemplateMessage] = useState('')
-  const [editingTemplateCategory, setEditingTemplateCategory] = useState<WhatsappTemplateCategory>('general')
+  const [editingTemplateCategory, setEditingTemplateCategory] = useState<string>('general')
+  const [editingTemplateSubject, setEditingTemplateSubject] = useState('')
+  const [pendingTemplate, setPendingTemplate] = useState<UnifiedTemplate | null>(null)
+  const [messageDirty, setMessageDirty] = useState(false)
+  const [subjectDirty, setSubjectDirty] = useState(false)
 
   const [distributorPhone, setDistributorPhone] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
   const [emailCategoryFilter, setEmailCategoryFilter] = useState<'all' | EmailTemplateCategory>('all')
-  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState<string | null>(null)
+  const [scheduledFor, setScheduledFor] = useState('')
+  const [fieldSearch, setFieldSearch] = useState('')
+
+  const [legacyTemplates, setLegacyTemplates] = useState<LegacyTemplate[]>([])
+  const [showLegacyImport, setShowLegacyImport] = useState(false)
+  const [legacyImporting, setLegacyImporting] = useState(false)
+  const [legacyImportError, setLegacyImportError] = useState<string | null>(null)
+  const [legacyImportSummary, setLegacyImportSummary] = useState<{ imported: number; skipped: number } | null>(null)
 
   const exampleTemplate = useMemo<SystemTemplate>(
     () => ({
@@ -277,10 +333,79 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     }
   }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, messageType])
 
-  const loadUserTemplates = useCallback(() => {
+  const systemTemplates = useMemo<UnifiedTemplate[]>(() => {
+    if (activeChannel === 'email') {
+      return emailTemplates.map((template) => ({
+        id: `sys_email_${template.id}`,
+        label: template.label,
+        message: template.message,
+        subject: template.subject,
+        category: template.category,
+        channel: 'email',
+        source: 'system',
+      }))
+    }
+    const base = baseTemplates.map((template) => ({
+      id: `sys_${template.id}`,
+      label: template.label,
+      message: template.message,
+      category: template.category,
+      channel: activeChannel,
+      source: 'system',
+    }))
+    return [
+      {
+        id: `sys_${exampleTemplate.id}`,
+        label: exampleTemplate.label,
+        message: exampleTemplate.message,
+        category: exampleTemplate.category,
+        channel: activeChannel,
+        source: 'system',
+      },
+      ...base,
+    ]
+  }, [activeChannel, exampleTemplate])
+
+  const cloudTemplatesForChannel = useMemo<UnifiedTemplate[]>(() => {
+    const filtered = cloudTemplates.filter((template) =>
+      template.canal === activeChannel || template.canal === 'all'
+    )
+    return filtered.map((template) => ({
+      id: template.id,
+      label: template.nombre,
+      message: template.cuerpo,
+      subject: template.asunto,
+      category: template.category,
+      channel: template.canal === 'all' ? activeChannel : (template.canal as MessagingChannel),
+      source: 'cloud',
+      raw: template,
+    }))
+  }, [activeChannel, cloudTemplates])
+
+  const templatesForChannel = useMemo<UnifiedTemplate[]>(() => {
+    return [...systemTemplates, ...cloudTemplatesForChannel]
+  }, [cloudTemplatesForChannel, systemTemplates])
+
+  const loadUserTemplates = useCallback(async () => {
     if (!open) return
-    setCustomTemplates(loadCustomTemplates())
-  }, [open])
+    if (!configured) {
+      setCloudTemplates([])
+      return
+    }
+    setTemplatesLoading(true)
+    const { data, error } = await supabase
+      .from('message_templates')
+      .select('id, nombre, cuerpo, asunto, canal, category, scope, is_system, owner_id, org_id')
+      .order('updated_at', { ascending: false })
+    if (error) {
+      showToast(error.message, 'error')
+      setCloudTemplates([])
+      setTemplatesLoading(false)
+      return
+    }
+    setCloudTemplates((data as CloudTemplate[] | null) ?? [])
+    setTemplatesLoading(false)
+  }, [configured, open, showToast])
 
   const loadDistributorPhone = useCallback(async () => {
     if (!open) return
@@ -314,8 +439,20 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   useEffect(() => {
     if (!open) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadUserTemplates()
+    void loadUserTemplates()
   }, [open, loadUserTemplates])
+
+  useEffect(() => {
+    if (!open) return
+    if (!configured || !session?.user.id) return
+    if (typeof window === 'undefined') return
+    const migrated = window.localStorage.getItem(LEGACY_MIGRATED_KEY)
+    if (migrated === 'true') return
+    const legacy = loadLegacyTemplates()
+    if (legacy.length === 0) return
+    setLegacyTemplates(legacy)
+    setShowLegacyImport(true)
+  }, [configured, open, session?.user.id])
 
   useEffect(() => {
     if (!open) return
@@ -385,18 +522,27 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   useEffect(() => {
     if (!open || !contact) return
     const preferred = initialTemplateId
-      ? customTemplates.find((tmpl) => tmpl.id === initialTemplateId) ?? null
+      ? templatesForChannel.find((tmpl) => tmpl.id === initialTemplateId) ?? null
       : null
     if (preferred) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedTemplateId(preferred.id)
       setMessage(canonicalizeTemplate(preferred.message))
-    } else {
-      setSelectedTemplateId(exampleTemplate.templateKey)
-      setMessage(canonicalizeTemplate(exampleTemplate.message))
+      if (preferred.subject && activeChannel === 'email') {
+        setEmailSubject(preferred.subject)
+      }
+    } else if (templatesForChannel.length > 0) {
+      const fallbackTemplate = templatesForChannel[0]
+      setSelectedTemplateId(fallbackTemplate.id)
+      setMessage(canonicalizeTemplate(fallbackTemplate.message))
+      if (fallbackTemplate.subject && activeChannel === 'email') {
+        setEmailSubject(fallbackTemplate.subject)
+      }
     }
     setImageUrl('')
-  }, [open, contact, initialTemplateId, exampleTemplate, customTemplates])
+    setMessageDirty(false)
+    setSubjectDirty(false)
+  }, [activeChannel, contact, initialTemplateId, open, templatesForChannel])
 
   useEffect(() => {
     if (!open) return
@@ -404,46 +550,68 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     setActiveChannel(channel)
   }, [channel, open])
 
-  const channelLabel = t(`messaging.channel.${activeChannel}`)
+  const channelLabel = CHANNEL_LABELS[activeChannel] ?? activeChannel
   const hasContact = Boolean(contact)
   const canSendMessage = hasContact && message.trim().length > 0
+  const contactRef = getMessagingContactRef(activeContact)
+  const contactContextLabel = contactRef
+    ? contactRef.contacto_tipo === 'cliente'
+      ? 'Cliente'
+      : 'Lead'
+    : 'Contacto'
   const phoneValue = activeContact.telefono ? sanitizePhone(activeContact.telefono) : ''
   const hasPhone = phoneValue.length > 0
   const hasEmail = Boolean(activeContact.email?.trim())
-  const channelTabs: MessagingChannel[] = ['whatsapp', 'sms', 'email']
+  const telegramChatId = (activeContact as { telegramChatId?: string | null } | null)?.telegramChatId ?? null
+  const hasTelegram = Boolean(telegramChatId)
+  const telegramEnabled = false
+  const channelTabs: MessagingChannel[] = ['whatsapp', 'sms', 'email', 'telegram']
   const charCount = message.length
   const charOver = charCount > 1024
   const charCaution = charCount > 800 && !charOver
+  const smsSegmentSize = /[^\x00-\x7F]/.test(message) ? 70 : 160
+  const smsSegments = charCount > 0 ? Math.ceil(charCount / smsSegmentSize) : 0
 
   const warningMessage =
     activeChannel === 'email'
       ? !hasEmail
         ? t('messaging.emailMissing')
         : null
+      : activeChannel === 'telegram'
+        ? !telegramEnabled
+          ? 'Telegram aún no está habilitado para envío desde CRM.'
+          : !hasTelegram
+            ? 'Este contacto no tiene Telegram vinculado.'
+            : null
       : !hasPhone
         ? t('messaging.phoneMissing')
         : null
 
   const inferredMessageType = useMemo<MessageType>(() => {
-    const customTemplate = customTemplates.find((template) => template.id === selectedTemplateId) ?? null
-    const category = customTemplate?.category
+    const selectedTemplate = templatesForChannel.find((template) => template.id === selectedTemplateId) ?? null
+    const category = selectedTemplate?.category
     if (category && category in MESSAGE_TYPE_LABELS) {
       return category as MessageType
     }
     return inferMessageTypeFromId(selectedTemplateId ?? initialTemplateId)
-  }, [customTemplates, initialTemplateId, selectedTemplateId])
+  }, [templatesForChannel, initialTemplateId, selectedTemplateId])
 
   const resolvedMessage = useMemo(() => resolveTemplate(message, variables), [message, variables])
   const missingPlaceholders = resolvedMessage.missing
 
   const placeholderGroups = useMemo(() => {
+    const term = fieldSearch.trim().toLowerCase()
     const map = new Map<string, { label: string; token: string }[]>()
     PLACEHOLDER_OPTIONS.forEach((option) => {
+      const matches = !term
+        || option.label.toLowerCase().includes(term)
+        || option.token.toLowerCase().includes(term)
+      if (!matches) return
       if (!map.has(option.group)) map.set(option.group, [])
       map.get(option.group)!.push({ label: option.label, token: option.token })
     })
     return Array.from(map.entries())
-  }, [])
+  }, [fieldSearch])
 
   useEffect(() => {
     if (!open) return
@@ -451,110 +619,291 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     setMessageType(inferredMessageType)
   }, [inferredMessageType, open])
 
-  const allTemplates = useMemo<CustomWhatsappTemplate[]>(() => {
-    const base: CustomWhatsappTemplate[] = baseTemplates.map((t) => ({ ...t, custom: false }))
-    const customIds = new Set(customTemplates.map((t) => t.id))
-    return [...base.filter((t) => !customIds.has(t.id)), ...customTemplates]
-  }, [customTemplates])
-
   const filteredTemplates = useMemo(() => {
-    if (categoryFilter === 'all') return allTemplates
-    return allTemplates.filter((template) => template.category === categoryFilter)
-  }, [allTemplates, categoryFilter])
+    const base = templatesForChannel.filter((template) => template.source === 'cloud')
+    if (activeChannel === 'email') {
+      return base.filter((template) =>
+        emailCategoryFilter === 'all' || template.category === emailCategoryFilter
+      )
+    }
+    if (categoryFilter === 'all') return base
+    return base.filter((template) => template.category === categoryFilter)
+  }, [activeChannel, categoryFilter, emailCategoryFilter, templatesForChannel])
+
+  const selectedTemplate = useMemo(() => {
+    return templatesForChannel.find((template) => template.id === selectedTemplateId) ?? null
+  }, [templatesForChannel, selectedTemplateId])
 
   // --- VARIABLE INSERTION AT CURSOR ---
   const insertVariable = (variable: string) => {
     const textarea = textareaRef.current
     if (!textarea) {
       setMessage((prev) => prev + variable)
+      setMessageDirty(true)
       return
     }
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
     const next = message.slice(0, start) + variable + message.slice(end)
     setMessage(next)
+    setMessageDirty(true)
     setTimeout(() => {
       textarea.focus()
       textarea.setSelectionRange(start + variable.length, start + variable.length)
     }, 0)
   }
 
-  // --- CUSTOM TEMPLATE SELECT ---
-  const handleSelectCustom = (template: CustomWhatsappTemplate) => {
-    setSelectedTemplateId(template.id)
-    setMessage(template.message ? canonicalizeTemplate(template.message) : '')
-  }
-
-  const handleSelectExample = () => {
-    setSelectedTemplateId(exampleTemplate.templateKey)
-    setMessage(canonicalizeTemplate(exampleTemplate.message))
-  }
-
-  const handleSaveTemplate = () => {
-    const title = newTemplateTitle.trim()
-    if (!title || !message.trim()) return
-    setSavingTemplate(true)
-    const newTemplate: CustomWhatsappTemplate = {
-      id: `custom_${Date.now()}`,
-      label: title,
-      message: message.trim(),
-      category: newTemplateCategory,
-      custom: true,
+  const applyTemplate = (template: UnifiedTemplate, mode: 'replace' | 'insert') => {
+    const nextMessage = canonicalizeTemplate(template.message || '')
+    if (mode === 'replace') {
+      setMessage(nextMessage)
+      if (activeChannel === 'email') {
+        setEmailSubject(template.subject ?? '')
+      }
+      setMessageDirty(false)
+      setSubjectDirty(false)
+    } else {
+      const combined = message.trim()
+        ? `${message.trim()}\n\n${nextMessage}`.trim()
+        : nextMessage
+      setMessage(combined)
+      if (activeChannel === 'email' && !emailSubject.trim() && template.subject) {
+        setEmailSubject(template.subject)
+      }
+      setMessageDirty(true)
     }
-    const updated = [...customTemplates, newTemplate]
-    setCustomTemplates(updated)
-    saveCustomTemplates(updated)
-    setSelectedTemplateId(newTemplate.id)
+    setSelectedTemplateId(template.id)
+    setPendingTemplate(null)
+  }
+
+  const handleSelectTemplate = (template: UnifiedTemplate) => {
+    if ((messageDirty || subjectDirty) && template.id !== selectedTemplateId) {
+      setPendingTemplate(template)
+      return
+    }
+    applyTemplate(template, 'replace')
+  }
+
+  const handleSaveTemplate = async () => {
+    const title = newTemplateTitle.trim()
+    const body = message.trim()
+    if (!title || !body) return
+    if (!configured || !session?.user.id) {
+      showToast('Configura Supabase para guardar plantillas.', 'error')
+      return
+    }
+    setSavingTemplate(true)
+    const payload = {
+      owner_id: session.user.id,
+      org_id: currentUser?.organizacion ?? null,
+      canal: activeChannel,
+      nombre: title,
+      asunto: activeChannel === 'email' ? (emailSubject.trim() || null) : null,
+      cuerpo: body,
+      category: newTemplateCategory,
+      scope: 'personal',
+    }
+    const { error } = await supabase.from('message_templates').insert(payload)
+    if (error) {
+      showToast(error.message, 'error')
+      setSavingTemplate(false)
+      return
+    }
     showToast('Plantilla guardada')
     setNewTemplateTitle('')
     setNewTemplateCategory('general')
     setSavingTemplate(false)
+    void loadUserTemplates()
   }
 
-  const handleStartEdit = (template: CustomWhatsappTemplate) => {
+  const handleStartEdit = (template: UnifiedTemplate) => {
+    if (template.source !== 'cloud' || !template.raw) return
     setEditingTemplateId(template.id)
     setEditingTemplateTitle(template.label)
     setEditingTemplateMessage(template.message)
-    setEditingTemplateCategory((template.category || 'general') as WhatsappTemplateCategory)
+    setEditingTemplateSubject(template.subject ?? '')
+    setEditingTemplateCategory(template.category || 'general')
   }
 
   const handleCancelEdit = () => {
     setEditingTemplateId(null)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingTemplateId || !editingTemplateTitle.trim()) return
-    const updated = customTemplates.map((template) =>
-      template.id === editingTemplateId
-        ? {
-            ...template,
-            label: editingTemplateTitle.trim(),
-            message: editingTemplateMessage.trim(),
-            category: editingTemplateCategory,
-          }
-        : template
-    )
-    setCustomTemplates(updated)
-    saveCustomTemplates(updated)
+    if (!configured) {
+      showToast('Configura Supabase para editar plantillas.', 'error')
+      return
+    }
+    const { error } = await supabase
+      .from('message_templates')
+      .update({
+        nombre: editingTemplateTitle.trim(),
+        cuerpo: editingTemplateMessage.trim(),
+        asunto: activeChannel === 'email' ? (editingTemplateSubject.trim() || null) : null,
+        category: editingTemplateCategory,
+      })
+      .eq('id', editingTemplateId)
+    if (error) {
+      showToast(error.message, 'error')
+      return
+    }
     if (selectedTemplateId === editingTemplateId) {
       setMessage(canonicalizeTemplate(editingTemplateMessage.trim()))
     }
     setEditingTemplateId(null)
     showToast('Plantilla actualizada')
+    void loadUserTemplates()
   }
 
-  const handleDeleteTemplate = (template: CustomWhatsappTemplate) => {
+  const handleDuplicateTemplate = async (template: UnifiedTemplate) => {
+    if (!configured || !session?.user.id) return
+    const title = `Copia de ${template.label}`
+    const payload = {
+      owner_id: session.user.id,
+      org_id: currentUser?.organizacion ?? null,
+      canal: activeChannel,
+      nombre: title,
+      asunto: template.subject ?? null,
+      cuerpo: template.message,
+      category: template.category,
+      scope: 'personal',
+    }
+    const { error } = await supabase.from('message_templates').insert(payload)
+    if (error) {
+      showToast(error.message, 'error')
+      return
+    }
+    showToast('Plantilla duplicada')
+    void loadUserTemplates()
+  }
+
+  const handleDeleteTemplate = async (template: UnifiedTemplate) => {
+    if (template.source !== 'cloud') return
     const ok = window.confirm(`Eliminar la plantilla "${template.label}"?`)
     if (!ok) return
-    const updated = customTemplates.filter((item) => item.id !== template.id)
-    setCustomTemplates(updated)
-    saveCustomTemplates(updated)
+    const { error } = await supabase.from('message_templates').delete().eq('id', template.id)
+    if (error) {
+      showToast(error.message, 'error')
+      return
+    }
     if (selectedTemplateId === template.id) {
-      setSelectedTemplateId(exampleTemplate.templateKey)
-      setMessage(canonicalizeTemplate(exampleTemplate.message))
+      setSelectedTemplateId(null)
     }
     showToast('Plantilla eliminada')
+    void loadUserTemplates()
   }
+
+  const handleImportLegacyTemplates = async () => {
+    if (!configured || !session?.user.id) return
+    if (legacyTemplates.length === 0) return
+    setLegacyImporting(true)
+    setLegacyImportError(null)
+    setLegacyImportSummary(null)
+
+    const existing = cloudTemplates
+    const existingNames = new Set(existing.map((t) => t.nombre.trim().toLowerCase()))
+    const existingSignatures = new Set(
+      existing.map((t) =>
+        `${t.canal}|${t.asunto ?? ''}|${t.cuerpo}`.toLowerCase()
+      )
+    )
+
+    let imported = 0
+    let skipped = 0
+    let failed = 0
+
+    const ensureUniqueName = (base: string) => {
+      let name = base
+      let suffix = 0
+      while (existingNames.has(name.toLowerCase())) {
+        suffix += 1
+        name = suffix === 1 ? `${base} (importado)` : `${base} (importado ${suffix})`
+      }
+      existingNames.add(name.toLowerCase())
+      return name
+    }
+
+    for (const legacy of legacyTemplates) {
+      const signature = `${legacy.channel}|${legacy.subject ?? ''}|${legacy.message}`.toLowerCase()
+      if (existingSignatures.has(signature)) {
+        skipped += 1
+        continue
+      }
+      const name = ensureUniqueName(legacy.label)
+      const payload = {
+        owner_id: session.user.id,
+        org_id: currentUser?.organizacion ?? null,
+        canal: legacy.channel,
+        nombre: name,
+        asunto: legacy.subject,
+        cuerpo: legacy.message,
+        category: legacy.category || 'general',
+        scope: 'personal',
+      }
+      const { error } = await supabase.from('message_templates').insert(payload)
+      if (error) {
+        failed += 1
+      } else {
+        imported += 1
+        existingSignatures.add(signature)
+      }
+    }
+
+    setLegacyImporting(false)
+
+    if (failed > 0) {
+      setLegacyImportError(`No se pudieron importar ${failed} plantilla(s). Puedes reintentar.`)
+      setLegacyImportSummary({ imported, skipped })
+      return
+    }
+
+    setLegacyImportSummary({ imported, skipped })
+    setShowLegacyImport(false)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LEGACY_MIGRATED_KEY, 'true')
+    }
+    void loadUserTemplates()
+  }
+
+  const handleSkipLegacyImport = () => {
+    setShowLegacyImport(false)
+  }
+
+  const saveOutboxMessage = useCallback(async (status: 'borrador' | 'programado' | 'enviado' | 'fallido' | 'cancelado', extra?: {
+    scheduled_for?: string | null
+    sent_at?: string | null
+    failed_at?: string | null
+    error_message?: string | null
+  }) => {
+    if (!configured || !session?.user.id) return
+    const contactRef = getMessagingContactRef(activeContact)
+    const destinatario =
+      activeChannel === 'email'
+        ? activeContact.email ?? null
+        : activeChannel === 'telegram'
+          ? telegramChatId
+          : phoneValue || null
+    const templateId = selectedTemplate?.source === 'cloud' ? selectedTemplate.id : null
+    const payload = {
+      owner_id: session.user.id,
+      org_id: currentUser?.organizacion ?? null,
+      contact_tipo: contactRef?.contacto_tipo ?? null,
+      contact_id: contactRef?.contacto_id ?? null,
+      canal: activeChannel,
+      destinatario,
+      asunto: activeChannel === 'email' ? (emailSubject.trim() || null) : null,
+      mensaje: message.trim(),
+      mensaje_resuelto: resolvedMessage.text.trim(),
+      template_id: templateId,
+      status,
+      scheduled_for: extra?.scheduled_for ?? null,
+      sent_at: extra?.sent_at ?? null,
+      failed_at: extra?.failed_at ?? null,
+      error_message: extra?.error_message ?? null,
+    }
+    await supabase.from('outbox_messages').insert(payload)
+  }, [activeChannel, activeContact, configured, currentUser?.organizacion, emailSubject, message, phoneValue, resolvedMessage.text, selectedTemplate, session?.user.id, telegramChatId])
 
   // --- SEND ---
   const buildSenderName = useCallback(() => {
@@ -600,6 +949,25 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           showToast(error.message, 'error')
         }
       }
+
+      if (contactRef) {
+        const { error: activityError } = await supabase.from('contacto_actividades').insert({
+          contacto_tipo: contactRef.contacto_tipo,
+          contacto_id: contactRef.contacto_id,
+          tipo: 'mensaje',
+          resumen: summary,
+          contenido: finalMessage,
+          metadata: {
+            canal: activeChannel,
+            tipo_mensaje: messageType,
+          },
+          autor_id: senderId,
+          fecha_actividad: sentAt,
+        })
+        if (activityError) {
+          showToast(activityError.message, 'error')
+        }
+      }
     },
     [activeChannel, activeContact, buildSenderName, channelLabel, messageType, session?.user.id, showToast]
   )
@@ -625,6 +993,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       : resolvedMessage.text
     const sentAt = new Date().toISOString()
     try {
+      if (activeChannel === 'telegram') {
+        showToast('Telegram no está disponible para envío desde el CRM.', 'error')
+        await saveOutboxMessage('fallido', { failed_at: sentAt, error_message: 'Telegram no habilitado' })
+        return
+      }
       if (activeChannel === 'whatsapp') {
         if (useEvolutionApi && configured) {
           try {
@@ -640,6 +1013,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           } catch (error) {
             const message = error instanceof Error ? error.message : 'No se pudo enviar el mensaje.'
             showToast(message, 'error')
+            await saveOutboxMessage('fallido', { failed_at: sentAt, error_message: message })
             return
           }
         } else {
@@ -653,6 +1027,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       if (activeChannel === 'email' && hasEmail && activeContact.email) {
         if (!isSupabaseConfigured || !session?.access_token) {
           showToast('Configura Supabase e inicia sesion para enviar correos.', 'error')
+          await saveOutboxMessage('fallido', { failed_at: sentAt, error_message: 'Supabase no configurado' })
           return
         }
 
@@ -675,33 +1050,58 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         if (error || (data as { error?: string } | null)?.error) {
           const message = error?.message || (data as { error?: string } | null)?.error || 'No se pudo enviar el correo.'
           showToast(message, 'error')
+          await saveOutboxMessage('fallido', { failed_at: sentAt, error_message: message })
           return
         }
 
         showToast('Correo enviado')
       }
 
-      appendHistory({ contactName: activeContact.nombre, channel: activeChannel, message: finalMessage, sentAt: new Date().toISOString() })
       await saveMessageLog(finalMessage, sentAt)
       await updateLeadContact()
+      await saveOutboxMessage('enviado', { sent_at: sentAt })
     } finally {
       setSending(false)
     }
   }
 
+  const handleSaveDraft = async () => {
+    if (!message.trim()) return
+    await saveOutboxMessage('borrador')
+    showToast('Borrador guardado')
+    setMessageDirty(false)
+    setSubjectDirty(false)
+  }
+
+  const handleSchedule = async () => {
+    if (!scheduledFor) {
+      showToast('Selecciona fecha y hora para programar.', 'error')
+      return
+    }
+    const scheduledIso = new Date(scheduledFor).toISOString()
+    await saveOutboxMessage('programado', { scheduled_for: scheduledIso })
+    showToast('Envío programado')
+  }
+
   return (
     <Modal
       open={open}
-      title={t('messaging.title', { channel: channelLabel })}
-      description={t('messaging.subtitle')}
+      title="Enviar mensaje"
+      description=""
       onClose={onClose}
       actions={
         <>
           <Button variant="ghost" type="button" onClick={onClose}>
             {t('common.cancel')}
           </Button>
+          <Button variant="ghost" type="button" onClick={handleSaveDraft} disabled={!message.trim()}>
+            Guardar borrador
+          </Button>
+          <Button variant="ghost" type="button" onClick={handleSchedule} disabled={!message.trim() || !scheduledFor}>
+            Programar
+          </Button>
           <Button type="button" onClick={handleSend} disabled={!canSendMessage || Boolean(warningMessage) || sending || charOver}>
-            {sending ? t('common.saving') : t('messaging.send')}
+            {sending ? t('common.saving') : 'Enviar'}
           </Button>
         </>
       }
@@ -711,6 +1111,20 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           Selecciona un contacto para enviar el mensaje.
         </div>
       )}
+      {/* HEADER */}
+      <div className="message-modal-header">
+        <div>
+          <div className="message-modal-contact">{activeContact.nombre || 'Contacto'}</div>
+          <div className="message-modal-context">
+            {contactContextLabel}{contactRef?.contacto_id ? ` · ${contactRef.contacto_id}` : ''}
+          </div>
+        </div>
+        <div className="message-modal-recipient">
+          <div>Destinatario</div>
+          <span>{activeChannel === 'email' ? (activeContact.email ?? '-') : (activeContact.telefono ?? '-')}</span>
+        </div>
+      </div>
+
       {/* CANAL TABS */}
       <div className="template-tabs messaging-tabs">
         {channelTabs.map((tab) => (
@@ -720,569 +1134,416 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
             className={`template-tab ${activeChannel === tab ? 'active' : ''}`.trim()}
             onClick={() => setActiveChannel(tab)}
           >
-            {t(`messaging.channel.${tab}`)}
+            {CHANNEL_LABELS[tab] ?? tab}
           </button>
         ))}
       </div>
 
-      <div className="template-grid">
-        {/* PANEL IZQUIERDO — TEMPLATES + HISTORIAL */}
-        <div className="template-list">
-          <div
-            style={{
-              padding: '0.45rem 0.75rem 0.35rem',
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted, #6b7280)',
-              letterSpacing: '0.05em',
-              borderBottom: '1px solid var(--color-border, #e5e7eb)',
-            }}
-          >
-            EJEMPLO
+      <div className="message-modal-grid">
+        {/* COLUMNA IZQUIERDA */}
+        <div className="message-sidebar">
+          <div className="message-card">
+            <div className="message-card-title">Contacto</div>
+            <div className="message-card-row"><span>Teléfono</span><strong>{activeContact.telefono ?? '-'}</strong></div>
+            <div className="message-card-row"><span>Email</span><strong>{activeContact.email ?? '-'}</strong></div>
+            <div className="message-card-row"><span>Responsable</span><strong>{activeContact.responsableNombre ?? activeContact.vendedorNombre ?? '-'}</strong></div>
+            <div className="message-card-row"><span>Última interacción</span><strong>—</strong></div>
           </div>
-          <div
-            className={`template-item ${selectedTemplateId === exampleTemplate.templateKey ? 'active' : ''}`}
-            onClick={handleSelectExample}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectExample() }
-            }}
-          >
-            <div
-              className="template-item-header"
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}
-            >
-              <span className="template-title">{exampleTemplate.label}</span>
-              <span
-                style={{
-                  fontSize: '0.6rem',
-                  fontWeight: 700,
-                  padding: '0.05rem 0.35rem',
-                  borderRadius: '9999px',
-                  border: '1px solid rgba(59,130,246,0.35)',
-                  color: '#3b82f6',
-                }}
-              >
-                Base
-              </span>
+          <div className="message-card">
+            <div className="message-card-title">Historial reciente</div>
+            {contactRef ? (
+              <ContactoTimeline
+                contactoTipo={contactRef.contacto_tipo}
+                contactoId={contactRef.contacto_id}
+                emptyLabel="Sin historial reciente"
+              />
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>Sin historial disponible.</div>
+            )}
+          </div>
+        </div>
+
+        {/* COLUMNA CENTRAL */}
+        <div className="message-center">
+          {showLegacyImport && (
+            <div className="message-card">
+              <div className="message-card-title">Importar plantillas locales</div>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Encontramos plantillas guardadas localmente. ¿Quieres importarlas a tu cuenta?
+              </p>
+              {legacyImportSummary && (
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Importadas: {legacyImportSummary.imported} · Omitidas: {legacyImportSummary.skipped}
+                </p>
+              )}
+              {legacyImportError && (
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#d97706' }}>
+                  {legacyImportError}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Button type="button" onClick={handleImportLegacyTemplates} disabled={legacyImporting || templatesLoading}>
+                  {legacyImporting ? 'Importando...' : 'Importar'}
+                </Button>
+                <Button variant="ghost" type="button" onClick={handleSkipLegacyImport} disabled={legacyImporting}>
+                  Omitir por ahora
+                </Button>
+              </div>
             </div>
-            <span
-              className="template-snippet"
-              style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-                  {buildSubtitle(resolveTemplate(exampleTemplate.message, variables).text)}
-            </span>
-          </div>
-          <div
-            className="template-empty"
-            style={{ marginTop: '0.5rem', lineHeight: 1.5 }}
-          >
-            Usa este ejemplo como base. Edita el texto a la derecha y agrega variables con un clic.
-          </div>
-
-          <div
-            style={{
-              padding: '0.6rem 0.75rem 0.35rem',
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted, #6b7280)',
-              letterSpacing: '0.05em',
-              borderTop: '1px solid var(--color-border, #e5e7eb)',
-              marginTop: '0.65rem',
-            }}
-          >
-            PLANTILLAS
-          </div>
-
-          {/* EMAIL TEMPLATES */}
-          {activeChannel === 'email' && (
-            <>
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', padding: '0 0.75rem 0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setEmailCategoryFilter('all')}
-                  style={{
-                    padding: '0.2rem 0.55rem',
-                    borderRadius: '9999px',
-                    border: `1px solid ${emailCategoryFilter === 'all' ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
-                    background: emailCategoryFilter === 'all' ? 'rgba(59,130,246,0.12)' : 'transparent',
-                    color: emailCategoryFilter === 'all' ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
-                    fontSize: '0.7rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
+          )}
+          <div className="message-card">
+            <div className="message-card-title">Plantillas</div>
+            <div className="message-section-label">Sistema</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {systemTemplates.map((template) => (
+                <div
+                  key={template.id}
+                  className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
+                  onClick={() => handleSelectTemplate(template)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectTemplate(template) }
                   }}
                 >
-                  Todas
-                </button>
+                  <div className="template-item-header">
+                    <span className="template-title">{template.label}</span>
+                    <span className="message-badge">Base</span>
+                  </div>
+                  <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="message-section-label" style={{ marginTop: '0.75rem' }}>Mis plantillas</div>
+            {activeChannel === 'email' && (
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
+                <button type="button" onClick={() => setEmailCategoryFilter('all')} className={`message-filter ${emailCategoryFilter === 'all' ? 'active' : ''}`}>Todas</button>
                 {EMAIL_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setEmailCategoryFilter(cat)}
-                    style={{
-                      padding: '0.2rem 0.55rem',
-                      borderRadius: '9999px',
-                      border: `1px solid ${emailCategoryFilter === cat ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
-                      background: emailCategoryFilter === cat ? 'rgba(59,130,246,0.12)' : 'transparent',
-                      color: emailCategoryFilter === cat ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
+                  <button key={cat} type="button" onClick={() => setEmailCategoryFilter(cat)} className={`message-filter ${emailCategoryFilter === cat ? 'active' : ''}`}>
                     {EMAIL_CATEGORY_LABELS[cat]}
                   </button>
                 ))}
               </div>
-              {emailTemplates
-                .filter((t) => emailCategoryFilter === 'all' || t.category === emailCategoryFilter)
-                .map((template) => (
-                  <div
-                    key={template.id}
-                    className={`template-item ${selectedEmailTemplateId === template.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedEmailTemplateId(template.id)
-                      setEmailSubject(resolveTemplate(template.subject, variables).text)
-                      setMessage(canonicalizeTemplate(template.message))
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedEmailTemplateId(template.id)
-                        setEmailSubject(resolveTemplate(template.subject, variables).text)
-                        setMessage(canonicalizeTemplate(template.message))
-                      }
-                    }}
-                  >
-                    <div className="template-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}>
-                      <span className="template-title">{template.label}</span>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.05rem 0.35rem', borderRadius: '9999px', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981' }}>
-                        {EMAIL_CATEGORY_LABELS[template.category]}
-                      </span>
-                    </div>
-                    <span className="template-snippet" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {template.subject}
-                    </span>
-                  </div>
+            )}
+            {activeChannel !== 'email' && (
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
+                <button type="button" onClick={() => setCategoryFilter('all')} className={`message-filter ${categoryFilter === 'all' ? 'active' : ''}`}>Todas</button>
+                {CATEGORY_OPTIONS.map((category) => (
+                  <button key={category.value} type="button" onClick={() => setCategoryFilter(category.value)} className={`message-filter ${categoryFilter === category.value ? 'active' : ''}`}>
+                    {category.label}
+                  </button>
                 ))}
-            </>
-          )}
+              </div>
+            )}
 
-          {/* WHATSAPP / SMS TEMPLATES */}
-          {activeChannel !== 'email' && (
-          <>
-          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', padding: '0 0.75rem 0.5rem' }}>
-            <button
-              type="button"
-              onClick={() => setCategoryFilter('all')}
-              style={{
-                padding: '0.2rem 0.55rem',
-                borderRadius: '9999px',
-                border: `1px solid ${categoryFilter === 'all' ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
-                background: categoryFilter === 'all' ? 'rgba(59,130,246,0.12)' : 'transparent',
-                color: categoryFilter === 'all' ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Todas
-            </button>
-            {CATEGORY_OPTIONS.map((category) => (
-              <button
-                key={category.value}
-                type="button"
-                onClick={() => setCategoryFilter(category.value)}
-                style={{
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '9999px',
-                  border: `1px solid ${categoryFilter === category.value ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
-                  background: categoryFilter === category.value ? 'rgba(59,130,246,0.12)' : 'transparent',
-                  color: categoryFilter === category.value ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
-                  fontSize: '0.7rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {category.label}
-              </button>
-            ))}
-          </div>
-
-          {filteredTemplates.length === 0 && (
-            <div className="template-empty">No hay plantillas en esta categoría.</div>
-          )}
-          {filteredTemplates.map((template) =>
-            editingTemplateId === template.id ? (
-              <div
-                key={template.id}
-                style={{
-                  padding: '0.6rem 0.75rem',
-                  background: 'var(--color-surface, #f9fafb)',
-                  borderBottom: '1px solid var(--color-border, #e5e7eb)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.4rem',
-                }}
-                >
+            {templatesLoading && (
+              <div className="template-empty">Cargando plantillas...</div>
+            )}
+            {!templatesLoading && filteredTemplates.length === 0 && (
+              <div className="template-empty">No hay plantillas guardadas.</div>
+            )}
+            {!templatesLoading && filteredTemplates.map((template) =>
+              editingTemplateId === template.id ? (
+                <div key={template.id} className="message-template-edit">
                   <input
                     value={editingTemplateTitle}
                     onChange={(e) => setEditingTemplateTitle(e.target.value)}
                     placeholder="Titulo..."
-                    style={{
-                      padding: '0.35rem 0.5rem',
-                      borderRadius: '0.35rem',
-                      border: '1px solid var(--color-border, #e5e7eb)',
-                    fontSize: '0.8rem',
-                  }}
                   />
+                  {activeChannel === 'email' && (
+                    <input
+                      value={editingTemplateSubject}
+                      onChange={(e) => setEditingTemplateSubject(e.target.value)}
+                      placeholder="Asunto..."
+                    />
+                  )}
                   <select
                     value={editingTemplateCategory}
-                onChange={(e) => setEditingTemplateCategory(e.target.value as WhatsappTemplateCategory)}
-                    style={{
-                      padding: '0.35rem 0.5rem',
-                      borderRadius: '0.35rem',
-                      border: '1px solid var(--color-border, #e5e7eb)',
-                    fontSize: '0.78rem',
-                    background: 'var(--color-surface, #f9fafb)',
-                  }}
-                >
-                  {CATEGORY_OPTIONS.map((category) => (
-                    <option key={category.value} value={category.value}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  rows={3}
-                  value={editingTemplateMessage}
-                  onChange={(e) => setEditingTemplateMessage(e.target.value)}
-                  style={{
-                    padding: '0.35rem 0.5rem',
-                    borderRadius: '0.35rem',
-                    border: '1px solid var(--color-border, #e5e7eb)',
-                    fontSize: '0.78rem',
-                    resize: 'vertical',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '0.78rem',
-                      color: 'var(--color-text-muted, #6b7280)',
-                    }}
+                    onChange={(e) => setEditingTemplateCategory(e.target.value)}
                   >
-                    Cancelar
-                  </button>
-                  <Button type="button" onClick={handleSaveEdit} disabled={!editingTemplateTitle.trim()}>
-                    Guardar
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div
-                key={template.id}
-                className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
-                onClick={() => handleSelectCustom(template)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectCustom(template) }
-                }}
-              >
-                <div
-                  className="template-item-header"
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}
-                >
-                  <span className="template-title">{template.label}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span
-                      style={{
-                        fontSize: '0.6rem',
-                        fontWeight: 700,
-                        padding: '0.05rem 0.35rem',
-                        borderRadius: '9999px',
-                        border: template.category === 'campana'
-                          ? '1px solid rgba(234,179,8,0.5)'
-                          : template.custom
-                          ? '1px solid rgba(16,185,129,0.35)'
-                          : '1px solid rgba(99,102,241,0.35)',
-                        color: template.category === 'campana'
-                          ? '#b45309'
-                          : template.custom
-                          ? '#10b981'
-                          : '#6366f1',
-                      }}
-                    >
-                      {template.category === 'campana'
-                        ? '🎯 Campaña'
-                        : CATEGORY_OPTIONS.find((c) => c.value === template.category)?.label ?? 'General'}
-                    </span>
-                    {template.custom && (
-                      <>
-                        <button
-                          type="button"
-                          aria-label="Editar plantilla"
-                          title="Editar"
-                          onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: 'var(--color-text-muted, #6b7280)',
-                            fontSize: '0.7rem',
-                            padding: '0.1rem 0.25rem',
-                            lineHeight: 1,
-                            borderRadius: '0.2rem',
-                          }}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Eliminar plantilla"
-                          title="Eliminar"
-                          onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: 'var(--color-text-muted, #6b7280)',
-                            fontSize: '0.75rem',
-                            padding: '0.1rem 0.25rem',
-                            lineHeight: 1,
-                            borderRadius: '0.2rem',
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </>
-                    )}
+                    {(activeChannel === 'email'
+                      ? EMAIL_CATEGORIES.map((cat) => ({ value: cat, label: EMAIL_CATEGORY_LABELS[cat] }))
+                      : CATEGORY_OPTIONS).map((category) => (
+                        <option key={category.value} value={category.value}>
+                          {category.label}
+                        </option>
+                      ))}
+                  </select>
+                  <textarea
+                    rows={3}
+                    value={editingTemplateMessage}
+                    onChange={(e) => setEditingTemplateMessage(e.target.value)}
+                  />
+                  <div className="message-template-edit-actions">
+                    <button type="button" onClick={handleCancelEdit}>Cancelar</button>
+                    <Button type="button" onClick={handleSaveEdit} disabled={!editingTemplateTitle.trim()}>
+                      Guardar
+                    </Button>
                   </div>
                 </div>
-                <span
-                  className="template-snippet"
-                  style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              ) : (
+                <div
+                  key={template.id}
+                  className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
+                  onClick={() => handleSelectTemplate(template)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectTemplate(template) }
+                  }}
                 >
-                  {buildSubtitle(resolveTemplate(template.message, variables).text)}
-                </span>
+                  <div className="template-item-header">
+                    <span className="template-title">{template.label}</span>
+                    <div className="message-template-actions">
+                      <span className="message-badge">{template.category}</span>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}>Editar</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDuplicateTemplate(template) }}>Duplicar</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}>Eliminar</button>
+                    </div>
+                  </div>
+                  <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
+                </div>
+              )
+            )}
+
+            {pendingTemplate && (
+              <div className="message-template-guard">
+                <div>Ya editaste el mensaje. ¿Qué deseas hacer?</div>
+                <div className="message-template-guard-actions">
+                  <Button type="button" onClick={() => applyTemplate(pendingTemplate, 'replace')}>Reemplazar todo</Button>
+                  <Button variant="ghost" type="button" onClick={() => applyTemplate(pendingTemplate, 'insert')}>Insertar y conservar</Button>
+                  <Button variant="ghost" type="button" onClick={() => setPendingTemplate(null)}>Cancelar</Button>
+                </div>
               </div>
-            )
-          )}
-          </>
-          )}
-        </div>
-
-        {/* PANEL DERECHO — EDITOR */}
-        <div className="template-preview">
-          <h4>{t('messaging.editorTitle')}</h4>
-          <label className="form-field">
-            <span>Tipo de mensaje</span>
-            <select
-              value={messageType}
-              onChange={(event) => setMessageType(event.target.value as MessageType)}
-              style={{
-                padding: '0.45rem 0.65rem',
-                borderRadius: '0.5rem',
-                border: '1px solid var(--color-border, #e5e7eb)',
-                background: 'var(--color-surface, #f9fafb)',
-                color: 'var(--color-text)',
-                fontSize: '0.8rem',
-              }}
-            >
-              {MESSAGE_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {activeChannel === 'email' && (
-            <label className="form-field">
-              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Asunto del email</span>
-              <input
-                type="text"
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-                placeholder="Asunto del correo..."
-                style={{
-                  padding: '0.45rem 0.65rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  background: 'var(--color-surface, #f9fafb)',
-                  color: 'var(--color-text)',
-                  fontSize: '0.8rem',
-                }}
-              />
-            </label>
-          )}
-          <label className="form-field template-message">
-            <span>{t('messaging.messageLabel')}</span>
-            <textarea
-              ref={textareaRef}
-              rows={4}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={t('messaging.messagePlaceholder')}
-            />
-          </label>
-
-          {/* CONTADOR DE CARACTERES */}
-          <div
-            style={{
-              fontSize: '0.72rem',
-              color: charOver ? '#dc2626' : charCaution ? '#d97706' : 'var(--color-text-muted, #6b7280)',
-              textAlign: 'right',
-              marginTop: '0.15rem',
-            }}
-          >
-            {charCount} caracteres{charOver ? ' — mensaje demasiado largo' : charCaution ? ' — casi al límite' : ''}
-          </div>
-
-          {/* VARIABLES CLICABLES */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
-            {placeholderGroups.map(([groupLabel, vars]) => (
-              <div key={groupLabel} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)' }}>{groupLabel}</span>
-                {vars.map((variable) => (
-                  <button
-                    key={variable.token}
-                    type="button"
-                    title={`Insertar ${variable.token}`}
-                    onClick={() => insertVariable(variable.token)}
-                    style={{
-                      background: 'var(--color-surface, #f3f4f6)',
-                      border: '1px solid var(--color-border, #e5e7eb)',
-                      borderRadius: '0.25rem',
-                      padding: '0.15rem 0.45rem',
-                      fontSize: '0.72rem',
-                      cursor: 'pointer',
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    {variable.token}
-                  </button>
-                ))}
-              </div>
-            ))}
-            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
-              — clic para insertar
-            </span>
-            {missingPlaceholders.length > 0 && (
-              <span style={{ fontSize: '0.7rem', color: '#d97706' }}>
-                Faltan datos para: {missingPlaceholders.map((value) => `{${value}}`).join(', ')}
-              </span>
             )}
           </div>
 
-          {/* LINK DE IMAGEN */}
-          {activeChannel === 'whatsapp' && (
-            <div style={{ marginTop: '0.75rem' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted, #6b7280)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  📎 {t('messaging.imagenLabel')}
-                </span>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder={t('messaging.imagenPlaceholder')}
-                  style={{
-                    padding: '0.45rem 0.65rem',
-                    borderRadius: '0.5rem',
-                    border: `1px solid ${imageUrl.trim() ? 'rgba(59,130,246,0.5)' : 'var(--color-border, #e5e7eb)'}`,
-                    background: 'var(--color-surface, #f9fafb)',
-                    color: 'var(--color-text)',
-                    fontSize: '0.8rem',
-                  }}
-                />
-                {imageUrl.trim() && (
-                  <p style={{ margin: 0, fontSize: '0.7rem', color: '#10b981' }}>
-                    ✓ El link se adjuntará al final del mensaje
-                  </p>
-                )}
-              </label>
-            </div>
-          )}
-
-          {activeChannel === 'whatsapp' && configured && (
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginTop: '0.65rem',
-                fontSize: '0.78rem',
-                color: 'var(--color-text-muted, #6b7280)',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={useEvolutionApi}
-                onChange={(event) => setUseEvolutionApi(event.target.checked)}
-              />
-              Enviar automáticamente con Evolution API
-            </label>
-          )}
-
-          {warningMessage && <p className="template-warning">{warningMessage}</p>}
-
-          <div style={{ marginTop: '0.85rem', borderTop: '1px solid var(--color-border, #e5e7eb)', paddingTop: '0.75rem' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)' }}>
-              Guardar como plantilla
-            </p>
-            <p style={{ margin: '0.25rem 0 0.6rem', fontSize: '0.72rem', color: 'var(--color-text-muted, #6b7280)' }}>
-              Guardada solo para ti en este dispositivo.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: '0.5rem' }}>
-              <input
-                value={newTemplateTitle}
-                onChange={(e) => setNewTemplateTitle(e.target.value)}
-                placeholder="Nombre de la plantilla..."
-                style={{
-                  padding: '0.45rem 0.6rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.8rem',
-                }}
-              />
+          <div className="message-card">
+            <div className="message-card-title">Editor</div>
+            <label className="form-field">
+              <span>Tipo de mensaje</span>
               <select
-                value={newTemplateCategory}
-                onChange={(e) => setNewTemplateCategory(e.target.value as WhatsappTemplateCategory)}
-                style={{
-                  padding: '0.45rem 0.6rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.8rem',
-                  background: 'var(--color-surface, #f9fafb)',
-                }}
+                value={messageType}
+                onChange={(event) => setMessageType(event.target.value as MessageType)}
               >
-                {CATEGORY_OPTIONS.map((category) => (
-                  <option key={category.value} value={category.value}>
-                    {category.label}
+                {MESSAGE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
+            </label>
+            {activeChannel === 'email' && (
+              <label className="form-field">
+                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Asunto del email</span>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => { setEmailSubject(e.target.value); setSubjectDirty(true) }}
+                  placeholder="Asunto del correo..."
+                />
+              </label>
+            )}
+            <label className="form-field template-message">
+              <span>{t('messaging.messageLabel')}</span>
+              <textarea
+                ref={textareaRef}
+                rows={4}
+                value={message}
+                onChange={(e) => { setMessage(e.target.value); setMessageDirty(true) }}
+                placeholder={t('messaging.messagePlaceholder')}
+              />
+            </label>
+
+            {activeChannel === 'sms' && (
+              <div className="message-counter">
+                {charCount} caracteres · {smsSegments} segmento{smsSegments === 1 ? '' : 's'}
+              </div>
+            )}
+
+            <div className="message-recipient">
+              <span>Destinatario</span>
+              <strong>{activeChannel === 'email' ? (activeContact.email ?? '-') : (activeContact.telefono ?? '-')}</strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.6rem' }}>
-              <Button
-                type="button"
-                onClick={handleSaveTemplate}
-                disabled={!newTemplateTitle.trim() || !message.trim() || savingTemplate}
+
+            {warningMessage && <p className="template-warning">{warningMessage}</p>}
+
+            {/* INSERTAR CAMPO */}
+            <div style={{ marginTop: '0.75rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)', marginBottom: '0.35rem' }}>
+                Insertar campo
+              </div>
+              <input
+                value={fieldSearch}
+                onChange={(event) => setFieldSearch(event.target.value)}
+                placeholder="Buscar campo..."
+                style={{
+                  padding: '0.45rem 0.6rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  fontSize: '0.8rem',
+                  width: '100%',
+                }}
+              />
+              <div
+                style={{
+                  maxHeight: '160px',
+                  overflow: 'auto',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  borderRadius: '0.5rem',
+                  padding: '0.4rem',
+                  background: 'var(--color-surface, #f9fafb)',
+                  marginTop: '0.4rem',
+                }}
               >
-                {savingTemplate ? t('common.saving') : 'Guardar plantilla'}
-              </Button>
+                {placeholderGroups.length === 0 && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                    Sin resultados
+                  </div>
+                )}
+                {placeholderGroups.map(([groupLabel, vars]) => (
+                  <div key={groupLabel} style={{ marginBottom: '0.35rem' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)', marginBottom: '0.25rem' }}>
+                      {groupLabel}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      {vars.map((variable) => (
+                        <button
+                          key={variable.token}
+                          type="button"
+                          onClick={() => insertVariable(variable.token)}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.35rem 0.5rem',
+                            borderRadius: '0.4rem',
+                            border: '1px solid var(--color-border, #e5e7eb)',
+                            background: 'var(--color-surface, #ffffff)',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span>{variable.label}</span>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted, #6b7280)' }}>{variable.token}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {missingPlaceholders.length > 0 && (
+                <span style={{ fontSize: '0.7rem', color: '#d97706' }}>
+                  Faltan datos para: {missingPlaceholders.map((value) => `{${value}}`).join(', ')}
+                </span>
+              )}
+            </div>
+
+            {activeChannel === 'whatsapp' && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted, #6b7280)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    📎 {t('messaging.imagenLabel')}
+                  </span>
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder={t('messaging.imagenPlaceholder')}
+                  />
+                  {imageUrl.trim() && (
+                    <p style={{ margin: 0, fontSize: '0.7rem', color: '#10b981' }}>
+                      ✓ El link se adjuntará al final del mensaje
+                    </p>
+                  )}
+                </label>
+              </div>
+            )}
+
+            {activeChannel === 'whatsapp' && configured && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', fontSize: '0.78rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                <input
+                  type="checkbox"
+                  checked={useEvolutionApi}
+                  onChange={(event) => setUseEvolutionApi(event.target.checked)}
+                />
+                Enviar automáticamente con Evolution API
+              </label>
+            )}
+
+            <div className="message-schedule">
+              <label className="form-field">
+                <span>Programar envío</span>
+                <input
+                  type="datetime-local"
+                  value={scheduledFor}
+                  onChange={(event) => setScheduledFor(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div style={{ marginTop: '0.85rem', borderTop: '1px solid var(--color-border, #e5e7eb)', paddingTop: '0.75rem' }}>
+              <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)' }}>
+                Guardar plantilla en la nube
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <input
+                  value={newTemplateTitle}
+                  onChange={(e) => setNewTemplateTitle(e.target.value)}
+                  placeholder="Nombre de la plantilla..."
+                />
+                <select
+                  value={newTemplateCategory}
+                  onChange={(e) => setNewTemplateCategory(e.target.value)}
+                >
+                  {(activeChannel === 'email'
+                    ? EMAIL_CATEGORIES.map((cat) => ({ value: cat, label: EMAIL_CATEGORY_LABELS[cat] }))
+                    : CATEGORY_OPTIONS).map((category) => (
+                      <option key={category.value} value={category.value}>
+                        {category.label}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.6rem' }}>
+                <Button
+                  type="button"
+                  onClick={handleSaveTemplate}
+                  disabled={!newTemplateTitle.trim() || !message.trim() || savingTemplate}
+                >
+                  {savingTemplate ? t('common.saving') : 'Guardar plantilla'}
+                </Button>
+              </div>
             </div>
           </div>
+        </div>
 
+        {/* COLUMNA DERECHA */}
+        <div className="message-preview-pane">
+          <div className="message-card">
+            <div className="message-card-title">Preview</div>
+            {activeChannel === 'email' && (
+              <>
+                <div className="message-preview-subject">{emailSubject.trim() || '(Sin asunto)'}</div>
+                <div className="message-preview-body">{resolvedMessage.text || 'Sin contenido'}</div>
+              </>
+            )}
+            {activeChannel !== 'email' && (
+              <div className="message-preview-body">{resolvedMessage.text || 'Sin contenido'}</div>
+            )}
+            {missingPlaceholders.length > 0 && (
+              <div className="message-preview-warning">
+                Faltan datos para: {missingPlaceholders.map((value) => `{${value}}`).join(', ')}
+              </div>
+            )}
+            {activeChannel === 'sms' && (
+              <div className="message-preview-meta">
+                {charCount} caracteres · {smsSegments} segmento{smsSegments === 1 ? '' : 's'}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Modal>

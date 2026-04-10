@@ -18,6 +18,7 @@ export type MessagingContact = {
   fuente?: string | null
   programa?: string | null
   ciudad?: string | null
+  telegramChatId?: string | null
   clienteId?: string | null
   leadId?: string | null
   contactRef?: ContactRef | null
