@@ -654,16 +654,78 @@ export function EnviosPage() {
         />
       )}
       {hasResults && (
-        <DataTable
-          columns={isBirthdayCampaign
-            ? ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Día', 'Acciones']
-            : ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Acciones']}
-          rows={rows}
-          sortableColumns={isBirthdayCampaign && dayColumnIndex !== null ? [dayColumnIndex] : undefined}
-          sortColIndex={daySort && dayColumnIndex !== null ? dayColumnIndex : undefined}
-          sortDir={daySort ?? undefined}
-          onSort={handleSort}
-        />
+        <div className="marketing-envios-mobile">
+          {displayedMessages.map((message) => {
+            const fullName = message.nombre ?? '-'
+            const telefono = message.telefono ?? '-'
+            const status = normalizeStatus(message)
+            const statusLabel = statusLabels[status] ?? status
+            const responded = Boolean(message.response_id) || Boolean(message.responded_at) || respondedMessageIds.has(message.id)
+            const alreadySent = Boolean(message.sent_at)
+            const tipoLabel = message.contacto_tipo ?? '-'
+            const birthDay = message.contacto_id ? birthDayByClienteId[message.contacto_id] : undefined
+            const sendLabel = alreadySent ? 'Reenviar' : 'Enviar'
+            const sendVariant = alreadySent ? 'ghost' : 'primary'
+            return (
+              <div key={message.id} className="marketing-envio-card">
+                <div className="marketing-envio-header">
+                  <div>
+                    <div className="marketing-envio-name">{fullName}</div>
+                    <div className="marketing-envio-meta">{telefono} · {tipoLabel}</div>
+                  </div>
+                  <Badge label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />
+                </div>
+                {isBirthdayCampaign && (
+                  <div className="marketing-envio-meta">Día: {birthDay ? String(birthDay) : '—'}</div>
+                )}
+                <div className="marketing-envio-actions">
+                  <Button
+                    variant={sendVariant}
+                    onClick={() => handleOpenMessage(message)}
+                    disabled={!canSend}
+                    title={permissionTooltip}
+                  >
+                    {sendLabel}
+                  </Button>
+                  {!alreadySent && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleMarkSent(message)}
+                      disabled={!canSend}
+                      title={permissionTooltip}
+                    >
+                      Marcar enviado
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => openResponseModal(message)}
+                    disabled={!canSend}
+                    title={permissionTooltip}
+                  >
+                    Registrar respuesta
+                  </Button>
+                  {responded && <Badge label="Respondido" tone="gold" />}
+                  {!responded && alreadySent && <Badge label="Enviado" tone="blue" />}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {hasResults && (
+        <div className="marketing-envios-table">
+          <DataTable
+            columns={isBirthdayCampaign
+              ? ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Día', 'Acciones']
+              : ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Acciones']}
+            rows={rows}
+            sortableColumns={isBirthdayCampaign && dayColumnIndex !== null ? [dayColumnIndex] : undefined}
+            sortColIndex={daySort && dayColumnIndex !== null ? dayColumnIndex : undefined}
+            sortDir={daySort ?? undefined}
+            onSort={handleSort}
+          />
+        </div>
       )}
 
       <MessageModal
