@@ -174,6 +174,16 @@ const CHANNEL_LABELS: Record<MessagingChannel, string> = {
   telegram: 'Telegram',
 }
 
+const normalizeCategoryValue = (value: string | null | undefined) => {
+  if (!value) return 'general'
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+}
+
 const inferMessageTypeFromId = (templateId: string | null | undefined): MessageType => {
   if (!templateId) return 'general'
   const key = templateId.toLowerCase()
@@ -345,7 +355,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         label: template.label,
         message: template.message,
         subject: template.subject,
-        category: template.category,
+        category: normalizeCategoryValue(template.category),
         channel: 'email',
         source: 'system',
       }))
@@ -354,7 +364,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       id: `sys_${template.id}`,
       label: template.label,
       message: template.message,
-      category: template.category,
+      category: normalizeCategoryValue(template.category),
       channel: activeChannel,
       source: 'system',
     }))
@@ -363,7 +373,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         id: `sys_${exampleTemplate.id}`,
         label: exampleTemplate.label,
         message: exampleTemplate.message,
-        category: exampleTemplate.category,
+        category: normalizeCategoryValue(exampleTemplate.category),
         channel: activeChannel,
         source: 'system',
       },
@@ -380,7 +390,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       label: template.nombre,
       message: template.cuerpo,
       subject: template.asunto,
-      category: template.category,
+      category: normalizeCategoryValue(template.category),
       channel: template.canal === 'all' ? activeChannel : (template.canal as MessagingChannel),
       source: 'cloud',
       raw: template,
@@ -390,6 +400,17 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const templatesForChannel = useMemo<UnifiedTemplate[]>(() => {
     return [...systemTemplates, ...cloudTemplatesForChannel]
   }, [cloudTemplatesForChannel, systemTemplates])
+
+  const filteredSystemTemplates = useMemo(() => {
+    if (activeChannel === 'email') {
+      if (emailCategoryFilter === 'all') return systemTemplates
+      const filter = normalizeCategoryValue(emailCategoryFilter)
+      return systemTemplates.filter((template) => normalizeCategoryValue(template.category) === filter)
+    }
+    if (categoryFilter === 'all') return systemTemplates
+    const filter = normalizeCategoryValue(categoryFilter)
+    return systemTemplates.filter((template) => normalizeCategoryValue(template.category) === filter)
+  }, [activeChannel, categoryFilter, emailCategoryFilter, systemTemplates])
 
   const loadUserTemplates = useCallback(async () => {
     if (!open) return
@@ -651,12 +672,14 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const filteredTemplates = useMemo(() => {
     const base = templatesForChannel.filter((template) => template.source === 'cloud')
     if (activeChannel === 'email') {
+      const filter = normalizeCategoryValue(emailCategoryFilter)
       return base.filter((template) =>
-        emailCategoryFilter === 'all' || template.category === emailCategoryFilter
+        emailCategoryFilter === 'all' || normalizeCategoryValue(template.category) === filter
       )
     }
     if (categoryFilter === 'all') return base
-    return base.filter((template) => template.category === categoryFilter)
+    const filter = normalizeCategoryValue(categoryFilter)
+    return base.filter((template) => normalizeCategoryValue(template.category) === filter)
   }, [activeChannel, categoryFilter, emailCategoryFilter, templatesForChannel])
 
   const selectedTemplate = useMemo(() => {
@@ -1289,7 +1312,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
             <div className="message-card-title">Plantillas</div>
             <div className="message-section-label">Sistema</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {systemTemplates.map((template) => (
+              {filteredSystemTemplates.map((template) => (
                 <div
                   key={template.id}
                   className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
@@ -1307,6 +1330,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                   <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
                 </div>
               ))}
+              {filteredSystemTemplates.length === 0 && (
+                <div className="template-empty">No hay plantillas del sistema en esta categoría.</div>
+              )}
             </div>
 
             <div className="message-section-label" style={{ marginTop: '0.75rem' }}>Mis plantillas</div>
@@ -1391,9 +1417,13 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                   }}
                 >
                   <div className="template-item-header">
-                    <span className="template-title">{template.label}</span>
-                    <div className="message-template-actions">
-                      <span className="message-badge">{template.category}</span>
+                  <span className="template-title">{template.label}</span>
+                  <div className="message-template-actions">
+                      <span className="message-badge">
+                        {activeChannel === 'email'
+                          ? EMAIL_CATEGORY_LABELS[template.category as EmailTemplateCategory] ?? template.category
+                          : CATEGORY_OPTIONS.find((c) => c.value === template.category)?.label ?? template.category}
+                      </span>
                       <button type="button" onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}>Editar</button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); handleDuplicateTemplate(template) }}>Duplicar</button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}>Eliminar</button>
