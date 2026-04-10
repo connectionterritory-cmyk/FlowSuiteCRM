@@ -10,6 +10,12 @@ import {
   type CustomWhatsappTemplate,
   type WhatsappTemplateCategory,
 } from '../lib/whatsappTemplates'
+import {
+  emailTemplates,
+  EMAIL_CATEGORY_LABELS,
+  EMAIL_CATEGORIES,
+  type EmailTemplateCategory,
+} from '../lib/emailTemplates'
 import { canonicalizeTemplate, PLACEHOLDER_OPTIONS, resolveTemplate } from '../lib/messagePlaceholders'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useToast } from './useToast'
@@ -137,15 +143,21 @@ const inferMessageTypeFromId = (templateId: string | null | undefined): MessageT
 }
 
 const CATEGORY_OPTIONS: { value: WhatsappTemplateCategory; label: string }[] = [
+  { value: 'pipeline', label: 'Pipeline' },
+  { value: 'source', label: 'Fuente' },
+  { value: 'client', label: 'Cliente' },
+  { value: 'negocio', label: 'Negocio' },
+  { value: 'cartera', label: 'Cartera' },
+  { value: '4en14', label: '4 en 14' },
+  { value: 'conexiones', label: 'Conexiones' },
+  { value: 'campana', label: 'Campaña' },
   { value: 'general', label: 'General' },
   { value: 'seguimiento', label: 'Seguimiento' },
-  { value: 'cartera', label: 'Cartera' },
   { value: 'referidos', label: 'Referidos' },
   { value: 'cumpleanos', label: 'Cumpleaños' },
   { value: 'citas', label: 'Citas' },
   { value: 'servicio', label: 'Servicio' },
-  { value: 'cambio_repuestos', label: 'Cambio de repuestos' },
-  { value: 'campana', label: 'Campaña' },
+  { value: 'cambio_repuestos', label: 'Cambio repuestos' },
 ]
 
 // --- COMPONENT ---
@@ -206,6 +218,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [editingTemplateCategory, setEditingTemplateCategory] = useState<WhatsappTemplateCategory>('general')
 
   const [distributorPhone, setDistributorPhone] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailCategoryFilter, setEmailCategoryFilter] = useState<'all' | EmailTemplateCategory>('all')
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState<string | null>(null)
 
   const exampleTemplate = useMemo<SystemTemplate>(
     () => ({
@@ -235,10 +250,12 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       ?? currentUserName
       ?? ''
     const recomendadoPorNombre = activeContact.recomendadoPorNombre ?? activeContact.recomendadoPor ?? ''
-    const vendedorTelefono = activeContact.vendedorTelefono
+    const cobranzasTelefono = '7862913042'
+    const vendedorTelefonoBase = activeContact.vendedorTelefono
       ?? distributorPhone
       ?? currentUser?.telefono
       ?? ''
+    const vendedorTelefono = messageType === 'cartera' ? cobranzasTelefono : vendedorTelefonoBase
     return {
       cliente,
       nombre: cliente,
@@ -258,7 +275,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       programa: activeContact.programa ?? '',
       ciudad: activeContact.ciudad ?? '',
     }
-  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone])
+  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, messageType])
 
   const loadUserTemplates = useCallback(() => {
     if (!open) return
@@ -639,13 +656,16 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           return
         }
 
-        const subject = t('messaging.emailSubject')
+        const subject = emailSubject.trim() || t('messaging.emailSubject')
+        const senderName = buildSenderName()
         const { data, error } = await supabase.functions.invoke('send-message-email', {
           body: {
             to: activeContact.email,
             subject,
             message: finalMessage,
             contactName: activeContact.nombre,
+            replyTo: currentUser?.email ?? null,
+            senderName: senderName || null,
           },
           headers: {
             Authorization: `Bearer ${session.access_token}`,
@@ -775,6 +795,85 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
             PLANTILLAS
           </div>
 
+          {/* EMAIL TEMPLATES */}
+          {activeChannel === 'email' && (
+            <>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', padding: '0 0.75rem 0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setEmailCategoryFilter('all')}
+                  style={{
+                    padding: '0.2rem 0.55rem',
+                    borderRadius: '9999px',
+                    border: `1px solid ${emailCategoryFilter === 'all' ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
+                    background: emailCategoryFilter === 'all' ? 'rgba(59,130,246,0.12)' : 'transparent',
+                    color: emailCategoryFilter === 'all' ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Todas
+                </button>
+                {EMAIL_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setEmailCategoryFilter(cat)}
+                    style={{
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: '9999px',
+                      border: `1px solid ${emailCategoryFilter === cat ? '#3b82f6' : 'var(--color-border, #e5e7eb)'}`,
+                      background: emailCategoryFilter === cat ? 'rgba(59,130,246,0.12)' : 'transparent',
+                      color: emailCategoryFilter === cat ? '#3b82f6' : 'var(--color-text-muted, #6b7280)',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {EMAIL_CATEGORY_LABELS[cat]}
+                  </button>
+                ))}
+              </div>
+              {emailTemplates
+                .filter((t) => emailCategoryFilter === 'all' || t.category === emailCategoryFilter)
+                .map((template) => (
+                  <div
+                    key={template.id}
+                    className={`template-item ${selectedEmailTemplateId === template.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setSelectedEmailTemplateId(template.id)
+                      setEmailSubject(resolveTemplate(template.subject, variables).text)
+                      setMessage(canonicalizeTemplate(template.message))
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedEmailTemplateId(template.id)
+                        setEmailSubject(resolveTemplate(template.subject, variables).text)
+                        setMessage(canonicalizeTemplate(template.message))
+                      }
+                    }}
+                  >
+                    <div className="template-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.25rem' }}>
+                      <span className="template-title">{template.label}</span>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.05rem 0.35rem', borderRadius: '9999px', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981' }}>
+                        {EMAIL_CATEGORY_LABELS[template.category]}
+                      </span>
+                    </div>
+                    <span className="template-snippet" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {template.subject}
+                    </span>
+                  </div>
+                ))}
+            </>
+          )}
+
+          {/* WHATSAPP / SMS TEMPLATES */}
+          {activeChannel !== 'email' && (
+          <>
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', padding: '0 0.75rem 0.5rem' }}>
             <button
               type="button"
@@ -978,6 +1077,8 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
               </div>
             )
           )}
+          </>
+          )}
         </div>
 
         {/* PANEL DERECHO — EDITOR */}
@@ -1004,6 +1105,25 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
               ))}
             </select>
           </label>
+          {activeChannel === 'email' && (
+            <label className="form-field">
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Asunto del email</span>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Asunto del correo..."
+                style={{
+                  padding: '0.45rem 0.65rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--color-border, #e5e7eb)',
+                  background: 'var(--color-surface, #f9fafb)',
+                  color: 'var(--color-text)',
+                  fontSize: '0.8rem',
+                }}
+              />
+            </label>
+          )}
           <label className="form-field template-message">
             <span>{t('messaging.messageLabel')}</span>
             <textarea
