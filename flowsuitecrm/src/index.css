@@ -1209,8 +1209,6 @@ body.theme-light .pipeline-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
-  min-height: 0;
 }
 
 .pmm-section-label {
@@ -1263,13 +1261,12 @@ body.theme-light .pipeline-card {
 }
 
 .pmm-template-list {
-  overflow-y: auto;
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-height: 80px;
-  max-height: 220px;
+  min-height: 40px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .pmm-template-item {
@@ -1840,9 +1837,14 @@ body.theme-light .pmm-edit-input,
 body.theme-light .pmm-edit-textarea { background: #ffffff; }
 
 /* ── Responsive ── */
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .pmm-grid { grid-template-columns: 1fr; height: auto; }
-  .pmm-sidebar { max-height: 40vh; border-right: none; border-bottom: 1px solid var(--card-border); }
+  .pmm-sidebar {
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--card-border);
+    overflow-y: visible;
+  }
   .modal-xl { width: 98vw; max-height: 98vh; }
 }
 
@@ -2537,7 +2539,7 @@ body.theme-light .message-modal-header {
 
 .message-modal-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(340px, 1.2fr) minmax(240px, 0.9fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
   gap: 16px;
 }
 
@@ -2547,6 +2549,7 @@ body.theme-light .message-modal-header {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
 .message-card {
@@ -2557,6 +2560,24 @@ body.theme-light .message-modal-header {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.message-card-history {
+  overflow: hidden;
+}
+
+.message-history-wrap {
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 6px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.message-history-wrap * {
+  line-height: 1.4;
 }
 
 body.theme-light .message-card {
@@ -2865,6 +2886,9 @@ body.theme-light .template-warning {
   .message-modal-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .message-history-wrap {
+    max-height: 220px;
   }
 }
 
