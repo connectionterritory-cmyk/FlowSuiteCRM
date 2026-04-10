@@ -26,28 +26,12 @@ const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
 const telegramToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
 const telegramSecret = Deno.env.get('TELEGRAM_WEBHOOK_SECRET') ?? ''
-
-const defaultOwnerId = Deno.env.get('BOT_DEFAULT_OWNER_ID') ?? ''
-const defaultAssignedTo = Deno.env.get('BOT_DEFAULT_ASSIGNED_TO') ?? ''
-const defaultOrgId = Deno.env.get('BOT_DEFAULT_ORG_ID') ?? ''
-const defaultIntent = Deno.env.get('BOT_DEFAULT_INTENT') ?? 'citas'
-const tz = Deno.env.get('BOT_TIMEZONE') ?? 'America/New_York'
-const tzOffset = Deno.env.get('BOT_TZ_OFFSET') ?? '-04:00'
-const defaultDurationMinutes = Number.parseInt(
-  Deno.env.get('BOT_DEFAULT_DURATION_MINUTES') ?? '60',
-  10
-)
+const evolutionUrl = (Deno.env.get('EVOLUTION_API_URL') ?? '').replace(/\/+$/, '')
+const evolutionKey = Deno.env.get('EVOLUTION_API_KEY') ?? ''
+const evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') ?? ''
+const resendKey = Deno.env.get('RESEND_API_KEY') ?? ''
 
 const supabaseClient = createClient(supabaseUrl, serviceRoleKey)
-
-const YES_WORDS = new Set(['si', 'sí', 's', 'confirmo', 'confirmar', 'ok', 'vale'])
-const NO_WORDS = new Set(['no', 'nel', 'nope', 'cancelar'])
-
-const START_TEXT = [
-  'Hola, soy el bot de citas de FlowSuite.',
-  'Voy a ayudarte a agendar una cita.',
-  'Para empezar, ¿cómo te llamas? (nombre y apellido)',
-].join('\n')
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -56,219 +40,148 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   })
 }
 
-function getTodayString(timeZone: string) {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  return formatter.format(new Date())
-}
-
-function addDays(dateStr: string, days: number) {
-  const [year, month, day] = dateStr.split('-').map((value) => Number(value))
-  const date = new Date(Date.UTC(year, month - 1, day))
-  date.setUTCDate(date.getUTCDate() + days)
-  const iso = date.toISOString().slice(0, 10)
-  return iso
-}
-
-function parseDateInput(raw: string, timeZone: string) {
-  const text = raw.trim().toLowerCase()
-  if (text === 'hoy') return getTodayString(timeZone)
-  if (text === 'manana' || text === 'mañana') return addDays(getTodayString(timeZone), 1)
-
-  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
-  }
-
-  const latMatch = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
-  if (latMatch) {
-    return `${latMatch[3]}-${latMatch[2]}-${latMatch[1]}`
-  }
-
-  return null
-}
-
-function parseTimeInput(raw: string) {
-  const text = raw.trim().toLowerCase()
-  const ampmMatch = text.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/)
-  if (ampmMatch) {
-    let hour = Number(ampmMatch[1])
-    const minute = Number(ampmMatch[2] ?? '00')
-    if (hour < 1 || hour > 12 || minute > 59) return null
-    if (ampmMatch[3] === 'pm' && hour !== 12) hour += 12
-    if (ampmMatch[3] === 'am' && hour === 12) hour = 0
-    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-  }
-
-  const twentyFour = text.match(/^(\d{1,2}):(\d{2})$/)
-  if (!twentyFour) return null
-  const hour = Number(twentyFour[1])
-  const minute = Number(twentyFour[2])
-  if (hour > 23 || minute > 59) return null
-  return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-}
-
-function buildDateTimeIso(dateStr: string, timeStr: string, offset: string) {
-  const iso = `${dateStr}T${timeStr}:00${offset}`
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) return null
-  return parsed.toISOString()
-}
-
-function splitName(fullName: string) {
-  const parts = fullName.trim().split(/\s+/)
-  const nombre = parts.shift() ?? null
-  const apellido = parts.length > 0 ? parts.join(' ') : null
-  return { nombre, apellido }
-}
-
-function normalizePhone(raw: string) {
-  const digits = raw.replace(/\D/g, '')
-  if (digits.length < 10) return null
-  return digits
-}
-
-async function sendTelegramMessage(chatId: number | string, text: string) {
+async function sendTelegram(chatId: number | string, text: string) {
   if (!telegramToken) return
   await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
   })
 }
 
-async function getActiveSession(chatId: string, canal: string) {
-  const { data, error } = await supabaseClient
+function generateCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString()
+}
+
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length < 4) return '****'
+  return '***-***-' + digits.slice(-4)
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@')
+  if (!domain) return '****'
+  return local.slice(0, 2) + '****@' + domain
+}
+
+function sanitizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length >= 11) return digits
+  if (digits.length === 10) return '1' + digits
+  return digits
+}
+
+async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
+  if (!evolutionUrl || !evolutionKey || !evolutionInstance) return false
+  const clean = sanitizePhone(phone)
+  if (!clean || clean.length < 10) return false
+  try {
+    const res = await fetch(`${evolutionUrl}/message/sendText/${encodeURIComponent(evolutionInstance)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': evolutionKey },
+      body: JSON.stringify({ number: clean, text: message }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function sendEmail(to: string, code: string): Promise<boolean> {
+  if (!resendKey) return false
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resendKey}` },
+      body: JSON.stringify({
+        from: 'Royal Prestige <cobranza@flowiadigital.com>',
+        to,
+        subject: 'Código de verificación — Royal Prestige',
+        html: `<p>Tu código de verificación para vincular tu cuenta en Telegram es:</p><h2>${code}</h2><p>Válido por 10 minutos. Si no solicitaste esto, ignora este mensaje.</p>`,
+      }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function getActiveSession(chatId: string) {
+  const { data } = await supabaseClient
     .from('bot_sessions')
     .select('*')
     .eq('chat_id', chatId)
-    .eq('canal', canal)
+    .eq('canal', 'telegram')
     .eq('activa', true)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-
-  if (error) throw error
   return data as BotSession | null
 }
 
-async function deactivateSessions(chatId: string, canal: string) {
+async function deactivateSessions(chatId: string) {
   await supabaseClient
     .from('bot_sessions')
     .update({ activa: false })
     .eq('chat_id', chatId)
-    .eq('canal', canal)
+    .eq('canal', 'telegram')
     .eq('activa', true)
 }
 
-async function createSession(chatId: string, canal: string, step: string) {
-  const slots: Record<string, unknown> = {}
-  if (defaultOrgId) slots.org_id = defaultOrgId
-  const { data, error } = await supabaseClient
+async function createSession(chatId: string, intent: string, step: string) {
+  const { data } = await supabaseClient
     .from('bot_sessions')
     .insert({
       chat_id: chatId,
-      canal,
-      intent: defaultIntent,
+      canal: 'telegram',
+      intent,
       step,
-      slots,
+      slots: {},
       activa: true,
       expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
     })
     .select('*')
     .single()
-
-  if (error) throw error
   return data as BotSession
 }
 
 async function updateSession(id: string, patch: Partial<BotSession>) {
-  const { error } = await supabaseClient.from('bot_sessions').update(patch).eq('id', id)
-  if (error) throw error
+  await supabaseClient.from('bot_sessions').update(patch).eq('id', id)
 }
 
-async function ensureSession(chatId: string, canal: string) {
-  let session = await getActiveSession(chatId, canal)
-  if (!session) {
-    session = await createSession(chatId, canal, 'ask_nombre')
+async function findCliente(query: string) {
+  const digits = query.replace(/\D/g, '')
+  if (/^\d{6,10}$/.test(digits)) {
+    const { data } = await supabaseClient
+      .from('clientes')
+      .select('id, nombre, apellido, telefono, telefono_casa, email, hycite_id, monto_moroso, dias_atraso, saldo_actual, telegram_chat_id')
+      .eq('hycite_id', digits)
+      .maybeSingle()
+    if (data) return data
   }
-  return session
+  if (digits.length >= 10) {
+    const phone10 = digits.slice(-10)
+    const { data } = await supabaseClient
+      .from('clientes')
+      .select('id, nombre, apellido, telefono, telefono_casa, email, hycite_id, monto_moroso, dias_atraso, saldo_actual, telegram_chat_id')
+      .or(`telefono.ilike.%${phone10},telefono_casa.ilike.%${phone10}`)
+      .limit(1)
+      .maybeSingle()
+    if (data) return data
+  }
+  return null
 }
 
-async function createLeadAndCita(slots: Record<string, unknown>) {
-  if (!defaultOwnerId) {
-    throw new Error('BOT_DEFAULT_OWNER_ID no configurado')
-  }
-
-  const nombreCompleto = (slots.nombre as string | undefined) ?? ''
-  const telefono = (slots.telefono as string | undefined) ?? ''
-  const motivo = (slots.motivo as string | undefined) ?? ''
-  const fecha = (slots.fecha as string | undefined) ?? ''
-  const hora = (slots.hora as string | undefined) ?? ''
-
-  const { nombre, apellido } = splitName(nombreCompleto)
-
-  const { data: existingLead } = await supabaseClient
-    .from('leads')
-    .select('id')
-    .eq('telefono', telefono)
-    .limit(1)
-    .maybeSingle()
-
-  let leadId = existingLead?.id as string | undefined
-  if (!leadId) {
-    const { data: newLead, error: leadError } = await supabaseClient
-      .from('leads')
-      .insert({
-        nombre,
-        apellido,
-        telefono,
-        fuente: 'telegram',
-        owner_id: defaultOwnerId,
-      })
-      .select('id')
-      .single()
-
-    if (leadError) throw leadError
-    leadId = newLead.id as string
-  }
-
-  const startAtIso = buildDateTimeIso(fecha, hora, tzOffset)
-  if (!startAtIso) {
-    throw new Error('Fecha u hora inválida')
-  }
-  const endAt = new Date(startAtIso)
-  endAt.setUTCMinutes(endAt.getUTCMinutes() + defaultDurationMinutes)
-
-  const { data: cita, error: citaError } = await supabaseClient
-    .from('citas')
-    .insert({
-      owner_id: defaultOwnerId,
-      assigned_to: defaultAssignedTo || null,
-      contacto_tipo: 'lead',
-      contacto_id: leadId,
-      telefono,
-      nombre: nombreCompleto || null,
-      start_at: startAtIso,
-      end_at: endAt.toISOString(),
-      tipo: 'servicio',
-      notas: motivo || null,
-    })
-    .select('id')
-    .single()
-
-  if (citaError) throw citaError
-  return { leadId, citaId: cita.id as string }
+async function vincularCliente(clienteId: string, chatId: string) {
+  await supabaseClient
+    .from('clientes')
+    .update({ telegram_chat_id: chatId })
+    .eq('id', clienteId)
 }
 
 serve(async (req) => {
-  if (req.method !== 'POST') {
-    return jsonResponse({ ok: true })
-  }
+  if (req.method !== 'POST') return jsonResponse({ ok: true })
 
   if (!supabaseUrl || !serviceRoleKey || !telegramToken) {
     return jsonResponse({ error: 'Missing configuration' }, 500)
@@ -276,9 +189,7 @@ serve(async (req) => {
 
   if (telegramSecret) {
     const secretHeader = req.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? ''
-    if (secretHeader !== telegramSecret) {
-      return jsonResponse({ error: 'Forbidden' }, 403)
-    }
+    if (secretHeader !== telegramSecret) return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
   const update = (await req.json()) as TelegramUpdate
@@ -286,135 +197,179 @@ serve(async (req) => {
   if (!message?.text) return jsonResponse({ ok: true })
 
   const chatId = String(message.chat.id)
-  const canal = 'telegram'
   const text = message.text.trim()
   const lower = text.toLowerCase()
+  const refresh10m = { expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() }
+  const refresh2h = { expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() }
 
-  if (lower.startsWith('/start') || lower.startsWith('/cancelar') || lower.startsWith('/cancel')) {
-    await deactivateSessions(chatId, canal)
-    await createSession(chatId, canal, 'ask_nombre')
-    await sendTelegramMessage(message.chat.id, START_TEXT)
-    return jsonResponse({ ok: true })
-  }
-
-  if (lower.startsWith('/help')) {
-    await sendTelegramMessage(
-      message.chat.id,
-      'Puedes escribir /start para iniciar una cita o /cancel para reiniciar.'
+  // ── Comandos globales ──────────────────────────────────────────
+  if (lower.startsWith('/start')) {
+    await deactivateSessions(chatId)
+    await sendTelegram(message.chat.id,
+      `👋 Hola, soy el asistente de cuenta de *Royal Prestige*.\n\n` +
+      `• Escribe /vincular para conectar tu cuenta\n` +
+      `• Escribe /estado para ver tu saldo\n` +
+      `• Escribe /help para ver todos los comandos`
     )
     return jsonResponse({ ok: true })
   }
 
-  const session = await ensureSession(chatId, canal)
-  const slots = { ...(session.slots ?? {}) } as Record<string, unknown>
-
-  const refreshPayload = {
-    expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+  if (lower.startsWith('/vincular')) {
+    await deactivateSessions(chatId)
+    await createSession(chatId, 'cartera', 'ask_cuenta')
+    await sendTelegram(message.chat.id,
+      `🔗 *Vinculación de cuenta*\n\nEscribe tu *número de cuenta Hycite* o tu *teléfono registrado* con Royal Prestige:`
+    )
+    return jsonResponse({ ok: true })
   }
 
-  switch (session.step) {
-    case 'ask_nombre': {
-      if (text.length < 2) {
-        await sendTelegramMessage(message.chat.id, 'Por favor dime tu nombre y apellido.')
-        return jsonResponse({ ok: true })
-      }
-      slots.nombre = text
-      await updateSession(session.id, { step: 'ask_telefono', slots, ...refreshPayload })
-      await sendTelegramMessage(message.chat.id, 'Gracias. ¿Cuál es tu teléfono de contacto?')
+  if (lower.startsWith('/estado')) {
+    const { data: cliente } = await supabaseClient
+      .from('clientes')
+      .select('nombre, apellido, saldo_actual, monto_moroso, dias_atraso, hycite_id')
+      .eq('telegram_chat_id', chatId)
+      .maybeSingle()
+
+    if (!cliente) {
+      await sendTelegram(message.chat.id, `No tienes una cuenta vinculada. Escribe /vincular para conectarla.`)
       return jsonResponse({ ok: true })
     }
-    case 'ask_telefono': {
-      const phone = normalizePhone(text)
-      if (!phone) {
-        await sendTelegramMessage(message.chat.id, 'Ese teléfono no parece válido. Intenta otra vez.')
-        return jsonResponse({ ok: true })
-      }
-      slots.telefono = phone
-      await updateSession(session.id, { step: 'ask_motivo', slots, ...refreshPayload })
-      await sendTelegramMessage(message.chat.id, '¿Cuál es el motivo de la cita?')
-      return jsonResponse({ ok: true })
-    }
-    case 'ask_motivo': {
-      slots.motivo = text
-      await updateSession(session.id, { step: 'ask_fecha', slots, ...refreshPayload })
-      await sendTelegramMessage(
-        message.chat.id,
-        '¿Qué fecha prefieres? (YYYY-MM-DD, o escribe hoy / mañana)'
-      )
-      return jsonResponse({ ok: true })
-    }
-    case 'ask_fecha': {
-      const dateStr = parseDateInput(text, tz)
-      if (!dateStr) {
-        await sendTelegramMessage(message.chat.id, 'No entendí la fecha. Usa YYYY-MM-DD.')
-        return jsonResponse({ ok: true })
-      }
-      const today = getTodayString(tz)
-      if (dateStr < today) {
-        await sendTelegramMessage(message.chat.id, 'La fecha no puede estar en el pasado.')
-        return jsonResponse({ ok: true })
-      }
-      slots.fecha = dateStr
-      await updateSession(session.id, { step: 'ask_hora', slots, ...refreshPayload })
-      await sendTelegramMessage(message.chat.id, '¿A qué hora? (HH:MM en formato 24h)')
-      return jsonResponse({ ok: true })
-    }
-    case 'ask_hora': {
-      const timeStr = parseTimeInput(text)
-      if (!timeStr) {
-        await sendTelegramMessage(message.chat.id, 'No entendí la hora. Usa HH:MM.')
-        return jsonResponse({ ok: true })
-      }
-      slots.hora = timeStr
-      await updateSession(session.id, { step: 'confirmar', slots, ...refreshPayload })
-      const summary = [
-        'Perfecto, confirma tu cita:',
-        `Nombre: ${slots.nombre}`,
-        `Teléfono: ${slots.telefono}`,
-        `Motivo: ${slots.motivo}`,
-        `Fecha: ${slots.fecha}`,
-        `Hora: ${slots.hora}`,
-        'Responde "si" para confirmar o "no" para cambiar la fecha.',
-      ].join('\n')
-      await sendTelegramMessage(message.chat.id, summary)
-      return jsonResponse({ ok: true })
-    }
-    case 'confirmar': {
-      if (YES_WORDS.has(lower)) {
-        try {
-          const { leadId, citaId } = await createLeadAndCita(slots)
-          await updateSession(session.id, {
-            step: 'done',
-            activa: false,
-            lead_id: leadId,
-            cita_id: citaId,
-            slots,
-            ...refreshPayload,
-          })
-          await sendTelegramMessage(
-            message.chat.id,
-            `¡Listo! Tu cita quedó agendada para ${slots.fecha} a las ${slots.hora}.`
+
+    const nombre = `${cliente.nombre ?? ''} ${cliente.apellido ?? ''}`.trim()
+    const moroso = parseFloat(cliente.monto_moroso ?? 0)
+    const saldo = parseFloat(cliente.saldo_actual ?? 0)
+    const dias = parseInt(cliente.dias_atraso ?? 0)
+    const estadoMsg = moroso > 0
+      ? `⚠️ Tienes *$${moroso.toFixed(2)} pendientes* con ${dias} días de atraso.`
+      : `✅ Tu cuenta está al día.`
+
+    await sendTelegram(message.chat.id,
+      `📋 *Estado de cuenta — ${nombre}*\n` +
+      `Cuenta: ${cliente.hycite_id ?? '-'}\n` +
+      `Saldo total: $${saldo.toFixed(2)}\n` +
+      `${estadoMsg}`
+    )
+    return jsonResponse({ ok: true })
+  }
+
+  if (lower.startsWith('/help') || lower.startsWith('/ayuda')) {
+    await sendTelegram(message.chat.id,
+      `📌 *Comandos disponibles:*\n` +
+      `/vincular — Conecta tu cuenta Royal Prestige\n` +
+      `/estado — Ver tu saldo actual\n` +
+      `/start — Reiniciar`
+    )
+    return jsonResponse({ ok: true })
+  }
+
+  // ── Flujo de sesión activa ─────────────────────────────────────
+  const session = await getActiveSession(chatId)
+
+  if (session?.intent === 'cartera') {
+    switch (session.step) {
+
+      case 'ask_cuenta': {
+        const cliente = await findCliente(text)
+
+        if (!cliente) {
+          const intentos = (session.intentos ?? 0) + 1
+          await updateSession(session.id, { intentos, ...refresh2h })
+          if (intentos >= 3) {
+            await deactivateSessions(chatId)
+            await sendTelegram(message.chat.id,
+              `No encontré tu cuenta después de varios intentos. Contacta a tu distribuidor para ayuda.`
+            )
+            return jsonResponse({ ok: true })
+          }
+          await sendTelegram(message.chat.id,
+            `No encontré ninguna cuenta con ese dato. Intenta con tu número de cuenta Hycite o tu teléfono (intento ${intentos}/3).`
           )
-        } catch (error) {
-          await sendTelegramMessage(
-            message.chat.id,
-            'No pude registrar la cita en este momento. Intenta más tarde o escribe /start.'
-          )
+          return jsonResponse({ ok: true })
         }
+
+        // Bloquear si ya está vinculada a otro chat
+        if (cliente.telegram_chat_id && cliente.telegram_chat_id !== chatId) {
+          await deactivateSessions(chatId)
+          await sendTelegram(message.chat.id,
+            `⛔ Esta cuenta ya está vinculada a otro dispositivo. Contacta a tu distribuidor si necesitas desvincularla.`
+          )
+          return jsonResponse({ ok: true })
+        }
+
+        // Generar código y enviar al contacto registrado del cliente
+        const code = generateCode()
+        const phone = cliente.telefono ?? cliente.telefono_casa ?? ''
+        const email = cliente.email ?? ''
+        let enviado = false
+        let canal_envio = ''
+
+        if (phone) {
+          enviado = await sendWhatsApp(phone, `Tu código de verificación para vincular tu cuenta Royal Prestige en Telegram es: *${code}*\n\nVálido por 10 minutos. Si no solicitaste esto, ignóralo.`)
+          if (enviado) canal_envio = `WhatsApp ${maskPhone(phone)}`
+        }
+        if (!enviado && email) {
+          enviado = await sendEmail(email, code)
+          if (enviado) canal_envio = `correo ${maskEmail(email)}`
+        }
+
+        if (!enviado) {
+          await deactivateSessions(chatId)
+          await sendTelegram(message.chat.id,
+            `No hay teléfono ni email registrado para esta cuenta. Contacta a tu distribuidor para vincularte.`
+          )
+          return jsonResponse({ ok: true })
+        }
+
+        const nombre = `${cliente.nombre ?? ''} ${cliente.apellido ?? ''}`.trim()
+        await updateSession(session.id, {
+          step: 'verify_code',
+          slots: { cliente_id: cliente.id, nombre, code, intentos_codigo: 0 },
+          ...refresh10m,
+        })
+        await sendTelegram(message.chat.id,
+          `📲 Enviamos un código de 6 dígitos a tu ${canal_envio}.\n\nIngresa el código para confirmar que eres *${nombre}*:`
+        )
         return jsonResponse({ ok: true })
       }
-      if (NO_WORDS.has(lower)) {
-        await updateSession(session.id, { step: 'ask_fecha', slots, ...refreshPayload })
-        await sendTelegramMessage(message.chat.id, 'Claro. ¿Qué fecha prefieres? (YYYY-MM-DD)')
+
+      case 'verify_code': {
+        const codigoCorrecto = session.slots.code as string
+        const clienteId = session.slots.cliente_id as string
+        const nombre = session.slots.nombre as string
+        const intentosCodigo = (session.slots.intentos_codigo as number ?? 0) + 1
+
+        if (text === codigoCorrecto) {
+          await vincularCliente(clienteId, chatId)
+          await deactivateSessions(chatId)
+          await sendTelegram(message.chat.id,
+            `✅ *¡Listo, ${nombre}!*\n\nTu cuenta quedó vinculada. Recibirás notificaciones de cuenta directamente aquí.\n\nEscribe /estado para ver tu saldo.`
+          )
+          return jsonResponse({ ok: true })
+        }
+
+        if (intentosCodigo >= 3) {
+          await deactivateSessions(chatId)
+          await sendTelegram(message.chat.id,
+            `❌ Demasiados intentos incorrectos. Escribe /vincular para intentar de nuevo.`
+          )
+          return jsonResponse({ ok: true })
+        }
+
+        await updateSession(session.id, {
+          slots: { ...session.slots, intentos_codigo: intentosCodigo },
+          ...refresh10m,
+        })
+        await sendTelegram(message.chat.id,
+          `Código incorrecto. Intenta de nuevo (${intentosCodigo}/3):`
+        )
         return jsonResponse({ ok: true })
       }
-      await sendTelegramMessage(message.chat.id, 'Responde "si" para confirmar o "no" para cambiar la fecha.')
-      return jsonResponse({ ok: true })
-    }
-    default: {
-      await updateSession(session.id, { step: 'ask_nombre', slots, ...refreshPayload })
-      await sendTelegramMessage(message.chat.id, START_TEXT)
-      return jsonResponse({ ok: true })
     }
   }
+
+  // ── Sin sesión — respuesta por defecto ────────────────────────
+  await sendTelegram(message.chat.id,
+    `Escribe /vincular para conectar tu cuenta, o /help para ver los comandos.`
+  )
+  return jsonResponse({ ok: true })
 })

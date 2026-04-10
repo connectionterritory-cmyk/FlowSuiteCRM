@@ -34,16 +34,17 @@ export type WhatsappTemplateCategory =
   | 'client'
   | '4en14'
   | 'conexiones'
+  | 'negocio'
+  | 'cartera'
+  | 'campana'
   | 'custom'
   | 'general'
   | 'seguimiento'
-  | 'cartera'
   | 'referidos'
   | 'cumpleanos'
   | 'citas'
   | 'servicio'
   | 'cambio_repuestos'
-  | 'campana'
 
 export type SystemTemplateSeed = {
   key: string
@@ -76,31 +77,31 @@ export const templateTabs = [
 export const DEFAULT_SYSTEM_TEMPLATES: SystemTemplateSeed[] = [
   {
     key: 'cumpleanos',
-    label: 'Feliz Cumpleanos',
+    label: 'Feliz Cumpleaños',
     category: 'basic',
     message:
-      '🎉 ¡Feliz cumpleaños {cliente}! 🎂\nTe saluda {vendedor} de {organizacion}.\nQueremos celebrar contigo con un detalle especial. ¿Te parece si coordinamos?\nContáctame al {telefono}.',
+      '🎉 ¡Feliz cumpleaños {cliente}! 🎂\n\nTe saluda {vendedor} de Connection Worldwide Group.\n\nQueremos celebrar contigo — tienes un detalle especial esperándote 🎁 ¿Te parece si lo coordinamos?\n\nEscríbeme o llámame al {telefono}.',
   },
   {
     key: 'referido',
     label: 'Referido',
     category: 'basic',
     message:
-      'Hola {cliente} 😊\nTe contacto de parte de {recomendado_por}.\nSoy {vendedor} de {organizacion}. Me gustaría presentarte algo especial de Royal Prestige.\n¿Tienes unos minutos esta semana?\nContacto: {telefono}.',
+      'Hola {cliente} 😊 Te contacto de parte de *{recomendado_por}*, quien me pidió que te escribiera.\n\nSoy {vendedor} de Connection Worldwide Group, distribuidores autorizados de Royal Prestige. Tu conocido/a pensó que podría interesarte lo que hacemos.\n\n¿Tienes unos minutos esta semana? Estoy al {telefono}.',
   },
   {
     key: 'seguimiento',
     label: 'Seguimiento',
     category: 'basic',
     message:
-      'Hola {cliente}, soy {vendedor} de {organizacion}.\nQuería darle seguimiento a nuestra conversación. ¿Podemos coordinar una cita?\nEstoy pendiente en {telefono}.',
+      'Hola {cliente} 👋 Soy {vendedor} de Connection Worldwide Group.\n\nQuería darle seguimiento a nuestra conversación — a veces los mensajes se pierden 😄\n\n¿Podemos coordinar una cita esta semana? Estoy al {telefono}.',
   },
   {
     key: 'recordatorio',
-    label: 'Recordatorio',
+    label: 'Recordatorio de cita',
     category: 'basic',
     message:
-      'Hola {cliente} 👋\nSolo quería recordarte nuestra cita/seguimiento con Royal Prestige.\nSi necesitas ajustar horario, me dices por {telefono}.',
+      'Hola {cliente} ✅ Solo quería recordarte nuestra cita/seguimiento de Royal Prestige.\n\nSi necesitas ajustar el horario avísame con tiempo. Estoy al {telefono} 😊',
   },
   {
     key: 'personalizado',
@@ -110,182 +111,253 @@ export const DEFAULT_SYSTEM_TEMPLATES: SystemTemplateSeed[] = [
   },
   {
     key: 'cartera_0_30',
-    label: 'Cartera 0-30',
+    label: 'Cartera 0-30 días',
     category: 'cartera',
     message:
-      'Hola {cliente}, soy {vendedor} de {organizacion}.\nTe escribo por tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.\nSaldo actual: ${saldo_actual}.\nSi ya realizaste el pago, ignora este mensaje. Si necesitas apoyo, escríbeme al {telefono}.',
+      'Hola {cliente}, soy {vendedor} de Connection Worldwide Group.\n\nTe escribo por tu cuenta Royal Prestige #{cuenta_hycite}. Tienes un saldo pendiente de *${saldo_actual}*.\n\nSi ya realizaste tu pago ignora este mensaje. Si necesitas apoyo para coordinarlo, escríbeme aquí o al {telefono} 😊',
   },
   {
     key: 'cartera_31_60',
-    label: 'Cartera 31-60',
+    label: 'Cartera 31-60 días',
     category: 'cartera',
     message:
-      '{cliente}, te escribo por tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.\nTienes {dias_atraso} días de atraso y un monto moroso de ${monto_moroso}.\nSi no regularizas el pago, puede afectar tu historial crediticio.\nNecesito tu respuesta para coordinar pago o arreglo.\nContacto: {telefono}.',
+      'Hola {cliente}, soy {vendedor} de Connection Worldwide Group.\n\nTu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso* con un monto de *${monto_moroso}*.\n\nQuiero ayudarte a regularizarla antes de que avance el proceso. ¿Podemos hablar hoy? Estoy al {telefono}.',
   },
   {
     key: 'cartera_60_mas',
-    label: 'Cartera 60+',
+    label: 'Cartera 60+ días',
     category: 'cartera',
     message:
-      '{cliente}, tu cuenta Royal Prestige (HyCite) #{cuenta_hycite} tiene {dias_atraso} días de atraso.\nMonto moroso: ${monto_moroso}.\nSi no llegamos a un arreglo, tu cuenta será enviada a tu distribuidor y el crédito podrá ser reportado, afectando tu historial.\nComunícate al {telefono}.',
+      '{cliente}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso* — monto moroso: *${monto_moroso}*.\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {telefono} o responde aquí. Estoy disponible.',
   },
 ]
 
 export type WhatsappTemplateTabKey = (typeof templateTabs)[number]['key']
 
 export const baseTemplates: WhatsappTemplate[] = [
+  // ── Pipeline ────────────────────────────────────────────────────────────────
   {
     id: 'pipeline.nuevo',
     category: 'pipeline',
     label: 'Nuevo',
     message:
-      'Hola {nombre}, soy {vendedor} de {organizacion}. Me gustaría presentarte una oportunidad única con Royal Prestige. ¿Tienes unos minutos esta semana?',
+      'Hola {nombre} 👋 Soy {vendedor} de Connection Worldwide Group, distribuidores autorizados de Royal Prestige.\n\nTe contacto porque tenemos algo que puede interesarte — productos de calidad premium con financiamiento directo, sin aval.\n\n¿Tienes 10 minutos esta semana para que te cuente? 😊',
   },
   {
     id: 'pipeline.contactado',
     category: 'pipeline',
     label: 'Contactado',
-    message: 'Hola {nombre}, quería darte seguimiento a nuestra conversación. ¿Pudimos agendar una cita esta semana?',
+    message:
+      'Hola {nombre}, soy {vendedor} — te escribí hace unos días sobre Royal Prestige.\n\nQuería darte seguimiento, a veces los mensajes se pierden 😄\n\n¿Pudimos coordinar una cita esta semana?',
   },
   {
     id: 'pipeline.cita',
     category: 'pipeline',
-    label: 'Cita',
-    message: 'Hola {nombre}, te confirmo nuestra cita. Estaré contigo el {next_action_date}. ¿Confirmamos?',
+    label: 'Cita agendada',
+    message:
+      'Hola {nombre} ✅ Te confirmo nuestra cita el *{next_action_date}*.\n\nSi necesitas cambiar el horario avísame con tiempo. ¡Nos vemos!',
   },
   {
     id: 'pipeline.demo',
     category: 'pipeline',
-    label: 'Demo',
-    message: 'Hola {nombre}, mañana es nuestra presentación. Te espero puntual. Cualquier pregunta estoy aquí.',
+    label: 'Recordatorio demo',
+    message:
+      'Hola {nombre} 👋 Mañana es nuestra presentación de Royal Prestige.\n\n¿Confirmamos? Te espero puntual. Cualquier cambio de último momento me avisas aquí 😊',
   },
   {
     id: 'pipeline.cierre',
     category: 'pipeline',
-    label: 'Cierre',
+    label: 'Post-presentación',
     message:
-      'Hola {nombre}, fue un placer presentarte los productos Royal Prestige. ¿Tienes alguna pregunta sobre el financiamiento? Puedo ayudarte.',
+      'Hola {nombre}, fue un placer presentarte los productos Royal Prestige 🙌\n\n¿Te quedó alguna duda sobre el financiamiento o los modelos? Puedo resolverla ahora mismo — solo dime.',
   },
   {
     id: 'pipeline.descartado',
     category: 'pipeline',
-    label: 'Descartado',
-    message: 'Hola {nombre}, espero estés muy bien. Quería retomar el contacto, tenemos novedades que podrían interesarte.',
+    label: 'Reactivación',
+    message:
+      'Hola {nombre}, ¿cómo has estado? 😊\n\nHace tiempo que no hablamos y quería retomar el contacto. Tenemos novedades en Royal Prestige — nuevos modelos y mejores condiciones de financiamiento.\n\n¿Te interesa que te cuente?',
   },
+
+  // ── Source ──────────────────────────────────────────────────────────────────
   {
     id: 'source.programa_canastas',
     category: 'source',
     label: 'Programa de Canastas',
     message:
-      'Hola {nombre}, soy {vendedor} de {organizacion}. Participaste en nuestro sorteo y quería presentarte más sobre lo que hacemos. ¿Tienes unos minutos?',
+      'Hola {nombre} 😊 Soy {vendedor} de Connection Worldwide Group.\n\nParticipaste en nuestro programa de canastas y quería presentarte personalmente lo que hacemos — productos Royal Prestige de calidad premium para el hogar.\n\n¿Tienes unos minutos esta semana?',
   },
   {
     id: 'source.feria',
     category: 'source',
-    label: 'Feria/Exhibición',
+    label: 'Feria / Exhibición',
     message:
-      'Hola {nombre}, fue un placer conocerte en el evento. Soy {vendedor} de {organizacion} y quería darte seguimiento. ¿Agendamos una cita?',
+      'Hola {nombre} 👋 Fue un placer conocerte en el evento. Soy {vendedor} de Connection Worldwide Group.\n\nQuería darte seguimiento y contarte más sobre lo que viste. ¿Agendamos una llamada rápida esta semana?',
   },
   {
     id: 'source.referido',
     category: 'source',
     label: 'Referido',
     message:
-      'Hola {nombre}, te contacto de parte de {embajador}. Soy {vendedor} de {organizacion} y me gustaría presentarte algo especial.',
+      'Hola {nombre} 😊 Te contacto de parte de *{embajador}*, quien me recomendó hablar contigo.\n\nSoy {vendedor} de Connection Worldwide Group, distribuidores autorizados de Royal Prestige. Tu conocido/a pensó que podría interesarte lo que hacemos.\n\n¿Tienes unos minutos para que te cuente?',
   },
   {
     id: 'source.toque_puerta',
     category: 'source',
     label: 'Toque de puerta',
     message:
-      'Hola {nombre}, paso por aquí para saludarte. Soy {vendedor} de {organizacion}. ¿Tienes unos minutos esta semana para una presentación?',
+      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group 👋\n\nPasé por tu zona presentando los productos Royal Prestige y quería seguir en contacto.\n\n¿Tienes disponibilidad esta semana para una visita rápida?',
   },
+
+  // ── Client ──────────────────────────────────────────────────────────────────
   {
     id: 'client.servicio',
     category: 'client',
-    label: 'Servicio',
+    label: 'Servicio / Mantenimiento',
     message:
-      'Hola {nombre}, te contacto de {organizacion} para coordinar el mantenimiento de tu equipo. ¿Cuándo tienes disponibilidad?',
+      'Hola {nombre} 👋 Soy {vendedor} de Connection Worldwide Group.\n\nTe escribo para coordinar el *mantenimiento de tu equipo Royal Prestige* — es importante hacerlo a tiempo para que siga funcionando al 100%.\n\n¿Cuándo tienes disponibilidad esta semana?',
   },
   {
     id: 'client.cumpleanos',
     category: 'client',
     label: 'Cumpleaños',
-    message: '🎉 ¡Feliz cumpleaños {nombre}! 🎂\n\nTe saluda {vendedor}, Distribuidor Autorizado de Royal Prestige.\n\nQueremos celebrar contigo: tienes un BONO especial de $200 para tu próximo equipo y un detalle sorpresa que te entregaremos personalmente. 🥳\n\n¡Que tengas un día increíble! Contáctanos hoy para reclamar tu regalo.',
+    message:
+      '🎉 ¡Feliz cumpleaños {nombre}! 🎂\n\nTe saluda {vendedor}, tu distribuidor de Royal Prestige.\n\nQueremos celebrar contigo: tienes un *BONO especial de $200* para tu próximo equipo y un detalle sorpresa que te entregaremos personalmente 🥳\n\n¡Que tengas un día increíble! Escríbeme hoy para reclamar tu regalo.',
   },
   {
     id: 'client.morosa',
     category: 'client',
-    label: 'Cuenta morosa',
+    label: 'Cuenta con atraso',
     message:
-      'Hola {nombre}, soy {vendedor} de {organizacion}. Quería coordinar contigo sobre tu cuenta. ¿Tienes un momento para hablar?',
+      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTe escribo porque vi que tienes un saldo pendiente en tu cuenta Royal Prestige y quería ver si podemos coordinarlo antes de que avance el proceso.\n\n¿Tienes un momento para hablar hoy?',
   },
   {
     id: 'client.recompra',
     category: 'client',
-    label: 'Recompra',
+    label: 'Recompra / Upsell',
     message:
-      'Hola {nombre}, espero que estés disfrutando tus productos Royal Prestige. Tenemos novedades que podrían interesarte. ¿Agendamos una visita?',
+      'Hola {nombre} 😊 Espero que estés disfrutando tu equipo Royal Prestige.\n\nTe escribo porque este mes tenemos *nuevos modelos y promociones exclusivas* para clientes como tú que ya conocen la calidad de la marca.\n\n¿Te agendo una visita rápida para contarte?',
   },
+
+  // ── 4 en 14 ─────────────────────────────────────────────────────────────────
   {
     id: '4en14.invitacion_demo',
     category: '4en14',
     label: 'Invitación demo',
     message:
-      'Hola {nombre}, te invito a una presentación exclusiva de Royal Prestige. Es una experiencia única. ¿Puedes el {fecha}?',
+      'Hola {nombre} 👋 Te invito a una *presentación exclusiva de Royal Prestige* el *{fecha}*.\n\nEs una experiencia diferente — verás los productos en acción y conocerás la oportunidad de negocio. ¡Vale mucho la pena!\n\n¿Puedes ese día? 😊',
   },
   {
     id: '4en14.recordatorio_demo',
     category: '4en14',
     label: 'Recordatorio demo',
-    message: 'Hola {nombre}, te recuerdo nuestra presentación mañana. ¡Te espero! Cualquier cambio avísame.',
+    message:
+      'Hola {nombre} ✅ Solo un recordatorio: *mañana es tu presentación de Royal Prestige*.\n\nTe espero puntual. Si hay algún cambio avísame con tiempo 😊',
   },
   {
     id: '4en14.post_demo',
     category: '4en14',
     label: 'Seguimiento post-demo',
-    message: 'Hola {nombre}, gracias por asistir a la presentación. ¿Tienes alguna pregunta? Estoy aquí para ayudarte.',
+    message:
+      'Hola {nombre}, gracias por asistir a la presentación 🙌\n\n¿Qué te pareció? Si tienes alguna pregunta sobre los productos o el financiamiento, estoy aquí para resolverla.\n\n¿Seguimos con el siguiente paso?',
   },
   {
     id: '4en14.demo_calificada',
     category: '4en14',
     label: 'Demo calificada',
     message:
-      'Hola {nombre}, tu demo fue calificada. ¡Felicitaciones! Sigamos con el siguiente paso. ¿Te parece si coordinamos la próxima reunión?',
+      '🎉 ¡Felicitaciones {nombre}! Tu demo fue *calificada* — eso es un logro importante.\n\nVamos al siguiente paso. ¿Cuándo tienes disponibilidad esta semana para coordinarlo?',
   },
   {
     id: '4en14.ciclo_completado',
     category: '4en14',
     label: 'Ciclo completado',
     message:
-      'Hola {nombre}, completaste tu ciclo 4 en 14. ¡Felicitaciones! Tu regalo está listo. Coordinemos la entrega.',
+      '🏆 ¡{nombre}, completaste tu ciclo *4 en 14*! Eso es increíble — no todo el mundo llega aquí.\n\nTu regalo ya está listo. ¿Cuándo coordinamos la entrega? 🎁',
   },
+
+  // ── Conexiones Infinitas ─────────────────────────────────────────────────────
   {
     id: 'conexiones.bienvenida',
     category: 'conexiones',
     label: 'Bienvenida embajador',
     message:
-      'Hola {nombre}, bienvenido al programa Conexiones Infinitas de {organizacion} como Embajador Silver. ¡Empecemos!',
+      'Hola {nombre} 🎉 ¡Bienvenido/a oficialmente al programa *Conexiones Infinitas* de Connection Worldwide Group como Embajador Silver!\n\nEsto es el inicio de algo grande. Voy a estar contigo en cada paso. ¿Empezamos? 💪',
   },
   {
     id: 'conexiones.upgrade_gold',
     category: 'conexiones',
     label: 'Upgrade a Gold',
     message:
-      '🏆 Hola {nombre}, ¡felicitaciones! Alcanzaste el nivel Gold en Conexiones Infinitas. ¡Es un logro increíble!',
+      '🏆 ¡{nombre}, lo lograste! Alcanzaste el nivel *Gold* en Conexiones Infinitas.\n\nEso habla muy bien de ti y de tu trabajo. ¡Felicitaciones! ¿Listo/a para el siguiente nivel? 🚀',
   },
   {
     id: 'conexiones.seguimiento',
     category: 'conexiones',
-    label: 'Seguimiento conexiones',
-    message: 'Hola {nombre}, quería saber cómo van tus conexiones este mes. ¿Necesitas apoyo o materiales?',
+    label: 'Seguimiento mensual',
+    message:
+      'Hola {nombre} 👋 ¿Cómo van tus conexiones este mes?\n\nQuería saber si necesitas apoyo, materiales o tienes alguna pregunta. Estoy aquí para ayudarte a llegar a tu meta 💪',
   },
   {
     id: 'conexiones.premio',
     category: 'conexiones',
     label: 'Premio entregado',
-    message: 'Hola {nombre}, fue un placer entregarte tu premio de Conexiones Infinitas. ¡Sigue así!',
+    message:
+      '🎁 {nombre}, fue un placer entregarte tu premio de Conexiones Infinitas. ¡Te lo ganaste con trabajo!\n\nSigue así — el próximo nivel tiene mejores recompensas. ¡Vamos! 🚀',
   },
+  // ── Oportunidad de negocio ───────────────────────────────────────────────────
+  {
+    id: 'negocio.distribuidor',
+    category: 'negocio',
+    label: 'Invitación a distribuidor',
+    message:
+      'Hola {nombre} 👋 Soy {vendedor} de Connection Worldwide Group.\n\nTe contacto porque creo que tienes el perfil ideal para una oportunidad que puede cambiar tu situación financiera.\n\nRoyal Prestige está abriendo plazas de distribuidores en tu zona — ingresos reales desde casa, sin experiencia previa, con capacitación incluida.\n\n¿Tienes 10 minutos esta semana para que te cuente los detalles? 💼\n\nwww.connectionworldwidegroup.com/emprende-con-nosotros/',
+  },
+  {
+    id: 'negocio.referido_negocio',
+    category: 'negocio',
+    label: 'Referido — negocio',
+    message:
+      'Hola {nombre} 😊 Te contacto de parte de *{recomendado_por_nombre}*, quien pensó que esta oportunidad podría interesarte.\n\nSoy {vendedor} de Connection Worldwide Group. Trabajamos con Royal Prestige — una marca de 60 años — y tenemos plazas abiertas de distribuidores en tu zona.\n\n¿Tienes unos minutos para que te explique cómo funciona?',
+  },
+  {
+    id: 'negocio.reactivacion',
+    category: 'negocio',
+    label: 'Reactivación',
+    message:
+      'Hola {nombre}, ¿cómo has estado? 😊\n\nHace tiempo que no hablamos. Quería retomar el contacto porque tenemos novedades importantes — nuevos programas de ingreso con Royal Prestige y mejores condiciones que antes.\n\nSi en algún momento te llamó la atención, quizás ahora sea el momento. ¿Conversamos esta semana?',
+  },
+  {
+    id: 'negocio.seguimiento',
+    category: 'negocio',
+    label: 'Seguimiento negocio',
+    message:
+      'Hola {nombre} 👋 Soy {vendedor}, te escribí hace unos días sobre la oportunidad con Royal Prestige.\n\nQuería darte seguimiento — a veces los mensajes se pierden 😄\n\n¿Pudiste ver la info? ¿Te quedó alguna pregunta? Estoy aquí para resolverla.',
+  },
+
+  // ── Cartera ─────────────────────────────────────────────────────────────────
+  {
+    id: 'cartera.0_30',
+    category: 'cartera',
+    label: 'Cartera 0-30 días',
+    message:
+      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTe escribo por tu cuenta Royal Prestige #{cuenta_hycite}.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nSi ya realizaste tu pago ignora este mensaje. Si necesitas apoyo para coordinarlo, escríbeme aquí o al {vendedor_telefono} 😊',
+  },
+  {
+    id: 'cartera.31_60',
+    category: 'cartera',
+    label: 'Cartera 31-60 días',
+    message:
+      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nQuiero ayudarte a regularizarla antes de que avance el proceso. ¿Podemos hablar hoy? Estoy al {vendedor_telefono}.',
+  },
+  {
+    id: 'cartera.60_mas',
+    category: 'cartera',
+    label: 'Cartera 60+ días',
+    message:
+      '{nombre}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {vendedor_telefono} o responde aquí. Estoy disponible.',
+  },
+
   // ── Campaña FrescaFlow Abril ────────────────────────────────────────────────
   {
     id: 'campana.frescaflow_v1',

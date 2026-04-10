@@ -631,8 +631,10 @@ export function ClientesPage() {
     return clientesOrdenados.map((cliente) => {
       const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || '-'
       const vendedorName = getClienteVendedorLabel(getClienteResponsableId(cliente))
+      const vendedorDisplay = vendedorName !== '-' ? vendedorName : (cliente.codigo_vendedor_hycite ?? '-')
       const cuenta = cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '-'
       const segmento = segmentoAtraso(cliente.dias_atraso, cliente.monto_moroso)
+      const telefonoDisplay = cliente.telefono ?? cliente.telefono_casa ?? '-'
 
       const morosidadBadge = (
         <span
@@ -650,61 +652,22 @@ export function ClientesPage() {
         </span>
       )
 
-      const estadoBadge = (
-        <span
-          style={{
-            padding: '0.2rem 0.6rem',
-            borderRadius: '9999px',
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            background: cliente.estado_cuenta === 'cancelacion_total' ? '#f3f4f6' : '#d1fae5',
-            color: cliente.estado_cuenta === 'cancelacion_total' ? '#6b7280' : '#065f46',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {cliente.estado_cuenta === 'cancelacion_total' ? 'Cancelado' : 'Actual'}
-        </span>
-      )
+      const ciudadDisplay = cliente.ciudad ?? '-'
 
       const saldoDisplay = cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-'
-
-      const whatsappAction = (
-        <button
-          type="button"
-          className="whatsapp-button"
-          aria-label="WhatsApp"
-          onClick={(event) => {
-            event.stopPropagation()
-            openWhatsapp({
-              nombre: fullName,
-              telefono: cliente.telefono ?? '',
-              email: cliente.email ?? '',
-              vendedor: vendedorName === '-' ? '' : vendedorName,
-              cuentaHycite: cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '',
-              saldoActual: cliente.saldo_actual,
-              montoMoroso: cliente.monto_moroso,
-              diasAtraso: cliente.dias_atraso,
-              estadoMorosidad: cliente.estado_morosidad,
-              clienteId: cliente.id,
-            })
-          }}
-        >
-          <IconWhatsapp className="whatsapp-icon" />
-        </button>
-      )
+      const montoMorosoDisplay = (cliente.monto_moroso ?? 0) > 0 ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-'
 
       return {
         id: cliente.id,
         cells: [
           fullName,
-          cliente.telefono ?? '-',
+          telefonoDisplay,
           cuenta,
-          vendedorName,
           saldoDisplay,
+          montoMorosoDisplay,
           morosidadBadge,
-          estadoBadge,
-          estadoOperativoBadge(cliente.estado_operativo),
-          whatsappAction,
+          ciudadDisplay,
+          vendedorDisplay,
         ],
         detail: [
           { label: 'Nombre', value: cliente.nombre ?? '-' },
@@ -755,7 +718,7 @@ export function ClientesPage() {
             })(),
           },
           { label: 'Ciudad', value: cliente.ciudad ?? '-' },
-          { label: 'Estado', value: cliente.estado_region ?? '-' },
+          { label: 'Estado / Región', value: cliente.estado_region ?? '-' },
           { label: 'Codigo postal', value: cliente.codigo_postal ?? '-' },
           { label: 'Cuenta Hycite', value: cliente.hycite_id ?? '-' },
           { label: 'Cuenta financiera', value: cliente.numero_cuenta_financiera ?? '-' },
@@ -763,7 +726,7 @@ export function ClientesPage() {
           { label: 'Monto moroso', value: cliente.monto_moroso ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-' },
           { label: 'Dias de atraso', value: segmento },
           { label: 'Nivel', value: cliente.nivel ? String(cliente.nivel) : '-' },
-          { label: 'Estado', value: cliente.estado_cuenta ?? '-' },
+          { label: 'Estado cuenta', value: cliente.estado_cuenta ?? '-' },
           { label: 'Ultimo pedido', value: cliente.fecha_ultimo_pedido ?? '-' },
           { label: 'Vendedor', value: vendedorName },
           { label: 'Codigo vendedor', value: cliente.codigo_vendedor_hycite ?? '-' },
@@ -1801,7 +1764,7 @@ export function ClientesPage() {
         </div>
       ) : (
         <DataTable
-          columns={['Nombre', 'Telefono', 'Cuenta Hycite', 'Vendedor', 'Saldo', 'Morosidad', 'Estado', 'Operativo', 'WhatsApp']}
+          columns={['Cliente', 'Teléfono', 'Cuenta financiera', 'Saldo', 'Monto moroso', 'Morosidad', 'Ciudad', 'Vendedor']}
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={setSelectedRow}
@@ -2122,7 +2085,7 @@ export function ClientesPage() {
               })(),
             },
             { label: 'Ciudad', value: selectedClienteDetail.ciudad ?? '-' },
-            { label: 'Estado', value: selectedClienteDetail.estado_region ?? '-' },
+            { label: 'Estado / Región', value: selectedClienteDetail.estado_region ?? '-' },
             { label: 'Codigo postal', value: selectedClienteDetail.codigo_postal ?? '-' },
             { label: 'Cuenta Hycite', value: selectedClienteDetail.hycite_id ?? '-' },
             { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
@@ -2146,7 +2109,7 @@ export function ClientesPage() {
               ),
             },
             { label: 'Nivel', value: selectedClienteDetail.nivel ? String(selectedClienteDetail.nivel) : '-' },
-            { label: 'Estado', value: selectedClienteDetail.estado_cuenta ?? '-' },
+            { label: 'Estado cuenta', value: selectedClienteDetail.estado_cuenta ?? '-' },
             {
               label: 'Vendedor',
               value: selectedClienteDetail.vendedor_id
