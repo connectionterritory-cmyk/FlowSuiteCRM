@@ -29,7 +29,7 @@ interface ClienteImport {
   dias_atraso: number
   estado_morosidad: string | null
   nivel: number
-  estado_cuenta: EstadoCuenta
+  estado_cuenta?: EstadoCuenta | null
   elegible_addon: boolean
   fecha_ultimo_pedido: string | null
   ultima_fecha_pago: string | null
@@ -38,7 +38,7 @@ interface ClienteImport {
   codigo_dist_hycite: string | null
   updated_at: string
   fecha_nacimiento?: string | null
-  estado_operativo?: string
+  estado_operativo?: string | null
 }
 
 interface Importacion {
@@ -77,7 +77,7 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     aliases: [
       '# DE CLIENTE', 'HYCITE ID', 'HYCITEID', 'CUSTOMER NO', 'CUSTOMER_NO', 'CUSTOMER #', 'CUSTOMER#', 'CUSTOMER ID',
       'CUSTOMER NUMBER', 'EXTERNAL ID', 'EXTERNAL_ID', 'ID CLIENTE', 'ID DE CLIENTE', 'N DE CLIENTE', 'NO DE CLIENTE',
-      'NUMERO DE CLIENTE', 'CUENTA', 'CUENTA HYCITE', 'CUENTA FINANCIERA', 'N DE CLIEN', 'N DE CLI', 'CLIENTE #',
+      'NUMERO DE CLIENTE', '. DE CLIENTE', '.° DE CLIENTE', 'DE CLIENTE', 'CUENTA', 'CUENTA HYCITE', 'CUENTA FINANCIERA', 'N DE CLIEN', 'N DE CLI', 'CLIENTE #',
     ],
   },
   {
@@ -128,6 +128,13 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     required: false,
     canonicalAlias: 'MONTO MOROSO',
     aliases: ['MONTO MOROSO', 'DELINQUENT', 'MOROSO', 'DELINCUENCIA'],
+  },
+  {
+    key: 'codigo_vendedor_hycite',
+    label: 'Emprendedores',
+    required: false,
+    canonicalAlias: 'EMPRENDEDORES',
+    aliases: ['EMPRENDEDORES', 'EMPRENDEDOR', 'ENTREPRENEUR', 'ENTREPRENEURS', 'VENDEDOR'],
   },
   {
     key: 'fecha_nacimiento',
@@ -257,12 +264,58 @@ function calcularAtraso(row: Record<string, string>, normalizedRow: Record<strin
   if (parsearMonto(row['31-60 DÍAS DE MOROSIDAD']) > 0) return 31
   if (parsearMonto(row['0-30 DÍAS DE MOROSIDAD']) > 0) return 1
   const estado = obtenerCampo(row, normalizedRow, ['STATUS', 'ESTADO', 'Status', 'Estado']).toUpperCase()
-  if (estado.includes('90')) return 91
-  if (estado.includes('61')) return 61
-  if (estado.includes('31')) return 31
-  if (estado.includes('0 A 30') || estado.includes('0-30')) return 1
-  if (estado.includes('ATRASO') || estado.includes('MOR') || estado.includes('DELINQUENT')) return 1
+  const morosidad = parseMorosidadDesdeEstado(estado)
+  if (morosidad) return morosidad.dias_atraso
   return 0
+}
+
+function parseMorosidadDesdeEstado(estadoRaw: string): { dias_atraso: number; estado_morosidad: string } | null {
+  const u = (estadoRaw ?? '').toUpperCase()
+  if (u.includes('+90') || u.includes('90+') || u.includes('MAS DE 90') || u.includes('SOBRE 90')) {
+    return { dias_atraso: 91, estado_morosidad: '91+' }
+  }
+  if (u.includes('61 A 90') || u.includes('61-90') || u.includes('DE 61 A 90')) {
+    return { dias_atraso: 61, estado_morosidad: '61-90' }
+  }
+  if (u.includes('31 A 60') || u.includes('31-60') || u.includes('DE 31 A 60')) {
+    return { dias_atraso: 31, estado_morosidad: '31-60' }
+  }
+  if (u.includes('0 A 30') || u.includes('0-30') || u.includes('DE 0 A 30')) {
+    return { dias_atraso: 1, estado_morosidad: '0-30' }
+  }
+  if (u.includes('ATRASO') || u.includes('MOR') || u.includes('DELINQUENT')) {
+    return { dias_atraso: 1, estado_morosidad: '0-30' }
+  }
+  return null
+}
+
+function parseEstadoCuentaDesdeEstado(estadoRaw: string): EstadoCuenta | null {
+  const u = (estadoRaw ?? '').toUpperCase()
+  // Si el valor es de morosidad, no tocar estado_cuenta
+  if (parseMorosidadDesdeEstado(u)) return null
+  if (u.includes('PURGED') || u.includes('PURGADO') || u.includes('CANCELACIÓN TOTAL') || u.includes('CANCELACION TOTAL') || u.includes('CANCELADO')) {
+    return 'cancelacion_total'
+  }
+  if (u.includes('INACTIVE') || u.includes('INACTIVO')) return 'inactivo'
+  if (u.includes('PAID IN FULL') || u.includes('PAGADO') || u.includes('ACTUAL') || u.includes('CURRENT')) return 'actual'
+  return null
+}
+
+function isLikelyEstadoRegion(value: string): boolean {
+  const v = (value ?? '').trim()
+  if (!v) return false
+  if (parseMorosidadDesdeEstado(v)) return false
+  if (parseEstadoCuentaDesdeEstado(v)) return false
+  if (/^[A-Z]{2}$/.test(v.toUpperCase())) return true
+  if (/^[A-Z\\s.]+$/.test(v.toUpperCase()) && v.length <= 20) return true
+  return false
+}
+
+function obtenerEstadoRegion(row: Record<string, string>, normalizedRow: Record<string, string>): string | null {
+  const explicit = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia', 'STATE'])
+  if (explicit && explicit.trim()) return explicit.trim()
+  const fallback = obtenerCampo(row, normalizedRow, ['ESTADO', 'Estado']).trim()
+  return isLikelyEstadoRegion(fallback) ? fallback : null
 }
 
 function mapearEstadoMorosidad(
@@ -276,6 +329,8 @@ function mapearEstadoMorosidad(
     'ESTADO ATRASO', 'MOROSIDAD', 'STATUS', 'ESTADO',
   ]).trim()
   const u = estadoRaw.toUpperCase()
+  const morosidadFromEstado = parseMorosidadDesdeEstado(u)
+  if (morosidadFromEstado) return morosidadFromEstado.estado_morosidad
   const hasMorosidadKeyword =
     u.includes('DIAS') || u.includes('ATRASO') || u.includes('DELINQUENT') ||
     u.includes('MORO') || u.includes('PURG') || u.includes('0-30') ||
@@ -302,13 +357,12 @@ function mapearEstadoMorosidad(
   return null
 }
 
-function mapearEstado(s?: string): EstadoCuenta {
-  const u = (s ?? '').toUpperCase()
-  if (u.includes('PURGED') || u.includes('CANCELACIÓN TOTAL') || u.includes('CANCELACION TOTAL') || u.includes('PURGADO')) return 'cancelacion_total'
-  if (u.includes('INACTIVE') || u.includes('INACTIVO')) return 'inactivo'
-  if (u.includes('DELINQUENT') || u.includes('ATRASO') || u.includes('DIAS') || u.includes('MORA')) return 'actual'
-  if (u.includes('PAID IN FULL') || u.includes('PAGADO') || u.includes('ACTUAL')) return 'actual'
-  return 'actual'
+function bucketMorosidadDesdeDias(dias: number): string | null {
+  if (dias >= 91) return '91+'
+  if (dias >= 61) return '61-90'
+  if (dias >= 31) return '31-60'
+  if (dias >= 1) return '0-30'
+  return null
 }
 
 function parsearFila(row: Record<string, string>): ClienteImport | null {
@@ -341,7 +395,7 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
   if (ap2) apellido = [apellido, ap2].filter(Boolean).join(' ')
 
   const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad']).trim() || null
-  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO', 'Estado', 'Estado / Provincia', 'STATE']).trim() || null
+  const estadoRegion = obtenerEstadoRegion(row, normalizedRow)
   const codigoPostal = obtenerCampo(row, normalizedRow, ['ZIP CODE', 'ZIP', 'Codigo Postal', 'Codigo postal']).trim() || null
   const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Dirección']).replace(/\n/g, ', ').trim()
   const direccion = direccionRaw || [ciudad, estadoRegion, codigoPostal].filter(Boolean).join(', ') || null
@@ -370,6 +424,14 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     calcularMoroso(row, normalizedRow)
   const diasAtrasoRaw = parseInt(obtenerCampo(row, normalizedRow, ['DIAS ATRASO', 'DIAS DE ATRASO']).trim() || '0')
   const diasAtraso = diasAtrasoRaw > 0 ? diasAtrasoRaw : calcularAtraso(row, normalizedRow)
+  const estadoRaw = obtenerCampo(row, normalizedRow, ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO', 'Estado']).trim()
+  const estadoCuenta = parseEstadoCuentaDesdeEstado(estadoRaw)
+  const estadoMorosidadRaw = mapearEstadoMorosidad(row, normalizedRow, diasAtraso, montoMoroso)
+  const estadoMorosidadBucket = bucketMorosidadDesdeDias(diasAtraso)
+  const estadoMorosidad = estadoMorosidadBucket ?? estadoMorosidadRaw
+  const estadoMorosidadFinal = estadoMorosidadRaw && estadoMorosidadBucket && estadoMorosidadRaw !== estadoMorosidadBucket
+    ? estadoMorosidadBucket
+    : estadoMorosidad
 
   return {
     hycite_id: hyciteId,
@@ -386,9 +448,9 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL', 'CUSTOMER BALANCE', 'Balance', 'BALANCE', 'SALDO'])),
     monto_moroso: montoMoroso,
     dias_atraso: diasAtraso,
-    estado_morosidad: mapearEstadoMorosidad(row, normalizedRow, diasAtraso, montoMoroso),
+    estado_morosidad: estadoMorosidadFinal,
     nivel: isNaN(nivel) || nivel < 1 ? 1 : Math.min(nivel, 9),
-    estado_cuenta: mapearEstado(obtenerCampo(row, normalizedRow, ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO', 'Estado'])),
+    estado_cuenta: estadoCuenta,
     elegible_addon: (() => {
       const v = obtenerCampo(row, normalizedRow, ['ISELIGIBLEFORADDON', 'IS ELIGIBLE FOR ADD ON', 'ELEGIBLE ADDON', 'ELEGIBLE']).trim().toUpperCase()
       if (v === 'NO' || v === 'FALSE' || v === '0') return false
@@ -713,7 +775,7 @@ export function ImportacionesPage() {
 
       const { data: existentes } = await supabase
         .from('clientes')
-        .select('id, hycite_id, numero_cuenta_financiera, fecha_nacimiento, nombre, apellido, telefono, vendedor_id')
+        .select('id, hycite_id, numero_cuenta_financiera, fecha_nacimiento, nombre, apellido, telefono, telefono_casa, email, direccion, ciudad, estado_region, codigo_postal, fecha_ultimo_pedido, ultima_fecha_pago, codigo_vendedor_hycite, codigo_dist_hycite, vendedor_id, estado_cuenta')
         .or(`hycite_id.in.(${idsLote.join(',')}),numero_cuenta_financiera.in.(${cuentasLote.join(',')}),telefono.in.(${telsLote.join(',')})`)
 
       const mapId = new Map(existentes?.filter(e => e.hycite_id).map(e => [e.hycite_id, e]) || [])
@@ -726,20 +788,65 @@ export function ImportacionesPage() {
         const exByTel = telMatch && !telMatch.hycite_id ? telMatch : null
         const ex = exById || exByTel
 
+        const pickIfDifferent = (incoming: string | null | undefined, existing: string | null | undefined, normalize?: (v: string) => string) => {
+          if (!incoming) return existing ?? null
+          const inc = incoming.trim()
+          if (!inc) return existing ?? null
+          if (!existing) return inc
+          const norm = normalize ?? ((v: string) => v.trim().toLowerCase())
+          return norm(inc) === norm(existing) ? existing : inc
+        }
+
+        const pickTelefono = (incoming: string | null | undefined, existing: string | null | undefined) => {
+          if (!incoming) return existing ?? null
+          const inc = normalizarTelefono(incoming)
+          if (!inc) return existing ?? null
+          if (!existing) return inc
+          const exn = normalizarTelefono(existing)
+          return exn === inc ? existing : inc
+        }
+
         const base = ex ? {
           ...c,
           id: ex.id,
+          // Preserve preferred fields
           fecha_nacimiento: ex.fecha_nacimiento || c.fecha_nacimiento,
           nombre: ex.nombre || c.nombre,
           apellido: ex.apellido || c.apellido,
-          telefono: ex.telefono || c.telefono,
           vendedor_id: ex.vendedor_id || session!.user.id,
           numero_cuenta_financiera: ex.numero_cuenta_financiera || c.hycite_id,
-        } : { ...c, vendedor_id: session!.user.id, numero_cuenta_financiera: c.hycite_id }
+          // Update if incoming non-empty and different
+          telefono: pickTelefono(c.telefono, ex.telefono),
+          telefono_casa: pickTelefono(c.telefono_casa, ex.telefono_casa),
+          email: pickIfDifferent(c.email, ex.email, (v) => v.trim().toLowerCase()),
+          direccion: pickIfDifferent(c.direccion, ex.direccion),
+          ciudad: pickIfDifferent(c.ciudad, ex.ciudad),
+          estado_region: pickIfDifferent(c.estado_region, ex.estado_region, (v) => v.trim().toUpperCase()),
+          codigo_postal: pickIfDifferent(c.codigo_postal, ex.codigo_postal, (v) => v.replace(/\s+/g, '').toUpperCase()),
+          // Always refresh from import
+          saldo_actual: c.saldo_actual,
+          monto_moroso: c.monto_moroso,
+          dias_atraso: c.dias_atraso,
+          estado_morosidad: c.estado_morosidad,
+          // Refresh only if incoming non-empty
+          fecha_ultimo_pedido: c.fecha_ultimo_pedido || ex.fecha_ultimo_pedido || null,
+          ultima_fecha_pago: c.ultima_fecha_pago || ex.ultima_fecha_pago || null,
+          codigo_vendedor_hycite: c.codigo_vendedor_hycite || ex.codigo_vendedor_hycite || null,
+          codigo_dist_hycite: c.codigo_dist_hycite || ex.codigo_dist_hycite || null,
+        } : {
+          ...c,
+          vendedor_id: session!.user.id,
+          numero_cuenta_financiera: c.hycite_id,
+        }
+
+        if (ex?.estado_cuenta && base.estado_cuenta === 'cancelacion_total' && ex.estado_cuenta !== 'cancelacion_total') {
+          base.estado_cuenta = ex.estado_cuenta
+        }
+        if (base.estado_cuenta == null) delete base.estado_cuenta
 
         // Add estado_operativo only when estado_cuenta column was mapped
-        if (columnMapping['estado_cuenta']) {
-          return { ...base, estado_operativo: ESTADO_OPERATIVO_MAP[c.estado_cuenta] }
+        if (columnMapping['estado_cuenta'] && base.estado_cuenta != null) {
+          return { ...base, estado_operativo: ESTADO_OPERATIVO_MAP[base.estado_cuenta] }
         }
         return base
       }
