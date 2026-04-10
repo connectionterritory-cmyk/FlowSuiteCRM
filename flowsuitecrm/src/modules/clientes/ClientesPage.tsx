@@ -220,45 +220,6 @@ function badgeTextColor(segmento: string): string {
   return '#374151'
 }
 
-type EstadoOperativoVariant = 'activo' | 'en_riesgo' | 'recuperacion' | 'inactivo' | 'cancelado'
-
-const ESTADO_OPERATIVO_LABELS: Record<EstadoOperativoVariant, string> = {
-  activo: 'Activo',
-  en_riesgo: 'En riesgo',
-  recuperacion: 'Recuperación',
-  inactivo: 'Inactivo',
-  cancelado: 'Cancelado',
-}
-
-const ESTADO_OPERATIVO_COLORS: Record<EstadoOperativoVariant, { bg: string; text: string }> = {
-  activo: { bg: '#d1fae5', text: '#065f46' },
-  en_riesgo: { bg: '#fef3c7', text: '#92400e' },
-  recuperacion: { bg: '#dbeafe', text: '#1e40af' },
-  inactivo: { bg: '#f3f4f6', text: '#6b7280' },
-  cancelado: { bg: '#f3f4f6', text: '#6b7280' },
-}
-
-function estadoOperativoBadge(estado: string | null) {
-  if (!estado) return null
-  const key = estado as EstadoOperativoVariant
-  const label = ESTADO_OPERATIVO_LABELS[key] ?? estado
-  const colors = ESTADO_OPERATIVO_COLORS[key] ?? { bg: '#f3f4f6', text: '#374151' }
-  return (
-    <span
-      style={{
-        padding: '0.2rem 0.6rem',
-        borderRadius: '9999px',
-        fontSize: '0.72rem',
-        fontWeight: 600,
-        background: colors.bg,
-        color: colors.text,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </span>
-  )
-}
 
 const getClientesPermissionError = (error: { code?: string | null; message?: string | null } | null) => {
   if (!error) return null
