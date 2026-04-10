@@ -25,6 +25,7 @@ build/
 backup.sql
 !outputs/*.sql
 !supabase/migrations/*.sql
+!flowsuitecrm/supabase/migrations/*.sql
 outputs/*.csv
 skills/
 tmp-workflow*.json

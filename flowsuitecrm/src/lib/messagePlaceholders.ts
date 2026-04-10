@@ -35,7 +35,7 @@ const removeAccents = (value: string) =>
 
 export const normalizePlaceholderName = (value: string) =>
   removeAccents(value)
-    .replace(/[{}]/g, '')
+    .replace(/[{}|]/g, '')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_')
@@ -45,14 +45,36 @@ const toCanonicalName = (value: string) => {
   return ALIAS_MAP[normalized] ?? normalized
 }
 
+// Parse a raw placeholder like "nombre" or "nombre|\"amigo\"" into {key, fallback}
+function parsePlaceholder(raw: string): { key: string; fallback: string | null } {
+  const pipeIdx = raw.indexOf('|')
+  if (pipeIdx === -1) return { key: toCanonicalName(raw), fallback: null }
+  const key = toCanonicalName(raw.slice(0, pipeIdx))
+  let fallback = raw.slice(pipeIdx + 1).trim()
+  if (
+    (fallback.startsWith('"') && fallback.endsWith('"')) ||
+    (fallback.startsWith("'") && fallback.endsWith("'"))
+  ) {
+    fallback = fallback.slice(1, -1)
+  }
+  return { key, fallback: fallback || null }
+}
+
+// Normalize placeholders while preserving fallback syntax
 export const canonicalizeTemplate = (message: string) =>
-  message.replace(/\{([^}]+)\}/g, (_match, key) => `{${toCanonicalName(key)}}`)
+  message.replace(/\{([^}]+)\}/g, (_match, raw) => {
+    const pipeIdx = raw.indexOf('|')
+    if (pipeIdx === -1) return `{${toCanonicalName(raw)}}`
+    const key = toCanonicalName(raw.slice(0, pipeIdx))
+    const fallbackPart = raw.slice(pipeIdx + 1).trim()
+    return `{${key}|${fallbackPart}}`
+  })
 
 export const extractPlaceholders = (message: string) => {
   const keys = new Set<string>()
-  const canonical = canonicalizeTemplate(message)
-  canonical.replace(/\{([^}]+)\}/g, (_match, key) => {
-    keys.add(toCanonicalName(key))
+  message.replace(/\{([^}]+)\}/g, (_match, raw) => {
+    const { key } = parsePlaceholder(raw)
+    keys.add(key)
     return ''
   })
   return Array.from(keys)
@@ -64,11 +86,12 @@ export const resolveTemplate = (
 ) => {
   const missing: string[] = []
   const canonical = canonicalizeTemplate(message)
-  const text = canonical.replace(/\{([^}]+)\}/g, (_match, key) => {
-    const canonicalKey = toCanonicalName(key)
-    const value = variables[canonicalKey]
+  const text = canonical.replace(/\{([^}]+)\}/g, (_match, raw) => {
+    const { key, fallback } = parsePlaceholder(raw)
+    const value = variables[key]
     if (value === null || value === undefined || value === '') {
-      missing.push(canonicalKey)
+      if (fallback !== null) return fallback
+      missing.push(key)
       return ''
     }
     return String(value)

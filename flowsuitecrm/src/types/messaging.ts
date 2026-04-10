@@ -23,4 +23,4 @@ export type MessagingContact = {
   contactRef?: ContactRef | null
 }
 
-export type MessagingChannel = 'whatsapp' | 'sms' | 'email'
+export type MessagingChannel = 'whatsapp' | 'sms' | 'email' | 'telegram'

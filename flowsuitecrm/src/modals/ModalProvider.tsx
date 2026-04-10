@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MessageModal } from '../components/MessageModal'
+import { PremiumMessageModal } from '../components/PremiumMessageModal'
 import {
   RegistrarGestionModal,
   type GestionRole,
@@ -145,7 +145,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
   return (
     <ModalHostContext.Provider value={value}>
       {children}
-      <MessageModal
+      <PremiumMessageModal
         open={Boolean(messageIntent)}
         channel={messageIntent?.channel ?? 'whatsapp'}
         contact={messageIntent?.contact ?? null}
