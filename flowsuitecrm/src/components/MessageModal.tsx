@@ -74,6 +74,7 @@ type LegacyTemplate = {
 
 const LEGACY_TEMPLATES_KEY = 'flowsuite.messaging.customTemplates'
 const LEGACY_MIGRATED_KEY = 'flowsuite.messaging.customTemplatesMigrated'
+const LEGACY_CLEANED_KEY = 'flowsuite.messaging.customTemplatesCleaned'
 
 const normalizeLegacyTemplate = (raw: Record<string, unknown>): LegacyTemplate | null => {
   const label =
@@ -277,6 +278,9 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [legacyImporting, setLegacyImporting] = useState(false)
   const [legacyImportError, setLegacyImportError] = useState<string | null>(null)
   const [legacyImportSummary, setLegacyImportSummary] = useState<{ imported: number; skipped: number } | null>(null)
+  const [legacyMigrated, setLegacyMigrated] = useState(false)
+  const [legacyCleaned, setLegacyCleaned] = useState(false)
+  const [legacyCleanError, setLegacyCleanError] = useState<string | null>(null)
 
   const exampleTemplate = useMemo<SystemTemplate>(
     () => ({
@@ -446,12 +450,16 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     if (!open) return
     if (!configured || !session?.user.id) return
     if (typeof window === 'undefined') return
-    const migrated = window.localStorage.getItem(LEGACY_MIGRATED_KEY)
-    if (migrated === 'true') return
+    const migrated = window.localStorage.getItem(LEGACY_MIGRATED_KEY) === 'true'
+    const cleaned = window.localStorage.getItem(LEGACY_CLEANED_KEY) === 'true'
+    setLegacyMigrated(migrated)
+    setLegacyCleaned(cleaned)
     const legacy = loadLegacyTemplates()
     if (legacy.length === 0) return
     setLegacyTemplates(legacy)
-    setShowLegacyImport(true)
+    if (!migrated) {
+      setShowLegacyImport(true)
+    }
   }, [configured, open, session?.user.id])
 
   useEffect(() => {
@@ -863,11 +871,44 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(LEGACY_MIGRATED_KEY, 'true')
     }
+    setLegacyMigrated(true)
     void loadUserTemplates()
   }
 
   const handleSkipLegacyImport = () => {
     setShowLegacyImport(false)
+  }
+
+  const handleCleanLegacyTemplates = async () => {
+    if (!configured || !session?.user.id) return
+    if (legacyTemplates.length === 0) return
+    setLegacyCleanError(null)
+
+    const existingSignatures = new Set(
+      cloudTemplates.map((t) =>
+        `${t.canal}|${t.asunto ?? ''}|${t.cuerpo}`.toLowerCase()
+      )
+    )
+
+    const missing = legacyTemplates.filter((legacy) => {
+      const signature = `${legacy.channel}|${legacy.subject ?? ''}|${legacy.message}`.toLowerCase()
+      return !existingSignatures.has(signature)
+    })
+
+    if (missing.length > 0) {
+      setLegacyCleanError('Faltan plantillas en la nube. Reintenta la importación.')
+      return
+    }
+
+    const ok = window.confirm(`Se eliminarán ${legacyTemplates.length} plantilla(s) locales. ¿Deseas continuar?`)
+    if (!ok) return
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(LEGACY_TEMPLATES_KEY)
+      window.localStorage.setItem(LEGACY_CLEANED_KEY, 'true')
+    }
+    setLegacyCleaned(true)
+    showToast('Plantillas locales eliminadas')
   }
 
   const saveOutboxMessage = useCallback(async (status: 'borrador' | 'programado' | 'enviado' | 'fallido' | 'cancelado', extra?: {
@@ -1089,6 +1130,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       title="Enviar mensaje"
       description=""
       onClose={onClose}
+      size="xl"
       actions={
         <>
           <Button variant="ghost" type="button" onClick={onClose}>
@@ -1189,6 +1231,35 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
                   Omitir por ahora
                 </Button>
               </div>
+            </div>
+          )}
+          {!showLegacyImport && legacyMigrated && !legacyCleaned && legacyTemplates.length > 0 && (
+            <div className="message-card">
+              <div className="message-card-title">Limpiar plantillas locales</div>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Tus plantillas ya fueron migradas. Puedes eliminar la copia local de forma segura.
+              </p>
+              {legacyCleanError && (
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#d97706' }}>
+                  {legacyCleanError}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Button type="button" onClick={handleCleanLegacyTemplates}>
+                  Eliminar plantillas locales
+                </Button>
+                <Button variant="ghost" type="button" onClick={handleImportLegacyTemplates}>
+                  Reintentar importación
+                </Button>
+              </div>
+            </div>
+          )}
+          {legacyCleaned && (
+            <div className="message-card">
+              <div className="message-card-title">Plantillas locales</div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Limpieza completada. Tus plantillas ya están en la nube.
+              </p>
             </div>
           )}
           <div className="message-card">
