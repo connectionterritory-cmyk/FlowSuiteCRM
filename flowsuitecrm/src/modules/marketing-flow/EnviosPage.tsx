@@ -12,6 +12,7 @@ import { useToast } from '../../components/useToast'
 import { CitaModal, type CitaForm } from '../citas/CitaModal'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
 import { useViewMode } from '../../data/useViewMode'
 
 type CampaignRecord = {
@@ -38,6 +39,7 @@ type MkMessageRow = {
 
 export function EnviosPage() {
   const { session } = useAuth()
+  const { currentUser } = useUsers()
   const sessionUserId = session?.user.id ?? null
   const [searchParams] = useSearchParams()
   const { showToast } = useToast()
@@ -226,6 +228,7 @@ export function EnviosPage() {
     || (hasDistribuidorScope && viewMode === 'distributor')
   const canSend = Boolean(campaignId) && selectedCampaign?.estado === 'activa' && canWriteCampaign
   const permissionTooltip = !canWriteCampaign ? 'Solo el responsable de la campaña puede ejecutar envíos' : undefined
+  const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
 
   const handleOpenMessage = useCallback((message: MkMessageRow) => {
     if (!canSend) return
@@ -765,6 +768,9 @@ export function EnviosPage() {
                 telefono: activeMessage.telefono ?? '',
                 leadId: activeMessage.contacto_tipo === 'lead' ? activeMessage.contacto_id : null,
                 clienteId: activeMessage.contacto_tipo === 'cliente' ? activeMessage.contacto_id : null,
+                vendedorNombre: currentUserName || null,
+                vendedorTelefono: currentUser?.telefono ?? null,
+                responsableNombre: currentUserName || null,
               }
             : null
         }
