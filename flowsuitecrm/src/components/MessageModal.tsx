@@ -331,11 +331,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const recomendadoPorNombre = activeContact.recomendadoPorNombre ?? activeContact.recomendadoPor ?? ''
     const cobranzasTelefono = '7862913042'
     const vendedorTelefonoBase = activeContact.vendedorTelefono
-      ?? distributorPhone
-      ?? currentUser?.telefono
-      ?? metadataPhone
-      ?? authPhone
-      ?? ''
+      || distributorPhone
+      || currentUser?.telefono
+      || metadataPhone
+      || authPhone
+      || ''
     const vendedorTelefono = messageType === 'cartera' ? cobranzasTelefono : vendedorTelefonoBase
     return {
       cliente,
