@@ -101,14 +101,15 @@ export function SegmentosPage() {
   const rows = useMemo<DataTableRow[]>(() => {
     return filteredTargets.map((row) => {
       const hasWhatsapp = Boolean(row.telefono && row.telefono.replace(/\D/g, '').length >= 10)
-      return ({
-      id: row.id,
-      cells: [
-        row.nombre ?? '-',
-        row.telefono ?? '-',
-        row.ciudad ?? '-',
-        <Badge key={`${row.id}-whatsapp`} label={hasWhatsapp ? 'WhatsApp' : 'Sin WhatsApp'} tone={hasWhatsapp ? 'blue' : 'neutral'} />,
-      ],
+      return {
+        id: row.id,
+        cells: [
+          row.nombre ?? '-',
+          row.telefono ?? '-',
+          row.ciudad ?? '-',
+          <Badge key={`${row.id}-whatsapp`} label={hasWhatsapp ? 'WhatsApp' : 'Sin WhatsApp'} tone={hasWhatsapp ? 'blue' : 'neutral'} />,
+        ],
+      }
     })
   }, [filteredTargets])
 

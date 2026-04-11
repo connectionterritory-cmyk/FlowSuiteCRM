@@ -341,21 +341,21 @@ export const baseTemplates: WhatsappTemplate[] = [
     category: 'cartera',
     label: 'Cartera 0-30 días',
     message:
-      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTe escribo por tu cuenta Royal Prestige #{cuenta_hycite}.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nSi ya realizaste tu pago ignora este mensaje. Si necesitas apoyo para coordinarlo, escríbeme aquí o al {vendedor_telefono} 😊',
+      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTe escribo por tu cuenta Royal Prestige #{cuenta_hycite}.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nSi ya realizaste tu pago ignora este mensaje. Si necesitas apoyo para coordinarlo, escríbeme aquí o al {{vendedor_telefono|\"este número\"}} 😊',
   },
   {
     id: 'cartera.31_60',
     category: 'cartera',
     label: 'Cartera 31-60 días',
     message:
-      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nQuiero ayudarte a regularizarla antes de que avance el proceso. ¿Podemos hablar hoy? Estoy al {vendedor_telefono}.',
+      'Hola {nombre}, soy {vendedor} de Connection Worldwide Group.\n\nTu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nQuiero ayudarte a regularizarla antes de que avance el proceso. ¿Podemos hablar hoy? Estoy al {{vendedor_telefono|\"este número\"}}.',
   },
   {
     id: 'cartera.60_mas',
     category: 'cartera',
     label: 'Cartera 60+ días',
     message:
-      '{nombre}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {vendedor_telefono} o responde aquí. Estoy disponible.',
+      '{nombre}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {{vendedor_telefono|\"este número\"}} o responde aquí. Estoy disponible.',
   },
 
   // ── Campaña FrescaFlow Abril ────────────────────────────────────────────────
@@ -364,35 +364,35 @@ export const baseTemplates: WhatsappTemplate[] = [
     category: 'campana',
     label: 'FrescaFlow V1 — Beneficio VIP',
     message:
-      'Hola {nombre} 👋\n\nQuería avisarte personalmente porque eres parte de nuestra familia de clientes especiales.\n\nEste abril tenemos el *Sistema FrescaFlow Royal Prestige con 20% de descuento* — y lo reservamos primero para clientes como tú.\n\n✅ Agua purificada al instante, sin garrafones\n✅ Elimina cloro, metales y bacterias del agua\n✅ Ahorro real desde el primer mes\n\n¿Te interesa saber más? Escríbeme aquí o al {vendedor_telefono} y te cuento todo 😊\n\n— Connection Worldwide Group',
+      'Hola {nombre} 👋\n\nQuería avisarte personalmente porque eres parte de nuestra familia de clientes especiales.\n\nEste abril tenemos el *Sistema FrescaFlow Royal Prestige con 20% de descuento* — y lo reservamos primero para clientes como tú.\n\n✅ Agua purificada al instante, sin garrafones\n✅ Elimina cloro, metales y bacterias del agua\n✅ Ahorro real desde el primer mes\n\n¿Te interesa saber más? Escríbeme aquí o al {{vendedor_telefono|\"este número\"}} y te cuento todo 😊\n\n— Connection Worldwide Group',
   },
   {
     id: 'campana.frescaflow_v2',
     category: 'campana',
     label: 'FrescaFlow V2 — Directo al grano',
     message:
-      '{nombre}, buenas 🙌\n\nTengo algo bueno para ti este mes:\n\n🌿 *FrescaFlow Royal Prestige — 20% OFF en abril*\nSolo para clientes activos. Disponibilidad limitada.\n\n💧 ¿Por qué comprarlo ahora?\n1. Agua limpia y segura para toda tu familia\n2. Deja de gastar en botellas y garrafones\n3. Tecnología Royal Prestige con respaldo garantizado\n\nSi quieres aprovecharlo, dime y te doy los detalles en 2 minutos.\n\nConnection Worldwide Group | {vendedor_telefono}',
+      '{nombre}, buenas 🙌\n\nTengo algo bueno para ti este mes:\n\n🌿 *FrescaFlow Royal Prestige — 20% OFF en abril*\nSolo para clientes activos. Disponibilidad limitada.\n\n💧 ¿Por qué comprarlo ahora?\n1. Agua limpia y segura para toda tu familia\n2. Deja de gastar en botellas y garrafones\n3. Tecnología Royal Prestige con respaldo garantizado\n\nSi quieres aprovecharlo, dime y te doy los detalles en 2 minutos.\n\nConnection Worldwide Group | {{vendedor_telefono|\"este número\"}}',
   },
   {
     id: 'campana.frescaflow_v3',
     category: 'campana',
     label: 'FrescaFlow V3 — Familia',
     message:
-      'Hola {nombre}, ¿cómo está la familia? 😊\n\nTe escribo porque este mes tenemos algo especial para el hogar:\n\nEl *Sistema FrescaFlow de Royal Prestige* está disponible con *20% de descuento solo en abril*.\n\n🏡 Lo que más les gusta a las familias:\n• Agua pura directo del grifo, sin esperar\n• Protege la salud de niños y adultos mayores\n• Se instala fácil y dura años sin mantenimiento costoso\n\nSi te llama la atención, con gusto te explico cómo funciona.\n\nEstoy al {vendedor_telefono} o aquí mismo 👇\n\nConnection Worldwide Group',
+      'Hola {nombre}, ¿cómo está la familia? 😊\n\nTe escribo porque este mes tenemos algo especial para el hogar:\n\nEl *Sistema FrescaFlow de Royal Prestige* está disponible con *20% de descuento solo en abril*.\n\n🏡 Lo que más les gusta a las familias:\n• Agua pura directo del grifo, sin esperar\n• Protege la salud de niños y adultos mayores\n• Se instala fácil y dura años sin mantenimiento costoso\n\nSi te llama la atención, con gusto te explico cómo funciona.\n\nEstoy al {{vendedor_telefono|\"este número\"}} o aquí mismo 👇\n\nConnection Worldwide Group',
   },
   {
     id: 'campana.frescaflow_v4',
     category: 'campana',
     label: 'FrescaFlow V4 — Urgencia suave',
     message:
-      '{nombre}, te aviso antes de que se acabe el mes 📅\n\nAbril es el último mes con el *20% de descuento en el Sistema FrescaFlow Royal Prestige* — y quedan pocos cupos a ese precio.\n\n⚡ 3 razones para no esperar más:\n1. El 20% de descuento vence el 30 de abril\n2. Agua filtrada de calidad premium para tu hogar hoy mismo\n3. Respaldo total de Royal Prestige — marca de confianza\n\nEscríbeme o llámame: {vendedor_telefono}\n\nConnection Worldwide Group — Distribuidores Autorizados',
+      '{nombre}, te aviso antes de que se acabe el mes 📅\n\nAbril es el último mes con el *20% de descuento en el Sistema FrescaFlow Royal Prestige* — y quedan pocos cupos a ese precio.\n\n⚡ 3 razones para no esperar más:\n1. El 20% de descuento vence el 30 de abril\n2. Agua filtrada de calidad premium para tu hogar hoy mismo\n3. Respaldo total de Royal Prestige — marca de confianza\n\nEscríbeme o llámame: {{vendedor_telefono|\"este número\"}}\n\nConnection Worldwide Group — Distribuidores Autorizados',
   },
   {
     id: 'campana.frescaflow_v5',
     category: 'campana',
     label: 'FrescaFlow V5 — Confianza',
     message:
-      '{nombre}, espero que estés muy bien 🙏\n\nComo cliente nuestro ya sabes que solo te contacto cuando tengo algo que vale la pena.\n\nEste mes es el *Sistema FrescaFlow Royal Prestige con 20% de descuento* — una de las promos más fuertes del año.\n\n🌟 Vale la pena porque:\n› Filtra y purifica el agua de tu casa las 24 horas\n› Elimina el gasto mensual en agua embotellada\n› Inversión que se paga sola en menos de 6 meses\n\n¿Te agendo una llamada rápida para contarte los detalles?\n\n{vendedor_telefono} | Connection Worldwide Group',
+      '{nombre}, espero que estés muy bien 🙏\n\nComo cliente nuestro ya sabes que solo te contacto cuando tengo algo que vale la pena.\n\nEste mes es el *Sistema FrescaFlow Royal Prestige con 20% de descuento* — una de las promos más fuertes del año.\n\n🌟 Vale la pena porque:\n› Filtra y purifica el agua de tu casa las 24 horas\n› Elimina el gasto mensual en agua embotellada\n› Inversión que se paga sola en menos de 6 meses\n\n¿Te agendo una llamada rápida para contarte los detalles?\n\n{{vendedor_telefono|\"este número\"}} | Connection Worldwide Group',
   },
 ]
 
