@@ -576,6 +576,58 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   }, [configured, open, resolvedContact])
 
   useEffect(() => {
+    if (!open) return
+    if (!configured) return
+    if (activeContact.vendedorTelefono) return
+    const contactRef = getMessagingContactRef(activeContact)
+    if (!contactRef) return
+    let cancelled = false
+    const load = async () => {
+      let vendedorId: string | null = null
+      if (contactRef.contacto_tipo === 'cliente' && contactRef.contacto_id) {
+        const { data } = await supabase
+          .from('clientes')
+          .select('vendedor_id, distribuidor_id')
+          .eq('id', contactRef.contacto_id)
+          .maybeSingle()
+        vendedorId = (data as { vendedor_id?: string | null; distribuidor_id?: string | null } | null)?.vendedor_id
+          ?? (data as { vendedor_id?: string | null; distribuidor_id?: string | null } | null)?.distribuidor_id
+          ?? null
+      }
+      if (contactRef.contacto_tipo === 'lead' && contactRef.contacto_id) {
+        const { data } = await supabase
+          .from('leads')
+          .select('vendedor_id, owner_id')
+          .eq('id', contactRef.contacto_id)
+          .maybeSingle()
+        vendedorId = (data as { vendedor_id?: string | null; owner_id?: string | null } | null)?.vendedor_id
+          ?? (data as { vendedor_id?: string | null; owner_id?: string | null } | null)?.owner_id
+          ?? null
+      }
+      if (!vendedorId) return
+      const { data: userRow } = await supabase
+        .from('usuarios')
+        .select('nombre, apellido, telefono')
+        .eq('id', vendedorId)
+        .maybeSingle()
+      if (cancelled || !userRow) return
+      const row = userRow as { nombre?: string | null; apellido?: string | null; telefono?: string | null }
+      const vendedorNombre = [row.nombre, row.apellido].filter(Boolean).join(' ').trim()
+      const vendedorTelefono = row.telefono ?? ''
+      if (!vendedorTelefono && !vendedorNombre) return
+      setHydratedContact((prev) => ({
+        ...(prev ?? activeContact),
+        vendedorNombre: (prev ?? activeContact).vendedorNombre ?? (vendedorNombre || null),
+        vendedorTelefono: (prev ?? activeContact).vendedorTelefono ?? (vendedorTelefono || null),
+      }))
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [activeContact, configured, open])
+
+  useEffect(() => {
     if (!open || !contact) return
     const preferred = initialTemplateId
       ? templatesForChannel.find((tmpl) => tmpl.id === initialTemplateId) ?? null
