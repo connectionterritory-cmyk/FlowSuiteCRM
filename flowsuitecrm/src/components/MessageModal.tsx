@@ -357,7 +357,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         subject: template.subject,
         category: normalizeCategoryValue(template.category),
         channel: 'email',
-        source: 'system',
+        source: 'system' as const,
       }))
     }
     const base = baseTemplates.map((template) => ({
@@ -366,7 +366,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       message: template.message,
       category: normalizeCategoryValue(template.category),
       channel: activeChannel,
-      source: 'system',
+      source: 'system' as const,
     }))
     return [
       {
@@ -375,7 +375,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         message: exampleTemplate.message,
         category: normalizeCategoryValue(exampleTemplate.category),
         channel: activeChannel,
-        source: 'system',
+        source: 'system' as const,
       },
       ...base,
     ]
@@ -618,7 +618,6 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const channelTabs: MessagingChannel[] = ['whatsapp', 'sms', 'email', 'telegram']
   const charCount = message.length
   const charOver = charCount > 1024
-  const charCaution = charCount > 800 && !charOver
   const smsSegmentSize = /[^\x00-\x7F]/.test(message) ? 70 : 160
   const smsSegments = charCount > 0 ? Math.ceil(charCount / smsSegmentSize) : 0
 

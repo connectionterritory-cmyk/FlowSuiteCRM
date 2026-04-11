@@ -7,7 +7,7 @@ type ModalProps = {
   actions?: React.ReactNode
   className?: string
   bodyClassName?: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 export function Modal({
