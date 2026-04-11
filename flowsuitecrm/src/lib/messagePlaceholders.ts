@@ -17,18 +17,21 @@ export const PLACEHOLDER_OPTIONS: PlaceholderOption[] = [
   { group: 'Basico', label: 'Nombre (cliente)', token: '{cliente}' },
   { group: 'Basico', label: 'Telefono', token: '{telefono}' },
   { group: 'Basico', label: 'Email', token: '{email}' },
+
   { group: 'Relacion', label: 'Vendedor', token: '{vendedor}' },
   { group: 'Relacion', label: 'Vendedor (nombre)', token: '{vendedor_nombre}' },
   { group: 'Relacion', label: 'Telefono vendedor', token: '{vendedor_telefono}' },
   { group: 'Relacion', label: 'Telefono vendedor (alias)', token: '{telefono_vendedor}' },
   { group: 'Relacion', label: 'Responsable', token: '{responsable}' },
-  { group: 'Relacion', label: 'Responsable', token: '{responsable_nombre}' },
+  { group: 'Relacion', label: 'Responsable (nombre)', token: '{responsable_nombre}' },
   { group: 'Relacion', label: 'Recomendado por', token: '{recomendado_por}' },
   { group: 'Relacion', label: 'Recomendado por (nombre)', token: '{recomendado_por_nombre}' },
+
   { group: 'Origen', label: 'Organizacion', token: '{organizacion}' },
   { group: 'Origen', label: 'Fuente', token: '{fuente}' },
   { group: 'Origen', label: 'Programa', token: '{programa}' },
   { group: 'Origen', label: 'Ciudad', token: '{ciudad}' },
+
   { group: 'Cartera', label: 'Cuenta Hycite', token: '{cuenta_hycite}' },
   { group: 'Cartera', label: 'Saldo actual', token: '{saldo_actual}' },
   { group: 'Cartera', label: 'Monto moroso', token: '{monto_moroso}' },
