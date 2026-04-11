@@ -292,6 +292,8 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [legacyMigrated, setLegacyMigrated] = useState(false)
   const [legacyCleaned, setLegacyCleaned] = useState(false)
   const [legacyCleanError, setLegacyCleanError] = useState<string | null>(null)
+  const [showSystemTemplates, setShowSystemTemplates] = useState(false)
+  const [showUserTemplates, setShowUserTemplates] = useState(true)
 
   const exampleTemplate = useMemo<SystemTemplate>(
     () => ({
@@ -479,6 +481,12 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUserTemplates()
   }, [open, loadUserTemplates])
+
+  useEffect(() => {
+    if (!open) return
+    setShowSystemTemplates(false)
+    setShowUserTemplates(true)
+  }, [activeChannel, open])
 
   useEffect(() => {
     if (!open) return
@@ -1035,10 +1043,16 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       }
 
       if (contactRef) {
+        const activityType =
+          activeChannel === 'whatsapp'
+            ? 'whatsapp'
+            : activeChannel === 'email'
+              ? 'email'
+              : 'nota'
         const { error: activityError } = await supabase.from('contacto_actividades').insert({
           contacto_tipo: contactRef.contacto_tipo,
           contacto_id: contactRef.contacto_id,
-          tipo: 'mensaje',
+          tipo: activityType,
           resumen: summary,
           contenido: finalMessage,
           metadata: {
@@ -1309,129 +1323,157 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
           )}
           <div className="message-card">
             <div className="message-card-title">Plantillas</div>
-            <div className="message-section-label">Sistema</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {filteredSystemTemplates.map((template) => (
-                <div
-                  key={template.id}
-                  className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
-                  onClick={() => handleSelectTemplate(template)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectTemplate(template) }
-                  }}
-                >
-                  <div className="template-item-header">
-                    <span className="template-title">{template.label}</span>
-                    <span className="message-badge">Base</span>
-                  </div>
-                  <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
+            <div className="message-template-filters">
+              {activeChannel === 'email' && (
+                <div className="message-filter-row">
+                  <button type="button" onClick={() => setEmailCategoryFilter('all')} className={`message-filter ${emailCategoryFilter === 'all' ? 'active' : ''}`}>Todas</button>
+                  {EMAIL_CATEGORIES.map((cat) => (
+                    <button key={cat} type="button" onClick={() => setEmailCategoryFilter(cat)} className={`message-filter ${emailCategoryFilter === cat ? 'active' : ''}`}>
+                      {EMAIL_CATEGORY_LABELS[cat]}
+                    </button>
+                  ))}
                 </div>
-              ))}
-              {filteredSystemTemplates.length === 0 && (
-                <div className="template-empty">No hay plantillas del sistema en esta categoría.</div>
+              )}
+              {activeChannel !== 'email' && (
+                <div className="message-filter-row">
+                  <button type="button" onClick={() => setCategoryFilter('all')} className={`message-filter ${categoryFilter === 'all' ? 'active' : ''}`}>Todas</button>
+                  {CATEGORY_OPTIONS.map((category) => (
+                    <button key={category.value} type="button" onClick={() => setCategoryFilter(category.value)} className={`message-filter ${categoryFilter === category.value ? 'active' : ''}`}>
+                      {category.label}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 
-            <div className="message-section-label" style={{ marginTop: '0.75rem' }}>Mis plantillas</div>
-            {activeChannel === 'email' && (
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
-                <button type="button" onClick={() => setEmailCategoryFilter('all')} className={`message-filter ${emailCategoryFilter === 'all' ? 'active' : ''}`}>Todas</button>
-                {EMAIL_CATEGORIES.map((cat) => (
-                  <button key={cat} type="button" onClick={() => setEmailCategoryFilter(cat)} className={`message-filter ${emailCategoryFilter === cat ? 'active' : ''}`}>
-                    {EMAIL_CATEGORY_LABELS[cat]}
-                  </button>
-                ))}
-              </div>
-            )}
-            {activeChannel !== 'email' && (
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
-                <button type="button" onClick={() => setCategoryFilter('all')} className={`message-filter ${categoryFilter === 'all' ? 'active' : ''}`}>Todas</button>
-                {CATEGORY_OPTIONS.map((category) => (
-                  <button key={category.value} type="button" onClick={() => setCategoryFilter(category.value)} className={`message-filter ${categoryFilter === category.value ? 'active' : ''}`}>
-                    {category.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {templatesLoading && (
-              <div className="template-empty">Cargando plantillas...</div>
-            )}
-            {!templatesLoading && templatesError && (
-              <div className="template-empty">{templatesError}</div>
-            )}
-            {!templatesLoading && filteredTemplates.length === 0 && (
-              <div className="template-empty">No hay plantillas guardadas.</div>
-            )}
-            {!templatesLoading && filteredTemplates.map((template) =>
-              editingTemplateId === template.id ? (
-                <div key={template.id} className="message-template-edit">
-                  <input
-                    value={editingTemplateTitle}
-                    onChange={(e) => setEditingTemplateTitle(e.target.value)}
-                    placeholder="Titulo..."
-                  />
-                  {activeChannel === 'email' && (
-                    <input
-                      value={editingTemplateSubject}
-                      onChange={(e) => setEditingTemplateSubject(e.target.value)}
-                      placeholder="Asunto..."
-                    />
+            <div className="message-template-section">
+              <button
+                type="button"
+                className="message-section-toggle"
+                onClick={() => setShowUserTemplates((prev) => !prev)}
+              >
+                <span>Mis plantillas</span>
+                <span className="message-section-count">{templatesLoading ? '...' : filteredTemplates.length}</span>
+                <span className={`message-section-chevron ${showUserTemplates ? 'open' : ''}`}>▾</span>
+              </button>
+              {showUserTemplates && (
+                <div className="message-section-body">
+                  {templatesLoading && (
+                    <div className="template-empty">Cargando plantillas...</div>
                   )}
-                  <select
-                    value={editingTemplateCategory}
-                    onChange={(e) => setEditingTemplateCategory(e.target.value)}
-                  >
-                    {(activeChannel === 'email'
-                      ? EMAIL_CATEGORIES.map((cat) => ({ value: cat, label: EMAIL_CATEGORY_LABELS[cat] }))
-                      : CATEGORY_OPTIONS).map((category) => (
-                        <option key={category.value} value={category.value}>
-                          {category.label}
-                        </option>
-                      ))}
-                  </select>
-                  <textarea
-                    rows={3}
-                    value={editingTemplateMessage}
-                    onChange={(e) => setEditingTemplateMessage(e.target.value)}
-                  />
-                  <div className="message-template-edit-actions">
-                    <button type="button" onClick={handleCancelEdit}>Cancelar</button>
-                    <Button type="button" onClick={handleSaveEdit} disabled={!editingTemplateTitle.trim()}>
-                      Guardar
-                    </Button>
-                  </div>
+                  {!templatesLoading && templatesError && (
+                    <div className="template-empty">{templatesError}</div>
+                  )}
+                  {!templatesLoading && filteredTemplates.length === 0 && (
+                    <div className="template-empty">No hay plantillas guardadas.</div>
+                  )}
+                  {!templatesLoading && filteredTemplates.map((template) =>
+                    editingTemplateId === template.id ? (
+                      <div key={template.id} className="message-template-edit">
+                        <input
+                          value={editingTemplateTitle}
+                          onChange={(e) => setEditingTemplateTitle(e.target.value)}
+                          placeholder="Titulo..."
+                        />
+                        {activeChannel === 'email' && (
+                          <input
+                            value={editingTemplateSubject}
+                            onChange={(e) => setEditingTemplateSubject(e.target.value)}
+                            placeholder="Asunto..."
+                          />
+                        )}
+                        <select
+                          value={editingTemplateCategory}
+                          onChange={(e) => setEditingTemplateCategory(e.target.value)}
+                        >
+                          {(activeChannel === 'email'
+                            ? EMAIL_CATEGORIES.map((cat) => ({ value: cat, label: EMAIL_CATEGORY_LABELS[cat] }))
+                            : CATEGORY_OPTIONS).map((category) => (
+                              <option key={category.value} value={category.value}>
+                                {category.label}
+                              </option>
+                            ))}
+                        </select>
+                        <textarea
+                          rows={3}
+                          value={editingTemplateMessage}
+                          onChange={(e) => setEditingTemplateMessage(e.target.value)}
+                        />
+                        <div className="message-template-edit-actions">
+                          <button type="button" onClick={handleCancelEdit}>Cancelar</button>
+                          <Button type="button" onClick={handleSaveEdit} disabled={!editingTemplateTitle.trim()}>
+                            Guardar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        key={template.id}
+                        className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
+                        onClick={() => handleSelectTemplate(template)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectTemplate(template) }
+                        }}
+                      >
+                        <div className="template-item-header">
+                        <span className="template-title">{template.label}</span>
+                        <div className="message-template-actions">
+                            <span className="message-badge">
+                              {activeChannel === 'email'
+                                ? EMAIL_CATEGORY_LABELS[template.category as EmailTemplateCategory] ?? template.category
+                                : CATEGORY_OPTIONS.find((c) => c.value === template.category)?.label ?? template.category}
+                            </span>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}>Editar</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDuplicateTemplate(template) }}>Duplicar</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}>Eliminar</button>
+                          </div>
+                        </div>
+                        <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
+                      </div>
+                    )
+                  )}
                 </div>
-              ) : (
-                <div
-                  key={template.id}
-                  className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
-                  onClick={() => handleSelectTemplate(template)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectTemplate(template) }
-                  }}
-                >
-                  <div className="template-item-header">
-                  <span className="template-title">{template.label}</span>
-                  <div className="message-template-actions">
-                      <span className="message-badge">
-                        {activeChannel === 'email'
-                          ? EMAIL_CATEGORY_LABELS[template.category as EmailTemplateCategory] ?? template.category
-                          : CATEGORY_OPTIONS.find((c) => c.value === template.category)?.label ?? template.category}
-                      </span>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); handleStartEdit(template) }}>Editar</button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDuplicateTemplate(template) }}>Duplicar</button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template) }}>Eliminar</button>
+              )}
+            </div>
+
+            <div className="message-template-section">
+              <button
+                type="button"
+                className="message-section-toggle"
+                onClick={() => setShowSystemTemplates((prev) => !prev)}
+              >
+                <span>Plantillas base</span>
+                <span className="message-section-count">{filteredSystemTemplates.length}</span>
+                <span className={`message-section-chevron ${showSystemTemplates ? 'open' : ''}`}>▾</span>
+              </button>
+              {showSystemTemplates && (
+                <div className="message-section-body">
+                  {filteredSystemTemplates.map((template) => (
+                    <div
+                      key={template.id}
+                      className={`template-item ${selectedTemplateId === template.id ? 'active' : ''}`}
+                      onClick={() => handleSelectTemplate(template)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectTemplate(template) }
+                      }}
+                    >
+                      <div className="template-item-header">
+                        <span className="template-title">{template.label}</span>
+                        <span className="message-badge">Base</span>
+                      </div>
+                      <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
                     </div>
-                  </div>
-                  <span className="template-snippet">{buildSubtitle(resolveTemplate(template.message, variables).text)}</span>
+                  ))}
+                  {filteredSystemTemplates.length === 0 && (
+                    <div className="template-empty">No hay plantillas del sistema en esta categoría.</div>
+                  )}
                 </div>
-              )
-            )}
+              )}
+            </div>
 
             {pendingTemplate && (
               <div className="message-template-guard">
