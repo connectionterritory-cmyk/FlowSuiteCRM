@@ -316,6 +316,11 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const variables = useMemo(() => {
     const cliente = firstName(activeContact.nombre ?? '')
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
+    const metadataPhone = (
+      (session?.user.user_metadata as Record<string, string> | undefined)?.telefono
+      ?? (session?.user.user_metadata as Record<string, string> | undefined)?.phone
+      ?? ''
+    )
     const responsableNombre = activeContact.responsableNombre ?? currentUserName
     const vendedorNombre = activeContact.vendedorNombre
       ?? activeContact.vendedor
@@ -327,6 +332,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const vendedorTelefonoBase = activeContact.vendedorTelefono
       ?? distributorPhone
       ?? currentUser?.telefono
+      ?? metadataPhone
       ?? ''
     const vendedorTelefono = messageType === 'cartera' ? cobranzasTelefono : vendedorTelefonoBase
     return {
@@ -348,7 +354,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       programa: activeContact.programa ?? '',
       ciudad: activeContact.ciudad ?? '',
     }
-  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, messageType])
+  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, messageType, session?.user.user_metadata])
 
   const systemTemplates = useMemo<UnifiedTemplate[]>(() => {
     if (activeChannel === 'email') {
