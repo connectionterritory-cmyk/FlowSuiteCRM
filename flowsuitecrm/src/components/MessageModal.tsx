@@ -516,7 +516,8 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       ?? meta?.telefono_movil
       ?? ''
     )
-    if (metaPhone && !senderPhone) {
+    // Set metadata phone immediately as fast initial value
+    if (metaPhone) {
       setSenderPhone(metaPhone)
     }
     const load = async () => {
@@ -526,13 +527,19 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
         .eq('id', userId)
         .maybeSingle()
       if (cancelled) return
-      setSenderPhone(((data as { telefono?: string | null } | null)?.telefono ?? '').trim())
+      const dbPhone = ((data as { telefono?: string | null } | null)?.telefono ?? '').trim()
+      // Only overwrite with DB value if it has content; otherwise keep metaPhone
+      if (dbPhone) {
+        setSenderPhone(dbPhone)
+      }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [configured, open, senderPhone, session?.user.id, session?.user.user_metadata])
+  // senderPhone intentionally excluded — adding it causes re-runs that overwrite valid phone values
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured, open, session?.user.id, session?.user.user_metadata])
 
   useEffect(() => {
     if (!open) return
