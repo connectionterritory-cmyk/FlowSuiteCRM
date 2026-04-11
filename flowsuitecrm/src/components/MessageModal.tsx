@@ -303,7 +303,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       label: 'Ejemplo personalizado',
       category: 'basic',
       message: [
-        'Hola {cliente}, soy {vendedor} de {organizacion}.',
+        'Hola {nombre}, soy {vendedor_nombre} de {organizacion}.',
         'Te escribo por tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.',
         'Saldo actual: $' + '{saldo_actual}. Moroso: $' + '{monto_moroso}.',
         'Si ya pagaste, ignora este mensaje. Si necesitas ayuda, escríbeme al {vendedor_telefono}.',

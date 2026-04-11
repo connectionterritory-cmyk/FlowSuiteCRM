@@ -31,7 +31,7 @@ export const emailTemplates: EmailTemplate[] = [
     category: 'negocio',
     label: 'Invitación a ser distribuidor',
     subject: 'Una oportunidad que quiero compartirte — Royal Prestige',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Espero que estés muy bien. Te escribo porque creo que tienes el perfil ideal para algo que puede cambiar tu situación financiera.
 
@@ -57,7 +57,7 @@ Quedo pendiente a tu respuesta.`,
     category: 'negocio',
     label: 'Seguimiento de referido',
     subject: '{recomendado_por_nombre} me pidió que te contactara',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Te escribo de parte de {recomendado_por_nombre}, quien me recomendó contactarte.
 
@@ -77,7 +77,7 @@ Gracias por tu tiempo.`,
     category: 'negocio',
     label: 'Reactivación de contacto frío',
     subject: 'Tenemos novedades para ti — {organizacion}',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Hace tiempo que no hablamos, pero quería retomar el contacto porque tenemos novedades importantes en {organizacion}.
 
@@ -99,7 +99,7 @@ Gracias.`,
     category: 'servicio',
     label: 'Confirmación de cita de servicio',
     subject: 'Confirmación de tu cita de servicio — Royal Prestige',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Te confirmamos tu cita de servicio técnico con Royal Prestige.
 
@@ -113,7 +113,7 @@ Gracias por confiar en nosotros.
     category: 'servicio',
     label: 'Seguimiento post-servicio',
     subject: '¿Cómo quedó tu equipo? — Royal Prestige',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Esperamos que hayas quedado satisfecho/a con el servicio que recibiste.
 
@@ -129,7 +129,7 @@ Gracias por ser parte de nuestra familia de clientes.
     category: 'servicio',
     label: 'Recordatorio de mantenimiento',
     subject: 'Es momento de dar mantenimiento a tu equipo Royal Prestige',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Te escribimos para recordarte que es tiempo de programar el mantenimiento preventivo de tu equipo Royal Prestige.
 
@@ -147,8 +147,8 @@ Estamos a tus órdenes.
     id: 'servicio.bienvenida',
     category: 'servicio',
     label: 'Bienvenida a cliente nuevo',
-    subject: '¡Bienvenido/a a la familia Royal Prestige, {cliente}!',
-    message: `Hola {cliente},
+    subject: '¡Bienvenido/a a la familia Royal Prestige, {nombre}!',
+    message: `Hola {nombre},
 
 ¡Bienvenido/a a la familia Royal Prestige!
 
@@ -172,7 +172,7 @@ Si tienes alguna pregunta sobre el uso o mantenimiento de tu equipo, no dudes en
     category: 'oferta',
     label: 'FrescaFlow — Oferta de abril',
     subject: '20% de descuento en Sistema FrescaFlow — Solo este mes',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Tenemos una oferta exclusiva para ti este mes de abril.
 
@@ -194,7 +194,7 @@ Esta oferta vence el 30 de abril y los cupos son limitados.
     category: 'oferta',
     label: 'Descuento en repuesto para clientes activos',
     subject: 'Oferta especial en repuestos para tu equipo — {organizacion}',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Como cliente activo de Royal Prestige, tienes acceso a una oferta especial este mes en repuestos para tu equipo.
 
@@ -209,8 +209,8 @@ La oferta está disponible por tiempo limitado.
     id: 'oferta.recompra',
     category: 'oferta',
     label: 'Invitación a recompra',
-    subject: 'Novedades Royal Prestige que pueden interesarte, {cliente}',
-    message: `Hola {cliente},
+    subject: 'Novedades Royal Prestige que pueden interesarte, {nombre}',
+    message: `Hola {nombre},
 
 Esperamos que sigas disfrutando tu equipo Royal Prestige.
 
@@ -228,7 +228,7 @@ Si en algún momento te ha interesado complementar tu equipo o renovarlo, este e
     category: 'cartera',
     label: 'Recordatorio de pago',
     subject: 'Recordatorio de pago — Cuenta Royal Prestige #{cuenta_hycite}',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Te escribimos para recordarte que tienes un saldo pendiente en tu cuenta Royal Prestige (HyCite) #{cuenta_hycite}.
 
@@ -244,7 +244,7 @@ Estamos aquí para ayudarte.
     category: 'cartera',
     label: 'Propuesta de arreglo de pago',
     subject: 'Tu cuenta Royal Prestige — Hablemos de opciones',
-    message: `Hola {cliente},
+    message: `Hola {nombre},
 
 Hemos notado que tu cuenta Royal Prestige (HyCite) #{cuenta_hycite} tiene {dias_atraso} días de atraso con un monto moroso de ${'{monto_moroso}'}.
 
@@ -261,8 +261,8 @@ Responde este correo o contáctame directamente. Tu cuenta es importante para no
     id: 'cumpleanos.cliente',
     category: 'cumpleanos',
     label: 'Feliz cumpleaños con oferta',
-    subject: '🎂 ¡Feliz cumpleaños {cliente}! Un regalo especial para ti',
-    message: `Hola {cliente},
+    subject: '🎂 ¡Feliz cumpleaños {nombre}! Un regalo especial para ti',
+    message: `Hola {nombre},
 
 ¡Hoy es tu día especial y queríamos ser los primeros en celebrarlo contigo! 🎉
 
