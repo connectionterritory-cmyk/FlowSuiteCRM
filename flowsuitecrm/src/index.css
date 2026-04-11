@@ -2606,6 +2606,74 @@ body.theme-light .message-card {
   margin-bottom: 6px;
 }
 
+.message-template-filters {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 0 4px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+  border-radius: 10px;
+}
+
+body.theme-light .message-template-filters {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.message-filter-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0 4px 4px;
+}
+
+.message-template-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.message-section-toggle {
+  border: 1px solid var(--card-border);
+  background: rgba(15, 23, 42, 0.28);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+body.theme-light .message-section-toggle {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.message-section-count {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.message-section-chevron {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.message-section-chevron.open {
+  transform: rotate(180deg);
+}
+
+.message-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .message-badge {
   font-size: 0.6rem;
   font-weight: 700;
@@ -2648,7 +2716,7 @@ body.theme-light .message-card {
 
 .message-template-edit {
   padding: 0.6rem 0.75rem;
-  background: var(--color-surface, #f9fafb);
+  background: rgba(15, 23, 42, 0.22);
   border-radius: 12px;
   border: 1px solid var(--card-border);
   display: flex;
@@ -2663,6 +2731,24 @@ body.theme-light .message-card {
   border-radius: 0.35rem;
   border: 1px solid var(--card-border);
   font-size: 0.78rem;
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text-primary);
+}
+
+.message-template-edit input::placeholder,
+.message-template-edit textarea::placeholder {
+  color: var(--text-muted);
+}
+
+body.theme-light .message-template-edit {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+body.theme-light .message-template-edit input,
+body.theme-light .message-template-edit select,
+body.theme-light .message-template-edit textarea {
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .message-template-edit-actions {
