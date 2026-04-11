@@ -279,6 +279,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const [subjectDirty, setSubjectDirty] = useState(false)
 
   const [distributorPhone, setDistributorPhone] = useState('')
+  const [senderPhone, setSenderPhone] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
   const [emailCategoryFilter, setEmailCategoryFilter] = useState<'all' | EmailTemplateCategory>('all')
   const [scheduledFor, setScheduledFor] = useState('')
@@ -333,6 +334,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const vendedorTelefonoBase = activeContact.vendedorTelefono
       || distributorPhone
       || currentUser?.telefono
+      || senderPhone
       || metadataPhone
       || authPhone
       || ''
@@ -356,7 +358,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       programa: activeContact.programa ?? '',
       ciudad: activeContact.ciudad ?? '',
     }
-  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, messageType, session?.user.phone, session?.user.user_metadata])
+  }, [activeContact, currentUser?.apellido, currentUser?.nombre, currentUser?.organizacion, currentUser?.telefono, distributorPhone, messageType, senderPhone, session?.user.phone, session?.user.user_metadata])
 
   const systemTemplates = useMemo<UnifiedTemplate[]>(() => {
     if (activeChannel === 'email') {
@@ -489,6 +491,27 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUserTemplates()
   }, [open, loadUserTemplates])
+
+  useEffect(() => {
+    if (!open) return
+    if (!configured) return
+    const userId = session?.user.id
+    if (!userId) return
+    let cancelled = false
+    const load = async () => {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('telefono')
+        .eq('id', userId)
+        .maybeSingle()
+      if (cancelled) return
+      setSenderPhone(((data as { telefono?: string | null } | null)?.telefono ?? '').trim())
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [configured, open, session?.user.id])
 
   useEffect(() => {
     if (!open) return
