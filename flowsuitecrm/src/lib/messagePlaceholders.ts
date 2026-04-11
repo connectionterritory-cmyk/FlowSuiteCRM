@@ -62,29 +62,32 @@ function parsePlaceholder(raw: string): { key: string; fallback: string | null }
 
 // Normalize placeholders while preserving fallback syntax
 export const canonicalizeTemplate = (message: string) => {
-  const withDouble = message.replace(/\{\{\s*([^|}]+)\s*(?:\|\s*"([^"]*)")?\s*\}\}/g, (_match, raw, fallback) => {
-    if (typeof fallback === 'string') {
-      return `{{${toCanonicalName(raw)}|"${fallback}"}}`
-    }
-    return `{{${toCanonicalName(raw)}}}`
+  const doubleTokens: string[] = []
+  const withDoubleTokens = message.replace(/\{\{\s*([^|}]+)\s*(?:\|\s*"([^"]*)")?\s*\}\}/g, (_match, raw, fallback) => {
+    const normalized = typeof fallback === 'string'
+      ? `{{${toCanonicalName(raw)}|"${fallback}"}}`
+      : `{{${toCanonicalName(raw)}}}`
+    const idx = doubleTokens.push(normalized) - 1
+    return `@@DOUBLE_${idx}@@`
   })
-  return withDouble.replace(/\{([^}]+)\}/g, (_match, raw) => {
+  const normalizedSingles = withDoubleTokens.replace(/\{([^}]+)\}/g, (_match, raw) => {
     const pipeIdx = raw.indexOf('|')
     if (pipeIdx === -1) return `{${toCanonicalName(raw)}}`
     const key = toCanonicalName(raw.slice(0, pipeIdx))
     const fallbackPart = raw.slice(pipeIdx + 1).trim()
     return `{${key}|${fallbackPart}}`
   })
+  return normalizedSingles.replace(/@@DOUBLE_(\d+)@@/g, (_match, idx) => doubleTokens[Number(idx)] ?? '')
 }
 
 export const extractPlaceholders = (message: string) => {
   const keys = new Set<string>()
-  message.replace(/\{\{\s*([^|}]+)\s*(?:\|\s*"([^"]*)")?\s*\}\}/g, (_match, raw) => {
+  const stripped = message.replace(/\{\{\s*([^|}]+)\s*(?:\|\s*"([^"]*)")?\s*\}\}/g, (_match, raw) => {
     const { key } = parsePlaceholder(raw)
     keys.add(key)
     return ''
   })
-  message.replace(/\{([^}]+)\}/g, (_match, raw) => {
+  stripped.replace(/\{([^}]+)\}/g, (_match, raw) => {
     const { key } = parsePlaceholder(raw)
     keys.add(key)
     return ''
