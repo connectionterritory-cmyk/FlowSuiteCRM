@@ -318,9 +318,13 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
   const variables = useMemo(() => {
     const cliente = firstName(activeContact.nombre ?? '')
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
+    const userMeta = session?.user.user_metadata as Record<string, string> | undefined
     const metadataPhone = (
-      (session?.user.user_metadata as Record<string, string> | undefined)?.telefono
-      ?? (session?.user.user_metadata as Record<string, string> | undefined)?.phone
+      userMeta?.telefono
+      ?? userMeta?.phone
+      ?? userMeta?.phone_number
+      ?? userMeta?.phoneNumber
+      ?? userMeta?.telefono_movil
       ?? ''
     )
     const authPhone = session?.user.phone ?? ''
@@ -503,6 +507,18 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const userId = session?.user.id
     if (!userId) return
     let cancelled = false
+    const meta = session?.user.user_metadata as Record<string, string> | undefined
+    const metaPhone = (
+      meta?.telefono
+      ?? meta?.phone
+      ?? meta?.phone_number
+      ?? meta?.phoneNumber
+      ?? meta?.telefono_movil
+      ?? ''
+    )
+    if (metaPhone && !senderPhone) {
+      setSenderPhone(metaPhone)
+    }
     const load = async () => {
       const { data } = await supabase
         .from('usuarios')
@@ -516,7 +532,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     return () => {
       cancelled = true
     }
-  }, [configured, open, session?.user.id])
+  }, [configured, open, senderPhone, session?.user.id, session?.user.user_metadata])
 
   useEffect(() => {
     if (!open) return
