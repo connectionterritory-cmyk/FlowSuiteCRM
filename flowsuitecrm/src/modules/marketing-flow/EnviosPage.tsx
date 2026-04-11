@@ -39,7 +39,7 @@ type MkMessageRow = {
 
 export function EnviosPage() {
   const { session } = useAuth()
-  const { currentUser } = useUsers()
+  const { currentUser } = useUsers() // eslint-disable-line @typescript-eslint/no-unused-vars
   const sessionUserId = session?.user.id ?? null
   const [searchParams] = useSearchParams()
   const { showToast } = useToast()
