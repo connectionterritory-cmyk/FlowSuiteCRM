@@ -14,6 +14,7 @@ import {
   type EmailTemplateCategory,
 } from '../lib/emailTemplates'
 import { canonicalizeTemplate, PLACEHOLDER_OPTIONS, resolveTemplate } from '../lib/messagePlaceholders'
+import { getOrganizationName } from '../lib/whatsappTemplates'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
 import { useToast } from './useToast'
 import type { MessagingChannel, MessagingContact } from '../types/messaging'
@@ -332,13 +333,17 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
     const recomendadoPorNombre = activeContact.recomendadoPorNombre ?? activeContact.recomendadoPor ?? ''
     const cobranzasTelefono = '7862913042'
     const vendedorTelefonoBase = activeContact.vendedorTelefono
-      || distributorPhone
-      || currentUser?.telefono
       || senderPhone
+      || currentUser?.telefono
       || metadataPhone
       || authPhone
+      || distributorPhone
       || ''
     const vendedorTelefono = messageType === 'cartera' ? cobranzasTelefono : vendedorTelefonoBase
+    const organizacion =
+      currentUser?.organizacion
+      || getOrganizationName(session?.user.user_metadata as Record<string, string> | undefined)
+      || 'Connection Worldwide Group'
     return {
       cliente,
       nombre: cliente,
@@ -348,7 +353,7 @@ export function MessageModal({ open, channel, contact, initialTemplateId, onClos
       responsable_nombre: responsableNombre,
       recomendado_por_nombre: recomendadoPorNombre,
       email: activeContact.email ?? '',
-      organizacion: currentUser?.organizacion ?? '',
+      organizacion,
       cuenta_hycite: activeContact.cuentaHycite ?? '',
       saldo_actual: formatAmount(activeContact.saldoActual),
       monto_moroso: formatAmount(activeContact.montoMoroso),
