@@ -5,6 +5,7 @@ import { StatCard } from '../../components/StatCard'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
+import { Badge } from '../../components/Badge'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
 import { useViewMode } from '../../data/useViewMode'
@@ -23,6 +24,7 @@ export function SegmentosPage() {
   const [fuente, setFuente] = useState<Fuente>('leads')
   const [selectedSegment, setSelectedSegment] = useState<string>('nuevos')
   const [targets, setTargets] = useState<SegmentTarget[]>([])
+  const [whatsappFilter, setWhatsappFilter] = useState<'all' | 'whatsapp'>('all')
 
   const loadRole = useCallback(async () => {
     if (!configured || !sessionUserId) {
@@ -91,16 +93,24 @@ export function SegmentosPage() {
     return () => window.clearTimeout(handle)
   }, [loadSelected, role])
 
+  const filteredTargets = useMemo(() => {
+    if (whatsappFilter !== 'whatsapp') return targets
+    return targets.filter((row) => Boolean(row.telefono && row.telefono.replace(/\D/g, '').length >= 10))
+  }, [targets, whatsappFilter])
+
   const rows = useMemo<DataTableRow[]>(() => {
-    return targets.map((row) => ({
+    return filteredTargets.map((row) => {
+      const hasWhatsapp = Boolean(row.telefono && row.telefono.replace(/\D/g, '').length >= 10)
+      return ({
       id: row.id,
       cells: [
         row.nombre ?? '-',
         row.telefono ?? '-',
         row.ciudad ?? '-',
+        <Badge key={`${row.id}-whatsapp`} label={hasWhatsapp ? 'WhatsApp' : 'Sin WhatsApp'} tone={hasWhatsapp ? 'blue' : 'neutral'} />,
       ],
-    }))
-  }, [targets])
+    })
+  }, [filteredTargets])
 
   const hasResults = rows.length > 0
 
@@ -207,6 +217,23 @@ export function SegmentosPage() {
 
       {error && <div className="form-error">{error}</div>}
 
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Button
+          type="button"
+          variant={whatsappFilter === 'all' ? 'primary' : 'ghost'}
+          onClick={() => setWhatsappFilter('all')}
+        >
+          Todos
+        </Button>
+        <Button
+          type="button"
+          variant={whatsappFilter === 'whatsapp' ? 'primary' : 'ghost'}
+          onClick={() => setWhatsappFilter('whatsapp')}
+        >
+          Solo con WhatsApp
+        </Button>
+      </div>
+
       {loading && <div className="card" style={{ padding: '1rem' }}>{t('segmentos.loading')}</div>}
       {!loading && !hasResults && (
         <EmptyState
@@ -216,7 +243,7 @@ export function SegmentosPage() {
       )}
       {hasResults && (
         <DataTable
-          columns={[t('segmentos.table.nombre'), t('segmentos.table.telefono'), t('segmentos.table.ciudad')]}
+          columns={[t('segmentos.table.nombre'), t('segmentos.table.telefono'), t('segmentos.table.ciudad'), 'WhatsApp']}
           rows={rows}
         />
       )}

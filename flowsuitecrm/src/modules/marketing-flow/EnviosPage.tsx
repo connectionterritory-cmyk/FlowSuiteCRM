@@ -54,6 +54,7 @@ export function EnviosPage() {
   const [messageOpen, setMessageOpen] = useState(false)
   const [responseOpen, setResponseOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'pending'>('all')
+  const [whatsappFilter, setWhatsappFilter] = useState<'all' | 'whatsapp'>('all')
   const [birthDayByClienteId, setBirthDayByClienteId] = useState<Record<string, number>>({})
   const [daySort, setDaySort] = useState<'asc' | 'desc' | null>(null)
   const [responseMessageId, setResponseMessageId] = useState('')
@@ -495,7 +496,7 @@ export function EnviosPage() {
     setStatusFilter((prev) => (prev === next ? 'all' : next))
   }
 
-  const dayColumnIndex = isBirthdayCampaign ? 4 : null
+  const dayColumnIndex = isBirthdayCampaign ? 5 : null
   const handleSort = (colIndex: number) => {
     if (!isBirthdayCampaign || colIndex !== dayColumnIndex) return
     setDaySort((prev) => (prev === 'asc' ? 'desc' : prev === 'desc' ? null : 'asc'))
@@ -508,6 +509,9 @@ export function EnviosPage() {
     }
     if (statusFilter === 'pending') {
       list = list.filter((row) => isPendingStatus(row))
+    }
+    if (whatsappFilter === 'whatsapp') {
+      list = list.filter((row) => Boolean(row.telefono && row.telefono.replace(/\D/g, '').length >= 10))
     }
     if (isBirthdayCampaign && daySort) {
       const sorted = [...list]
@@ -524,7 +528,7 @@ export function EnviosPage() {
       return sorted
     }
     return list
-  }, [birthDayByClienteId, daySort, isBirthdayCampaign, isPendingStatus, isSentStatus, messages, statusFilter])
+  }, [birthDayByClienteId, daySort, isBirthdayCampaign, isPendingStatus, isSentStatus, messages, statusFilter, whatsappFilter])
 
   const statusLabels = useMemo<Record<string, string>>(() => ({
     pendiente: 'Pendiente',
@@ -544,12 +548,14 @@ export function EnviosPage() {
       const birthDay = message.contacto_id ? birthDayByClienteId[message.contacto_id] : undefined
       const sendLabel = alreadySent ? 'Reenviar' : 'Enviar'
       const sendVariant = alreadySent ? 'ghost' : 'primary'
+      const hasWhatsapp = Boolean(message.telefono && message.telefono.replace(/\D/g, '').length >= 10)
       return {
         id: message.id,
         cells: [
           fullName,
           telefono,
           tipoLabel,
+          <Badge key={`${message.id}-whatsapp`} label={hasWhatsapp ? 'WhatsApp' : 'Sin WhatsApp'} tone={hasWhatsapp ? 'blue' : 'neutral'} />,
           <Badge key={`${message.id}-status`} label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />,
           ...(isBirthdayCampaign ? [birthDay ? String(birthDay) : '—'] : []),
           <div key={`${message.id}-actions`} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -632,6 +638,23 @@ export function EnviosPage() {
         )}
       </div>
 
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Button
+          type="button"
+          variant={whatsappFilter === 'all' ? 'primary' : 'ghost'}
+          onClick={() => setWhatsappFilter('all')}
+        >
+          Todos
+        </Button>
+        <Button
+          type="button"
+          variant={whatsappFilter === 'whatsapp' ? 'primary' : 'ghost'}
+          onClick={() => setWhatsappFilter('whatsapp')}
+        >
+          Solo con WhatsApp
+        </Button>
+      </div>
+
       {error && <div className="form-error">{error}</div>}
 
       <div className="stat-grid">
@@ -666,6 +689,7 @@ export function EnviosPage() {
             const birthDay = message.contacto_id ? birthDayByClienteId[message.contacto_id] : undefined
             const sendLabel = alreadySent ? 'Reenviar' : 'Enviar'
             const sendVariant = alreadySent ? 'ghost' : 'primary'
+            const hasWhatsapp = Boolean(message.telefono && message.telefono.replace(/\D/g, '').length >= 10)
             return (
               <div key={message.id} className="marketing-envio-card">
                 <div className="marketing-envio-header">
@@ -678,6 +702,9 @@ export function EnviosPage() {
                 {isBirthdayCampaign && (
                   <div className="marketing-envio-meta">Día: {birthDay ? String(birthDay) : '—'}</div>
                 )}
+                <div style={{ marginTop: '0.35rem' }}>
+                  <Badge label={hasWhatsapp ? 'WhatsApp' : 'Sin WhatsApp'} tone={hasWhatsapp ? 'blue' : 'neutral'} />
+                </div>
                 <div className="marketing-envio-actions">
                   <Button
                     variant={sendVariant}
@@ -717,8 +744,8 @@ export function EnviosPage() {
         <div className="marketing-envios-table">
           <DataTable
             columns={isBirthdayCampaign
-              ? ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Día', 'Acciones']
-              : ['Nombre', 'Teléfono', 'Contacto', 'Estado', 'Acciones']}
+              ? ['Nombre', 'Teléfono', 'Contacto', 'WhatsApp', 'Estado', 'Día', 'Acciones']
+              : ['Nombre', 'Teléfono', 'Contacto', 'WhatsApp', 'Estado', 'Acciones']}
             rows={rows}
             sortableColumns={isBirthdayCampaign && dayColumnIndex !== null ? [dayColumnIndex] : undefined}
             sortColIndex={daySort && dayColumnIndex !== null ? dayColumnIndex : undefined}
