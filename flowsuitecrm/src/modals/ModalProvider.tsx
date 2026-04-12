@@ -150,6 +150,8 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         channel={messageIntent?.channel ?? 'whatsapp'}
         contact={messageIntent?.contact ?? null}
         initialTemplateId={messageIntent?.initialTemplateId}
+        contextType={messageIntent?.contextType}
+        mkMessageId={messageIntent?.mkMessageId ?? null}
         onClose={closeMessageModal}
       />
       <CitaModal

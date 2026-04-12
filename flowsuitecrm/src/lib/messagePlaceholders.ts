@@ -37,6 +37,13 @@ export const PLACEHOLDER_OPTIONS: PlaceholderOption[] = [
   { group: 'Cartera', label: 'Monto moroso', token: '{monto_moroso}' },
   { group: 'Cartera', label: 'Dias atraso', token: '{dias_atraso}' },
   { group: 'Cartera', label: 'Estado morosidad', token: '{estado_morosidad}' },
+  
+  { group: 'Citas', label: 'Fecha de cita', token: '{cita_fecha}' },
+  { group: 'Citas', label: 'Hora de cita', token: '{cita_hora}' },
+  { group: 'Citas', label: 'Direccion de cita', token: '{cita_direccion}' },
+
+  { group: 'Equipo', label: 'Nombre Equipo', token: '{equipo_nombre}' },
+  { group: 'Equipo', label: 'Serie Equipo', token: '{equipo_serie}' },
 ]
 
 const removeAccents = (value: string) =>
@@ -133,7 +140,7 @@ export const resolveTemplate = (
   })
 
   return {
-    text,
+    text: text,
     missing: Array.from(new Set(missing)),
     canonical,
   }

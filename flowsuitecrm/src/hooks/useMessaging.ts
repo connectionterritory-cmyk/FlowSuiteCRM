@@ -1,24 +1,25 @@
 import { createElement, useCallback, useMemo, useState } from 'react'
 import { MessageModal } from '../components/MessageModal'
-import type { MessagingChannel, MessagingContact } from '../types/messaging'
+import type { MessagingChannel, MessagingContact, MessagingContextType } from '../types/messaging'
 import { useOptionalModalHost } from '../modals/useModalHost'
 
 type ActiveMessage = {
   channel: MessagingChannel
   contact: MessagingContact
   templateId?: string
+  contextType?: MessagingContextType
 }
 
 export function useMessaging() {
   const modalHost = useOptionalModalHost()
   const [activeMessage, setActiveMessage] = useState<ActiveMessage | null>(null)
 
-  const openChannel = useCallback((channel: MessagingChannel, contact: MessagingContact, templateId?: string) => {
+  const openChannel = useCallback((channel: MessagingChannel, contact: MessagingContact, templateId?: string, contextType?: MessagingContextType) => {
     if (modalHost) {
-      modalHost.openMessageModal({ channel, contact, initialTemplateId: templateId ?? null })
+      modalHost.openMessageModal({ channel, contact, initialTemplateId: templateId ?? null, contextType })
       return
     }
-    setActiveMessage({ channel, contact, templateId })
+    setActiveMessage({ channel, contact, templateId, contextType })
   }, [modalHost])
 
   const closeModal = useCallback(() => {
@@ -30,22 +31,22 @@ export function useMessaging() {
   }, [modalHost])
 
   const openWhatsapp = useCallback(
-    (contact: MessagingContact, templateId?: string) => {
-      openChannel('whatsapp', contact, templateId)
+    (contact: MessagingContact, templateId?: string, contextType?: MessagingContextType) => {
+      openChannel('whatsapp', contact, templateId, contextType)
     },
     [openChannel]
   )
 
   const openSms = useCallback(
-    (contact: MessagingContact, templateId?: string) => {
-      openChannel('sms', contact, templateId)
+    (contact: MessagingContact, templateId?: string, contextType?: MessagingContextType) => {
+      openChannel('sms', contact, templateId, contextType)
     },
     [openChannel]
   )
 
   const openEmail = useCallback(
-    (contact: MessagingContact, templateId?: string) => {
-      openChannel('email', contact, templateId)
+    (contact: MessagingContact, templateId?: string, contextType?: MessagingContextType) => {
+      openChannel('email', contact, templateId, contextType)
     },
     [openChannel]
   )
@@ -63,6 +64,7 @@ export function useMessaging() {
           channel: activeMessage.channel,
           contact: activeMessage.contact,
           initialTemplateId: activeMessage.templateId,
+          contextType: activeMessage.contextType,
           onClose: closeModal,
         })
     }

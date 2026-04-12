@@ -25,3 +25,11 @@ export type MessagingContact = {
 }
 
 export type MessagingChannel = 'whatsapp' | 'sms' | 'email' | 'telegram'
+
+export type MessagingContextType =
+  | 'campaign'
+  | 'cobranza'
+  | 'servicio'
+  | 'cumpleanos'
+  | 'seguimiento'
+  | 'ad_hoc'

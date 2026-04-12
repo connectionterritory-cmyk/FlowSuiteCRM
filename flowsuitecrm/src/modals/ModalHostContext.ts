@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 import type { CitaForm } from '../modules/citas/CitaModal'
-import type { MessagingChannel, MessagingContact } from '../types/messaging'
+import type { MessagingChannel, MessagingContact, MessagingContextType } from '../types/messaging'
 import type { GestionContactoRef, GestionDraft, GestionTipo } from '../components/RegistrarGestionModal'
 
 type AssignedOption = {
@@ -12,6 +12,8 @@ export type MessageModalIntent = {
   channel: MessagingChannel
   contact: MessagingContact
   initialTemplateId?: string | null
+  contextType?: MessagingContextType
+  mkMessageId?: string | null
 }
 
 export type CitaModalIntent = {
