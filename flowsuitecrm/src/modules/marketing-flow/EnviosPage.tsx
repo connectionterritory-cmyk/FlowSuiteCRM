@@ -35,6 +35,7 @@ type MkMessageRow = {
   sent_at: string | null
   responded_at: string | null
   response_id: string | null
+  outbox_message_id: string | null
 }
 
 export function EnviosPage() {
@@ -110,7 +111,7 @@ export function EnviosPage() {
 
     let query = supabase
       .from('mk_messages')
-      .select('id, contacto_id, contacto_tipo, telefono, nombre, mensaje_texto, status, sent_at, responded_at, response_id')
+      .select('id, contacto_id, contacto_tipo, telefono, nombre, mensaje_texto, status, sent_at, responded_at, response_id, outbox_message_id')
       .eq('campaign_id', campaignId)
     if (!isMarketingManager && sessionUserId) {
       query = query.eq('owner_id', sessionUserId)
@@ -238,32 +239,6 @@ export function EnviosPage() {
 
   const handleCloseMessage = async () => {
     setMessageOpen(false)
-    if (!configured || !activeMessage) {
-      setActiveMessage(null)
-      return
-    }
-    if (!canSend) {
-      showToast('Selecciona una campaña activa para enviar.', 'error')
-      setActiveMessage(null)
-      return
-    }
-    const nowIso = new Date().toISOString()
-    const { data: updatedRows, error: updateError } = await supabase
-      .from('mk_messages')
-      .update({
-        sent_at: activeMessage.sent_at ?? nowIso,
-        status: 'enviado',
-        abierto_at: nowIso,
-      })
-      .eq('id', activeMessage.id)
-      .select('id')
-    if (updateError) {
-      showToast(updateError.message, 'error')
-    } else if (!updatedRows || updatedRows.length === 0) {
-      showToast('No se pudo actualizar el envío. Revisa permisos o responsable de la campaña.', 'error')
-    } else {
-      void loadMessages()
-    }
     setActiveMessage(null)
   }
 
@@ -474,8 +449,11 @@ export function EnviosPage() {
   const normalizeStatus = useCallback((row: MkMessageRow) => {
     const raw = row.status ?? ''
     if (!raw) return row.sent_at ? 'enviado' : 'pendiente'
+    // Legacy aliases
     if (raw === 'sent') return 'enviado'
     if (raw === 'procesando') return 'pendiente'
+    // Worker-synced statuses: en_proceso, programado, retry_pending show as "pendiente" in campaign UI
+    if (raw === 'en_proceso' || raw === 'programado' || raw === 'retry_pending') return 'pendiente'
     return raw
   }, [])
   const isSentStatus = useCallback(
@@ -537,6 +515,7 @@ export function EnviosPage() {
     pendiente: 'Pendiente',
     enviado: 'Enviado',
     respondido: 'Respondido',
+    fallido: 'Fallido',
   }), [])
 
   const rows = useMemo<DataTableRow[]>(() => {
@@ -559,7 +538,7 @@ export function EnviosPage() {
           telefono,
           tipoLabel,
           <Badge key={`${message.id}-whatsapp`} label={hasWhatsapp ? 'WhatsApp' : 'Sin WhatsApp'} tone={hasWhatsapp ? 'blue' : 'neutral'} />,
-          <Badge key={`${message.id}-status`} label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />,
+          <Badge key={`${message.id}-status`} label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : status === 'fallido' ? 'gold' : 'neutral'} />,
           ...(isBirthdayCampaign ? [birthDay ? String(birthDay) : '—'] : []),
           <div key={`${message.id}-actions`} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -700,7 +679,7 @@ export function EnviosPage() {
                     <div className="marketing-envio-name">{fullName}</div>
                     <div className="marketing-envio-meta">{telefono} · {tipoLabel}</div>
                   </div>
-                  <Badge label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : 'neutral'} />
+                  <Badge label={statusLabel} tone={status === 'respondido' ? 'gold' : status === 'enviado' ? 'blue' : status === 'fallido' ? 'gold' : 'neutral'} />
                 </div>
                 {isBirthdayCampaign && (
                   <div className="marketing-envio-meta">Día: {birthDay ? String(birthDay) : '—'}</div>
@@ -761,6 +740,8 @@ export function EnviosPage() {
       <MessageModal
         open={messageOpen}
         channel="whatsapp"
+        contextType="campaign"
+        mkMessageId={activeMessage?.id ?? null}
         contact={
           activeMessage
             ? {
