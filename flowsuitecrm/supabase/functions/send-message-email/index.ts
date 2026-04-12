@@ -8,6 +8,7 @@ type SendMessageEmailPayload = {
   contactName?: string | null
   replyTo?: string | null
   senderName?: string | null
+  attachments?: string[] | null
 }
 
 const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
@@ -185,6 +186,12 @@ serve(async (req) => {
   }
   if (replyTo && replyTo.includes('@')) {
     resendBody.reply_to = replyTo
+  }
+  if (payload.attachments && Array.isArray(payload.attachments)) {
+    resendBody.attachments = payload.attachments.map(url => ({
+      path: url,
+      filename: url.split('/').pop() || 'attachment'
+    }))
   }
 
   const resendResponse = await fetch('https://api.resend.com/emails', {

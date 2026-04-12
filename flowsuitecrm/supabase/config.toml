@@ -8,11 +8,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-whatsapp]
+verify_jwt = false
+
 [functions.send-message-email]
 verify_jwt = false
 
 [functions.send-email]
 verify_jwt = false
 
-[functions.send-message-email]
+[functions.process-outbox]
 verify_jwt = false
