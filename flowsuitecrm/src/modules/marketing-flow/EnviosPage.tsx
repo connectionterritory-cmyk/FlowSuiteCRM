@@ -28,6 +28,7 @@ type MkMessageRow = {
   id: string
   contacto_tipo: string | null
   contacto_id: string | null
+  owner_id: string | null
   telefono: string | null
   nombre: string | null
   mensaje_texto: string | null
@@ -56,7 +57,7 @@ export function EnviosPage() {
   const [activeMessage, setActiveMessage] = useState<MkMessageRow | null>(null)
   const [messageOpen, setMessageOpen] = useState(false)
   const [responseOpen, setResponseOpen] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'pending'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pendiente' | 'programado' | 'fallido' | 'enviado' | 'respondido'>('all')
   const [whatsappFilter, setWhatsappFilter] = useState<'all' | 'whatsapp'>('all')
   const [birthDayByClienteId, setBirthDayByClienteId] = useState<Record<string, number>>({})
   const [daySort, setDaySort] = useState<'asc' | 'desc' | null>(null)
@@ -68,6 +69,7 @@ export function EnviosPage() {
     monto_prometido: '',
   })
   const [responseSaving, setResponseSaving] = useState(false)
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
   const [responseContact, setResponseContact] = useState<{
     nombre: string
     telefono: string
@@ -111,7 +113,7 @@ export function EnviosPage() {
 
     let query = supabase
       .from('mk_messages')
-      .select('id, contacto_id, contacto_tipo, telefono, nombre, mensaje_texto, status, sent_at, responded_at, response_id, outbox_message_id')
+      .select('id, contacto_id, contacto_tipo, owner_id, telefono, nombre, mensaje_texto, status, sent_at, responded_at, response_id, outbox_message_id')
       .eq('campaign_id', campaignId)
     if (!isMarketingManager && sessionUserId) {
       query = query.eq('owner_id', sessionUserId)
@@ -171,7 +173,7 @@ export function EnviosPage() {
     }
     setMessages(rows)
     setLoading(false)
-  }, [campaignId, configured, isMarketingManager, selectedCampaign, sessionUserId])
+  }, [campaignId, configured, isMarketingManager, selectedCampaign, sessionUserId, showToast])
 
   const loadCampaigns = useCallback(async () => {
     if (!configured || !sessionUserId) return
@@ -265,6 +267,64 @@ export function EnviosPage() {
     showToast('Envio registrado')
     void loadMessages()
   }, [canSend, configured, loadMessages, showToast])
+
+  const handleRetryMessage = useCallback(async (message: MkMessageRow) => {
+    if (!configured || !canSend) return
+    if (!message.outbox_message_id) {
+      showToast('Este envío no está vinculado a outbox.', 'error')
+      return
+    }
+    if (message.owner_id && sessionUserId && message.owner_id !== sessionUserId) {
+      showToast('Solo el responsable puede reintentar este envío.', 'error')
+      return
+    }
+    if (retryingIds.has(message.id)) return
+    setRetryingIds((prev) => new Set(prev).add(message.id))
+    try {
+      const { data: outboxRows, error: outboxError } = await supabase
+        .from('outbox_messages')
+        .update({
+          status: 'programado',
+          retry_after: null,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', message.outbox_message_id)
+        .eq('status', 'fallido')
+        .select('id')
+      if (outboxError) {
+        showToast(outboxError.message, 'error')
+        return
+      }
+      if (!outboxRows || outboxRows.length === 0) {
+        showToast('No se pudo reintentar el envío. Revisa permisos o estado actual.', 'error')
+        return
+      }
+      const { error: mkError } = await supabase
+        .from('mk_messages')
+        .update({ status: 'programado' })
+        .eq('id', message.id)
+        .neq('status', 'respondido')
+        .neq('status', 'cancelado')
+      if (mkError) {
+        showToast(mkError.message, 'error')
+        return
+      }
+      const { error: invokeError } = await supabase.functions.invoke('process-outbox')
+      if (invokeError) {
+        showToast('Reintento en cola. El worker lo procesará en breve.')
+      } else {
+        showToast('Reintento en cola', 'success')
+      }
+      void loadMessages()
+    } finally {
+      setRetryingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(message.id)
+        return next
+      })
+    }
+  }, [canSend, configured, loadMessages, retryingIds, sessionUserId, showToast])
 
   const RESULTADO_OPTIONS = [
     { value: 'sin_respuesta', label: 'Sin respuesta' },
@@ -452,30 +512,31 @@ export function EnviosPage() {
     // Legacy aliases
     if (raw === 'sent') return 'enviado'
     if (raw === 'procesando') return 'pendiente'
-    // Worker-synced statuses: en_proceso, programado, retry_pending show as "pendiente" in campaign UI
-    if (raw === 'en_proceso' || raw === 'programado' || raw === 'retry_pending') return 'pendiente'
     return raw
   }, [])
-  const isSentStatus = useCallback(
-    (row: MkMessageRow) => {
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      pendiente: 0,
+      programado: 0,
+      enviado: 0,
+      fallido: 0,
+      respondido: 0,
+    }
+    messages.forEach((row) => {
       const status = normalizeStatus(row)
-      return status === 'enviado' || status === 'respondido'
-    },
-    [normalizeStatus]
-  )
-  const isPendingStatus = useCallback(
-    (row: MkMessageRow) => normalizeStatus(row) === 'pendiente',
-    [normalizeStatus]
-  )
+      if (status === 'programado') {
+        counts.programado += 1
+      } else if (['pendiente', 'en_proceso', 'retry_pending'].includes(status)) {
+        counts.pendiente += 1
+      } else if (status in counts) {
+        counts[status] += 1
+      }
+    })
+    return counts
+  }, [messages, normalizeStatus])
 
   const totalMessages = messages.length
-  const sentCount = messages.filter((row) => isSentStatus(row)).length
-  const pendingCount = messages.filter((row) => isPendingStatus(row)).length
   const hasResults = totalMessages > 0
-
-  const toggleFilter = (next: 'sent' | 'pending') => {
-    setStatusFilter((prev) => (prev === next ? 'all' : next))
-  }
 
   const dayColumnIndex = isBirthdayCampaign ? 5 : null
   const handleSort = (colIndex: number) => {
@@ -485,11 +546,14 @@ export function EnviosPage() {
 
   const displayedMessages = useMemo(() => {
     let list = messages
-    if (statusFilter === 'sent') {
-      list = list.filter((row) => isSentStatus(row))
-    }
-    if (statusFilter === 'pending') {
-      list = list.filter((row) => isPendingStatus(row))
+    if (statusFilter !== 'all') {
+      list = list.filter((row) => {
+        const status = normalizeStatus(row)
+        if (statusFilter === 'pendiente') {
+          return ['pendiente', 'en_proceso', 'retry_pending'].includes(status)
+        }
+        return status === statusFilter
+      })
     }
     if (whatsappFilter === 'whatsapp') {
       list = list.filter((row) => Boolean(row.telefono && row.telefono.replace(/\D/g, '').length >= 10))
@@ -509,14 +573,25 @@ export function EnviosPage() {
       return sorted
     }
     return list
-  }, [birthDayByClienteId, daySort, isBirthdayCampaign, isPendingStatus, isSentStatus, messages, statusFilter, whatsappFilter])
+  }, [birthDayByClienteId, daySort, isBirthdayCampaign, messages, normalizeStatus, statusFilter, whatsappFilter])
 
   const statusLabels = useMemo<Record<string, string>>(() => ({
     pendiente: 'Pendiente',
+    programado: 'Programado',
+    en_proceso: 'En proceso',
+    retry_pending: 'Reintento',
     enviado: 'Enviado',
     respondido: 'Respondido',
     fallido: 'Fallido',
   }), [])
+
+  const statusOrder = useMemo(() => ([
+    'pendiente',
+    'programado',
+    'fallido',
+    'enviado',
+    'respondido',
+  ]), [])
 
   const rows = useMemo<DataTableRow[]>(() => {
     return displayedMessages.map((message) => {
@@ -526,6 +601,9 @@ export function EnviosPage() {
       const statusLabel = statusLabels[status] ?? status
       const responded = Boolean(message.response_id) || Boolean(message.responded_at) || respondedMessageIds.has(message.id)
       const alreadySent = Boolean(message.sent_at)
+      const isOwner = Boolean(message.owner_id && sessionUserId && message.owner_id === sessionUserId)
+      const canRetry = status === 'fallido' && Boolean(message.outbox_message_id) && isOwner
+      const retrying = retryingIds.has(message.id)
       const tipoLabel = message.contacto_tipo ?? '-'
       const birthDay = message.contacto_id ? birthDayByClienteId[message.contacto_id] : undefined
       const sendLabel = alreadySent ? 'Reenviar' : 'Enviar'
@@ -567,6 +645,16 @@ export function EnviosPage() {
             >
               Registrar respuesta
             </Button>
+            {canRetry && (
+              <Button
+                variant="ghost"
+                onClick={() => handleRetryMessage(message)}
+                disabled={!canSend || retrying}
+                title={permissionTooltip}
+              >
+                {retrying ? 'Reintentando...' : 'Reintentar'}
+              </Button>
+            )}
             {responded && <Badge label="Respondido" tone="gold" />}
             {!responded && alreadySent && <Badge label="Enviado" tone="blue" />}
           </div>,
@@ -579,11 +667,14 @@ export function EnviosPage() {
     displayedMessages,
     handleMarkSent,
     handleOpenMessage,
+    handleRetryMessage,
     isBirthdayCampaign,
     normalizeStatus,
     openResponseModal,
     permissionTooltip,
     respondedMessageIds,
+    retryingIds,
+    sessionUserId,
     statusLabels,
   ])
 
@@ -643,12 +734,19 @@ export function EnviosPage() {
         <div style={{ border: statusFilter === 'all' ? '2px solid var(--color-primary, #6366f1)' : '2px solid transparent', borderRadius: '0.75rem' }}>
           <StatCard label="Total" value={String(totalMessages)} accent="blue" onClick={() => setStatusFilter('all')} />
         </div>
-        <div style={{ border: statusFilter === 'sent' ? '2px solid var(--color-primary, #6366f1)' : '2px solid transparent', borderRadius: '0.75rem' }}>
-          <StatCard label="Enviados" value={String(sentCount)} accent="gold" onClick={() => toggleFilter('sent')} />
-        </div>
-        <div style={{ border: statusFilter === 'pending' ? '2px solid var(--color-primary, #6366f1)' : '2px solid transparent', borderRadius: '0.75rem' }}>
-          <StatCard label="Pendientes" value={String(pendingCount)} accent="blue" onClick={() => toggleFilter('pending')} />
-        </div>
+        {statusOrder.map((status) => (
+          <div
+            key={status}
+            style={{ border: statusFilter === status ? '2px solid var(--color-primary, #6366f1)' : '2px solid transparent', borderRadius: '0.75rem' }}
+          >
+            <StatCard
+              label={statusLabels[status] ?? status}
+              value={String(statusCounts[status] ?? 0)}
+              accent={status === 'fallido' || status === 'respondido' ? 'gold' : 'blue'}
+              onClick={() => setStatusFilter(status as typeof statusFilter)}
+            />
+          </div>
+        ))}
       </div>
 
       {loading && <div className="card" style={{ padding: '1rem' }}>Cargando envios...</div>}
@@ -667,6 +765,9 @@ export function EnviosPage() {
             const statusLabel = statusLabels[status] ?? status
             const responded = Boolean(message.response_id) || Boolean(message.responded_at) || respondedMessageIds.has(message.id)
             const alreadySent = Boolean(message.sent_at)
+            const isOwner = Boolean(message.owner_id && sessionUserId && message.owner_id === sessionUserId)
+            const canRetry = status === 'fallido' && Boolean(message.outbox_message_id) && isOwner
+            const retrying = retryingIds.has(message.id)
             const tipoLabel = message.contacto_tipo ?? '-'
             const birthDay = message.contacto_id ? birthDayByClienteId[message.contacto_id] : undefined
             const sendLabel = alreadySent ? 'Reenviar' : 'Enviar'
@@ -714,6 +815,16 @@ export function EnviosPage() {
                   >
                     Registrar respuesta
                   </Button>
+                  {canRetry && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleRetryMessage(message)}
+                      disabled={!canSend || retrying}
+                      title={permissionTooltip}
+                    >
+                      {retrying ? 'Reintentando...' : 'Reintentar'}
+                    </Button>
+                  )}
                   {responded && <Badge label="Respondido" tone="gold" />}
                   {!responded && alreadySent && <Badge label="Enviado" tone="blue" />}
                 </div>
