@@ -18,3 +18,6 @@ verify_jwt = false
 
 [functions.process-outbox]
 verify_jwt = false
+
+[functions.dispatch-campaign]
+verify_jwt = false

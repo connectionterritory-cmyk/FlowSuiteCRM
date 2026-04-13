@@ -201,6 +201,7 @@ export function LeadsPage() {
   const [filtroFuente, setFiltroFuente] = useState('todos')
   const [filtroOwner, setFiltroOwner] = useState('todos')
   const [filtroVencido, setFiltroVencido] = useState(false)
+  const [filtroFrios, setFiltroFrios] = useState(false)
   const [filtroFechaCampo, setFiltroFechaCampo] = useState<'created_at' | 'next_action_date'>('created_at')
   const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
@@ -692,12 +693,17 @@ export function LeadsPage() {
         (filtroEstado === 'en_proceso' && EN_PROCESO_STAGES.includes(stage))
       const matchFuente = filtroFuente === 'todos' || lead.fuente === filtroFuente
       const matchOwner = filtroOwner === 'todos' || getLeadVendedorKey(lead) === filtroOwner
+      const TERMINAL_STAGES = ['descartado', 'cierre']
       const matchVencido =
         !filtroVencido ||
         (!!lead.next_action_date &&
           lead.next_action_date <= todayKey &&
-          lead.estado_pipeline !== 'descartado' &&
-          lead.estado_pipeline !== 'cierre')
+          !TERMINAL_STAGES.includes(lead.estado_pipeline ?? ''))
+      const frioCutoff = formatDateKey(new Date(Date.now() - 30 * 86400000))
+      const matchFrios =
+        !filtroFrios ||
+        (!TERMINAL_STAGES.includes(lead.estado_pipeline ?? '') &&
+          (!lead.next_action_date || lead.next_action_date < frioCutoff))
       const dateValue =
         filtroFechaCampo === 'created_at'
           ? (lead.created_at ? formatDateKey(new Date(lead.created_at)) : '')
@@ -707,9 +713,9 @@ export function LeadsPage() {
         (dateValue &&
           (!filtroFechaDesde || dateValue >= filtroFechaDesde) &&
           (!filtroFechaHasta || dateValue <= filtroFechaHasta))
-      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha
+      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha && matchFrios
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey, getLeadVendedorKey])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFrios, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey, getLeadVendedorKey])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -724,20 +730,35 @@ export function LeadsPage() {
   const leadsOrdenados = useMemo(() => {
     if (sortCol === null) return leadsFiltrados
     return [...leadsFiltrados].sort((a, b) => {
-      let valA = ''
-      let valB = ''
+      let valA: string | number = ''
+      let valB: string | number = ''
       if (sortCol === 0) {
         valA = `${a.nombre ?? ''} ${a.apellido ?? ''}`.toLowerCase()
         valB = `${b.nombre ?? ''} ${b.apellido ?? ''}`.toLowerCase()
+      } else if (sortCol === 1) {
+        valA = (a.telefono ?? '').replace(/\D/g, '')
+        valB = (b.telefono ?? '').replace(/\D/g, '')
+      } else if (sortCol === 2) {
+        valA = getFuenteLabel(a.fuente).toLowerCase()
+        valB = getFuenteLabel(b.fuente).toLowerCase()
       } else if (sortCol === 3) {
         valA = normalizeStage(a.estado_pipeline)
         valB = normalizeStage(b.estado_pipeline)
+      } else if (sortCol === 4) {
+        valA = (a.next_action ?? '').toLowerCase()
+        valB = (b.next_action ?? '').toLowerCase()
+      } else if (sortCol === 5) {
+        valA = getVendedorLabel(getLeadVendedorId(a)).toLowerCase()
+        valB = getVendedorLabel(getLeadVendedorId(b)).toLowerCase()
+      } else if (sortCol === 6) {
+        valA = a.created_at ?? ''
+        valB = b.created_at ?? ''
       }
       if (valA < valB) return sortDir === 'asc' ? -1 : 1
       if (valA > valB) return sortDir === 'asc' ? 1 : -1
       return 0
     })
-  }, [leadsFiltrados, sortCol, sortDir, normalizeStage])
+  }, [leadsFiltrados, sortCol, sortDir, normalizeStage, getFuenteLabel, getVendedorLabel, getLeadVendedorId])
 
   useEffect(() => {
     setVisibleCount(200)
@@ -753,6 +774,8 @@ export function LeadsPage() {
   // --- ESTADISTICAS ---
   const stats = useMemo(() => {
     const todayKey = formatDateKey(new Date())
+    const frioCutoff = formatDateKey(new Date(Date.now() - 30 * 86400000))
+    const TERMINAL = ['descartado', 'cierre']
     return {
       total: leads.length,
       nuevo: leads.filter((l) => normalizeStage(l.estado_pipeline) === 'nuevo').length,
@@ -762,8 +785,12 @@ export function LeadsPage() {
         (l) =>
           l.next_action_date &&
           l.next_action_date <= todayKey &&
-          l.estado_pipeline !== 'descartado' &&
-          l.estado_pipeline !== 'cierre',
+          !TERMINAL.includes(l.estado_pipeline ?? ''),
+      ).length,
+      frios: leads.filter(
+        (l) =>
+          !TERMINAL.includes(l.estado_pipeline ?? '') &&
+          (!l.next_action_date || l.next_action_date < frioCutoff),
       ).length,
     }
   }, [leads, normalizeStage, formatDateKey])
@@ -1087,6 +1114,7 @@ export function LeadsPage() {
     setFiltroFuente('todos')
     setFiltroOwner('todos')
     setFiltroVencido(false)
+    setFiltroFrios(false)
     setFiltroFechaCampo('created_at')
     setFiltroFechaDesde('')
     setFiltroFechaHasta('')
@@ -1098,6 +1126,7 @@ export function LeadsPage() {
     filtroFuente !== 'todos' ? '1' : '',
     filtroOwner !== 'todos' ? '1' : '',
     filtroVencido ? '1' : '',
+    filtroFrios ? '1' : '',
     filtroFechaDesde || filtroFechaHasta ? '1' : '',
   ].filter(Boolean).length
 
@@ -1339,19 +1368,15 @@ export function LeadsPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      {/* ESTADISTICAS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+      {/* ESTADÍSTICAS — tarjetas clickables con estado activo */}
+      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
         {[
-          { label: 'Total', value: stats.total, color: '#3b82f6', onClick: limpiarFiltros },
-          { label: 'Nuevos', value: stats.nuevo, color: '#6366f1', onClick: () => { limpiarFiltros(); setFiltroEstado('nuevo') } },
-          { label: 'En proceso', value: stats.enProceso, color: '#f59e0b', onClick: () => { limpiarFiltros(); setFiltroEstado('en_proceso') } },
-          { label: 'Descartados', value: stats.descartado, color: '#6b7280', onClick: () => { limpiarFiltros(); setFiltroEstado('descartado') } },
-          {
-            label: 'Seguimientos',
-            value: stats.vencidos,
-            color: stats.vencidos > 0 ? '#ef4444' : '#10b981',
-            onClick: () => { limpiarFiltros(); setFiltroVencido(true) },
-          },
+          { label: 'Total', value: stats.total, color: '#3b82f6', active: !cantFiltrosActivos, onClick: limpiarFiltros },
+          { label: 'Nuevos', value: stats.nuevo, color: '#6366f1', active: filtroEstado === 'nuevo', onClick: () => { limpiarFiltros(); setFiltroEstado('nuevo') } },
+          { label: 'En proceso', value: stats.enProceso, color: '#f59e0b', active: filtroEstado === 'en_proceso', onClick: () => { limpiarFiltros(); setFiltroEstado('en_proceso') } },
+          { label: 'Descartados', value: stats.descartado, color: '#6b7280', active: filtroEstado === 'descartado', onClick: () => { limpiarFiltros(); setFiltroEstado('descartado') } },
+          { label: '⏰ Seguimientos', value: stats.vencidos, color: stats.vencidos > 0 ? '#ef4444' : '#10b981', active: filtroVencido, onClick: () => { limpiarFiltros(); setFiltroVencido(true) } },
+          ...(stats.frios > 0 ? [{ label: '🧊 Leads fríos', value: stats.frios, color: '#0ea5e9', active: filtroFrios, onClick: () => { limpiarFiltros(); setFiltroFrios(true) } }] : []),
         ].map((s) => (
           <div
             key={s.label}
@@ -1361,304 +1386,189 @@ export function LeadsPage() {
             onKeyDown={(e) => e.key === 'Enter' && s.onClick()}
             title="Click para filtrar"
             style={{
-              padding: '0.875rem 1rem',
-              background: 'var(--color-surface, #f9fafb)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '0.625rem 1rem',
+              background: s.active ? `${s.color}15` : 'var(--color-surface, #f9fafb)',
               borderRadius: '0.5rem',
-              border: '1px solid var(--color-border, #e5e7eb)',
-              textAlign: 'center',
+              border: `1px solid ${s.active ? s.color : 'var(--color-border, #e5e7eb)'}`,
+              borderLeft: `3px solid ${s.color}`,
               cursor: 'pointer',
+              minWidth: '100px',
             }}
           >
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)' }}>{s.label}</div>
+            <span style={{ fontSize: '1.375rem', fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value}</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>{s.label}</span>
           </div>
         ))}
       </div>
 
-      {/* FILTROS */}
-      <div
-        style={{
-          background: 'var(--color-surface, #f9fafb)',
-          borderRadius: '0.75rem',
-          border: '1px solid var(--color-border, #e5e7eb)',
-        }}
-      >
+      {/* BÚSQUEDA — hero element */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted, #9ca3af)', fontSize: '0.9rem', pointerEvents: 'none' }}>
+            🔍
+          </span>
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, teléfono..."
+            style={{
+              width: '100%',
+              padding: '0.625rem 0.75rem 0.625rem 2.25rem',
+              borderRadius: '0.5rem',
+              border: busqueda ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'var(--color-input)',
+              color: 'var(--color-text)',
+              boxSizing: 'border-box',
+              outline: 'none',
+            }}
+          />
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)', whiteSpace: 'nowrap' }}>
+          {leadsFiltrados.length} de {leads.length}
+        </span>
+        {cantFiltrosActivos > 0 && (
+          <Button variant="ghost" type="button" onClick={limpiarFiltros} style={{ whiteSpace: 'nowrap' }}>
+            ✕ Limpiar
+          </Button>
+        )}
+      </div>
+
+      {/* FILTROS AVANZADOS */}
+      <div style={{ background: 'var(--color-surface, #f9fafb)', borderRadius: '0.75rem', border: '1px solid var(--color-border, #e5e7eb)' }}>
         <div
           role="button"
           tabIndex={0}
           onClick={() => setFiltrosVisible((v) => !v)}
           onKeyDown={(e) => e.key === 'Enter' && setFiltrosVisible((v) => !v)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.75rem 1rem',
-            cursor: 'pointer',
-          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', cursor: 'pointer' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span
-              style={{
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                color: 'var(--color-text-muted, #6b7280)',
-                letterSpacing: '0.05em',
-              }}
-            >
-              FILTROS
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)', letterSpacing: '0.05em' }}>
+              FILTROS AVANZADOS
             </span>
             {cantFiltrosActivos > 0 && (
-              <span
-                style={{
-                  background: '#2563eb',
-                  color: 'white',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  padding: '0.1rem 0.45rem',
-                  borderRadius: '9999px',
-                  lineHeight: 1.4,
-                }}
-              >
+              <span style={{ background: '#2563eb', color: 'white', fontSize: '0.65rem', fontWeight: 700, padding: '0.1rem 0.45rem', borderRadius: '9999px', lineHeight: 1.4 }}>
                 {cantFiltrosActivos}
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
-              {leadsFiltrados.length} de {leads.length} leads
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)' }}>
-              {filtrosVisible ? '▲' : '▼'}
-            </span>
-          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
+            {filtrosVisible ? '▲ ocultar' : '▼ mostrar'}
+          </span>
         </div>
 
         {filtrosVisible && (
-          <div
-            style={{
-              padding: '0 1rem 1rem',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              alignItems: 'flex-end',
-              borderTop: '1px solid var(--color-border, #e5e7eb)',
-            }}
-          >
-            <div style={{ flex: '1', minWidth: '200px' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                BUSCAR
-              </label>
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Nombre, teléfono..."
-                style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                  boxSizing: 'border-box',
-                }}
-              />
+          <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
+
+            {/* Grupo: Pipeline */}
+            <div style={{ marginTop: '0.875rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted, #9ca3af)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                PIPELINE
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Estado</div>
+                  <select
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroEstado !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="nuevo">{t('pipeline.columns.nuevo')}</option>
+                    <option value="en_proceso">En proceso</option>
+                    <option value="contactado">{t('pipeline.columns.contactado')}</option>
+                    <option value="cita">{t('pipeline.columns.cita')}</option>
+                    <option value="demo">{t('pipeline.columns.demo')}</option>
+                    <option value="cierre">{t('pipeline.columns.cierre')}</option>
+                    <option value="descartado">{t('pipeline.columns.descartado')}</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Fuente</div>
+                  <select
+                    value={filtroFuente}
+                    onChange={(e) => setFiltroFuente(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroFuente !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todas</option>
+                    {fuentesUnicas.map((f) => (
+                      <option key={f.value} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', paddingBottom: '0.1rem', color: filtroVencido ? '#ef4444' : 'var(--color-text-muted, #6b7280)', fontWeight: filtroVencido ? 600 : 400 }}>
+                    <input type="checkbox" checked={filtroVencido} onChange={(e) => setFiltroVencido(e.target.checked)} />
+                    Solo vencidos
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', paddingBottom: '0.1rem', color: filtroFrios ? '#0ea5e9' : 'var(--color-text-muted, #6b7280)', fontWeight: filtroFrios ? 600 : 400 }}>
+                    <input type="checkbox" checked={filtroFrios} onChange={(e) => setFiltroFrios(e.target.checked)} />
+                    Solo fríos (+30 días)
+                  </label>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                ESTADO
-              </label>
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                <option value="nuevo">{t('pipeline.columns.nuevo')}</option>
-                <option value="en_proceso">En proceso</option>
-                <option value="contactado">{t('pipeline.columns.contactado')}</option>
-                <option value="cita">{t('pipeline.columns.cita')}</option>
-                <option value="demo">{t('pipeline.columns.demo')}</option>
-                <option value="cierre">{t('pipeline.columns.cierre')}</option>
-                <option value="descartado">{t('pipeline.columns.descartado')}</option>
-              </select>
+            {/* Grupo: Fecha */}
+            <div style={{ marginTop: '0.875rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted, #9ca3af)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                FECHA
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'flex-end' }}>
+                <div style={{ minWidth: '160px' }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Campo</div>
+                  <select
+                    value={filtroFechaCampo}
+                    onChange={(e) => setFiltroFechaCampo(e.target.value as 'created_at' | 'next_action_date')}
+                    style={{ width: '100%', padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="created_at">{t('leads.filters.createdAt')}</option>
+                    <option value="next_action_date">{t('leads.filters.nextActionDate')}</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Desde</div>
+                  <input
+                    type="date"
+                    value={filtroFechaDesde}
+                    onChange={(e) => setFiltroFechaDesde(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroFechaDesde ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Hasta</div>
+                  <input
+                    type="date"
+                    value={filtroFechaHasta}
+                    onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroFechaHasta ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  />
+                </div>
+              </div>
             </div>
 
-            <div style={{ minWidth: '180px' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                {t('leads.filters.dateField')}
-              </label>
-              <select
-                value={filtroFechaCampo}
-                onChange={(e) => setFiltroFechaCampo(e.target.value as 'created_at' | 'next_action_date')}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                  width: '100%',
-                }}
-              >
-                <option value="created_at">{t('leads.filters.createdAt')}</option>
-                <option value="next_action_date">{t('leads.filters.nextActionDate')}</option>
-              </select>
+            {/* Grupo: Equipo */}
+            <div style={{ marginTop: '0.875rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted, #9ca3af)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                EQUIPO
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Vendedor</div>
+                <select
+                  value={filtroOwner}
+                  onChange={(e) => setFiltroOwner(e.target.value)}
+                  style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroOwner !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                >
+                  <option value="todos">Todos</option>
+                  {vendedoresUnicos.map((o) => (
+                    <option key={o.id} value={o.id}>{o.nombre}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                {t('leads.filters.dateFrom')}
-              </label>
-              <input
-                type="date"
-                value={filtroFechaDesde}
-                onChange={(e) => setFiltroFechaDesde(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              />
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                {t('leads.filters.dateTo')}
-              </label>
-              <input
-                type="date"
-                value={filtroFechaHasta}
-                onChange={(e) => setFiltroFechaHasta(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              />
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                FUENTE
-              </label>
-              <select
-                value={filtroFuente}
-                onChange={(e) => setFiltroFuente(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todas</option>
-                {fuentesUnicas.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                VENDEDOR
-              </label>
-              <select
-                value={filtroOwner}
-                onChange={(e) => setFiltroOwner(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                {vendedoresUnicos.map((o) => (
-                  <option key={o.id} value={o.id}>{o.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            {cantFiltrosActivos > 0 && (
-              <Button variant="ghost" type="button" onClick={limpiarFiltros}>
-                Limpiar
-              </Button>
-            )}
           </div>
         )}
       </div>
@@ -1833,7 +1743,7 @@ export function LeadsPage() {
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={handleRowClick}
-          sortableColumns={[0, 3]}
+          sortableColumns={[0, 1, 2, 3, 4, 5, 6]}
           sortColIndex={sortCol ?? undefined}
           sortDir={sortDir}
           onSort={handleSort}

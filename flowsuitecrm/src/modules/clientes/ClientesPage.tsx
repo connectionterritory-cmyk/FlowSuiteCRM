@@ -152,6 +152,17 @@ const MONTH_OPTIONS = [
 ]
 const DAY_OPTIONS = Array.from({ length: 31 }, (_, idx) => String(idx + 1).padStart(2, '0'))
 
+const CLIENTE_TABLE_COLUMNS = [
+  { key: 'cliente', label: 'Cliente', sortable: true },
+  { key: 'telefono', label: 'Teléfono', sortable: true },
+  { key: 'cuenta', label: 'Cuenta financiera', sortable: true },
+  { key: 'saldo', label: 'Saldo', sortable: true },
+  { key: 'monto_moroso', label: 'Monto moroso', sortable: true },
+  { key: 'morosidad', label: 'Morosidad', sortable: true },
+  { key: 'ciudad', label: 'Ciudad', sortable: true },
+  { key: 'vendedor', label: 'Vendedor', sortable: true },
+]
+
 const splitBirthDate = (value: string | null) => {
   if (!value) return { month: '', day: '' }
   const parts = value.split('-')
@@ -200,6 +211,11 @@ function normalizeSearch(value: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function normalizeStateRegionFilter(value: string): string {
+  const formatted = formatStateRegion(value)
+  return formatted.trim()
 }
 
 function badgeColor(segmento: string): string {
@@ -279,13 +295,23 @@ export function ClientesPage() {
   const [filtroVendedor, setFiltroVendedor] = useState('todos')
   const [filtroCiudad, setFiltroCiudad] = useState('')
   const [filtroEstadoRegion, setFiltroEstadoRegion] = useState('')
+  const [estadoRegionExact, setEstadoRegionExact] = useState(true)
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() =>
+    CLIENTE_TABLE_COLUMNS.reduce<Record<string, boolean>>((acc, col) => {
+      acc[col.key] = true
+      return acc
+    }, {})
+  )
   const [filtroCodigoPostal, setFiltroCodigoPostal] = useState('')
   const [filtroEstadoOperativo, setFiltroEstadoOperativo] = useState('todos')
   const [filtroMesCumple, setFiltroMesCumple] = useState('todos')
+  const [filtroCartuchos, setFiltroCartuchos] = useState<'todos' | 'vencidos' | 'proximos_30'>('todos')
+  const [cartuchosVencidosIds, setCartuchosVencidosIds] = useState<Set<string>>(new Set())
+  const [cartuchosProximosIds, setCartuchosProximosIds] = useState<Set<string>>(new Set())
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [sortCol, setSortCol] = useState<number | null>(null)
+  const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [detailCliente, setDetailCliente] = useState<ClienteRecord | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -358,6 +384,44 @@ export function ClientesPage() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // --- CARTUCHOS: carga IDs de clientes con componentes vencidos o próximos ---
+  useEffect(() => {
+    if (!configured) return
+    const today = new Date().toISOString().split('T')[0]
+    const in30 = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+
+    type CartuchoRow = { equipo?: { cliente?: { id: string } | null } | null }
+
+    const extractIds = (rows: CartuchoRow[]): Set<string> => {
+      const ids = new Set<string>()
+      for (const row of rows) {
+        const id = row.equipo?.cliente?.id
+        if (id) ids.add(id)
+      }
+      return ids
+    }
+
+    void (async () => {
+      const [{ data: vData }, { data: pData }] = await Promise.all([
+        supabase
+          .from('componentes_equipo')
+          .select('equipo:equipos_instalados(cliente:clientes(id))')
+          .eq('activo', true)
+          .not('fecha_proximo_cambio', 'is', null)
+          .lte('fecha_proximo_cambio', today),
+        supabase
+          .from('componentes_equipo')
+          .select('equipo:equipos_instalados(cliente:clientes(id))')
+          .eq('activo', true)
+          .not('fecha_proximo_cambio', 'is', null)
+          .gt('fecha_proximo_cambio', today)
+          .lte('fecha_proximo_cambio', in30),
+      ])
+      setCartuchosVencidosIds(extractIds((vData ?? []) as CartuchoRow[]))
+      setCartuchosProximosIds(extractIds((pData ?? []) as CartuchoRow[]))
+    })()
+  }, [configured])
 
   useEffect(() => {
     if (!configured || !currentUser) return
@@ -470,8 +534,13 @@ export function ClientesPage() {
       const matchVendedor = filtroVendedor === 'todos' || getClienteVendedorKey(c) === filtroVendedor
       const matchCiudad =
         !filtroCiudad || (c.ciudad ?? '').toLowerCase().includes(filtroCiudad.toLowerCase())
+      const estadoRegionFilter = normalizeStateRegionFilter(filtroEstadoRegion)
+      const estadoRegionValue = normalizeStateRegionFilter(c.estado_region ?? '')
       const matchEstadoRegion =
-        !filtroEstadoRegion || (c.estado_region ?? '').toLowerCase().includes(filtroEstadoRegion.toLowerCase())
+        !estadoRegionFilter ||
+        (estadoRegionExact
+          ? estadoRegionValue === estadoRegionFilter
+          : estadoRegionValue.includes(estadoRegionFilter))
       const matchCodigoPostal =
         !filtroCodigoPostal || (c.codigo_postal ?? '').toLowerCase().includes(filtroCodigoPostal.toLowerCase())
 
@@ -486,6 +555,11 @@ export function ClientesPage() {
         (filtroMesCumple.startsWith('mes_') &&
           birthMonth === Number(filtroMesCumple.replace('mes_', '')))
 
+      const matchCartuchos =
+        filtroCartuchos === 'todos' ||
+        (filtroCartuchos === 'vencidos' && cartuchosVencidosIds.has(c.id)) ||
+        (filtroCartuchos === 'proximos_30' && cartuchosProximosIds.has(c.id))
+
       return (
         matchBusqueda &&
         matchAtraso &&
@@ -495,7 +569,8 @@ export function ClientesPage() {
         matchEstadoRegion &&
         matchCodigoPostal &&
         matchEstadoOperativo &&
-        matchCumple
+        matchCumple &&
+        matchCartuchos
       )
     })
   }, [
@@ -506,42 +581,84 @@ export function ClientesPage() {
     filtroVendedor,
     filtroCiudad,
     filtroEstadoRegion,
+    estadoRegionExact,
     filtroCodigoPostal,
     filtroEstadoOperativo,
     filtroMesCumple,
+    filtroCartuchos,
+    cartuchosVencidosIds,
+    cartuchosProximosIds,
     getClienteVendedorKey,
   ])
 
+  const visibleColumns = useMemo(
+    () => CLIENTE_TABLE_COLUMNS.filter((col) => columnVisibility[col.key]),
+    [columnVisibility]
+  )
+
+  const visibleSortableColumns = useMemo(
+    () => visibleColumns.flatMap((col, idx) => (col.sortable ? [idx] : [])),
+    [visibleColumns]
+  )
+
+  const sortColIndex = useMemo(() => {
+    if (!sortKey) return -1
+    return visibleColumns.findIndex((col) => col.key === sortKey)
+  }, [sortKey, visibleColumns])
+
+  useEffect(() => {
+    if (sortKey && !columnVisibility[sortKey]) {
+      setSortKey(null)
+    }
+  }, [columnVisibility, sortKey])
+
   // --- ORDENACION ---
   const handleSort = (colIndex: number) => {
-    if (sortCol === colIndex) {
+    const colKey = visibleColumns[colIndex]?.key ?? null
+    if (!colKey) return
+    if (sortKey === colKey) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
     } else {
-      setSortCol(colIndex)
+      setSortKey(colKey)
       setSortDir('asc')
     }
   }
 
   const clientesOrdenados = useMemo(() => {
-    if (sortCol === null) return clientesFiltrados
+    if (!sortKey) return clientesFiltrados
     return [...clientesFiltrados].sort((a, b) => {
       let valA: string | number = 0
       let valB: string | number = 0
-      if (sortCol === 0) {
+      if (sortKey === 'cliente') {
         valA = `${a.nombre ?? ''} ${a.apellido ?? ''}`.toLowerCase()
         valB = `${b.nombre ?? ''} ${b.apellido ?? ''}`.toLowerCase()
-      } else if (sortCol === 4) {
+      } else if (sortKey === 'telefono') {
+        valA = (a.telefono ?? '').replace(/\D/g, '')
+        valB = (b.telefono ?? '').replace(/\D/g, '')
+      } else if (sortKey === 'cuenta') {
+        valA = (a.hycite_id ?? '').toLowerCase()
+        valB = (b.hycite_id ?? '').toLowerCase()
+      } else if (sortKey === 'saldo') {
         valA = a.saldo_actual ?? 0
         valB = b.saldo_actual ?? 0
-      } else if (sortCol === 5) {
+      } else if (sortKey === 'monto_moroso') {
+        valA = a.monto_moroso ?? 0
+        valB = b.monto_moroso ?? 0
+      } else if (sortKey === 'morosidad') {
         valA = a.dias_atraso ?? 0
         valB = b.dias_atraso ?? 0
+      } else if (sortKey === 'ciudad') {
+        valA = (a.ciudad ?? '').toLowerCase()
+        valB = (b.ciudad ?? '').toLowerCase()
+      } else if (sortKey === 'vendedor') {
+        valA = getClienteVendedorLabel(getClienteVendedorKey(a)).toLowerCase()
+        valB = getClienteVendedorLabel(getClienteVendedorKey(b)).toLowerCase()
       }
       if (valA < valB) return sortDir === 'asc' ? -1 : 1
       if (valA > valB) return sortDir === 'asc' ? 1 : -1
       return 0
     })
-  }, [clientesFiltrados, sortCol, sortDir])
+  }, [clientesFiltrados, sortDir, sortKey, getClienteVendedorKey, getClienteVendedorLabel])
 
   // --- DUPLICADOS ---
   const [showDuplicados, setShowDuplicados] = useState(false)
@@ -583,8 +700,11 @@ export function ClientesPage() {
       alDia: clientes.filter((c) => !isMoroso(c.dias_atraso)).length,
       conMoroso: clientes.filter((c) => isMoroso(c.dias_atraso)).length,
       cancelados: clientes.filter((c) => c.estado_cuenta === 'cancelacion_total').length,
+      cumpleHoy: clientes.filter((c) => c.fecha_nacimiento && diasParaCumple(c.fecha_nacimiento) === 0).length,
+      cartuchosVencidos: clientes.filter((c) => cartuchosVencidosIds.has(c.id)).length,
+      cartuchosProximos: clientes.filter((c) => cartuchosProximosIds.has(c.id)).length,
     }),
-    [clientes]
+    [clientes, cartuchosVencidosIds, cartuchosProximosIds]
   )
 
   // --- ROWS ---
@@ -618,18 +738,20 @@ export function ClientesPage() {
       const saldoDisplay = cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-'
       const montoMorosoDisplay = (cliente.monto_moroso ?? 0) > 0 ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-'
 
+      const cellMap: Record<string, React.ReactNode> = {
+        cliente: fullName,
+        telefono: telefonoDisplay,
+        cuenta,
+        saldo: saldoDisplay,
+        monto_moroso: montoMorosoDisplay,
+        morosidad: morosidadBadge,
+        ciudad: ciudadDisplay,
+        vendedor: vendedorDisplay,
+      }
+
       return {
         id: cliente.id,
-        cells: [
-          fullName,
-          telefonoDisplay,
-          cuenta,
-          saldoDisplay,
-          montoMorosoDisplay,
-          morosidadBadge,
-          ciudadDisplay,
-          vendedorDisplay,
-        ],
+        cells: visibleColumns.map((col) => cellMap[col.key]),
         detail: [
           { label: 'Nombre', value: cliente.nombre ?? '-' },
           { label: 'Apellido', value: cliente.apellido ?? '-' },
@@ -695,7 +817,7 @@ export function ClientesPage() {
         ],
       }
     })
-  }, [clientesOrdenados, getClienteResponsableId, getClienteVendedorLabel, openWhatsapp])
+  }, [clientesOrdenados, getClienteResponsableId, getClienteVendedorLabel, openWhatsapp, visibleColumns])
 
   const selectedCliente = selectedRow ? clientes.find((c) => c.id === selectedRow.id) ?? null : null
   const selectedClienteDetail = detailCliente ?? selectedCliente
@@ -1055,6 +1177,8 @@ export function ClientesPage() {
     setFiltroCodigoPostal('')
     setFiltroEstadoOperativo('todos')
     setFiltroMesCumple('todos')
+    setFiltroCartuchos('todos')
+    setEstadoRegionExact(true)
   }
 
   const exportarCSV = () => {
@@ -1099,7 +1223,8 @@ export function ClientesPage() {
     filtroEstadoRegion ||
     filtroCodigoPostal ||
     filtroEstadoOperativo !== 'todos' ||
-    filtroMesCumple !== 'todos'
+    filtroMesCumple !== 'todos' ||
+    filtroCartuchos !== 'todos'
 
   const cantFiltrosActivos = [
     busqueda,
@@ -1111,6 +1236,7 @@ export function ClientesPage() {
     filtroCodigoPostal,
     filtroEstadoOperativo !== 'todos' ? '1' : '',
     filtroMesCumple !== 'todos' ? '1' : '',
+    filtroCartuchos !== 'todos' ? '1' : '',
   ].filter(Boolean).length
 
   const handleOpenDuplicados = () => {
@@ -1157,13 +1283,16 @@ export function ClientesPage() {
         }
       />
 
-      {/* ESTADISTICAS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+      {/* ESTADISTICAS — tarjetas clickables */}
+      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
         {[
-          { label: 'Total', value: stats.total, color: '#3b82f6', onClick: limpiarFiltros },
-          { label: 'Al día', value: stats.alDia, color: '#10b981', onClick: () => { limpiarFiltros(); setFiltroAtraso('al_dia') } },
-          { label: 'Con morosidad', value: stats.conMoroso, color: '#f59e0b', onClick: () => { limpiarFiltros(); setFiltroAtraso('con_moroso') } },
-          { label: 'Cancelados', value: stats.cancelados, color: '#6b7280', onClick: () => { limpiarFiltros(); setFiltroEstado('cancelacion_total') } },
+          { label: 'Total clientes', value: stats.total, color: '#3b82f6', active: !hayFiltros, onClick: limpiarFiltros },
+          { label: 'Al día', value: stats.alDia, color: '#10b981', active: filtroAtraso === 'al_dia', onClick: () => { limpiarFiltros(); setFiltroAtraso('al_dia') } },
+          { label: 'Con morosidad', value: stats.conMoroso, color: '#f59e0b', active: filtroAtraso === 'con_moroso', onClick: () => { limpiarFiltros(); setFiltroAtraso('con_moroso') } },
+          { label: 'Cancelados', value: stats.cancelados, color: '#6b7280', active: filtroEstado === 'cancelacion_total', onClick: () => { limpiarFiltros(); setFiltroEstado('cancelacion_total') } },
+          ...(stats.cumpleHoy > 0 ? [{ label: '🎂 Cumpleaños hoy', value: stats.cumpleHoy, color: '#8b5cf6', active: filtroMesCumple === 'hoy', onClick: () => { limpiarFiltros(); setFiltroMesCumple('hoy') } }] : []),
+          ...(stats.cartuchosVencidos > 0 ? [{ label: '🔴 Filtros vencidos', value: stats.cartuchosVencidos, color: '#ef4444', active: filtroCartuchos === 'vencidos', onClick: () => { limpiarFiltros(); setFiltroCartuchos('vencidos') } }] : []),
+          ...(stats.cartuchosProximos > 0 ? [{ label: '🟡 Filtros próximos', value: stats.cartuchosProximos, color: '#f97316', active: filtroCartuchos === 'proximos_30', onClick: () => { limpiarFiltros(); setFiltroCartuchos('proximos_30') } }] : []),
         ].map((s) => (
           <div
             key={s.label}
@@ -1173,21 +1302,58 @@ export function ClientesPage() {
             onKeyDown={(e) => e.key === 'Enter' && s.onClick()}
             title="Click para filtrar"
             style={{
-              padding: '0.875rem 1rem',
-              background: 'var(--color-surface, #f9fafb)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '0.625rem 1rem',
+              background: s.active ? `${s.color}15` : 'var(--color-surface, #f9fafb)',
               borderRadius: '0.5rem',
-              border: '1px solid var(--color-border, #e5e7eb)',
-              textAlign: 'center',
+              border: `1px solid ${s.active ? s.color : 'var(--color-border, #e5e7eb)'}`,
+              borderLeft: `3px solid ${s.color}`,
               cursor: 'pointer',
+              minWidth: '110px',
+              transition: 'box-shadow 0.15s',
             }}
           >
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)' }}>{s.label}</div>
+            <span style={{ fontSize: '1.375rem', fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value}</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>{s.label}</span>
           </div>
         ))}
       </div>
 
-      {/* FILTROS */}
+      {/* BARRA DE BÚSQUEDA + CONTEO */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted, #9ca3af)', fontSize: '0.9rem', pointerEvents: 'none' }}>
+            🔍
+          </span>
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, teléfono, cuenta Hycite..."
+            style={{
+              width: '100%',
+              padding: '0.625rem 0.75rem 0.625rem 2.25rem',
+              borderRadius: '0.5rem',
+              border: busqueda ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)',
+              fontSize: '0.875rem',
+              background: 'var(--color-input)',
+              color: 'var(--color-text)',
+              boxSizing: 'border-box',
+              outline: 'none',
+            }}
+          />
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)', whiteSpace: 'nowrap' }}>
+          {clientesFiltrados.length} de {clientes.length}
+        </span>
+        {hayFiltros && (
+          <Button variant="ghost" type="button" onClick={limpiarFiltros} style={{ whiteSpace: 'nowrap' }}>
+            ✕ Limpiar
+          </Button>
+        )}
+      </div>
+
+      {/* FILTROS AVANZADOS */}
       <div
         style={{
           background: 'var(--color-surface, #f9fafb)',
@@ -1205,365 +1371,198 @@ export function ClientesPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '0.75rem 1rem',
+            padding: '0.625rem 1rem',
             cursor: 'pointer',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span
-              style={{
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                color: 'var(--color-text-muted, #6b7280)',
-                letterSpacing: '0.05em',
-              }}
-            >
-              FILTROS
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted, #6b7280)', letterSpacing: '0.05em' }}>
+              FILTROS AVANZADOS
             </span>
             {cantFiltrosActivos > 0 && (
-              <span
-                style={{
-                  background: '#2563eb',
-                  color: 'white',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  padding: '0.1rem 0.45rem',
-                  borderRadius: '9999px',
-                  lineHeight: 1.4,
-                }}
-              >
+              <span style={{ background: '#2563eb', color: 'white', fontSize: '0.65rem', fontWeight: 700, padding: '0.1rem 0.45rem', borderRadius: '9999px', lineHeight: 1.4 }}>
                 {cantFiltrosActivos}
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
-              {clientesFiltrados.length} de {clientes.length} clientes
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)' }}>
-              {filtrosVisible ? '▲' : '▼'}
-            </span>
-          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)' }}>
+            {filtrosVisible ? '▲ ocultar' : '▼ mostrar'}
+          </span>
         </div>
 
-        {/* Campos de filtro */}
         {filtrosVisible && (
-          <div
-            style={{
-              padding: '0 1rem 1rem',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              alignItems: 'flex-end',
-              borderTop: '1px solid var(--color-border, #e5e7eb)',
-            }}
-          >
-            {/* Busqueda */}
-            <div style={{ flex: '1', minWidth: '200px' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                BUSCAR
-              </label>
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Nombre, telefono, cuenta Hycite..."
-                style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
+          <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
 
-            {/* Filtro ciudad */}
-            <div style={{ minWidth: '160px' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                CIUDAD
-              </label>
-              <input
-                value={filtroCiudad}
-                onChange={(e) => setFiltroCiudad(e.target.value)}
-                placeholder="Ciudad"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            {/* Filtro estado region */}
-            <div style={{ minWidth: '160px' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                ESTADO / REGIÓN
-              </label>
-              <input
-                value={filtroEstadoRegion}
-                onChange={(e) => setFiltroEstadoRegion(e.target.value)}
-                placeholder="Estado"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            {/* Filtro ZIP */}
-            <div style={{ minWidth: '140px' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                ZIP
-              </label>
-              <input
-                value={filtroCodigoPostal}
-                onChange={(e) => setFiltroCodigoPostal(e.target.value)}
-                placeholder="Zip Code"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            {/* Filtro cuenta */}
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                CUENTA
-              </label>
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                <option value="actual">Actual</option>
-                <option value="cancelacion_total">Cancelado</option>
-                <option value="inactivo">Inactivo</option>
-              </select>
-            </div>
-
-            {/* Filtro estado operativo */}
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                OPERATIVO
-              </label>
-              <select
-                value={filtroEstadoOperativo}
-                onChange={(e) => setFiltroEstadoOperativo(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                <option value="activo">Activo</option>
-                <option value="en_riesgo">En riesgo</option>
-                <option value="recuperacion">Recuperación</option>
-                <option value="inactivo">Inactivo</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
-            </div>
-
-            {/* Filtro cumpleaños */}
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                CUMPLEAÑOS
-              </label>
-              <select
-                value={filtroMesCumple}
-                onChange={(e) => setFiltroMesCumple(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                <option value="hoy">Hoy</option>
-                <option value="mes_actual">Mes actual</option>
-                <option value="mes_1">Enero</option>
-                <option value="mes_2">Febrero</option>
-                <option value="mes_3">Marzo</option>
-                <option value="mes_4">Abril</option>
-                <option value="mes_5">Mayo</option>
-                <option value="mes_6">Junio</option>
-                <option value="mes_7">Julio</option>
-                <option value="mes_8">Agosto</option>
-                <option value="mes_9">Septiembre</option>
-                <option value="mes_10">Octubre</option>
-                <option value="mes_11">Noviembre</option>
-                <option value="mes_12">Diciembre</option>
-              </select>
-            </div>
-
-            {/* Filtro atraso */}
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  marginBottom: '0.3rem',
-                  color: 'var(--color-text-muted, #6b7280)',
-                }}
-              >
-                MOROSIDAD
-              </label>
-              <select
-                value={filtroAtraso}
-                onChange={(e) => setFiltroAtraso(e.target.value)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--color-border, #e5e7eb)',
-                  fontSize: '0.875rem',
-                  background: 'var(--color-input)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="todos">Todos</option>
-                <option value="al_dia">Al día</option>
-                <option value="con_moroso">Con morosidad</option>
-                <option value="0_30">0-30 días</option>
-                <option value="31_60">31-60 días</option>
-                <option value="61_90">61-90 días</option>
-                <option value="mas_90">+90 días</option>
-              </select>
-            </div>
-
-            {/* Filtro vendedor */}
-            {currentRole !== 'vendedor' && !isSellerView && (
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    marginBottom: '0.3rem',
-                    color: 'var(--color-text-muted, #6b7280)',
-                  }}
-                >
-                  VENDEDOR
-                </label>
-                <select
-                  value={filtroVendedor}
-                  onChange={(e) => setFiltroVendedor(e.target.value)}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: '0.375rem',
-                    border: '1px solid var(--color-border, #e5e7eb)',
-                    fontSize: '0.875rem',
-                    background: 'var(--color-input)',
-                    color: 'var(--color-text)',
-                  }}
-                >
-                  <option value="todos">Todos</option>
-                  {vendedoresUnicos.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.nombre}
-                    </option>
-                  ))}
-                </select>
+            {/* Grupo: Ubicación */}
+            <div style={{ marginTop: '0.875rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted, #9ca3af)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                UBICACIÓN
               </div>
-            )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'flex-start' }}>
+                <div style={{ flex: '1', minWidth: '140px' }}>
+                  <input
+                    value={filtroCiudad}
+                    onChange={(e) => setFiltroCiudad(e.target.value)}
+                    placeholder="Ciudad"
+                    style={{ width: '100%', padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroCiudad ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ flex: '1', minWidth: '120px' }}>
+                  <input
+                    value={filtroEstadoRegion}
+                    onChange={(e) => setFiltroEstadoRegion(e.target.value)}
+                    placeholder="Estado (FL, CA…)"
+                    style={{ width: '100%', padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroEstadoRegion ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)', boxSizing: 'border-box' }}
+                  />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', marginTop: '0.3rem', color: 'var(--color-text-muted, #6b7280)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={estadoRegionExact} onChange={(e) => setEstadoRegionExact(e.target.checked)} />
+                    Exacto (CA ≠ FL)
+                  </label>
+                </div>
+                <div style={{ minWidth: '100px' }}>
+                  <input
+                    value={filtroCodigoPostal}
+                    onChange={(e) => setFiltroCodigoPostal(e.target.value)}
+                    placeholder="ZIP"
+                    style={{ width: '100%', padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroCodigoPostal ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+            </div>
 
-            {/* Limpiar filtros */}
-            {hayFiltros && (
-              <Button variant="ghost" type="button" onClick={limpiarFiltros}>
-                Limpiar
-              </Button>
-            )}
+            {/* Grupo: Estado y segmentación */}
+            <div style={{ marginTop: '0.875rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted, #9ca3af)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                SEGMENTACIÓN
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', alignItems: 'flex-end' }}>
+                {/* Cuenta */}
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Cuenta</div>
+                  <select
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroEstado !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="actual">Actual</option>
+                    <option value="cancelacion_total">Cancelado</option>
+                    <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+                {/* Operativo */}
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Operativo</div>
+                  <select
+                    value={filtroEstadoOperativo}
+                    onChange={(e) => setFiltroEstadoOperativo(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroEstadoOperativo !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="activo">Activo</option>
+                    <option value="en_riesgo">En riesgo</option>
+                    <option value="recuperacion">Recuperación</option>
+                    <option value="inactivo">Inactivo</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                {/* Morosidad */}
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Morosidad</div>
+                  <select
+                    value={filtroAtraso}
+                    onChange={(e) => setFiltroAtraso(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroAtraso !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="al_dia">Al día</option>
+                    <option value="con_moroso">Con morosidad</option>
+                    <option value="0_30">0-30 días</option>
+                    <option value="31_60">31-60 días</option>
+                    <option value="61_90">61-90 días</option>
+                    <option value="mas_90">+90 días</option>
+                  </select>
+                </div>
+                {/* Cumpleaños */}
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Cumpleaños</div>
+                  <select
+                    value={filtroMesCumple}
+                    onChange={(e) => setFiltroMesCumple(e.target.value)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroMesCumple !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="hoy">Hoy</option>
+                    <option value="mes_actual">Mes actual</option>
+                    <option value="mes_1">Enero</option>
+                    <option value="mes_2">Febrero</option>
+                    <option value="mes_3">Marzo</option>
+                    <option value="mes_4">Abril</option>
+                    <option value="mes_5">Mayo</option>
+                    <option value="mes_6">Junio</option>
+                    <option value="mes_7">Julio</option>
+                    <option value="mes_8">Agosto</option>
+                    <option value="mes_9">Septiembre</option>
+                    <option value="mes_10">Octubre</option>
+                    <option value="mes_11">Noviembre</option>
+                    <option value="mes_12">Diciembre</option>
+                  </select>
+                </div>
+                {/* Filtros/cartuchos */}
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Filtros agua</div>
+                  <select
+                    value={filtroCartuchos}
+                    onChange={(e) => setFiltroCartuchos(e.target.value as typeof filtroCartuchos)}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroCartuchos !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="vencidos">Vencidos</option>
+                    <option value="proximos_30">Próximos 30 días</option>
+                  </select>
+                </div>
+                {/* Vendedor */}
+                {currentRole !== 'vendedor' && !isSellerView && (
+                  <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Vendedor</div>
+                    <select
+                      value={filtroVendedor}
+                      onChange={(e) => setFiltroVendedor(e.target.value)}
+                      style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroVendedor !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                    >
+                      <option value="todos">Todos</option>
+                      {vendedoresUnicos.map((v) => (
+                        <option key={v.id} value={v.id}>{v.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Grupo: Columnas visibles */}
+            <div style={{ marginTop: '0.875rem', paddingTop: '0.75rem', borderTop: '1px dashed var(--color-border, #e5e7eb)' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted, #9ca3af)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                COLUMNAS VISIBLES
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1rem' }}>
+                {CLIENTE_TABLE_COLUMNS.map((col) => (
+                  <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={columnVisibility[col.key]}
+                      onChange={(e) =>
+                        setColumnVisibility((prev) => {
+                          const next = { ...prev, [col.key]: e.target.checked }
+                          return Object.values(next).some(Boolean) ? next : prev
+                        })
+                      }
+                    />
+                    {col.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1725,12 +1724,12 @@ export function ClientesPage() {
         </div>
       ) : (
         <DataTable
-          columns={['Cliente', 'Teléfono', 'Cuenta financiera', 'Saldo', 'Monto moroso', 'Morosidad', 'Ciudad', 'Vendedor']}
+          columns={visibleColumns.map((col) => col.label)}
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={setSelectedRow}
-          sortableColumns={[0, 4, 5]}
-          sortColIndex={sortCol ?? undefined}
+          sortableColumns={visibleSortableColumns}
+          sortColIndex={sortColIndex >= 0 ? sortColIndex : undefined}
           sortDir={sortDir}
           onSort={handleSort}
         />
