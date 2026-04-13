@@ -32,6 +32,10 @@ const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') ?? ''
 const evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') ?? ''
 const phonePrefix = Deno.env.get('EVOLUTION_PHONE_PREFIX') ?? ''
 
+// Meta Cloud API — takes priority over Evolution API when both vars are set
+const metaToken = Deno.env.get('META_WHATSAPP_TOKEN') ?? ''
+const metaPhoneNumberId = Deno.env.get('META_PHONE_NUMBER_ID') ?? ''
+
 const telegramToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
@@ -258,6 +262,37 @@ async function syncMkMessage(outboxId: string, payload: { status: string; sent_a
     .eq('outbox_message_id', outboxId)
     .neq('status', 'respondido')
     .neq('status', 'cancelado')
+}
+
+async function sendMetaWhatsapp(destinatario: string, message: string) {
+  if (!metaToken || !metaPhoneNumberId) {
+    throw new Error('Missing Meta WhatsApp configuration')
+  }
+  const cleanedPhone = sanitizePhone(destinatario)
+  if (!cleanedPhone) throw new Error('Phone is required')
+
+  const res = await fetch(
+    `https://graph.facebook.com/v25.0/${metaPhoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${metaToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: cleanedPhone,
+        type: 'text',
+        text: { body: message },
+      }),
+    }
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    const msg = (data as { error?: { message?: string } } | null)?.error?.message ?? 'Meta API error'
+    const retryable = res.status === 429 || res.status >= 500
+    throw asProviderError(`Meta WhatsApp error (${res.status}): ${msg}`, retryable)
+  }
 }
 
 async function sendWhatsapp(destinatario: string, message: string, attachments: string[] | null) {
@@ -511,7 +546,11 @@ serve(async (req: Request) => {
       let providerMessageId: string | null = null
 
       if (row.canal === 'whatsapp') {
-        await sendWhatsapp(destinatario, message, attachments)
+        if (metaToken && metaPhoneNumberId) {
+          await sendMetaWhatsapp(destinatario, message)
+        } else {
+          await sendWhatsapp(destinatario, message, attachments)
+        }
       } else if (row.canal === 'email') {
         providerMessageId = await sendEmail(
           destinatario,

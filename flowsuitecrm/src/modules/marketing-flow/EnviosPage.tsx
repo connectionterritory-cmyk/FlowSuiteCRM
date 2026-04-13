@@ -22,6 +22,7 @@ type CampaignRecord = {
   segmento_key: string | null
   segment_params: Record<string, unknown> | null
   owner_id: string | null
+  dispatched_at: string | null
 }
 
 type MkMessageRow = {
@@ -70,6 +71,8 @@ export function EnviosPage() {
   })
   const [responseSaving, setResponseSaving] = useState(false)
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
+  const [dispatching, setDispatching] = useState(false)
+  const [dispatchRemaining, setDispatchRemaining] = useState<number | null>(null)
   const [responseContact, setResponseContact] = useState<{
     nombre: string
     telefono: string
@@ -179,7 +182,7 @@ export function EnviosPage() {
     if (!configured || !sessionUserId) return
     let query = supabase
       .from('mk_campaigns')
-      .select('id, nombre, estado, segmento_key, segment_params, owner_id')
+      .select('id, nombre, estado, segmento_key, segment_params, owner_id, dispatched_at')
       .order('created_at', { ascending: false })
       .limit(200)
     if (!isMarketingManager) {
@@ -232,6 +235,10 @@ export function EnviosPage() {
   const canSend = Boolean(campaignId) && selectedCampaign?.estado === 'activa' && canWriteCampaign
   const permissionTooltip = !canWriteCampaign ? 'Solo el responsable de la campaña puede ejecutar envíos' : undefined
   const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
+  // Dispatch allowed from borrador or pausada (DB function guards against re-dispatch)
+  const canDispatch = Boolean(campaignId)
+    && ['borrador', 'pausada', 'activa'].includes(selectedCampaign?.estado ?? '')
+    && canWriteCampaign
 
   const handleOpenMessage = useCallback((message: MkMessageRow) => {
     if (!canSend) return
@@ -325,6 +332,41 @@ export function EnviosPage() {
       })
     }
   }, [canSend, configured, loadMessages, retryingIds, sessionUserId, showToast])
+
+  const handleDispatchCampaign = useCallback(async () => {
+    if (!configured || !campaignId || !canDispatch) return
+    setDispatching(true)
+    setDispatchRemaining(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('dispatch-campaign', {
+        body: { campaign_id: campaignId },
+      })
+      if (error) {
+        showToast(error.message, 'error')
+        return
+      }
+      const result = data as { ok?: boolean; dispatched?: number; error?: string; estado?: string } | null
+      if (result?.error) {
+        const msg = result.error === 'campaign_already_dispatched'
+          ? `La campaña ya fue despachada (estado: ${result.estado ?? 'activa'})`
+          : result.error
+        showToast(msg, 'error')
+        return
+      }
+      const dispatched = Number(result?.dispatched ?? 0)
+      setDispatchRemaining(dispatched)
+      showToast(`${dispatched} mensajes en cola`)
+      void loadCampaigns()
+      void loadMessages()
+    } finally {
+      setDispatching(false)
+    }
+  }, [campaignId, canDispatch, configured, loadCampaigns, loadMessages, showToast])
+
+  useEffect(() => {
+    setDispatching(false)
+    setDispatchRemaining(null)
+  }, [campaignId])
 
   const RESULTADO_OPTIONS = [
     { value: 'sin_respuesta', label: 'Sin respuesta' },
@@ -705,6 +747,18 @@ export function EnviosPage() {
         </select>
         {selectedCampaign && (
           <Badge label={`Campaña ${selectedCampaign.estado ?? 'borrador'}`} tone="blue" />
+        )}
+        <Button
+          type="button"
+          variant={dispatching ? 'ghost' : 'primary'}
+          disabled={!canDispatch || dispatching}
+          onClick={handleDispatchCampaign}
+          title={permissionTooltip}
+        >
+          {dispatching ? 'Despachando...' : 'Lanzar campaña'}
+        </Button>
+        {!dispatching && dispatchRemaining != null && dispatchRemaining > 0 && (
+          <Badge label={`${dispatchRemaining} en cola`} tone="blue" />
         )}
         {!canSend && (
           <Badge label={campaignId ? 'Campaña no activa' : 'Selecciona una campaña'} tone="gold" />
