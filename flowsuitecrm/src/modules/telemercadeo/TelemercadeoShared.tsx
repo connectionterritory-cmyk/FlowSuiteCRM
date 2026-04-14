@@ -4,6 +4,7 @@ import { nombreCompleto, segmentoColor, segmentoLabel } from './telemercadeoShar
 
 export type Cliente = {
   id: string
+  org_id?: string | null
   nombre: string | null
   apellido: string | null
   telefono: string | null

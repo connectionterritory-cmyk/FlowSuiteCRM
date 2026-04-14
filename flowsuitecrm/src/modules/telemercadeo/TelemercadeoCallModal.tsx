@@ -135,7 +135,37 @@ export function TelemercadeoCallModal({
     if (!session?.user.id) return
     setGuardando(true)
 
-    // 1. Registrar la llamada en el historial de telemercadeo
+    // org_id viene del cliente (uuid). currentUser.organizacion es texto (nombre), no sirve aquí.
+    const orgId = cliente.org_id ?? null
+    if (!orgId) {
+      showToast('No se pudo determinar la organización para registrar la gestión.', 'error')
+      setGuardando(false)
+      return
+    }
+
+    // 1. Registrar la gestión canónica en cob_gestiones
+    const { data: cobRow, error: cobError } = await supabase
+      .from('cob_gestiones')
+      .insert({
+        org_id: orgId,
+        cliente_id: cliente.id,
+        tipo_gestion: 'Llamada',
+        resultado,
+        monto_comprometido: montoProme ? parseFloat(montoProme) : null,
+        fecha_compromiso: fechaFollowup || null,
+        notas: notas || null,
+        gestionado_por: session.user.id,
+      })
+      .select('id')
+      .single()
+
+    if (cobError) {
+      showToast(cobError.message, 'error')
+      setGuardando(false)
+      return
+    }
+
+    // 2. Compatibilidad legacy en llamadas_telemercadeo
     const { error: errorLlamada } = await supabase.from('llamadas_telemercadeo').insert({
       cliente_id: cliente.id,
       telemercadista_id: session.user.id,
@@ -146,9 +176,31 @@ export function TelemercadeoCallModal({
     })
 
     if (errorLlamada) {
-      showToast(errorLlamada.message, 'error')
-      setGuardando(false)
-      return
+      showToast(`Gestión registrada, pero fallo legacy: ${errorLlamada.message}`, 'error')
+    }
+
+    // 3. Registrar actividad visible en timeline
+    const resumen = `Gestión de cobranza: ${resultadoLabel(resultado)}`
+    const { error: actividadError } = await supabase.from('contacto_actividades').insert({
+      org_id: orgId,
+      contacto_tipo: 'cliente',
+      contacto_id: cliente.id,
+      tipo: 'llamada',
+      resumen,
+      contenido: notas || null,
+      metadata: {
+        resultado,
+        followup_at: fechaFollowup || null,
+        monto_prometido: montoProme ? parseFloat(montoProme) : null,
+        cob_gestion_id: cobRow?.id ?? null,
+        source: 'cobranza',
+      },
+      autor_id: session.user.id,
+      fecha_actividad: new Date().toISOString(),
+    })
+
+    if (actividadError) {
+      showToast(`Gestión registrada, pero no se pudo loguear actividad: ${actividadError.message}`, 'error')
     }
 
     // 2. Si es cita agendada, actualizar el cliente para que aparezca en el Dashboard
@@ -166,18 +218,7 @@ export function TelemercadeoCallModal({
       }
     }
 
-    // 3. Guardar como nota global persistente en el sistema
-    if (notas.trim()) {
-      await supabase.from('notasrp').insert({
-        cliente_id: cliente.id,
-        contenido: notas.trim(),
-        mensaje: notas.trim(),
-        canal: 'telemercadeo',
-        tipo_mensaje: 'nota',
-        enviado_por: session.user.id,
-        enviado_en: new Date().toISOString(),
-      })
-    }
+    // notasrp: eliminado. Las notas ya están en cob_gestiones.notas y contacto_actividades.contenido.
 
     showToast('Gestión registrada correctamente')
     onClose()

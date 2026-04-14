@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/useAuth'
 import type { Cliente, EquipoInstalado } from './TelemercadeoShared'
 
 const CLIENTE_FIELDS =
-  'id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, ultima_fecha_pago, hycite_id, estado_cuenta, nivel, next_action, next_action_date, vendedor_id'
+  'id, org_id, nombre, apellido, telefono, telefono_casa, email, saldo_actual, monto_moroso, dias_atraso, fecha_nacimiento, fecha_ultimo_pedido, ultima_fecha_pago, hycite_id, estado_cuenta, nivel, next_action, next_action_date, vendedor_id'
 
 /**
  * Returns the list of vendedor_ids assigned to a telemercadeo user.
@@ -54,7 +54,7 @@ export function useTelemercadeoClientes(options?: { balanceOnly?: boolean }) {
       .order('dias_atraso', { ascending: false })
 
     if (balanceOnly) {
-      query = query.gt('saldo_actual', 0)
+      query = query.or('monto_moroso.gt.0,dias_atraso.gt.0')
     }
 
     // If vendedorIds is non-null, filter by vendedor_id or distribuidor_id

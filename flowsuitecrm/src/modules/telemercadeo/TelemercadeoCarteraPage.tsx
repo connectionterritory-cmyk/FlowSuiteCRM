@@ -35,30 +35,67 @@ export function TelemercadeoCarteraPage() {
   const [seguimientosHoyIds, setSeguimientosHoyIds] = useState<Set<string>>(new Set())
   const [promesasVencidasIds, setPromesasVencidasIds] = useState<Set<string>>(new Set())
 
-  // Batch-load the most recent call per client
-  useEffect(() => {
-    if (clientes.length === 0) {
-      startTransition(() => {
-        setLastCallMap({})
-      })
-      return
+  const loadGestiones = async (ids: string[]) => {
+    const today = new Date().toLocaleDateString('en-CA')
+
+    const { data: cobData } = await supabase
+      .from('cob_gestiones')
+      .select('cliente_id, resultado, created_at, fecha_compromiso')
+      .in('cliente_id', ids)
+      .order('created_at', { ascending: false })
+
+    type CobRow = {
+      cliente_id: string
+      resultado: string
+      created_at: string
+      fecha_compromiso: string | null
     }
-    const ids = clientes.map((c) => c.id)
-    const load = async () => {
-      const today = new Date().toLocaleDateString('en-CA')
+    const cobRows = (cobData ?? []) as CobRow[]
+
+    const map: Record<string, LastCall> = {}
+    const hoy = new Set<string>()
+    const byClient: Record<string, CobRow[]> = {}
+    const cobClients = new Set<string>()
+
+    for (const row of cobRows) {
+      cobClients.add(row.cliente_id)
+      if (!map[row.cliente_id]) {
+        map[row.cliente_id] = {
+          resultado: row.resultado,
+          created_at: row.created_at,
+          followup_at: row.fecha_compromiso,
+        }
+      }
+      if (row.fecha_compromiso === today) hoy.add(row.cliente_id)
+      if (!byClient[row.cliente_id]) byClient[row.cliente_id] = []
+      byClient[row.cliente_id].push(row)
+    }
+
+    const vencidas = new Set<string>()
+    for (const [clienteId, gestiones] of Object.entries(byClient)) {
+      for (const gestion of gestiones) {
+        if (gestion.resultado === 'pago_prometido' && gestion.fecha_compromiso && gestion.fecha_compromiso < today) {
+          const hasPago = gestiones.some(
+            (g) => g.resultado === 'pago_realizado' && g.created_at > gestion.created_at,
+          )
+          if (!hasPago) vencidas.add(clienteId)
+          break
+        }
+      }
+    }
+
+    const missingIds = ids.filter((id) => !cobClients.has(id))
+    if (missingIds.length > 0) {
       const { data } = await supabase
         .from('llamadas_telemercadeo')
         .select('cliente_id, resultado, created_at, followup_at')
-        .in('cliente_id', ids)
+        .in('cliente_id', missingIds)
         .order('created_at', { ascending: false })
 
       type Row = { cliente_id: string; resultado: string; created_at: string; followup_at: string | null }
       const rows = (data ?? []) as Row[]
 
-      const map: Record<string, LastCall> = {}
-      const hoy = new Set<string>()
-      const byClient: Record<string, Row[]> = {}
-
+      const byLegacy: Record<string, Row[]> = {}
       for (const row of rows) {
         if (!map[row.cliente_id]) {
           map[row.cliente_id] = {
@@ -68,12 +105,11 @@ export function TelemercadeoCarteraPage() {
           }
         }
         if (row.followup_at === today) hoy.add(row.cliente_id)
-        if (!byClient[row.cliente_id]) byClient[row.cliente_id] = []
-        byClient[row.cliente_id].push(row)
+        if (!byLegacy[row.cliente_id]) byLegacy[row.cliente_id] = []
+        byLegacy[row.cliente_id].push(row)
       }
 
-      const vencidas = new Set<string>()
-      for (const [clienteId, calls] of Object.entries(byClient)) {
+      for (const [clienteId, calls] of Object.entries(byLegacy)) {
         for (const call of calls) {
           if (call.resultado === 'pago_prometido' && call.followup_at && call.followup_at < today) {
             const hasPago = calls.some(
@@ -84,13 +120,24 @@ export function TelemercadeoCarteraPage() {
           }
         }
       }
-
-      setLastCallMap(map)
-      setSeguimientosHoyIds(hoy)
-      setPromesasVencidasIds(vencidas)
     }
+
+    setLastCallMap(map)
+    setSeguimientosHoyIds(hoy)
+    setPromesasVencidasIds(vencidas)
+  }
+
+  // Batch-load the most recent gestion per client (cob_gestiones, legacy fallback)
+  useEffect(() => {
+    if (clientes.length === 0) {
+      startTransition(() => {
+        setLastCallMap({})
+      })
+      return
+    }
+    const ids = clientes.map((c) => c.id)
     const handle = window.setTimeout(() => {
-      void load()
+      void loadGestiones(ids)
     }, 0)
     return () => window.clearTimeout(handle)
   }, [clientes])
@@ -146,49 +193,9 @@ export function TelemercadeoCarteraPage() {
 
   const handleClose = () => {
     setModalOpen(false)
-    // Refresh last calls after registering a new one
     if (clientes.length === 0) return
     const ids = clientes.map((c) => c.id)
-    const today = new Date().toLocaleDateString('en-CA')
-    supabase
-      .from('llamadas_telemercadeo')
-      .select('cliente_id, resultado, created_at, followup_at')
-      .in('cliente_id', ids)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        type Row = { cliente_id: string; resultado: string; created_at: string; followup_at: string | null }
-        const rows = (data ?? []) as Row[]
-        const map: Record<string, LastCall> = {}
-        const hoy = new Set<string>()
-        const byClient: Record<string, Row[]> = {}
-        for (const row of rows) {
-          if (!map[row.cliente_id]) {
-            map[row.cliente_id] = {
-              resultado: row.resultado,
-              created_at: row.created_at,
-              followup_at: row.followup_at,
-            }
-          }
-          if (row.followup_at === today) hoy.add(row.cliente_id)
-          if (!byClient[row.cliente_id]) byClient[row.cliente_id] = []
-          byClient[row.cliente_id].push(row)
-        }
-        const vencidas = new Set<string>()
-        for (const [clienteId, calls] of Object.entries(byClient)) {
-          for (const call of calls) {
-            if (call.resultado === 'pago_prometido' && call.followup_at && call.followup_at < today) {
-              const hasPago = calls.some(
-                (c) => c.resultado === 'pago_realizado' && c.created_at > call.created_at,
-              )
-              if (!hasPago) vencidas.add(clienteId)
-              break
-            }
-          }
-        }
-        setLastCallMap(map)
-        setSeguimientosHoyIds(hoy)
-        setPromesasVencidasIds(vencidas)
-      })
+    void loadGestiones(ids)
   }
 
   const SEGMENTOS = [
