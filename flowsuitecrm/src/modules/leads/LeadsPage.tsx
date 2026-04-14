@@ -681,11 +681,22 @@ export function LeadsPage() {
   // --- FILTRADO ---
   const leadsFiltrados = useMemo(() => {
     const todayKey = formatDateKey(new Date())
+    const terminalStages = ['descartado', 'cierre']
     return leads.filter((lead) => {
+      const searchValue = busqueda.trim().toLowerCase()
       const fullName = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.toLowerCase()
-      const tel = lead.telefono ?? ''
-      const matchBusqueda = !busqueda || fullName.includes(busqueda.toLowerCase()) || tel.includes(busqueda)
+      const tel = (lead.telefono ?? '').toLowerCase()
       const stage = normalizeStage(lead.estado_pipeline)
+      const stageLabel = stage.toLowerCase()
+      const fuenteLabel = (getFuenteLabel(lead.fuente) ?? lead.fuente ?? '').toLowerCase()
+      const nextActionLabel = (lead.next_action ?? '').toLowerCase()
+      const matchBusqueda =
+        !searchValue ||
+        fullName.includes(searchValue) ||
+        tel.includes(searchValue) ||
+        fuenteLabel.includes(searchValue) ||
+        stageLabel.includes(searchValue) ||
+        nextActionLabel.includes(searchValue)
       const matchEstado =
         filtroEstado === 'todos' ||
         stage === filtroEstado ||
@@ -693,17 +704,19 @@ export function LeadsPage() {
         (filtroEstado === 'en_proceso' && EN_PROCESO_STAGES.includes(stage))
       const matchFuente = filtroFuente === 'todos' || lead.fuente === filtroFuente
       const matchOwner = filtroOwner === 'todos' || getLeadVendedorKey(lead) === filtroOwner
-      const TERMINAL_STAGES = ['descartado', 'cierre']
       const matchVencido =
         !filtroVencido ||
         (!!lead.next_action_date &&
           lead.next_action_date <= todayKey &&
-          !TERMINAL_STAGES.includes(lead.estado_pipeline ?? ''))
+          !terminalStages.includes(stage))
       const frioCutoff = formatDateKey(new Date(Date.now() - 30 * 86400000))
+      const fallbackActivity =
+        lead.next_action_date ??
+        (lead.updated_at ? formatDateKey(new Date(lead.updated_at)) : null)
       const matchFrios =
         !filtroFrios ||
-        (!TERMINAL_STAGES.includes(lead.estado_pipeline ?? '') &&
-          (!lead.next_action_date || lead.next_action_date < frioCutoff))
+        (!terminalStages.includes(stage) &&
+          (!fallbackActivity || fallbackActivity < frioCutoff))
       const dateValue =
         filtroFechaCampo === 'created_at'
           ? (lead.created_at ? formatDateKey(new Date(lead.created_at)) : '')
@@ -715,7 +728,7 @@ export function LeadsPage() {
           (!filtroFechaHasta || dateValue <= filtroFechaHasta))
       return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha && matchFrios
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFrios, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey, getLeadVendedorKey])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFrios, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey, getLeadVendedorKey, getFuenteLabel])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -788,9 +801,13 @@ export function LeadsPage() {
           !TERMINAL.includes(l.estado_pipeline ?? ''),
       ).length,
       frios: leads.filter(
-        (l) =>
-          !TERMINAL.includes(l.estado_pipeline ?? '') &&
-          (!l.next_action_date || l.next_action_date < frioCutoff),
+        (l) => {
+          if (TERMINAL.includes(normalizeStage(l.estado_pipeline))) return false
+          const fallbackActivity =
+            l.next_action_date ??
+            (l.updated_at ? formatDateKey(new Date(l.updated_at)) : null)
+          return !fallbackActivity || fallbackActivity < frioCutoff
+        },
       ).length,
     }
   }, [leads, normalizeStage, formatDateKey])
@@ -1129,6 +1146,67 @@ export function LeadsPage() {
     filtroFrios ? '1' : '',
     filtroFechaDesde || filtroFechaHasta ? '1' : '',
   ].filter(Boolean).length
+
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onClear: () => void }> = []
+    if (busqueda) {
+      chips.push({ key: 'busqueda', label: `Buscar: ${busqueda}`, onClear: () => setBusqueda('') })
+    }
+    if (filtroEstado !== 'todos') {
+      const label =
+        filtroEstado === 'en_proceso'
+          ? 'Estado: En proceso'
+          : `Estado: ${t(`pipeline.columns.${filtroEstado}`)}`
+      chips.push({ key: 'estado', label, onClear: () => setFiltroEstado('todos') })
+    }
+    if (filtroFuente !== 'todos') {
+      chips.push({
+        key: 'fuente',
+        label: `Fuente: ${getFuenteLabel(filtroFuente)}`,
+        onClear: () => setFiltroFuente('todos'),
+      })
+    }
+    if (filtroOwner !== 'todos') {
+      const ownerLabel =
+        filtroOwner === VENDEDOR_UNASSIGNED ? 'Sin asignar' : getVendedorLabel(filtroOwner)
+      chips.push({ key: 'owner', label: `Vendedor: ${ownerLabel}`, onClear: () => setFiltroOwner('todos') })
+    }
+    if (filtroVencido) {
+      chips.push({ key: 'vencido', label: 'Solo vencidos', onClear: () => setFiltroVencido(false) })
+    }
+    if (filtroFrios) {
+      chips.push({ key: 'frios', label: 'Solo fríos (+30 días)', onClear: () => setFiltroFrios(false) })
+    }
+    if (filtroFechaDesde || filtroFechaHasta) {
+      const campoLabel = filtroFechaCampo === 'created_at' ? 'Registro' : 'Próxima acción'
+      const desde = filtroFechaDesde || '...'
+      const hasta = filtroFechaHasta || '...'
+      chips.push({
+        key: 'fecha',
+        label: `Fecha (${campoLabel}): ${desde} - ${hasta}`,
+        onClear: () => {
+          setFiltroFechaCampo('created_at')
+          setFiltroFechaDesde('')
+          setFiltroFechaHasta('')
+        },
+      })
+    }
+    return chips
+  }, [
+    VENDEDOR_UNASSIGNED,
+    busqueda,
+    filtroEstado,
+    filtroFuente,
+    filtroOwner,
+    filtroVencido,
+    filtroFrios,
+    filtroFechaCampo,
+    filtroFechaDesde,
+    filtroFechaHasta,
+    getFuenteLabel,
+    getVendedorLabel,
+    t,
+  ])
 
   const exportarCSV = () => {
     const headers = [
@@ -1569,9 +1647,44 @@ export function LeadsPage() {
                 </select>
               </div>
             </div>
+
+            {cantFiltrosActivos > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <Button variant="ghost" type="button" onClick={limpiarFiltros}>
+                  Limpiar filtros
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {activeFilterChips.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {activeFilterChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.onClear}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.25rem 0.6rem',
+                borderRadius: '9999px',
+                background: 'var(--color-surface, #f9fafb)',
+                border: '1px solid var(--color-border, #e5e7eb)',
+                color: 'var(--color-text, #111827)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+              }}
+            >
+              <span>{chip.label}</span>
+              <span style={{ fontWeight: 700, opacity: 0.6 }}>×</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* TABLA / CARDS */}
       {(isMobile || isTablet) ? (

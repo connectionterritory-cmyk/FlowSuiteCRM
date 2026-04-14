@@ -124,6 +124,7 @@ export function PipelinePage() {
     () => ['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'],
     []
   )
+  const terminalStages = useMemo(() => ['descartado', 'cierre'], [])
 
   const fuenteLabels = useMemo(
     () => ({
@@ -238,10 +239,10 @@ export function PipelinePage() {
   }, [leads, stages])
 
   // --- Filters ---
-  const ownersUnicos = useMemo(
-    () => [...new Set(leads.map((l) => l.owner_id).filter(Boolean) as string[])],
-    [leads]
-  )
+  const ownersUnicos = useMemo(() => {
+    const ids = leads.flatMap((l) => [l.owner_id, l.vendedor_id]).filter(Boolean) as string[]
+    return [...new Set(ids)]
+  }, [leads])
   const fuentesUnicas = useMemo(
     () => [...new Set(leads.map((l) => l.fuente).filter(Boolean) as string[])],
     [leads]
@@ -252,7 +253,7 @@ export function PipelinePage() {
       const fullName = [lead.nombre, lead.apellido].filter(Boolean).join(' ').toLowerCase()
       const phone = (lead.telefono ?? '').toLowerCase()
       if (busqueda && !fullName.includes(busqueda.toLowerCase()) && !phone.includes(busqueda.toLowerCase())) return false
-      if (filtroOwner && lead.owner_id !== filtroOwner) return false
+      if (filtroOwner && lead.owner_id !== filtroOwner && lead.vendedor_id !== filtroOwner) return false
       if (filtroFuente && lead.fuente !== filtroFuente) return false
       return true
     })
@@ -265,8 +266,27 @@ export function PipelinePage() {
       const stage = normalizeStage(lead.estado_pipeline)
       groups[stage].push(lead)
     })
+    const getUrgencyRank = (date: string | null) => {
+      const key = normalizeDateKey(date)
+      if (!key) return 2
+      if (key < today) return 0
+      return 1
+    }
+    stages.forEach((stage) => {
+      groups[stage] = [...groups[stage]].sort((a, b) => {
+        const rankA = getUrgencyRank(a.next_action_date)
+        const rankB = getUrgencyRank(b.next_action_date)
+        if (rankA !== rankB) return rankA - rankB
+        const dateA = normalizeDateKey(a.next_action_date) ?? '9999-12-31'
+        const dateB = normalizeDateKey(b.next_action_date) ?? '9999-12-31'
+        if (dateA !== dateB) return dateA < dateB ? -1 : 1
+        const nameA = `${a.nombre ?? ''} ${a.apellido ?? ''}`.toLowerCase()
+        const nameB = `${b.nombre ?? ''} ${b.apellido ?? ''}`.toLowerCase()
+        return nameA.localeCompare(nameB)
+      })
+    })
     return groups
-  }, [filteredLeads, stages])
+  }, [filteredLeads, normalizeDateKey, stages, today])
 
   const cantFiltrosActivos = [busqueda, filtroOwner, filtroFuente].filter(Boolean).length
 
@@ -280,7 +300,7 @@ export function PipelinePage() {
   const stats = useMemo(() => {
     const overdueCount = leads.filter((l) => {
       const dateKey = normalizeDateKey(l.next_action_date)
-      return Boolean(dateKey) && dateKey! < today && normalizeStage(l.estado_pipeline) !== 'descartado'
+      return Boolean(dateKey) && dateKey! < today && !terminalStages.includes(normalizeStage(l.estado_pipeline))
     }).length
     const byStage: Record<string, number> = {}
     stages.forEach((s) => { byStage[s] = groupedLeads[s]?.length ?? 0 })
@@ -315,6 +335,10 @@ export function PipelinePage() {
     setDraggingId(null)
     const leadId = event.dataTransfer.getData('text/plain')
     if (!leadId) return
+    if (stage === 'descartado') {
+      const confirmed = window.confirm('¿Seguro que quieres mover este lead a “descartado”?')
+      if (!confirmed) return
+    }
     setLeads((prev) =>
       prev.map((lead) => (lead.id === leadId ? { ...lead, estado_pipeline: stage } : lead))
     )
@@ -335,6 +359,10 @@ export function PipelinePage() {
       const newIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1
       if (newIndex < 0 || newIndex >= stages.length) return
       const newStage = stages[newIndex]
+      if (newStage === 'descartado') {
+        const confirmed = window.confirm('¿Seguro que quieres mover este lead a “descartado”?')
+        if (!confirmed) return
+      }
       setLeads((prev) =>
         prev.map((l) => (l.id === leadId ? { ...l, estado_pipeline: newStage } : l))
       )
