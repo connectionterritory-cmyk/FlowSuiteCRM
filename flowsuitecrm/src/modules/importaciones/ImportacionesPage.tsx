@@ -85,7 +85,7 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Nombre',
     required: false,
     canonicalAlias: 'NOMBRE',
-    aliases: ['NOMBRE', 'NOMBRE 1', 'NOMBRE1', 'CUSTOMER NAME', 'FULL NAME', 'FULL_NAME', 'NOMBRE COMPLETO', 'FIRST NAME', 'FIRST_NAME'],
+    aliases: ['NOMBRE', 'NOMBRE 1', 'NOMBRE1', 'CUSTOMER NAME', 'FULL NAME', 'FULL_NAME', 'NOMBRE COMPLETO', 'FIRST NAME', 'FIRST_NAME', 'NAME'],
   },
   {
     key: 'apellido',
@@ -99,21 +99,57 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Teléfono (móvil)',
     required: false,
     canonicalAlias: 'TELÉFONO MÓVIL',
-    aliases: ['TELEFONO MOVIL', 'TELEFONO MOVIL', 'CELULAR', 'MOVIL', 'MOBILE PHONE', 'MOBILE', 'TELEFONO', 'PHONE', 'TEL', 'HOME PHONE', 'PRIMARY PHONE', 'PRIMARY_PHONE'],
+    aliases: ['TELEFONO MOVIL', 'CELULAR', 'MOVIL', 'MOBILE PHONE', 'MOBILE', 'TELEFONO', 'PHONE', 'TEL', 'PRIMARY PHONE', 'PRIMARY_PHONE', 'MOBILE NO'],
+  },
+  {
+    key: 'telefono_casa',
+    label: 'Teléfono (casa/trabajo)',
+    required: false,
+    canonicalAlias: 'TELÉFONO CASA',
+    aliases: ['TELEFONO CASA', 'HOME PHONE', 'WORK PHONE', 'TELEFONO DE CASA', 'TEL CASA', 'HOME_PHONE', 'WORK_PHONE', 'FIXED PHONE'],
   },
   {
     key: 'email',
     label: 'Email',
     required: false,
     canonicalAlias: 'CORREO ELECTRÓNICO',
-    aliases: ['CORREO ELECTRONICO', 'CORREO ELECTRONICO', 'EMAIL', 'E-MAIL', 'EMAIL ADDRESS', 'CORREO'],
+    aliases: ['CORREO ELECTRONICO', 'EMAIL', 'E-MAIL', 'EMAIL ADDRESS', 'CORREO'],
+  },
+  {
+    key: 'direccion',
+    label: 'Dirección',
+    required: false,
+    canonicalAlias: 'DIRECCIÓN',
+    aliases: ['DIRECCION', 'DIRECCION 1', 'ADDRESS', 'STREET', 'DIRECTION', 'DOMICILIO'],
+  },
+  {
+    key: 'ciudad',
+    label: 'Ciudad',
+    required: false,
+    canonicalAlias: 'CIUDAD',
+    aliases: ['CIUDAD', 'CITY', 'TOWN', 'LOCALIDAD', 'MUNICIPIO'],
+  },
+  {
+    key: 'estado_region',
+    label: 'Estado / Región',
+    required: false,
+    canonicalAlias: 'ESTADO / PROVINCIA',
+    aliases: ['ESTADO / PROVINCIA', 'ESTADO', 'STATE', 'PROVINCIA', 'REGION', 'DEPARTAMENTO'],
+  },
+  {
+    key: 'codigo_postal',
+    label: 'Código Postal',
+    required: false,
+    canonicalAlias: 'CÓDIGO POSTAL',
+    aliases: ['CODIGO POSTAL', 'ZIP CODE', 'ZIP', 'POSTAL CODE', 'ZIPCODE', 'CP'],
   },
   {
     key: 'estado_cuenta',
     label: 'Estado de cuenta',
     required: false,
     canonicalAlias: 'ESTADO CUENTA',
-    aliases: ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO'],
+    // Eliminamos 'ESTADO' de aquí para que no se confunda con la región
+    aliases: ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO_CUENTA', 'ACCOUNT STATUS'],
   },
   {
     key: 'saldo_actual',
@@ -127,7 +163,14 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
     label: 'Monto moroso',
     required: false,
     canonicalAlias: 'MONTO MOROSO',
-    aliases: ['MONTO MOROSO', 'DELINQUENT', 'MOROSO', 'DELINCUENCIA'],
+    aliases: ['MONTO MOROSO', 'DELINQUENT', 'MOROSO', 'DELINCUENCIA', 'CANTIDAD MOROSA'],
+  },
+  {
+    key: 'dias_atraso',
+    label: 'Días de atraso',
+    required: false,
+    canonicalAlias: 'DÍAS ATRASO',
+    aliases: ['DIAS ATRASO', 'DIAS DE ATRASO', 'DAYS PAST DUE', 'DPD', 'ATRASO', 'DAYS LATE'],
   },
   {
     key: 'codigo_vendedor_hycite',
@@ -367,39 +410,44 @@ function bucketMorosidadDesdeDias(dias: number): string | null {
 
 function parsearFila(row: Record<string, string>): ClienteImport | null {
   const normalizedRow = buildNormalizedRow(row)
+
+  // Priorizamos los campos que el usuario mapeó (usando canonicalAlias)
+  // hycite_id
   const hyciteId = obtenerCampo(row, normalizedRow, [
-    '# DE CLIENTE', 'Numero de cuenta hycite', 'Numero de cuenta', 'Cuenta', 'Hycite ID',
-    'HYCITE_ID', 'HYCITEID', 'Cuenta Hycite', 'Cuenta Financiera', 'CUSTOMER NO', 'Customer #',
-    'CUSTOMER#', 'N.º DE CLIENTE', 'N° DE CLIENTE', 'Nº DE CLIENTE', 'N. DE CLIENTE',
-    'NO. DE CLIENTE', 'NUMERO DE CLIENTE', 'N.º DE CLIEN', 'Nº DE CLIEN', 'N° DE CLIEN',
-    'N.º DE CLIE', 'N.º DE CLI', 'CLIENTE #', 'CLIENTE',
+    '# DE CLIENTE', 'HYCITE ID', 'HYCITEID', 'Cuenta', 'ID Cliente',
+    'N.º DE CLIENTE', 'NUMERO DE CLIENTE', 'CUSTOMER NO', 'CUSTOMER#',
   ]).trim()
   if (!hyciteId) return null
+
   const nivel = parseInt(obtenerCampo(row, normalizedRow, ['NIVEL', 'Nivel']).trim() || '1')
 
-  const fullNombre = obtenerCampo(row, normalizedRow, ['CUSTOMER NAME', 'NOMBRE COMPLETO']).trim()
-  let nombre = obtenerCampo(row, normalizedRow, ['NOMBRE_1', 'NOMBRE', 'Nombre', 'First Name', 'FIRST NAME']).trim() || null
-  let apellido = obtenerCampo(row, normalizedRow, ['APELLIDO PATERNO', 'Apellido', 'Apellidos', 'Last Name', 'LAST NAME']).trim() || null
+  // Nombres y Apellidos
+  let nombre = obtenerCampo(row, normalizedRow, ['NOMBRE', 'NOMBRE COMPLETO', 'CUSTOMER NAME', 'Nombre', 'First Name']).trim() || null
+  let apellido = obtenerCampo(row, normalizedRow, ['APELLIDO PATERNO', 'Apellido', 'Apellidos', 'Last Name']).trim() || null
 
-  if (fullNombre && !nombre) {
-    const parts = fullNombre.split(' ')
+  // Mejora: Si el nombre tiene espacios y no hay apellido mapeado/presente, dividirlo
+  if (nombre && !apellido) {
+    const parts = nombre.trim().split(/\s+/)
     if (parts.length > 1) {
       nombre = parts[0]
       apellido = parts.slice(1).join(' ')
-    } else {
-      nombre = fullNombre
     }
   }
 
+  // Apellido materno (si existe columna separada)
   const ap2 = obtenerCampo(row, normalizedRow, ['APELLIDO MATERNO']).trim()
   if (ap2) apellido = [apellido, ap2].filter(Boolean).join(' ')
 
-  const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad']).trim() || null
-  const estadoRegion = obtenerEstadoRegion(row, normalizedRow)
-  const codigoPostal = obtenerCampo(row, normalizedRow, ['ZIP CODE', 'ZIP', 'Codigo Postal', 'Codigo postal']).trim() || null
-  const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Dirección']).replace(/\n/g, ', ').trim()
+  // Dirección y Componentes
+  const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad', 'City']).trim() || null
+  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia', 'Estado', 'State']).trim() || obtenerEstadoRegion(row, normalizedRow)
+  const codigoPostal = obtenerCampo(row, normalizedRow, ['CÓDIGO POSTAL', 'Codigo Postal', 'Zip Code', 'Zip']).trim() || null
+  const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Address']).replace(/\n/g, ', ').trim()
+
+  // Si no hay dirección explícita, construimos una básica
   const direccion = direccionRaw || [ciudad, estadoRegion, codigoPostal].filter(Boolean).join(', ') || null
 
+  // Fechas (Nacimiento)
   let fechaNacimiento: string | null = null
   const bdayRaw = obtenerCampo(row, normalizedRow, ['BIRTH DAY', 'CUMPLEAÑOS', 'FECHA NACIMIENTO']).trim()
   if (bdayRaw) {
@@ -420,12 +468,15 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
   }
 
   const montoMoroso =
-    parsearMonto(obtenerCampo(row, normalizedRow, ['MONTO MOROSO', 'MOROSO'])) ||
+    parsearMonto(obtenerCampo(row, normalizedRow, ['MONTO MOROSO', 'MOROSO', 'DELINQUENT'])) ||
     calcularMoroso(row, normalizedRow)
-  const diasAtrasoRaw = parseInt(obtenerCampo(row, normalizedRow, ['DIAS ATRASO', 'DIAS DE ATRASO']).trim() || '0')
+
+  const diasAtrasoRaw = parseInt(obtenerCampo(row, normalizedRow, ['DÍAS ATRASO', 'DIAS ATRASO', 'DAYS PAST DUE']).trim() || '0')
   const diasAtraso = diasAtrasoRaw > 0 ? diasAtrasoRaw : calcularAtraso(row, normalizedRow)
-  const estadoRaw = obtenerCampo(row, normalizedRow, ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO', 'Estado']).trim()
+
+  const estadoRaw = obtenerCampo(row, normalizedRow, ['ESTADO CUENTA', 'STATUS CUENTA', 'Status', 'Estado de cuenta']).trim()
   const estadoCuenta = parseEstadoCuentaDesdeEstado(estadoRaw)
+
   const estadoMorosidadRaw = mapearEstadoMorosidad(row, normalizedRow, diasAtraso, montoMoroso)
   const estadoMorosidadBucket = bucketMorosidadDesdeDias(diasAtraso)
   const estadoMorosidad = estadoMorosidadBucket ?? estadoMorosidadRaw
@@ -438,29 +489,28 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     tipo_cliente: obtenerCampo(row, normalizedRow, ['CLIENTE']).trim() || 'HC',
     nombre,
     apellido,
-    email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Correo', 'Email', 'email', 'E-mail', 'CORREO ELECTRONICO'])),
-    telefono: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Telefono', 'Teléfono', 'Celular', 'Móvil', 'HOME PHONE', 'Mobile Phone', 'MOBILE PHONE', 'TELEFONO MOVIL'])),
-    telefono_casa: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO DE CASA', 'WORK PHONE', 'Home Phone', 'HOME PHONE', 'TELEFONO DE CASA'])),
+    email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Email', 'Correo'])),
+    telefono: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Celular', 'Mobile', 'Telefono'])),
+    telefono_casa: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO CASA', 'Home Phone', 'Tel Casa'])),
     direccion,
     ciudad,
     estado_region: estadoRegion,
     codigo_postal: codigoPostal,
-    saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL', 'CUSTOMER BALANCE', 'Balance', 'BALANCE', 'SALDO'])),
+    saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL', 'BALANCE', 'Saldo'])),
     monto_moroso: montoMoroso,
     dias_atraso: diasAtraso,
     estado_morosidad: estadoMorosidadFinal,
     nivel: isNaN(nivel) || nivel < 1 ? 1 : Math.min(nivel, 9),
     estado_cuenta: estadoCuenta,
     elegible_addon: (() => {
-      const v = obtenerCampo(row, normalizedRow, ['ISELIGIBLEFORADDON', 'IS ELIGIBLE FOR ADD ON', 'ELEGIBLE ADDON', 'ELEGIBLE']).trim().toUpperCase()
+      const v = obtenerCampo(row, normalizedRow, ['ISELIGIBLEFORADDON', 'ELEGIBLE']).trim().toUpperCase()
       if (v === 'NO' || v === 'FALSE' || v === '0') return false
-      if (v === 'YES' || v === 'TRUE' || v === '1') return true
       return true
     })(),
-    fecha_ultimo_pedido: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE COMPRA', 'FECHA DEL ÚLTIMO PEDIDO', 'FECHA DEL ULTIMO PEDIDO', 'FECHA DEL', 'FECHA DEL ÚLTI'])),
-    ultima_fecha_pago: parsearFecha(obtenerCampo(row, normalizedRow, ['ULTIMA FECHA DE PAGO', 'ÚLTIMA FECHA DE PAGO', 'ultima fecha de pago', 'ULTIMA FECHA PAGO'])),
+    fecha_ultimo_pedido: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE COMPRA', 'FECHA ÚLTIMO PEDIDO'])),
+    ultima_fecha_pago: parsearFecha(obtenerCampo(row, normalizedRow, ['ÚLTIMA FECHA DE PAGO', 'FECHA ÚLTIMO PAGO'])),
     origen: 'hycite_import',
-    codigo_vendedor_hycite: obtenerCampo(row, normalizedRow, ['VENDEDOR', 'Entrepreneur', 'ENTREPRENEUR', 'EMPRENDEDORES', 'Vendedor']).trim() || null,
+    codigo_vendedor_hycite: obtenerCampo(row, normalizedRow, ['EMPRENDEDORES', 'VENDEDOR', 'Entrepreneur']).trim() || null,
     codigo_dist_hycite: obtenerCampo(row, normalizedRow, ['DISTRIBUIDOR']).trim() || null,
     updated_at: new Date().toISOString(),
     fecha_nacimiento: fechaNacimiento,
@@ -1107,7 +1157,7 @@ export function ImportacionesPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--color-surface)' }}>
-                        {['# Cliente', 'Nombre', 'Teléfono', 'Estado', 'Saldo', 'Morosidad', 'Nacimiento'].map(h => (
+                        {['# Cliente', 'Nombre', 'Teléfono', 'Región', 'Estado', 'Saldo', 'Morosidad', 'Nacimiento'].map(h => (
                           <th key={h} style={{ padding: '0.45rem 0.65rem', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -1127,6 +1177,7 @@ export function ImportacionesPage() {
                             <td style={{ padding: '0.4rem 0.65rem', color: sinTelefono ? '#dc2626' : 'inherit', fontFamily: sinTelefono ? 'inherit' : 'monospace', fontSize: sinTelefono ? '0.75rem' : '0.72rem' }}>
                               {c.telefono ?? <span style={{ fontStyle: 'italic' }}>—</span>}
                             </td>
+                            <td style={{ padding: '0.4rem 0.65rem', color: c.estado_region ? 'inherit' : 'var(--color-text-muted)' }}>{c.estado_region ?? '—'}</td>
                             <td style={{ padding: '0.4rem 0.65rem' }}>{c.estado_cuenta}</td>
                             <td style={{ padding: '0.4rem 0.65rem' }}>${c.saldo_actual.toFixed(2)}</td>
                             <td style={{ padding: '0.4rem 0.65rem', color: conMoroso ? '#dc2626' : 'inherit' }}>{segmento(c.dias_atraso, c.monto_moroso)}</td>
