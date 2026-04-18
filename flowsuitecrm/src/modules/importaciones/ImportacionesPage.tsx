@@ -5,6 +5,8 @@ import { Button } from '../../components/Button'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/UsersProvider'
+import { ImportRevisiones } from './ImportRevisiones'
 
 type EstadoCuenta = 'actual' | 'cancelacion_total' | 'inactivo'
 type Step = 'upload' | 'mapping' | 'preview' | 'confirm' | 'importing' | 'result'
@@ -624,6 +626,8 @@ function StepIndicator({ step }: { step: Step }) {
 export function ImportacionesPage() {
   const { session } = useAuth()
   const { showToast } = useToast()
+  const { currentUser } = useUsers()
+  const org_id = currentUser?.organizacion
   const fileInputRef = useRef<HTMLInputElement>(null)
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
@@ -651,6 +655,10 @@ export function ImportacionesPage() {
   const [actualizados, setActualizados] = useState(0)
   const [errores, setErrores] = useState(0)
   const [errorRows, setErrorRows] = useState<Array<{ hycite_id: string; nombre: string; error: string }>>([])
+
+  // Tab
+  const [activeTab, setActiveTab] = useState<'hycite' | 'revisiones'>('hycite')
+  const [pendingRevisiones, setPendingRevisiones] = useState(0)
 
   // History
   const [historial, setHistorial] = useState<Importacion[]>([])
@@ -690,6 +698,18 @@ export function ImportacionesPage() {
   }, [configured])
 
   useEffect(() => { cargarHistorial() }, [cargarHistorial])
+
+  const refrescarContador = useCallback(async () => {
+    if (!configured || !org_id) return
+    const { count } = await supabase
+      .from('import_revisiones')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', org_id)
+      .eq('revisado', false)
+    setPendingRevisiones(count ?? 0)
+  }, [configured, org_id])
+
+  useEffect(() => { refrescarContador() }, [refrescarContador])
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -989,15 +1009,43 @@ export function ImportacionesPage() {
       ) : (
         <>
           <SectionHeader
-            title="Importaciones Hy-Cite"
-            subtitle={
-              reportType === 'birthday_report'
-                ? 'Importando Reporte de Cumpleaños'
-                : 'Importa tu cartera de clientes desde el archivo CustomerList de Hy-Cite'
-            }
+            title="Importaciones"
+            subtitle="Hy-Cite · Revisiones OCR"
           />
 
-          <div className="card" style={{ padding: '1.5rem' }}>
+          {/* Tab bar */}
+          <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--color-border)', marginBottom: '0.25rem' }}>
+            {([
+              { key: 'hycite', label: 'Excel / Hy-Cite' },
+              { key: 'revisiones', label: `Revisiones OCR${pendingRevisiones > 0 ? ` (${pendingRevisiones})` : ''}` },
+            ] as { key: 'hycite' | 'revisiones'; label: string }[]).map(t => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: `2px solid ${activeTab === t.key ? 'var(--color-primary, #3b82f6)' : 'transparent'}`,
+                  marginBottom: '-2px',
+                  fontWeight: activeTab === t.key ? 700 : 400,
+                  fontSize: '0.875rem',
+                  color: activeTab === t.key ? 'var(--color-primary, #3b82f6)' : 'var(--color-text-muted)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* OCR Review tab */}
+          {activeTab === 'revisiones' && <ImportRevisiones onRefreshCount={refrescarContador} />}
+
+          {/* Hy-Cite wizard tab */}
+          {activeTab === 'hycite' && (<><div className="card" style={{ padding: '1.5rem' }}>
             {/* Step indicator */}
             {step !== 'upload' && step !== 'importing' && (
               <StepIndicator step={step} />
@@ -1303,7 +1351,7 @@ export function ImportacionesPage() {
             )}
           </div>
 
-          {/* ── Import history (unchanged) ── */}
+          {/* ── Import history ── */}
           <div>
             <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Historial de importaciones
@@ -1336,6 +1384,8 @@ export function ImportacionesPage() {
               </div>
             )}
           </div>
+          </>
+          )}
         </>
       )}
     </div>
