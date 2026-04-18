@@ -36,7 +36,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
       setLoading(true)
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email, rol, codigo_distribuidor, codigo_vendedor, distribuidor_padre_id, organizacion, telefono, foto_url')
+        .select('id, nombre, apellido, email, rol, codigo_distribuidor, codigo_vendedor, distribuidor_padre_id, org_id, organizacion, telefono, foto_url')
         .eq('id', session.user.id)
         .maybeSingle()
 

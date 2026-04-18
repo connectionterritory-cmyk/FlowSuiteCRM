@@ -88,7 +88,7 @@ export function ImportRevisiones({ onRefreshCount }: ImportRevisionesProps) {
   const { session } = useAuth()
   const { showToast } = useToast()
   const { currentUser } = useUsers()
-  const org_id = currentUser?.organizacion
+  const org_id = currentUser?.org_id
 
   const [revisiones, setRevisiones] = useState<Revision[]>([])
   const [loading, setLoading] = useState(false)

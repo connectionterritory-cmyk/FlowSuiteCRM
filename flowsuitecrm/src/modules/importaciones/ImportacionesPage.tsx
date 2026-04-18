@@ -627,7 +627,7 @@ export function ImportacionesPage() {
   const { session } = useAuth()
   const { showToast } = useToast()
   const { currentUser } = useUsers()
-  const org_id = currentUser?.organizacion
+  const org_id = currentUser?.org_id
   const fileInputRef = useRef<HTMLInputElement>(null)
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)

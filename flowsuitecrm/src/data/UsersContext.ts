@@ -9,6 +9,7 @@ type UserRow = {
   codigo_distribuidor?: string | null
   codigo_vendedor?: string | null
   distribuidor_padre_id?: string | null
+  org_id?: string | null
   organizacion?: string | null
   telefono?: string | null
   foto_url?: string | null
