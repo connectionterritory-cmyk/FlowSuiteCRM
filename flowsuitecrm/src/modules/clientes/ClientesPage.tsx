@@ -60,6 +60,7 @@ type ClienteRecord = {
   next_action: string | null
   next_action_date: string | null
   estado_operativo: string | null
+  fuente_import: string | null
 }
 
 type ClienteNota = {
@@ -111,6 +112,7 @@ const CLIENTES_LIST_SELECT = [
   'next_action',
   'next_action_date',
   'estado_operativo',
+  'fuente_import',
   // Excluded (sensitive): numero_cuenta_financiera, codigo_vendedor_hycite
 ].join(', ')
 
@@ -306,6 +308,7 @@ export function ClientesPage() {
   const [filtroEstadoOperativo, setFiltroEstadoOperativo] = useState('todos')
   const [filtroMesCumple, setFiltroMesCumple] = useState('todos')
   const [filtroCartuchos, setFiltroCartuchos] = useState<'todos' | 'vencidos' | 'proximos_30'>('todos')
+  const [filtroFuenteImport, setFiltroFuenteImport] = useState('todos')
   const [cartuchosVencidosIds, setCartuchosVencidosIds] = useState<Set<string>>(new Set())
   const [cartuchosProximosIds, setCartuchosProximosIds] = useState<Set<string>>(new Set())
   const [filtrosVisible, setFiltrosVisible] = useState(true)
@@ -502,6 +505,11 @@ export function ClientesPage() {
     }))
   }, [clientes, getClienteVendedorKey, getClienteVendedorLabel])
 
+  const fuentesUnicas = useMemo(() => {
+    const vals = [...new Set(clientes.map((c) => c.fuente_import).filter(Boolean))] as string[]
+    return vals.sort()
+  }, [clientes])
+
   // --- FILTRADO ---
   const clientesFiltrados = useMemo(() => {
     return clientes.filter((c) => {
@@ -560,6 +568,10 @@ export function ClientesPage() {
         (filtroCartuchos === 'vencidos' && cartuchosVencidosIds.has(c.id)) ||
         (filtroCartuchos === 'proximos_30' && cartuchosProximosIds.has(c.id))
 
+      const matchFuenteImport =
+        filtroFuenteImport === 'todos' ||
+        (filtroFuenteImport === '_sin_fuente' ? !c.fuente_import : c.fuente_import === filtroFuenteImport)
+
       return (
         matchBusqueda &&
         matchAtraso &&
@@ -570,7 +582,8 @@ export function ClientesPage() {
         matchCodigoPostal &&
         matchEstadoOperativo &&
         matchCumple &&
-        matchCartuchos
+        matchCartuchos &&
+        matchFuenteImport
       )
     })
   }, [
@@ -586,6 +599,7 @@ export function ClientesPage() {
     filtroEstadoOperativo,
     filtroMesCumple,
     filtroCartuchos,
+    filtroFuenteImport,
     cartuchosVencidosIds,
     cartuchosProximosIds,
     getClienteVendedorKey,
@@ -1178,6 +1192,7 @@ export function ClientesPage() {
     setFiltroEstadoOperativo('todos')
     setFiltroMesCumple('todos')
     setFiltroCartuchos('todos')
+    setFiltroFuenteImport('todos')
     setEstadoRegionExact(true)
   }
 
@@ -1224,7 +1239,8 @@ export function ClientesPage() {
     filtroCodigoPostal ||
     filtroEstadoOperativo !== 'todos' ||
     filtroMesCumple !== 'todos' ||
-    filtroCartuchos !== 'todos'
+    filtroCartuchos !== 'todos' ||
+    filtroFuenteImport !== 'todos'
 
   const cantFiltrosActivos = [
     busqueda,
@@ -1237,6 +1253,7 @@ export function ClientesPage() {
     filtroEstadoOperativo !== 'todos' ? '1' : '',
     filtroMesCumple !== 'todos' ? '1' : '',
     filtroCartuchos !== 'todos' ? '1' : '',
+    filtroFuenteImport !== 'todos' ? '1' : '',
   ].filter(Boolean).length
 
   const handleOpenDuplicados = () => {
@@ -1521,6 +1538,23 @@ export function ClientesPage() {
                     <option value="proximos_30">Próximos 30 días</option>
                   </select>
                 </div>
+                {/* Fuente import */}
+                {fuentesUnicas.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Fuente import</div>
+                    <select
+                      value={filtroFuenteImport}
+                      onChange={(e) => setFiltroFuenteImport(e.target.value)}
+                      style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroFuenteImport !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                    >
+                      <option value="todos">Todos</option>
+                      {fuentesUnicas.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                      <option value="_sin_fuente">Sin fuente</option>
+                    </select>
+                  </div>
+                )}
                 {/* Vendedor */}
                 {currentRole !== 'vendedor' && !isSellerView && (
                   <div>
