@@ -815,7 +815,7 @@ export function ClientesPage() {
             })(),
           },
           { label: 'Ciudad', value: cliente.ciudad ?? '-' },
-          { label: 'Estado / Región', value: cliente.estado_region ?? '-' },
+          { label: 'Estado / Prov (Dirección)', value: cliente.estado_region ?? '-' },
           { label: 'Codigo postal', value: cliente.codigo_postal ?? '-' },
           { label: 'Cuenta Hycite', value: cliente.hycite_id ?? '-' },
           { label: 'Cuenta financiera', value: cliente.numero_cuenta_financiera ?? '-' },
@@ -1428,7 +1428,7 @@ export function ClientesPage() {
                   <input
                     value={filtroEstadoRegion}
                     onChange={(e) => setFiltroEstadoRegion(e.target.value)}
-                    placeholder="Estado (FL, CA…)"
+                    placeholder="Estado / Prov"
                     style={{ width: '100%', padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroEstadoRegion ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)', boxSizing: 'border-box' }}
                   />
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', marginTop: '0.3rem', color: 'var(--color-text-muted, #6b7280)', cursor: 'pointer' }}>
@@ -1839,7 +1839,7 @@ export function ClientesPage() {
             <input value={formValues.ciudad} onChange={handleChange('ciudad')} onBlur={handleFormatText('ciudad')} />
           </label>
           <label className="form-field">
-            <span>Estado</span>
+            <span>Estado (Dirección)</span>
             <input value={formValues.estado_region} onChange={handleChange('estado_region')} onBlur={handleFormatState} />
           </label>
           <label className="form-field">
@@ -2079,7 +2079,7 @@ export function ClientesPage() {
               })(),
             },
             { label: 'Ciudad', value: selectedClienteDetail.ciudad ?? '-' },
-            { label: 'Estado / Región', value: selectedClienteDetail.estado_region ?? '-' },
+            { label: 'Estado / Prov (Dirección)', value: selectedClienteDetail.estado_region ?? '-' },
             { label: 'Codigo postal', value: selectedClienteDetail.codigo_postal ?? '-' },
             { label: 'Cuenta Hycite', value: selectedClienteDetail.hycite_id ?? '-' },
             { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },

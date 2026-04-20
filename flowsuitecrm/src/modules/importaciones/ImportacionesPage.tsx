@@ -133,10 +133,10 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
   },
   {
     key: 'estado_region',
-    label: 'Estado / Región',
+    label: 'Estado / Prov (Dirección)',
     required: false,
     canonicalAlias: 'ESTADO / PROVINCIA',
-    aliases: ['ESTADO / PROVINCIA', 'ESTADO', 'STATE', 'PROVINCIA', 'REGION', 'DEPARTAMENTO'],
+    aliases: ['ESTADO / PROVINCIA', 'PROVINCIA', 'REGION', 'DEPARTAMENTO'],
   },
   {
     key: 'codigo_postal',
@@ -147,11 +147,11 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
   },
   {
     key: 'estado_cuenta',
-    label: 'Estado de cuenta',
+    label: 'Estado de cuenta / Morosidad',
     required: false,
     canonicalAlias: 'ESTADO CUENTA',
-    // Eliminamos 'ESTADO' de aquí para que no se confunda con la región
-    aliases: ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO_CUENTA', 'ACCOUNT STATUS'],
+    // 'ESTADO' se asume como estado de cuenta si contiene palabras clave de morosidad
+    aliases: ['ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO_CUENTA', 'ACCOUNT STATUS', 'ESTADO'],
   },
   {
     key: 'saldo_actual',
@@ -357,10 +357,12 @@ function isLikelyEstadoRegion(value: string): boolean {
 }
 
 function obtenerEstadoRegion(row: Record<string, string>, normalizedRow: Record<string, string>): string | null {
-  const explicit = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia', 'STATE'])
-  if (explicit && explicit.trim()) return explicit.trim()
-  const fallback = obtenerCampo(row, normalizedRow, ['ESTADO', 'Estado']).trim()
-  return isLikelyEstadoRegion(fallback) ? fallback : null
+  const alias = ['ESTADO / PROVINCIA', 'Estado / Provincia', 'STATE', 'ESTADO', 'Estado', 'REGION', 'PROVINCIA']
+  for (const a of alias) {
+    const val = obtenerCampo(row, normalizedRow, [a]).trim()
+    if (val && isLikelyEstadoRegion(val)) return val
+  }
+  return null
 }
 
 function mapearEstadoMorosidad(
@@ -442,7 +444,7 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
 
   // Dirección y Componentes
   const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad', 'City']).trim() || null
-  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia', 'Estado', 'State']).trim() || obtenerEstadoRegion(row, normalizedRow)
+  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia']).trim() || obtenerEstadoRegion(row, normalizedRow)
   const codigoPostal = obtenerCampo(row, normalizedRow, ['CÓDIGO POSTAL', 'Codigo Postal', 'Zip Code', 'Zip']).trim() || null
   const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Address']).replace(/\n/g, ', ').trim()
 

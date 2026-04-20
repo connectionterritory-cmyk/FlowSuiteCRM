@@ -368,7 +368,7 @@ export function ImportRevisiones({ onRefreshCount }: ImportRevisionesProps) {
                     ['telefono', 'Teléfono'],
                     ['email', 'Email'],
                     ['ciudad', 'Ciudad'],
-                    ['estado_region', 'Estado / Región'],
+                    ['estado_region', 'Estado / Prov (Dirección)'],
                     ['codigo_postal', 'Código postal'],
                   ] as [keyof RevisionForm, string][]).map(([key, label]) => (
                     <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
