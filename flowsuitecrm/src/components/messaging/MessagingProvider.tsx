@@ -9,6 +9,21 @@ import { baseTemplates } from '../../lib/whatsappTemplates'
 import { emailTemplates } from '../../lib/emailTemplates'
 import { DEFAULT_SENDER, type EmailSender } from '../../lib/emailSenders'
 
+const normalizePhone = (phone: string): string | null => {
+  if (!phone) return null
+
+  let digits = phone.replace(/\D/g, '')
+  digits = digits.replace(/^0+/, '')
+
+  if (digits.length === 10) digits = '1' + digits
+
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return '+' + digits
+  }
+
+  return null
+}
+
 export type CloudTemplate = {
   id: string
   nombre: string
@@ -203,7 +218,15 @@ export function MessagingProvider({
 
       // SMS: único canal que sigue usando la app nativa (no hay API)
       if (isDirect && activeChannel === 'sms') {
-        window.location.href = `sms:${initialContact?.telefono}?body=${encodeURIComponent(resolved)}`
+        const normalizedPhone = normalizePhone(initialContact?.telefono ?? '')
+        if (!normalizedPhone) {
+          showToast('Numero de telefono invalido', 'error')
+          return
+        }
+        const smsRecipient = normalizedPhone.replace(/^\+/, '')
+        const smsBody = encodeURIComponent(resolved.trim())
+        const smsUrl = smsBody ? `sms:${smsRecipient}&body=${smsBody}` : `sms:${smsRecipient}`
+        window.location.href = smsUrl
         showToast('Abriendo app de mensajes', 'success')
         if (onClose) onClose()
         return
