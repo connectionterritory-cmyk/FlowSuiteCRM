@@ -1951,13 +1951,13 @@ export function ClientesPage() {
             return [
               {
                 label: 'Saldo actual',
-                value: selectedClienteDetail.saldo_actual
+                value: selectedClienteDetail.saldo_actual !== null && selectedClienteDetail.saldo_actual !== undefined
                   ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
                   : '-',
               },
               {
                 label: 'Monto moroso',
-                value: selectedClienteDetail.monto_moroso
+                value: selectedClienteDetail.monto_moroso !== null && selectedClienteDetail.monto_moroso !== undefined
                   ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
                   : '-',
               },
@@ -2085,13 +2085,13 @@ export function ClientesPage() {
             { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
             {
               label: 'Saldo actual',
-              value: selectedClienteDetail.saldo_actual
+              value: selectedClienteDetail.saldo_actual !== null && selectedClienteDetail.saldo_actual !== undefined
                 ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
                 : '-',
             },
             {
               label: 'Monto moroso',
-              value: selectedClienteDetail.monto_moroso
+              value: selectedClienteDetail.monto_moroso !== null && selectedClienteDetail.monto_moroso !== undefined
                 ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
                 : '-',
             },
