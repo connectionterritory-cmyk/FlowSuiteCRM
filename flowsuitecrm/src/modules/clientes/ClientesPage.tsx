@@ -1,4 +1,4 @@
-import { startTransition, type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import React, { startTransition, type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
@@ -324,6 +324,10 @@ export function ClientesPage() {
   const [serviciosLoading, setServiciosLoading] = useState(false)
   const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
   const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; label: string; rol: string | null }>>([])
+  const [editingNextAction, setEditingNextAction] = useState(false)
+  const [nextActionDraft, setNextActionDraft] = useState('')
+  const [nextActionDateDraft, setNextActionDateDraft] = useState('')
+  const [savingNextAction, setSavingNextAction] = useState(false)
 
   const loadClientes = useCallback(async () => {
     if (!configured || !sessionUserId || !currentRole) return
@@ -947,6 +951,60 @@ export function ClientesPage() {
     const dateValue = value.includes('T') ? value : `${value}T00:00:00`
     return new Date(dateValue).toLocaleDateString('es')
   }
+
+  const copyToClipboard = useCallback((text: string, label = 'Copiado') => {
+    void navigator.clipboard.writeText(text).then(() => showToast(label))
+  }, [showToast])
+
+  const saveNextAction = useCallback(async () => {
+    if (!selectedClienteDetail || savingNextAction) return
+    setSavingNextAction(true)
+    const { error } = await supabase
+      .from('clientes')
+      .update({
+        next_action: nextActionDraft.trim() || null,
+        next_action_date: nextActionDateDraft || null,
+      })
+      .eq('id', selectedClienteDetail.id)
+    setSavingNextAction(false)
+    if (error) { showToast(`Error: ${error.message}`, 'error'); return }
+    setDetailCliente((prev) =>
+      prev ? { ...prev, next_action: nextActionDraft.trim() || null, next_action_date: nextActionDateDraft || null } : prev,
+    )
+    setEditingNextAction(false)
+    showToast('Próxima acción actualizada')
+  }, [nextActionDraft, nextActionDateDraft, savingNextAction, selectedClienteDetail, showToast])
+
+  const riskChip = (diasAtraso: number | null, montoMoroso: number | null) => {
+    if (!montoMoroso || montoMoroso === 0) return { color: '#10b981', bg: '#d1fae5', label: 'Al día' }
+    if (!diasAtraso || diasAtraso <= 30) return { color: '#f59e0b', bg: '#fef3c7', label: `${diasAtraso ?? 0}d mora` }
+    if (diasAtraso <= 60) return { color: '#f97316', bg: '#ffedd5', label: `${diasAtraso}d mora` }
+    if (diasAtraso <= 90) return { color: '#ef4444', bg: '#fee2e2', label: `${diasAtraso}d mora` }
+    return { color: '#7c3aed', bg: '#ede9fe', label: `+90d mora` }
+  }
+
+  const noReg = <span style={{ color: 'var(--color-text-muted, #9ca3af)', fontStyle: 'italic', fontSize: '0.82rem' }}>No registrado</span>
+
+  // micro-style helpers for detail panel v2 (avoids repeating inline objects)
+  const chip = (color: string, bg: string): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.6rem',
+    borderRadius: '9999px', fontSize: '0.72rem', fontWeight: 600,
+    background: bg, color, border: `1px solid ${color}33`, whiteSpace: 'nowrap',
+  })
+  const blockTitle: React.CSSProperties = {
+    margin: 0, fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '0.06em', color: 'var(--color-muted, #9ca3af)',
+  }
+  const fieldLbl: React.CSSProperties = {
+    display: 'block', fontSize: '0.72rem', color: 'var(--color-muted, #9ca3af)',
+    marginBottom: '0.1rem', fontWeight: 500,
+  }
+  const fieldVal: React.CSSProperties = { fontSize: '0.86rem', color: 'var(--color-text)' }
+  const inlineBtn = (color: string): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem',
+    borderRadius: '9999px', border: `1px solid ${color}44`, background: `${color}11`,
+    color, cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, textDecoration: 'none',
+  })
 
   const serviciosContent = serviciosLoading ? (
     <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Cargando...</span>
@@ -1975,156 +2033,250 @@ export function ClientesPage() {
           if (detailTab === 'servicios') {
             return [{ label: 'Servicios recientes', value: serviciosContent }]
           }
-          return [
-            { label: 'Nombre', value: selectedClienteDetail.nombre ?? '-' },
-            { label: 'Apellido', value: selectedClienteDetail.apellido ?? '-' },
-            { label: 'Email', value: selectedClienteDetail.email ?? '-' },
-            {
-              label: 'Cumpleaños',
-              value: (() => {
-                if (!selectedClienteDetail.fecha_nacimiento) return '-'
-                const dias = diasParaCumple(selectedClienteDetail.fecha_nacimiento)
-                const fechaLabel = new Date(`${selectedClienteDetail.fecha_nacimiento}T00:00:00`).toLocaleDateString('es', {
-                  day: '2-digit',
-                  month: 'short',
-                })
-                const texto = dias === 0
-                  ? `Hoy (${fechaLabel})`
-                  : `${fechaLabel} · en ${dias} días`
-                return (
-                  <span
-                    style={{
-                      padding: '0.15rem 0.6rem',
-                      borderRadius: '9999px',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      background: dias === 0 ? '#fef3c7' : '#e0f2fe',
-                      color: dias === 0 ? '#92400e' : '#1e3a8a',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {texto}
-                  </span>
-                )
-              })(),
-            },
-            {
-              label: 'Telefono movil',
-              value: selectedClienteDetail.telefono ? (
-                <a
-                  href={buildTelUrl(selectedClienteDetail.telefono)}
-                  style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
+          {
+            // ── helpers locales ───────────────────────────────────────
+            const c = selectedClienteDetail
+            const risk = riskChip(c.dias_atraso, c.monto_moroso)
+
+            const phoneActions = (phone: string) => (
+              <span style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.86rem' }}>{phone}</span>
+                <a href={buildTelUrl(phone)} style={inlineBtn('#3b82f6')}>Llamar</a>
+                <button type="button" style={inlineBtn('#6b7280')} onClick={() => copyToClipboard(phone, 'Teléfono copiado')}>Copiar</button>
+                <button
+                  type="button"
+                  style={inlineBtn('#16a34a')}
+                  onClick={() => openWhatsapp({
+                    nombre: [c.nombre, c.apellido].filter(Boolean).join(' '),
+                    telefono: phone,
+                    email: c.email ?? '',
+                    vendedor: c.vendedor_id ? (usersById[c.vendedor_id] ?? '') : '',
+                    cuentaHycite: c.hycite_id ?? c.numero_cuenta_financiera ?? '',
+                    saldoActual: c.saldo_actual,
+                    montoMoroso: c.monto_moroso,
+                    diasAtraso: c.dias_atraso,
+                    estadoMorosidad: c.estado_morosidad,
+                    clienteId: c.id,
+                  })}
                 >
-                  📞 {selectedClienteDetail.telefono}
-                </a>
-              ) : (
-                '-'
-              ),
-            },
-            {
-              label: 'Telefono casa',
-              value: selectedClienteDetail.telefono_casa ? (
-                <a
-                  href={buildTelUrl(selectedClienteDetail.telefono_casa)}
-                  style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}
-                >
-                  📞 {selectedClienteDetail.telefono_casa}
-                </a>
-              ) : (
-                '-'
-              ),
-            },
-            {
-              label: 'Direccion',
-              value: (() => {
-                const mapsUrl = buildMapsNavUrl({
-                  direccion: selectedClienteDetail.direccion,
-                  ciudad: selectedClienteDetail.ciudad,
-                  estado_region: selectedClienteDetail.estado_region,
-                  codigo_postal: selectedClienteDetail.codigo_postal,
-                })
-                const addr = formatAddressLabel({
-                  direccion: selectedClienteDetail.direccion,
-                  ciudad: selectedClienteDetail.ciudad,
-                  estado_region: selectedClienteDetail.estado_region,
-                  codigo_postal: selectedClienteDetail.codigo_postal,
-                })
-                return addr ? (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span>{addr}</span>
-                    {mapsUrl && (
-                      <a
-                        href={mapsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          fontSize: '0.75rem',
-                          color: '#10b981',
-                          fontWeight: 700,
-                          whiteSpace: 'nowrap',
-                          textDecoration: 'none',
-                          padding: '0.1rem 0.5rem',
-                          border: '1px solid #10b98133',
-                          borderRadius: '9999px',
-                          background: '#10b98111',
-                        }}
-                      >
-                        🗺 Navegar
-                      </a>
+                  WhatsApp
+                </button>
+              </span>
+            )
+
+            const fullAddr = formatAddressLabel({ direccion: c.direccion, ciudad: c.ciudad, estado_region: c.estado_region, codigo_postal: c.codigo_postal })
+            const mapsUrl = buildMapsNavUrl({ direccion: c.direccion, ciudad: c.ciudad, estado_region: c.estado_region, codigo_postal: c.codigo_postal })
+
+            const dirBlock = fullAddr ? (
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.86rem' }}>{fullAddr}</span>
+                <span style={{ display: 'inline-flex', gap: '0.3rem' }}>
+                  {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={inlineBtn('#10b981')}>🗺 Navegar</a>}
+                  <button type="button" style={inlineBtn('#6b7280')} onClick={() => copyToClipboard(fullAddr, 'Dirección copiada')}>Copiar</button>
+                </span>
+              </span>
+            ) : noReg
+
+            const cumpleBlock = (() => {
+              if (!c.fecha_nacimiento) return noReg
+              const dias = diasParaCumple(c.fecha_nacimiento)
+              const fechaLabel = new Date(`${c.fecha_nacimiento}T00:00:00`).toLocaleDateString('es', { day: '2-digit', month: 'short' })
+              return (
+                <span style={{ padding: '0.15rem 0.6rem', borderRadius: '9999px', fontSize: '0.72rem', fontWeight: 600, background: dias === 0 ? '#fef3c7' : '#e0f2fe', color: dias === 0 ? '#92400e' : '#1e3a8a', whiteSpace: 'nowrap' }}>
+                  {dias === 0 ? `Hoy (${fechaLabel})` : `${fechaLabel} · en ${dias}d`}
+                </span>
+              )
+            })()
+
+            return [{
+              label: '',
+              value: (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                  {/* ── CHIPS de estado ── */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid var(--card-border, #e5e7eb)' }}>
+                    <span style={chip('#6b7280', '#f3f4f6')}>{c.estado_cuenta ?? 'Sin estado'}</span>
+                    {c.saldo_actual !== null && (
+                      <span style={chip('#1d4ed8', '#dbeafe')}>Saldo ${Number(c.saldo_actual).toFixed(2)}</span>
                     )}
-                  </span>
-                ) : (
-                  '-'
-                )
-              })(),
-            },
-            { label: 'Ciudad', value: selectedClienteDetail.ciudad ?? '-' },
-            { label: 'Estado / Prov (Dirección)', value: selectedClienteDetail.estado_region ?? '-' },
-            { label: 'Codigo postal', value: selectedClienteDetail.codigo_postal ?? '-' },
-            { label: 'Cuenta Hycite', value: selectedClienteDetail.hycite_id ?? '-' },
-            { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
-            {
-              label: 'Saldo actual',
-              value: selectedClienteDetail.saldo_actual !== null && selectedClienteDetail.saldo_actual !== undefined
-                ? `$${Number(selectedClienteDetail.saldo_actual).toFixed(2)}`
-                : '-',
-            },
-            {
-              label: 'Monto moroso',
-              value: selectedClienteDetail.monto_moroso !== null && selectedClienteDetail.monto_moroso !== undefined
-                ? `$${Number(selectedClienteDetail.monto_moroso).toFixed(2)}`
-                : '-',
-            },
-            {
-              label: 'Dias de atraso',
-              value: segmentoAtraso(
-                selectedClienteDetail.dias_atraso,
-                selectedClienteDetail.monto_moroso,
+                    {(c.monto_moroso ?? 0) > 0 && (
+                      <span style={chip('#dc2626', '#fee2e2')}>Moroso ${Number(c.monto_moroso).toFixed(2)}</span>
+                    )}
+                    <span style={chip(risk.color, risk.bg)}>{risk.label}</span>
+                    {c.next_action_date && (
+                      <span style={chip('#7c3aed', '#ede9fe')}>
+                        Próx. acción: {new Date(c.next_action_date + 'T00:00:00').toLocaleDateString('es', { day: '2-digit', month: 'short' })}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* ── GRID 2 columnas ── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem 1.5rem' }}>
+
+                    {/* CONTACTO */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <p style={blockTitle}>Contacto</p>
+                      <div>
+                        <label style={fieldLbl}>Nombre</label>
+                        <span style={fieldVal}>{c.nombre && c.apellido ? `${c.nombre} ${c.apellido}` : c.nombre ?? c.apellido ?? noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Móvil</label>
+                        {c.telefono ? phoneActions(c.telefono) : noReg}
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Casa</label>
+                        {c.telefono_casa ? phoneActions(c.telefono_casa) : noReg}
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Email</label>
+                        {c.email
+                          ? <a href={`mailto:${c.email}`} style={{ color: '#3b82f6', fontSize: '0.86rem', textDecoration: 'none' }}>{c.email}</a>
+                          : noReg}
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Cumpleaños</label>
+                        {cumpleBlock}
+                      </div>
+                    </div>
+
+                    {/* DIRECCIÓN */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <p style={blockTitle}>Dirección</p>
+                      <div>
+                        <label style={fieldLbl}>Dirección</label>
+                        {dirBlock}
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Ciudad</label>
+                        <span style={fieldVal}>{c.ciudad ?? noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Estado</label>
+                        <span style={fieldVal}>{c.estado_region ?? noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>ZIP</label>
+                        <span style={fieldVal}>{c.codigo_postal ?? noReg}</span>
+                      </div>
+                    </div>
+
+                    {/* CUENTA */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <p style={blockTitle}>Cuenta</p>
+                      <div>
+                        <label style={fieldLbl}>Hycite ID</label>
+                        <span style={fieldVal}>{c.hycite_id ?? noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Cta. financiera</label>
+                        <span style={fieldVal}>{c.numero_cuenta_financiera ?? noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Vendedor</label>
+                        <span style={fieldVal}>{c.vendedor_id ? usersById[c.vendedor_id] ?? noReg : noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Nivel</label>
+                        <span style={fieldVal}>{c.nivel ? String(c.nivel) : noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Origen</label>
+                        <span style={fieldVal}>{c.origen ?? noReg}</span>
+                      </div>
+                    </div>
+
+                    {/* COBRANZA */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <p style={blockTitle}>Cobranza</p>
+                      <div>
+                        <label style={fieldLbl}>Saldo</label>
+                        <span style={fieldVal}>{c.saldo_actual !== null ? `$${Number(c.saldo_actual).toFixed(2)}` : noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Moroso</label>
+                        <span style={{ ...fieldVal, color: (c.monto_moroso ?? 0) > 0 ? '#ef4444' : 'inherit', fontWeight: (c.monto_moroso ?? 0) > 0 ? 700 : 400 }}>
+                          {c.monto_moroso !== null ? `$${Number(c.monto_moroso).toFixed(2)}` : noReg}
+                        </span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Morosidad</label>
+                        {segmentoAtraso(c.dias_atraso, c.monto_moroso)}
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Últ. pago</label>
+                        <span style={fieldVal}>{c.ultima_fecha_pago ? formatDateValue(c.ultima_fecha_pago) : noReg}</span>
+                      </div>
+                      <div>
+                        <label style={fieldLbl}>Últ. pedido</label>
+                        <span style={fieldVal}>{c.fecha_ultimo_pedido ? formatDateValue(c.fecha_ultimo_pedido) : noReg}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── SEGUIMIENTO ── */}
+                  <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--card-border, #e5e7eb)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <p style={blockTitle}>Seguimiento</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {/* Próxima acción — editable inline */}
+                      <div>
+                        <label style={fieldLbl}>Próxima acción</label>
+                        {editingNextAction ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.25rem' }}>
+                            <input
+                              value={nextActionDraft}
+                              onChange={(e) => setNextActionDraft(e.target.value)}
+                              placeholder="Ej: Llamar el viernes"
+                              style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--color-text)', fontSize: '0.84rem' }}
+                            />
+                            <input
+                              type="date"
+                              value={nextActionDateDraft}
+                              onChange={(e) => setNextActionDateDraft(e.target.value)}
+                              style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--color-text)', fontSize: '0.84rem' }}
+                            />
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button type="button" disabled={savingNextAction} onClick={() => void saveNextAction()} style={{ ...inlineBtn('#2563eb'), padding: '0.3rem 0.75rem' }}>
+                                {savingNextAction ? 'Guardando…' : 'Guardar'}
+                              </button>
+                              <button type="button" onClick={() => setEditingNextAction(false)} style={{ ...inlineBtn('#6b7280'), padding: '0.3rem 0.75rem' }}>Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.15rem' }}>
+                            <span style={fieldVal}>{c.next_action ?? noReg}</span>
+                            <button
+                              type="button"
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '0.78rem', padding: 0 }}
+                              onClick={() => {
+                                setNextActionDraft(c.next_action ?? '')
+                                setNextActionDateDraft(c.next_action_date ?? '')
+                                setEditingNextAction(true)
+                              }}
+                            >
+                              ✏️ editar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!editingNextAction && c.next_action_date && (
+                        <div>
+                          <label style={fieldLbl}>Fecha</label>
+                          <span style={fieldVal}>{new Date(c.next_action_date + 'T00:00:00').toLocaleDateString('es')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
               ),
-            },
-            { label: 'Nivel', value: selectedClienteDetail.nivel ? String(selectedClienteDetail.nivel) : '-' },
-            { label: 'Estado cuenta', value: selectedClienteDetail.estado_cuenta ?? '-' },
-            {
-              label: 'Vendedor',
-              value: selectedClienteDetail.vendedor_id
-                ? usersById[selectedClienteDetail.vendedor_id] ?? ''
-                : '-',
-            },
-            { label: 'Codigo vendedor', value: selectedClienteDetail.codigo_vendedor_hycite ?? '-' },
-            { label: 'Origen', value: selectedClienteDetail.origen ?? '-' },
-            { label: 'Próxima acción', value: selectedClienteDetail.next_action ?? '-' },
-            {
-              label: 'Fecha próx. acción',
-              value: selectedClienteDetail.next_action_date
-                ? new Date(selectedClienteDetail.next_action_date + 'T00:00:00').toLocaleDateString('es')
-                : '-',
-            },
-          ]
+            }]
+          }
         })()}
         tabs={selectedClienteDetail ? [
-          { key: 'info', label: 'Informacion' },
-          { key: 'notas', label: 'Notas' },
+          { key: 'info', label: 'Información' },
           { key: 'historial', label: 'Historial' },
+          { key: 'notas', label: 'Notas' },
           { key: 'cartera', label: 'Cartera' },
           { key: 'servicios', label: 'Servicios' },
         ] : undefined}
@@ -2133,33 +2285,9 @@ export function ClientesPage() {
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="whatsapp-button"
-                aria-label="WhatsApp"
-                onClick={() =>
-                  openWhatsapp({
-                    nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' '),
-                    telefono: selectedClienteDetail.telefono ?? '',
-                    email: selectedClienteDetail.email ?? '',
-                    vendedor: selectedClienteDetail.vendedor_id
-                      ? (usersById[selectedClienteDetail.vendedor_id] ?? '')
-                      : '',
-                    cuentaHycite:
-                      selectedClienteDetail.hycite_id ?? selectedClienteDetail.numero_cuenta_financiera ?? '',
-                    saldoActual: selectedClienteDetail.saldo_actual,
-                    montoMoroso: selectedClienteDetail.monto_moroso,
-                    diasAtraso: selectedClienteDetail.dias_atraso,
-                    estadoMorosidad: selectedClienteDetail.estado_morosidad,
-                    clienteId: selectedClienteDetail.id,
-                  })
-                }
-              >
-                <IconWhatsapp className="whatsapp-icon" />
-              </button>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* PRIMARY */}
               <Button
-                variant="ghost"
                 type="button"
                 onClick={() =>
                   openGestionModal({
@@ -2183,22 +2311,44 @@ export function ClientesPage() {
               >
                 + Gestión
               </Button>
-              {canEditClientes && (
-                <Button
-                  variant="ghost"
+
+              {/* WhatsApp con texto */}
+              {selectedClienteDetail.telefono && (
+                <button
                   type="button"
-                  onClick={() => handleOpenEditForm(selectedClienteDetail)}
-                  disabled={detailLoading}
+                  onClick={() =>
+                    openWhatsapp({
+                      nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' '),
+                      telefono: selectedClienteDetail.telefono ?? '',
+                      email: selectedClienteDetail.email ?? '',
+                      vendedor: selectedClienteDetail.vendedor_id ? (usersById[selectedClienteDetail.vendedor_id] ?? '') : '',
+                      cuentaHycite: selectedClienteDetail.hycite_id ?? selectedClienteDetail.numero_cuenta_financiera ?? '',
+                      saldoActual: selectedClienteDetail.saldo_actual,
+                      montoMoroso: selectedClienteDetail.monto_moroso,
+                      diasAtraso: selectedClienteDetail.dias_atraso,
+                      estadoMorosidad: selectedClienteDetail.estado_morosidad,
+                      clienteId: selectedClienteDetail.id,
+                    })
+                  }
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                    padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #16a34a44',
+                    background: '#16a34a11', color: '#16a34a', cursor: 'pointer',
+                    fontSize: '0.82rem', fontWeight: 600,
+                  }}
                 >
+                  <IconWhatsapp style={{ width: '14px', height: '14px' }} />
+                  WhatsApp
+                </button>
+              )}
+
+              {canEditClientes && (
+                <Button variant="ghost" type="button" onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
                   Editar
                 </Button>
               )}
               {selectedClienteDetail.persona_id && (
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}
-                >
+                <Button variant="ghost" type="button" onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}>
                   Ver perfil
                 </Button>
               )}
