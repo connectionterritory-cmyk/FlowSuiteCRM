@@ -1,23 +1,35 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 
+type OutboxStatus =
+  | 'borrador'
+  | 'programado'
+  | 'en_proceso'
+  | 'enviado'
+  | 'fallido'
+  | 'retry_pending'
+  | 'cancelado'
+
 type OutboxMessage = {
   id: string
   canal: 'whatsapp' | 'sms' | 'email' | 'telegram'
   destinatario: string | null
   asunto: string | null
-  mensaje: string
+  mensaje: string | null
   mensaje_resuelto: string | null
   attachment_urls: string[] | null
   scheduled_for: string | null
   retry_after: string | null
   locked_at: string | null
   locked_by: string | null
-  status: 'borrador' | 'programado' | 'en_proceso' | 'enviado' | 'fallido' | 'retry_pending' | 'cancelado'
+  status: OutboxStatus
   from_email: string | null
   from_name: string | null
   reply_to: string | null
   sender_name: string | null
+  tipo_envio?: 'text' | 'template' | null
+  template_name?: string | null
+  template_params?: unknown
 }
 
 const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
@@ -27,14 +39,12 @@ const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? ''
 const resendFromEmail = Deno.env.get('RESEND_FROM_EMAIL') ?? 'cobranza@flowiadigital.com'
 const resendFromName = Deno.env.get('RESEND_FROM_NAME') ?? 'Royal Prestige'
 
-const evolutionUrl = Deno.env.get('EVOLUTION_API_URL') ?? ''
-const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') ?? ''
-const evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') ?? ''
-const phonePrefix = Deno.env.get('EVOLUTION_PHONE_PREFIX') ?? ''
-
-// Meta Cloud API — takes priority over Evolution API when both vars are set
-const metaToken = Deno.env.get('META_WHATSAPP_TOKEN') ?? ''
+// Meta Cloud API
+// Preferred vars: META_ACCESS_TOKEN + META_PHONE_NUMBER_ID
+// Backward compatibility: META_WHATSAPP_TOKEN
+const metaAccessToken = Deno.env.get('META_ACCESS_TOKEN') ?? Deno.env.get('META_WHATSAPP_TOKEN') ?? ''
 const metaPhoneNumberId = Deno.env.get('META_PHONE_NUMBER_ID') ?? ''
+const metaApiVersion = Deno.env.get('META_API_VERSION') ?? 'v25.0'
 
 const telegramToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
 
@@ -106,32 +116,28 @@ function jsonResponse(body: Record<string, unknown>, status = 200, req?: Request
   })
 }
 
-function sanitizePhone(raw: string) {
-  const digits = raw.replace(/\D/g, '').trim()
-  if (digits.length >= 11) return digits
-  if (digits.length === 10) return '1' + digits
-  if (phonePrefix && !digits.startsWith(phonePrefix)) return phonePrefix + digits
-  return digits
-}
+function normalizePhone(phone: string): string {
+  const raw = String(phone ?? '').trim()
+  if (!raw) throw new Error('Phone is required')
 
-function getMimeType(url: string) {
-  const ext = url.split('.').pop()?.toLowerCase()
-  switch (ext) {
-    case 'jpg':
-    case 'jpeg': return 'image/jpeg'
-    case 'png': return 'image/png'
-    case 'pdf': return 'application/pdf'
-    case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    case 'mp4': return 'video/mp4'
-    default: return 'application/octet-stream'
+  let digits = raw.replace(/\D/g, '')
+
+  // Handle international prefix 00xxxx
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2)
   }
-}
 
-function getMediaType(mime: string) {
-  if (mime.startsWith('image/')) return 'image'
-  if (mime.startsWith('video/')) return 'video'
-  if (mime.startsWith('audio/')) return 'audio'
-  return 'document'
+  // Default USA when only 10 digits are provided
+  if (digits.length === 10) {
+    digits = `1${digits}`
+  }
+
+  // Minimal validity check for E.164-like payload without plus sign
+  if (digits.length < 11) {
+    throw new Error(`Invalid phone length after normalization: ${digits.length}`)
+  }
+
+  return digits
 }
 
 function escapeHtml(raw: string): string {
@@ -145,6 +151,14 @@ function escapeHtml(raw: string): string {
 
 function isImageUrl(url: string) {
   return /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(url)
+}
+
+function inferMetaMediaType(url: string): 'image' | 'video' | 'audio' | 'document' {
+  const clean = url.split('?')[0].toLowerCase()
+  if (/\.(jpg|jpeg|png|webp|gif)$/.test(clean)) return 'image'
+  if (/\.(mp4|mov|webm|mkv)$/.test(clean)) return 'video'
+  if (/\.(mp3|wav|m4a|aac|ogg)$/.test(clean)) return 'audio'
+  return 'document'
 }
 
 function buildEmailHtml(message: string, attachments?: string[] | null, senderName?: string | null, campaignLabel?: string | null): string {
@@ -264,110 +278,188 @@ async function syncMkMessage(outboxId: string, payload: { status: string; sent_a
     .neq('status', 'cancelado')
 }
 
-async function sendMetaWhatsapp(destinatario: string, message: string) {
-  if (!metaToken || !metaPhoneNumberId) {
-    throw new Error('Missing Meta WhatsApp configuration')
-  }
-  const cleanedPhone = sanitizePhone(destinatario)
-  if (!cleanedPhone) throw new Error('Phone is required')
+// After a successful WhatsApp send, write the outbound message into the
+// conversations/messages tables so the inbox thread stays in sync and
+// the direction trigger fires correctly for the follow-up cron.
+async function syncConversationOutbound(opts: {
+  destinatario: string
+  messageText: string
+  providerMessageId: string | null
+  attachmentUrls?: string[] | null
+}) {
+  try {
+    let phoneDigits = opts.destinatario.replace(/\D/g, '')
+    if (phoneDigits.startsWith('00')) phoneDigits = phoneDigits.slice(2)
+    if (phoneDigits.length === 10) phoneDigits = `1${phoneDigits}`
+    const phoneE164 = `+${phoneDigits}`
 
-  const res = await fetch(
-    `https://graph.facebook.com/v25.0/${metaPhoneNumberId}/messages`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${metaToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: cleanedPhone,
-        type: 'text',
-        text: { body: message },
-      }),
-    }
-  )
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`wa_id.eq.${phoneDigits},phone_e164.eq.${phoneE164}`)
+      .maybeSingle()
+
+    if (!conv?.id) return
+
+    await supabase.from('messages').insert({
+      conversation_id: conv.id,
+      direction: 'outbound',
+      message: opts.messageText || null,
+      provider_message_id: opts.providerMessageId,
+      status: 'sent',
+      attachment_urls: opts.attachmentUrls ?? [],
+    })
+
+    // last_message_at + last_message_direction updated by trigger, but
+    // preview and at are set here in case the trigger is not yet deployed
+    await supabase.from('conversations').update({
+      last_message_at: new Date().toISOString(),
+      last_message_preview: opts.messageText ? opts.messageText.substring(0, 120) : '(adjunto)',
+      updated_at: new Date().toISOString(),
+    }).eq('id', conv.id)
+  } catch (e) {
+    console.warn('process-outbox: syncConversationOutbound failed (non-fatal)', e)
+  }
+}
+
+async function updateOutbox(id: string, payload: Record<string, unknown>) {
+  let { error } = await supabase
+    .from('outbox_messages')
+    .update(payload)
+    .eq('id', id)
+    .eq('status', 'en_proceso')
+
+  if (error && /column .* does not exist/i.test(error.message)) {
+    const fallbackPayload = { ...payload }
+    delete fallbackPayload.provider
+
+    const retry = await supabase
+      .from('outbox_messages')
+      .update(fallbackPayload)
+      .eq('id', id)
+      .eq('status', 'en_proceso')
+
+    error = retry.error
+  }
+
+  if (error) {
+    throw error
+  }
+}
+
+async function sendMetaRequest(body: Record<string, unknown>) {
+  if (!metaAccessToken || !metaPhoneNumberId) {
+    throw new Error('Missing Meta Cloud API configuration')
+  }
+
+  const res = await fetch(`https://graph.facebook.com/${metaApiVersion}/${metaPhoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${metaAccessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  const data = await res.json().catch(() => null)
+
   if (!res.ok) {
-    const data = await res.json().catch(() => null)
     const msg = (data as { error?: { message?: string } } | null)?.error?.message ?? 'Meta API error'
     const retryable = res.status === 429 || res.status >= 500
     throw asProviderError(`Meta WhatsApp error (${res.status}): ${msg}`, retryable)
   }
+
+  return data as { messages?: Array<{ id?: string }> } | null
 }
 
-async function sendWhatsapp(destinatario: string, message: string, attachments: string[] | null) {
-  if (!evolutionUrl || !evolutionApiKey || !evolutionInstance) {
-    throw new Error('Missing Evolution API configuration')
-  }
-  const cleanedPhone = sanitizePhone(destinatario)
-  if (!cleanedPhone) throw new Error('Phone is required')
-
-  if (attachments && attachments.length > 0) {
-    const mediaUrl = attachments[0]
-    const mime = getMimeType(mediaUrl)
-    const mediaType = getMediaType(mime)
-    const fileName = mediaUrl.split('/').pop() || 'file'
-
-    const url = `${evolutionUrl.replace(/\/+$/, '')}/message/sendMedia/${encodeURIComponent(evolutionInstance)}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': evolutionApiKey,
-        'bypass-tunnel-reminder': 'true',
-      },
-      body: JSON.stringify({
-        number: cleanedPhone,
-        mediatype: mediaType,
-        mimetype: mime,
-        caption: message,
-        media: mediaUrl,
-        fileName: fileName,
-      }),
+function parseTemplateParams(raw: unknown): string[] {
+  if (!raw) return []
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((value) => {
+      if (value === null || value === undefined) return ''
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+      if (typeof value === 'object') {
+        const text = (value as { text?: unknown }).text
+        if (text === null || text === undefined) return ''
+        return String(text)
+      }
+      return ''
     })
-    if (!res.ok) {
-      const text = await res.text()
-      const retryable = res.status === 429 || res.status >= 500
-      throw asProviderError(`Evolution Media API error (${res.status}): ${text}`, retryable)
+    .filter((v) => v.trim() !== '')
+}
+
+async function sendWhatsAppText(destinatario: string, message: string, attachments?: string[] | null): Promise<string | null> {
+  const to = normalizePhone(destinatario)
+  let providerMessageId: string | null = null
+
+  const trimmed = String(message ?? '').trim()
+  if (trimmed) {
+    const data = await sendMetaRequest({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'text',
+      text: { body: trimmed },
+    })
+    providerMessageId = data?.messages?.[0]?.id ?? providerMessageId
+  }
+
+  for (const mediaUrl of attachments ?? []) {
+    const mediaType = inferMetaMediaType(mediaUrl)
+    const mediaPayload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      to,
+      type: mediaType,
+      [mediaType]: {
+        link: mediaUrl,
+      },
     }
 
-    // Adjuntos adicionales sin caption
-    for (let i = 1; i < attachments.length; i++) {
-      const nextMedia = attachments[i]
-      const nextMime = getMimeType(nextMedia)
-      await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionApiKey,
-          'bypass-tunnel-reminder': 'true',
-        },
-        body: JSON.stringify({
-          number: cleanedPhone,
-          mediatype: getMediaType(nextMime),
-          mimetype: nextMime,
-          media: nextMedia,
-          fileName: nextMedia.split('/').pop() || 'file',
-        }),
-      })
-    }
-  } else {
-    const url = `${evolutionUrl.replace(/\/+$/, '')}/message/sendText/${encodeURIComponent(evolutionInstance)}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': evolutionApiKey,
-        'bypass-tunnel-reminder': 'true',
-      },
-      body: JSON.stringify({ number: cleanedPhone, text: message }),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      const retryable = res.status === 429 || res.status >= 500
-      throw asProviderError(`Evolution Text API error (${res.status}): ${text}`, retryable)
-    }
+    const mediaResult = await sendMetaRequest(mediaPayload)
+    providerMessageId = providerMessageId ?? mediaResult?.messages?.[0]?.id ?? null
   }
+
+  if (!providerMessageId && !trimmed && (!attachments || attachments.length === 0)) {
+    throw new Error('Missing WhatsApp content (text/template/media)')
+  }
+
+  return providerMessageId
+}
+
+async function sendWhatsAppTemplate(destinatario: string, templateName: string, templateParams: unknown): Promise<string | null> {
+  const to = normalizePhone(destinatario)
+  const name = String(templateName ?? '').trim()
+  if (!name) {
+    throw new Error('template_name is required when tipo_envio=template')
+  }
+
+  const params = parseTemplateParams(templateParams)
+
+  const payload: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'template',
+    template: {
+      name,
+      language: {
+        code: 'en_US',
+      },
+      components: params.length > 0
+        ? [
+          {
+            type: 'body',
+            parameters: params.map((text) => ({
+              type: 'text',
+              text,
+            })),
+          },
+        ]
+        : undefined,
+    },
+  }
+
+  const result = await sendMetaRequest(payload)
+  return result?.messages?.[0]?.id ?? null
 }
 
 // Returns the Resend message ID for tracking
@@ -472,10 +564,6 @@ serve(async (req: Request) => {
     console.error('process-outbox: failed to reclaim stale locks', reclaimError)
   } else if (reclaimed && reclaimed.length > 0) {
     console.log('process-outbox: reclaimed stale locks', reclaimed.map(r => r.id))
-    // Sync each recovered row back to 'programado' in mk_messages so the
-    // campaign UI shows "Pendiente" rather than "en_proceso" stuck state.
-    // mk_messages CHECK does not include 'retry_pending', so 'programado' is
-    // the correct canonical status for "queued for retry".
     for (const r of reclaimed) {
       await syncMkMessage(r.id, { status: 'programado' })
     }
@@ -483,7 +571,7 @@ serve(async (req: Request) => {
 
   const { data, error } = await supabase
     .from('outbox_messages')
-    .select('id, canal, destinatario, asunto, mensaje, mensaje_resuelto, attachment_urls, scheduled_for, retry_after, locked_at, locked_by, status, from_email, from_name, reply_to, sender_name')
+    .select('*')
     .or(
       [
         `and(status.eq.programado,scheduled_for.lte.${nowIso})`,
@@ -526,32 +614,55 @@ serve(async (req: Request) => {
     const message = (row.mensaje_resuelto ?? row.mensaje ?? '').trim()
     const destinatario = row.destinatario?.trim() ?? ''
     const attachments = row.attachment_urls
+    const tipoEnvio = row.tipo_envio === 'template' ? 'template' : 'text'
 
-    if (!destinatario || !message) {
-      await supabase.from('outbox_messages').update({
+    if (!destinatario) {
+      await updateOutbox(row.id, {
         status: 'fallido',
         failed_at: sentAt,
-        error_message: 'Missing destinatario or mensaje',
+        error_message: 'Missing destinatario',
         locked_at: null,
         locked_by: null,
-      }).eq('id', row.id).eq('status', 'en_proceso')
+      })
       await syncMkMessage(row.id, { status: 'fallido' })
       failed += 1
-      console.warn('process-outbox: permanent failure (missing destinatario/mensaje)', row.id)
-      failures.push({ id: row.id, error: 'Missing destinatario or mensaje' })
+      console.warn('process-outbox: permanent failure (missing destinatario)', row.id)
+      failures.push({ id: row.id, error: 'Missing destinatario' })
+      continue
+    }
+
+    if (row.canal !== 'whatsapp' && !message) {
+      await updateOutbox(row.id, {
+        status: 'fallido',
+        failed_at: sentAt,
+        error_message: 'Missing mensaje',
+        locked_at: null,
+        locked_by: null,
+      })
+      await syncMkMessage(row.id, { status: 'fallido' })
+      failed += 1
+      console.warn('process-outbox: permanent failure (missing mensaje)', row.id)
+      failures.push({ id: row.id, error: 'Missing mensaje' })
       continue
     }
 
     try {
       let providerMessageId: string | null = null
+      let provider: string | null = null
 
       if (row.canal === 'whatsapp') {
-        if (metaToken && metaPhoneNumberId) {
-          await sendMetaWhatsapp(destinatario, message)
+        provider = 'meta'
+        if (tipoEnvio === 'template') {
+          providerMessageId = await sendWhatsAppTemplate(destinatario, row.template_name ?? '', row.template_params)
+          if (attachments && attachments.length > 0) {
+            const mediaProviderMessageId = await sendWhatsAppText(destinatario, '', attachments)
+            providerMessageId = providerMessageId ?? mediaProviderMessageId
+          }
         } else {
-          await sendWhatsapp(destinatario, message, attachments)
+          providerMessageId = await sendWhatsAppText(destinatario, message, attachments)
         }
       } else if (row.canal === 'email') {
+        provider = 'resend'
         providerMessageId = await sendEmail(
           destinatario,
           row.asunto?.trim() || 'Mensaje',
@@ -565,44 +676,72 @@ serve(async (req: Request) => {
       } else if (row.canal === 'sms') {
         throw new Error('SMS requiere envio manual (app nativa)')
       } else if (row.canal === 'telegram') {
+        provider = 'telegram'
         await sendTelegram(destinatario, message)
       }
 
-      await supabase.from('outbox_messages').update({
+      await updateOutbox(row.id, {
         status: 'enviado',
         sent_at: sentAt,
         error_message: null,
-        ...(providerMessageId ? { provider_message_id: providerMessageId } : {}),
+        provider,
+        provider_message_id: providerMessageId,
         locked_at: null,
         locked_by: null,
-      }).eq('id', row.id).eq('status', 'en_proceso')
+      })
       await syncMkMessage(row.id, { status: 'enviado', sent_at: sentAt })
+
+      if (row.canal === 'whatsapp') {
+        await syncConversationOutbound({
+          destinatario,
+          messageText: message,
+          providerMessageId,
+          attachmentUrls: attachments,
+        })
+      }
+
       sent += 1
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Error enviando'
+
+      // WhatsApp requirement: if Meta fails, mark as failed (no fallback, no provider switch)
+      if (row.canal === 'whatsapp') {
+        await updateOutbox(row.id, {
+          status: 'fallido',
+          failed_at: sentAt,
+          error_message: errorMsg,
+          provider: 'meta',
+          locked_at: null,
+          locked_by: null,
+        })
+        await syncMkMessage(row.id, { status: 'fallido' })
+        failed += 1
+        console.warn('process-outbox: whatsapp meta permanent failure', row.id, errorMsg)
+        failures.push({ id: row.id, error: errorMsg })
+        continue
+      }
+
       const retryable = isRetryableError(err)
       if (retryable) {
         const retryAfter = nextRetryAfter()
-        await supabase.from('outbox_messages').update({
+        await updateOutbox(row.id, {
           status: 'retry_pending',
           retry_after: retryAfter,
           error_message: errorMsg,
           locked_at: null,
           locked_by: null,
-        }).eq('id', row.id).eq('status', 'en_proceso')
-        // Sync back to 'programado' in mk_messages: the message is still pending,
-        // not stuck. 'retry_pending' is not in the mk_messages CHECK constraint.
+        })
         await syncMkMessage(row.id, { status: 'programado' })
         console.warn('process-outbox: retry_pending', row.id, 'after', retryAfter, errorMsg)
         failures.push({ id: row.id, error: `retry_pending: ${errorMsg}` })
       } else {
-        await supabase.from('outbox_messages').update({
+        await updateOutbox(row.id, {
           status: 'fallido',
           failed_at: sentAt,
           error_message: errorMsg,
           locked_at: null,
           locked_by: null,
-        }).eq('id', row.id).eq('status', 'en_proceso')
+        })
         await syncMkMessage(row.id, { status: 'fallido' })
         failed += 1
         console.warn('process-outbox: permanent failure', row.id, errorMsg)
