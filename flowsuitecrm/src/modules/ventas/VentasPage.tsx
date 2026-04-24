@@ -156,7 +156,7 @@ function estadoBadgeStyle(estado: string | null): { background: string; color: s
 export function VentasPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
-  const { usersById, currentRole } = useUsers()
+  const { usersById, currentRole, currentUser } = useUsers()
   const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
   const [ventas, setVentas] = useState<VentaRecord[]>([])
@@ -189,6 +189,14 @@ export function VentasPage() {
   const [detailTab, setDetailTab] = useState<'resumen' | 'articulos' | 'transacciones'>('resumen')
   const configured = isSupabaseConfigured
   const sessionUserId = session?.user.id ?? null
+  const sessionOrgId = useMemo(() => {
+    const userMetadata = session?.user.user_metadata as Record<string, unknown> | undefined
+    const appMetadata = session?.user.app_metadata as Record<string, unknown> | undefined
+    const metadataOrg = typeof userMetadata?.org_id === 'string' ? userMetadata.org_id : null
+    const appOrg = typeof appMetadata?.org_id === 'string' ? appMetadata.org_id : null
+    return metadataOrg ?? appOrg
+  }, [session])
+  const currentOrgId = currentUser?.org_id ?? sessionOrgId ?? null
 
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
@@ -239,20 +247,41 @@ export function VentasPage() {
   const loadOptions = useCallback(async () => {
     if (!configured) return
     setLoadingOptions(true)
+    let clientesQuery = supabase.from('clientes').select('id, nombre, apellido').order('nombre')
+    let leadsQuery = supabase
+      .from('leads')
+      .select('id, nombre, apellido, telefono, email, referido_por_cliente_id, vendedor_id, owner_id')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+    if (currentOrgId) {
+      clientesQuery = clientesQuery.eq('org_id', currentOrgId)
+      leadsQuery = leadsQuery.eq('org_id', currentOrgId)
+    }
+    if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && sessionUserId) {
+      clientesQuery = clientesQuery.eq('vendedor_id', sessionUserId)
+      leadsQuery = leadsQuery.or(`owner_id.eq.${sessionUserId},vendedor_id.eq.${sessionUserId}`)
+    }
+    if (hasDistribuidorScope && viewMode === 'distributor') {
+      if (distributionUserIds.length === 0) {
+        setClientes([])
+        setLeads([])
+        setProductos([])
+        setLoadingOptions(false)
+        return
+      }
+      clientesQuery = clientesQuery.in('vendedor_id', distributionUserIds)
+      leadsQuery = leadsQuery.in('vendedor_id', distributionUserIds)
+    }
     const [clientesResult, productosResult, leadsResult] = await Promise.all([
-      supabase.from('clientes').select('id, nombre, apellido').order('nombre'),
+      clientesQuery,
       supabase.from('v_productos_publicos').select('id, nombre, codigo, precio').order('nombre'),
-      supabase
-        .from('leads')
-        .select('id, nombre, apellido, telefono, email, referido_por_cliente_id')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false }),
+      leadsQuery,
     ])
     setClientes(clientesResult.data ?? [])
     setProductos(productosResult.data ?? [])
     setLeads((leadsResult.data as LeadOption[]) ?? [])
     setLoadingOptions(false)
-  }, [configured])
+  }, [configured, currentOrgId, currentRole, sessionUserId, hasDistribuidorScope, viewMode, distributionUserIds])
 
   const loadVentaDetails = useCallback(async (ventaId: string) => {
     const [itemsResult, transaccionesResult] = await Promise.all([
@@ -323,10 +352,10 @@ export function VentasPage() {
     return [...ventasFiltradas].sort((a, b) => {
       let valA: string | number = 0
       let valB: string | number = 0
-      if (sortCol === 5) {
+      if (sortCol === 3) {
         valA = a.total ?? a.monto ?? 0
         valB = b.total ?? b.monto ?? 0
-      } else if (sortCol === 7) {
+      } else if (sortCol === 6) {
         valA = a.fecha_venta ?? ''
         valB = b.fecha_venta ?? ''
       }
@@ -566,6 +595,11 @@ export function VentasPage() {
     setSubmitting(true)
     setFormError(null)
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
+    const rollbackVenta = async (ventaId: string) => {
+      await supabase.from('venta_transacciones').delete().eq('venta_id', ventaId)
+      await supabase.from('venta_items').delete().eq('venta_id', ventaId)
+      await supabase.from('ventas').delete().eq('id', ventaId)
+    }
     const vendedorId = session?.user.id ?? null
     let clienteIdFinal = toNull(formValues.cliente_id)
 
@@ -578,6 +612,7 @@ export function VentasPage() {
       const prospecto = leads.find((lead) => lead.id === prospectoId)
       if (!prospecto) { setFormError(t('ventas.errors.prospectoMissing')); setSubmitting(false); return }
       const clientePayload = {
+        org_id: currentOrgId,
         nombre: toNull(prospecto.nombre ?? ''),
         apellido: toNull(prospecto.apellido ?? ''),
         email: toNull(prospecto.email ?? ''),
@@ -596,8 +631,14 @@ export function VentasPage() {
         return
       }
       clienteIdFinal = clienteData.id
-      await supabase
+      const { error: leadUpdateError } = await supabase
         .from('leads').update({ estado_pipeline: 'cierre', next_action: 'Convertido' }).eq('id', prospectoId)
+      if (leadUpdateError) {
+        setFormError(leadUpdateError.message)
+        showToast(leadUpdateError.message, 'error')
+        setSubmitting(false)
+        return
+      }
     }
 
     const payload = {
@@ -641,6 +682,7 @@ export function VentasPage() {
     if (itemsPayload.length > 0) {
       const { error: itemsError } = await supabase.from('venta_items').insert(itemsPayload)
       if (itemsError) {
+        await rollbackVenta(ventaData.id)
         setFormError(itemsError.message)
         showToast(itemsError.message, 'error')
         setSubmitting(false)
@@ -656,7 +698,14 @@ export function VentasPage() {
       transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'CONSUMER DOWN PAYMENT', cantidad: -calcularTotales.pago_inicial })
     }
 
-    await supabase.from('venta_transacciones').insert(transaccionesPayload)
+    const { error: transaccionesError } = await supabase.from('venta_transacciones').insert(transaccionesPayload)
+    if (transaccionesError) {
+      await rollbackVenta(ventaData.id)
+      setFormError(transaccionesError.message)
+      showToast(transaccionesError.message, 'error')
+      setSubmitting(false)
+      return
+    }
 
     setFormOpen(false)
     setProspectoId('')
@@ -710,6 +759,7 @@ export function VentasPage() {
     const vendedorId = session?.user.id ?? null
     const clienteDraft = buildClienteDraft()
     const payload = {
+      org_id: currentOrgId,
       nombre: toNull(clienteDraft.nombre),
       apellido: clienteDraft.apellido,
       email: clienteDraft.email,
@@ -819,7 +869,12 @@ export function VentasPage() {
             role="button"
             tabIndex={0}
             onClick={s.onClick}
-            onKeyDown={(e) => e.key === 'Enter' && s.onClick()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                s.onClick()
+              }
+            }}
             title="Click para filtrar"
             style={{
               padding: '0.875rem 1rem', background: 'var(--color-surface, #f9fafb)',
@@ -838,7 +893,12 @@ export function VentasPage() {
           role="button"
           tabIndex={0}
           onClick={() => setFiltrosVisible((v) => !v)}
-          onKeyDown={(e) => e.key === 'Enter' && setFiltrosVisible((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setFiltrosVisible((v) => !v)
+            }
+          }}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', cursor: 'pointer' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -962,7 +1022,7 @@ export function VentasPage() {
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={handleRowClick}
-          sortableColumns={[5, 7]}
+          sortableColumns={[3, 6]}
           sortColIndex={sortCol ?? undefined}
           sortDir={sortDir}
           onSort={handleSort}
