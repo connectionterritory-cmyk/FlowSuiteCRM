@@ -102,7 +102,7 @@ CREATE INDEX IF NOT EXISTS auto_reply_rules_org_active_idx
 ALTER TABLE public.auto_reply_rules ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY auto_reply_rules_org ON public.auto_reply_rules
-  USING (org_id = (auth.jwt() ->> 'org_id'));
+  USING (org_id = (SELECT organizacion FROM public.usuarios WHERE id = auth.uid() LIMIT 1));
 
 -- ─── 4. inbox_tasks ──────────────────────────────────────────────────────────
 -- Manual follow-up reminders assigned to a sales rep for a conversation.
@@ -134,7 +134,7 @@ CREATE INDEX IF NOT EXISTS inbox_tasks_assigned_due_idx
 ALTER TABLE public.inbox_tasks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY inbox_tasks_org ON public.inbox_tasks
-  USING (org_id = (auth.jwt() ->> 'org_id'));
+  USING (org_id = (SELECT organizacion FROM public.usuarios WHERE id = auth.uid() LIMIT 1));
 
 -- ─── 5. Seed auto_reply_rules sample rows (replace org_id before running) ───
 -- INSERT INTO public.auto_reply_rules (org_id, keyword, reply_text, priority) VALUES
