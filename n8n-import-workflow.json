@@ -1,0 +1,412 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b8d9d951-bb3c-4e43-ab75-f87e74f107f1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [29920, 11168]
+    },
+    {
+      "parameters": {
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/import_configs?source_id=eq.12WUNLZFEmr1C8OBMtEI1FDb1Bai3fuEK&is_active=eq.true&select=org_id,source_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": { "response": {} }
+      },
+      "id": "3b1a07ab-c391-4a49-bafb-7c108ffb38c6",
+      "name": "Supabase - Lookup Org",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [30112, 11168]
+    },
+    {
+      "parameters": {
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/import_processed_files?org_id=eq.{{$('Supabase - Lookup Org').first().json.org_id}}&select=file_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": { "response": {} }
+      },
+      "id": "a015af08-234a-4e08-aeb4-665c3068827a",
+      "name": "Supabase - Check Procesados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [30320, 11168],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { _procesados: $input.all().flatMap(i => Array.isArray(i.json) ? i.json : [i.json]) } }];",
+        "id": "4b8f88e6-0599-469f-96b3-27a4d6c0d554",
+        "name": "Code - Colapsar Procesados",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [30416, 11168]
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "={{ \"mimeType contains 'image/' and trashed=false and '\" + $('Supabase - Lookup Org').first().json.source_id + \"' in parents\" }}" },
+            { "name": "fields", "value": "nextPageToken,files(id,name,mimeType,webViewLink)" },
+            { "name": "pageSize", "value": "100" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dc4510ab-2336-4bc9-8a8e-1e34471057ea",
+      "name": "Google Drive - Listar Imagenes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [30608, 11168],
+      "credentials": { "googleDriveOAuth2Api": { "id": "OT87g9e51ZkFiN3k", "name": "Google Drive account" } }
+    },
+    {
+      "parameters": { "fieldToSplitOut": "files", "options": {} },
+      "id": "20a61535-3c9f-4bd3-8188-20d7d817fb07",
+      "name": "Split Files",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [30720, 11168]
+    },
+    {
+      "parameters": {
+        "jsCode": "const orgId = $('Supabase - Lookup Org').first().json.org_id;\nconst runId = `${$execution?.id ?? 'exec'}-${new Date().toISOString()}`;\nreturn $input.all().map(item => ({\n  json: {\n    fileId: item.json.id ?? null,\n    fileName: item.json.name ?? null,\n    mimeType: item.json.mimeType ?? null,\n    driveFileUrl: item.json.webViewLink ?? null,\n    orgId,\n    runId\n  }\n}));"
+      },
+      "id": "60da1a67-b937-4bdf-a9b0-de46c968c346",
+      "name": "Code - Mapear Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [30912, 11168]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allFiles = $input.all();\nconst dbRows = $('Code - Colapsar Procesados').first().json._procesados || [];\nconst processedIds = new Set(dbRows.map(r => r.file_id).filter(Boolean));\nconst seen = new Set();\nreturn allFiles.filter(f => {\n  const id = f.json.fileId;\n  if (!id || processedIds.has(id) || seen.has(id)) return false;\n  seen.add(id);\n  return true;\n});"
+      },
+      "id": "8d461ed4-38b4-40ff-a2b7-8611a181c0e7",
+      "name": "Code - Filtrar Nuevos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [31120, 11168]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "value": "={{ $json.fileId }}", "mode": "expression" },
+        "options": { "binaryPropertyName": "data" }
+      },
+      "id": "b192edd9-4858-4404-b783-410b7049bba6",
+      "name": "Google Drive - Descargar",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [31312, 11168],
+      "credentials": { "googleDriveOAuth2Api": { "id": "OT87g9e51ZkFiN3k", "name": "Google Drive account" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const meta = $('Code - Filtrar Nuevos').item.json;\nconst result = {\n  fileId: meta.fileId,\n  fileName: meta.fileName,\n  mimeType: meta.mimeType,\n  driveFileUrl: meta.driveFileUrl,\n  orgId: meta.orgId,\n  runId: meta.runId\n};\nif ($input.item.binary && $input.item.binary.data) {\n  try {\n    const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n    result.base64_image = buffer.toString('base64');\n  } catch (err) {\n    result._error = true;\n    result.motivo = 'error_leyendo_imagen';\n  }\n} else {\n  result._error = true;\n  result.motivo = 'sin_datos_binarios';\n}\nreturn { json: result };"
+      },
+      "id": "1ab15030-7b37-48ae-b2c6-d6bf977bcc81",
+      "name": "Code - Convertir a Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [31520, 11168]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [{ "id": "1", "leftValue": "={{ $json._error }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d30d8120-8117-4183-bd95-be58570a1359",
+      "name": "IF - Fallo Imagen",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [31712, 11168]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"max_tokens\": 600,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Eres un extractor de datos para Royal Prestige / Hy-Cite.\\nCLASIFICACIÓN:\\n- tipo = \\\"cliente\\\" si: hay número de cuenta Hy-Cite, hay captura del sistema Hy-Cite, dice \\\"cancelación total\\\", o se indica que la persona ya es cliente.\\n- tipo = \\\"lead\\\" si: formulario de prospectos, tarjeta de visita, formulario \\\"Prospectos 589\\\", datos de contacto sin cuenta Hy-Cite.\\n- tipo = \\\"revision\\\" si: imagen ilegible, muy borrosa, o datos insuficientes.\\nDevuelve JSON exacto sin markdown:\\n{\n  \\\"tipo\\\": \\\"lead|cliente|revision\\\",\n  \\\"confianza\\\": \\\"alta|media|baja\\\",\n  \\\"personas\\\": [{ \\\"nombre\\\": null, \\\"apellido\\\": null, \\\"telefono_1\\\": null, \\\"telefono_2\\\": null, \\\"telefono_trabajo\\\": null, \\\"email\\\": null, \\\"direccion\\\": null, \\\"apartamento\\\": null, \\\"ciudad\\\": null, \\\"estado_region\\\": null, \\\"codigo_postal\\\": null }],\n  \\\"cuenta_hycite\\\": { \\\"numero_cuenta\\\": null, \\\"tipo_cuenta\\\": null, \\\"saldo_actual\\\": null, \\\"credito_disponible\\\": null, \\\"pago_minimo_mensual\\\": null, \\\"factor_ingresos\\\": null, \\\"metodo_pago\\\": null, \\\"fecha_orden\\\": null, \\\"estado_cuenta\\\": null }\n}\\nNo inventes datos.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": {\n            \"url\": \"data:\" + ($json.mimeType || \"image/jpeg\") + \";base64,\" + $json.base64_image,\n            \"detail\": \"low\"\n          }\n        }\n      ]\n    }\n  ]\n})}}",
+        "options": { "batching": { "batch": { "batchSize": 1, "batchInterval": 5000 } }, "response": {} }
+      },
+      "id": "0e6d1654-1079-4f80-8c33-0d1306c63a7b",
+      "name": "OpenAI - Extraer Datos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [31920, 11280]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const allInputs = $input.all();\nconst allMeta = $('Code - Convertir a Base64').all().filter(m => !m.json._error);\nconst results = [];\nfor (let i = 0; i < allInputs.length; i++) {\n  const r = allInputs[i].json.body || allInputs[i].json;\n  const orig = allMeta[i] ? allMeta[i].json : {};\n  const meta = { fileId: orig.fileId, fileName: orig.fileName, mimeType: orig.mimeType, driveFileUrl: orig.driveFileUrl, orgId: orig.orgId, runId: orig.runId };\n  if (r.error || !r.choices?.length) {\n    results.push({ json: { ...meta, _error: true, motivo: 'openai_api_error', raw_data: JSON.stringify(r).slice(0, 500) } });\n    continue;\n  }\n  const rawText = r.choices[0]?.message?.content || '';\n  let parsed;\n  try { parsed = JSON.parse(rawText.replace(/```json\\\\s*|\\\\s*```/g, '').trim()); } catch (e) {\n    results.push({ json: { ...meta, _error: true, motivo: 'parse_error', raw_data: rawText.slice(0, 500) } });\n    continue;\n  }\n  const tipo = parsed.tipo || 'lead';\n  const confianza = parsed.confianza || 'baja';\n  const personas = Array.isArray(parsed.personas) ? parsed.personas : [];\n  const cuenta = parsed.cuenta_hycite || {};\n  if (tipo === 'revision' || confianza === 'baja') {\n    results.push({ json: { ...meta, _error: true, motivo: 'baja_confianza', tipo_tentativo: tipo, confianza_ia: confianza, raw_data: JSON.stringify(parsed).slice(0, 1000) } });\n    continue;\n  }\n  if (personas.length === 0) {\n    results.push({ json: { ...meta, _error: true, motivo: 'sin_personas', raw_data: JSON.stringify(parsed).slice(0, 1000) } });\n    continue;\n  }\n  for (const p of personas) {\n    results.push({ json: {\n      ...meta, tipo, confianza,\n      nombre: p.nombre, apellido: p.apellido,\n      telefono_1: p.telefono_1, telefono_2: p.telefono_2, telefono_trabajo: p.telefono_trabajo,\n      email: p.email, direccion: p.direccion, apartamento: p.apartamento,\n      ciudad: p.ciudad, estado_region: p.estado_region, codigo_postal: p.codigo_postal,\n      numero_cuenta: cuenta.numero_cuenta, tipo_cuenta_hycite: cuenta.tipo_cuenta,\n      saldo_actual: cuenta.saldo_actual, credito_disponible: cuenta.credito_disponible,\n      pago_minimo_mensual: cuenta.pago_minimo_mensual, factor_ingresos: cuenta.factor_ingresos,\n      metodo_pago: cuenta.metodo_pago, fecha_orden: cuenta.fecha_orden,\n      fecha_cierre: cuenta.fecha_cierre, estado_cuenta: cuenta.estado_cuenta,\n      vendedor_hycite_nombre: cuenta.vendedor_hycite_nombre\n    }});\n  }\n}\nreturn results;"
+      },
+      "id": "6c5491b1-2a47-4df7-87fe-d05fe090e435",
+      "name": "Code - Parsear OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [32112, 11280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            { "id": "1", "leftValue": "={{ $json._error }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } },
+            { "id": "2", "leftValue": "={{ $json.confianza }}", "rightValue": "baja", "operator": { "type": "string", "operation": "equals" } }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "70e382aa-915e-48fa-b0ae-44130fbc242f",
+      "name": "IF - Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [32320, 11280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/import_revisiones",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ org_id: $json.orgId, file_id: $json.fileId, file_name: $json.fileName, drive_url: $json.driveFileUrl, motivo: $json.motivo || 'baja_confianza', tipo_tentativo: (['lead','cliente'].includes($json.tipo_tentativo || $json.tipo) ? ($json.tipo_tentativo || $json.tipo) : null), confianza_ia: $json.confianza || null, run_id: $json.runId || null, raw_data: Object.fromEntries(Object.entries($json).filter(([k]) => k !== 'base64_image')) }) }}",
+        "options": {}
+      },
+      "id": "db7ed725-62aa-4823-bfce-c9b2cb2e21ce",
+      "name": "Supabase - Rev Manual",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [32512, 11168]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/import_processed_files",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "resolution=ignore-duplicates,return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ org_id: $json.org_id || $json.orgId, file_id: $json.file_id || $json.fileId, run_id: $json.run_id || $json.runId, destino: 'revision' }) }}",
+        "options": {}
+      },
+      "id": "19a9403a-6e80-4bd8-b223-55e0429488cb",
+      "name": "Marcar R",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [32720, 11168]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [{ "id": "1", "leftValue": "={{ $json.tipo }}", "rightValue": "cliente", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "227f68ee-803e-4ad6-b956-aeee58c6819a",
+      "name": "IF - Cliente",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [32512, 11376]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const cP = (v) => {\n  if (!v) return null;\n  const digits = String(v).replace(/\\D/g, '');\n  if (digits.length < 10) return null;\n  return digits.slice(-10);\n};\nconst toNum = (v) => { if (!v) return null; const n = parseFloat(String(v).replace(/[^0-9.]/g, '')); return isNaN(n) ? null : n; };\nconst toDate = (v) => { if (!v) return null; const m = String(v).match(/(\\d{1,2})[\\/\\-](\\d{1,2})[\\/\\-](\\d{2,4})/); if (!m) return null; const y = m[3].length===2 ? '20'+m[3] : m[3]; return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; };\nconst d = $json;\nreturn {\n  json: {\n    _fileId: d.fileId, _runId: d.runId, _orgId: d.orgId,\n    org_id: d.orgId,\n    nombre: d.nombre, apellido: d.apellido,\n    telefono: cP(d.telefono_1), telefono_casa: cP(d.telefono_2),\n    email: d.email || null, direccion: d.direccion || null, apartamento: d.apartamento || null,\n    ciudad: d.ciudad || null, estado_region: d.estado_region || null, codigo_postal: d.codigo_postal || null,\n    tipo_cuenta_hycite: d.tipo_cuenta_hycite || null,\n    saldo_actual: d.saldo_actual,\n    credito_disponible: toNum(d.credito_disponible),\n    pago_minimo_mensual: toNum(d.pago_minimo_mensual),\n    factor_ingresos: toNum(d.factor_ingresos),\n    metodo_pago: d.metodo_pago || null,\n    fecha_orden: toDate(d.fecha_orden), fecha_cierre: toDate(d.fecha_cierre),\n    estado_cuenta: d.estado_cuenta || null,\n    vendedor_hycite_nombre: d.vendedor_hycite_nombre || null,\n    fuente_import: 'import_imagen_gdrive',\n    import_file_name: d.fileName, import_drive_url: d.driveFileUrl\n  }\n};"
+      },
+      "id": "1f519608-b330-43d2-adf3-a41fd5087fe0",
+      "name": "Mapeo C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [32720, 11280]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const cP = (v) => {\n  if (!v) return null;\n  const digits = String(v).replace(/\\D/g, '');\n  if (digits.length < 10) return null;\n  return digits.slice(-10);\n};\nconst d = $json;\nreturn {\n  json: {\n    _fileId: d.fileId, _runId: d.runId, _orgId: d.orgId,\n    org_id: d.orgId,\n    nombre: d.nombre, apellido: d.apellido,\n    telefono: cP(d.telefono_1),\n    email: d.email || null, direccion: d.direccion || null,\n    ciudad: d.ciudad || null, lugar_trabajo: d.lugar_trabajo || null,\n    telefono_trabajo: d.telefono_trabajo ? cP(d.telefono_trabajo) : null,\n    mejor_hora_llamar: d.mejor_hora_llamar || null,\n    notas_extraidas: d.notas_extraidas || null,\n    file_id_origen: d.fileId || null, file_name_origen: d.fileName || null,\n    confianza_ocr: d.confianza || null,\n    fuente: 'Prospectos 589', estado_pipeline: 'nuevo',\n    fuente_import: 'import_imagen_gdrive',\n    import_file_name: d.fileName, import_drive_url: d.driveFileUrl\n  }\n};"
+      },
+      "id": "1c4ddc09-a0ba-4eb7-9d8f-cccde934d61f",
+      "name": "Mapeo L",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [32720, 11472]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/clientes?on_conflict=org_id,telefono",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.fromEntries(Object.entries($json).filter(([k]) => !k.startsWith('_')))) }}",
+        "options": {}
+      },
+      "id": "f5b0973a-ef16-4715-9997-6f6d1a5ca687",
+      "name": "Upsert Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [32912, 11280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.fromEntries(Object.entries($json).filter(([k]) => !k.startsWith('_')))) }}",
+        "options": {}
+      },
+      "id": "78411043-a14b-452b-b31f-2be3e126a21e",
+      "name": "Upsert Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [32912, 11472]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/import_processed_files",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "resolution=ignore-duplicates,return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ org_id: $('Mapeo C').item.json._orgId, file_id: $('Mapeo C').item.json._fileId, run_id: $('Mapeo C').item.json._runId, destino: 'cliente' }) }}",
+        "options": {}
+      },
+      "id": "8071d2ef-335d-4596-a07a-4a1d26bd5054",
+      "name": "Marcar C",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [33120, 11280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/import_processed_files",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_API_KEY}}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Prefer", "value": "resolution=ignore-duplicates,return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ org_id: $('Mapeo L').item.json._orgId, file_id: $('Mapeo L').item.json._fileId, run_id: $('Mapeo L').item.json._runId, destino: 'lead' }) }}",
+        "options": {}
+      },
+      "id": "c001d3d9-7914-4228-9c61-a23647be45f0",
+      "name": "Marcar L",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [33120, 11472]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Supabase - Lookup Org", "type": "main", "index": 0 }]] },
+    "Supabase - Lookup Org": { "main": [[{ "node": "Supabase - Check Procesados", "type": "main", "index": 0 }]] },
+    "Supabase - Check Procesados": { "main": [[{ "node": "Code - Colapsar Procesados", "type": "main", "index": 0 }]] },
+    "Code - Colapsar Procesados": { "main": [[{ "node": "Google Drive - Listar Imagenes", "type": "main", "index": 0 }]] },
+    "Google Drive - Listar Imagenes": { "main": [[{ "node": "Split Files", "type": "main", "index": 0 }]] },
+    "Split Files": { "main": [[{ "node": "Code - Mapear Archivo", "type": "main", "index": 0 }]] },
+    "Code - Mapear Archivo": { "main": [[{ "node": "Code - Filtrar Nuevos", "type": "main", "index": 0 }]] },
+    "Code - Filtrar Nuevos": { "main": [[{ "node": "Google Drive - Descargar", "type": "main", "index": 0 }]] },
+    "Google Drive - Descargar": { "main": [[{ "node": "Code - Convertir a Base64", "type": "main", "index": 0 }]] },
+    "Code - Convertir a Base64": { "main": [[{ "node": "IF - Fallo Imagen", "type": "main", "index": 0 }]] },
+    "IF - Fallo Imagen": {
+      "main": [
+        [{ "node": "Supabase - Rev Manual", "type": "main", "index": 0 }],
+        [{ "node": "OpenAI - Extraer Datos", "type": "main", "index": 0 }]
+      ]
+    },
+    "OpenAI - Extraer Datos": { "main": [[{ "node": "Code - Parsear OpenAI", "type": "main", "index": 0 }]] },
+    "Code - Parsear OpenAI": { "main": [[{ "node": "IF - Error", "type": "main", "index": 0 }]] },
+    "IF - Error": {
+      "main": [
+        [{ "node": "Supabase - Rev Manual", "type": "main", "index": 0 }],
+        [{ "node": "IF - Cliente", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF - Cliente": {
+      "main": [
+        [{ "node": "Mapeo C", "type": "main", "index": 0 }],
+        [{ "node": "Mapeo L", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mapeo C": { "main": [[{ "node": "Upsert Cliente", "type": "main", "index": 0 }]] },
+    "Mapeo L": { "main": [[{ "node": "Upsert Lead", "type": "main", "index": 0 }]] },
+    "Upsert Cliente": { "main": [[{ "node": "Marcar C", "type": "main", "index": 0 }]] },
+    "Upsert Lead": { "main": [[{ "node": "Marcar L", "type": "main", "index": 0 }]] },
+    "Supabase - Rev Manual": { "main": [[{ "node": "Marcar R", "type": "main", "index": 0 }]] }
+  },
+  "meta": { "templateCredsSetupCompleted": true }
+}
