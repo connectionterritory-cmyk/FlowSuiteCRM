@@ -68,7 +68,7 @@ function initForm(r: Revision): RevisionForm {
   return {
     nombre: strVal(d.nombre),
     apellido: strVal(d.apellido),
-    telefono: strVal(d.telefono_1 ?? d.telefono),
+    telefono: strVal(d.telefono ?? d.telefono_1 ?? d.telefono_casa ?? d.phone ?? d.home_phone),
     email: strVal(d.email),
     direccion: strVal(d.direccion),
     ciudad: strVal(d.ciudad),

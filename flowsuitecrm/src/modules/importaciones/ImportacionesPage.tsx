@@ -488,16 +488,19 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     ? estadoMorosidadBucket
     : estadoMorosidad
 
-  return {
-    hycite_id: hyciteId,
-    tipo_cliente: obtenerCampo(row, normalizedRow, ['CLIENTE']).trim() || 'HC',
-    nombre,
-    apellido,
-    email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Email', 'Correo'])),
-    telefono: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Celular', 'Mobile', 'Telefono'])),
-    telefono_casa: limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO CASA', 'Home Phone', 'Tel Casa'])),
-    direccion,
-    ciudad,
+    const telMovil = limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Celular', 'Mobile', 'Telefono']))
+    const telCasa = limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO CASA', 'Home Phone', 'Tel Casa']))
+
+    return {
+      hycite_id: hyciteId,
+      tipo_cliente: obtenerCampo(row, normalizedRow, ['CLIENTE']).trim() || 'HC',
+      nombre,
+      apellido,
+      email: limpiarEmail(obtenerCampo(row, normalizedRow, ['CORREO ELECTRÓNICO', 'Email', 'Correo'])),
+      telefono: telMovil || telCasa || null,
+      telefono_casa: telCasa || null,
+      direccion,
+      ciudad,
     estado_region: estadoRegion,
     codigo_postal: codigoPostal,
     saldo_actual: parsearMonto(obtenerCampo(row, normalizedRow, ['SALDO ACTUAL', 'BALANCE', 'Saldo'])),
