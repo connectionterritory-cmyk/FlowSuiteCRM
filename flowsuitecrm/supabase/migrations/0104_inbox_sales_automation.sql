@@ -78,7 +78,7 @@ CREATE TRIGGER trg_sync_conversation_direction
 -- Either reply_text or template_id must be set (CHECK enforces this).
 CREATE TABLE IF NOT EXISTS public.auto_reply_rules (
   id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id      TEXT    NOT NULL,
+  org_id      UUID    NOT NULL,
   keyword     TEXT    NOT NULL,
   reply_text  TEXT,
   template_id UUID    REFERENCES public.message_templates(id) ON DELETE SET NULL,
@@ -102,13 +102,14 @@ CREATE INDEX IF NOT EXISTS auto_reply_rules_org_active_idx
 ALTER TABLE public.auto_reply_rules ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY auto_reply_rules_org ON public.auto_reply_rules
-  USING (org_id = (SELECT organizacion FROM public.usuarios WHERE id = auth.uid() LIMIT 1));
+  USING (org_id = (SELECT u.org_id FROM public.usuarios u WHERE u.id = auth.uid() LIMIT 1))
+  WITH CHECK (org_id = (SELECT u.org_id FROM public.usuarios u WHERE u.id = auth.uid() LIMIT 1));
 
 -- ─── 4. inbox_tasks ──────────────────────────────────────────────────────────
 -- Manual follow-up reminders assigned to a sales rep for a conversation.
 CREATE TABLE IF NOT EXISTS public.inbox_tasks (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id          TEXT NOT NULL,
+  org_id          UUID NOT NULL,
   conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
   contact_id      UUID,
   contact_tipo    TEXT CHECK (contact_tipo IN ('cliente','lead','embajador')),
@@ -134,7 +135,8 @@ CREATE INDEX IF NOT EXISTS inbox_tasks_assigned_due_idx
 ALTER TABLE public.inbox_tasks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY inbox_tasks_org ON public.inbox_tasks
-  USING (org_id = (SELECT organizacion FROM public.usuarios WHERE id = auth.uid() LIMIT 1));
+  USING (org_id = (SELECT u.org_id FROM public.usuarios u WHERE u.id = auth.uid() LIMIT 1))
+  WITH CHECK (org_id = (SELECT u.org_id FROM public.usuarios u WHERE u.id = auth.uid() LIMIT 1));
 
 -- ─── 5. Seed auto_reply_rules sample rows (replace org_id before running) ───
 -- INSERT INTO public.auto_reply_rules (org_id, keyword, reply_text, priority) VALUES
