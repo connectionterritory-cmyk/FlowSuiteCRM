@@ -46,6 +46,7 @@ const MarketingFlowPage = lazy(async () => ({ default: (await import('../modules
 const SegmentosPage = lazy(async () => ({ default: (await import('../modules/marketing-flow/SegmentosPage')).SegmentosPage }))
 const CampanasPage = lazy(async () => ({ default: (await import('../modules/marketing-flow/CampanasPage')).CampanasPage }))
 const EnviosPage = lazy(async () => ({ default: (await import('../modules/marketing-flow/EnviosPage')).EnviosPage }))
+const InboxPage = lazy(async () => ({ default: (await import('../modules/inbox/InboxPage')).InboxPage }))
 const LoginPage = lazy(async () => ({ default: (await import('../modules/auth/LoginPage')).LoginPage }))
 const ResetPasswordPage = lazy(async () => ({
   default: (await import('../modules/auth/ResetPasswordPage')).ResetPasswordPage,
@@ -96,6 +97,7 @@ export default function App() {
               <Route path="campanas" element={<CampanasPage />} />
               <Route path="envios" element={<EnviosPage />} />
             </Route>
+            <Route path="/inbox" element={<InboxPage />} />
             <Route path="/citas" element={<CitasPage />} />
             <Route path="/clientes" element={<ClientesPage />} />
             <Route path="/ventas" element={<VentasPage />} />

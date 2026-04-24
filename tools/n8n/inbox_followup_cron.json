@@ -1,0 +1,145 @@
+{
+  "name": "Inbox — Follow-up automático (24h / 48h / 72h)",
+  "nodes": [
+    {
+      "id": "cron-trigger",
+      "name": "Cron — cada hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] }
+      }
+    },
+    {
+      "id": "get-stale-conversations",
+      "name": "Conversaciones sin respuesta",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "parameters": {
+        "operation": "getAll",
+        "table": "conversations",
+        "filterType": "string",
+        "filterString": "status=eq.open&last_message_direction=eq.outbound&follow_up_count=lt.3&canal=eq.whatsapp",
+        "returnAll": true
+      },
+      "notes": "Fetches open WhatsApp conversations where the last message was outbound (we sent, they haven't replied) and we haven't maxed out follow-ups."
+    },
+    {
+      "id": "filter-by-elapsed",
+      "name": "Calcular slot de follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "jsCode": "// Determine which follow-up to send based on elapsed hours since last_message_at.\n// Slot 1 → 24h, Slot 2 → 48h, Slot 3 → 72h.\n// A conversation is eligible if:\n//   - It's past the threshold for its NEXT follow-up (follow_up_count + 1)\n//   - It hasn't already been sent a follow-up in that slot\n\nconst SLOTS = [24, 48, 72]; // hours for follow-up 1, 2, 3\n\nconst now = Date.now();\nconst eligible = [];\n\nfor (const item of $input.all()) {\n  const conv = item.json;\n  const sentCount = conv.follow_up_count || 0;\n  if (sentCount >= 3) continue;\n\n  const lastAt = conv.follow_up_sent_at || conv.last_message_at;\n  if (!lastAt) continue;\n\n  const elapsedHours = (now - new Date(lastAt).getTime()) / (1000 * 60 * 60);\n  const nextSlot = SLOTS[sentCount]; // 24 for first, 48 for second, 72 for third\n\n  if (elapsedHours >= nextSlot) {\n    eligible.push({ json: { ...conv, next_followup_number: sentCount + 1 } });\n  }\n}\n\nreturn eligible;"
+      }
+    },
+    {
+      "id": "any-eligible",
+      "name": "Hay elegibles?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "id": "1", "leftValue": "={{ $input.all().length }}", "operator": { "type": "number", "operation": "gt" }, "rightValue": 0 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "split-conversations",
+      "name": "Split por conversación",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [880, -80],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "build-followup-message",
+      "name": "Construir mensaje follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, -80],
+      "parameters": {
+        "jsCode": "const conv = $input.item.json;\nconst n = conv.next_followup_number;\n\nconst texts = {\n  1: 'Hola, ¿pudiste ver la información que te enviamos? Estamos aquí para ayudarte.',\n  2: 'Hola de nuevo! ¿Tienes alguna pregunta sobre nuestros productos? Con gusto te atendemos.',\n  3: 'Hola! Es nuestro último mensaje por ahora. Si en algún momento te interesa saber más, escríbenos. 😊',\n};\n\nreturn [{ json: { ...conv, followup_text: texts[n] || texts[1] } }];"
+      },
+      "notes": "Customize follow-up text per slot here. For slot 3 the tone should be softer to avoid blocking."
+    },
+    {
+      "id": "insert-outbox-followup",
+      "name": "Insertar outbox follow-up",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1320, -80],
+      "parameters": {
+        "operation": "create",
+        "table": "outbox_messages",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "org_id",           "fieldValue": "={{ $json.org_id }}" },
+            { "fieldId": "canal",            "fieldValue": "whatsapp" },
+            { "fieldId": "destinatario",     "fieldValue": "={{ $json.phone_e164 }}" },
+            { "fieldId": "contact_tipo",     "fieldValue": "={{ $json.contact_tipo || null }}" },
+            { "fieldId": "contact_id",       "fieldValue": "={{ $json.contact_id || null }}" },
+            { "fieldId": "mensaje",          "fieldValue": "={{ $json.followup_text }}" },
+            { "fieldId": "mensaje_resuelto", "fieldValue": "={{ $json.followup_text }}" },
+            { "fieldId": "tipo_envio",       "fieldValue": "text" },
+            { "fieldId": "status",           "fieldValue": "programado" },
+            { "fieldId": "contexto_tipo",    "fieldValue": "seguimiento" },
+            { "fieldId": "scheduled_for",    "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "notes": "process-outbox worker will pick up this record and send via Meta. Uses free text — assumes last inbound was < 24h ago. If not, swap tipo_envio to 'template' and add template_id."
+    },
+    {
+      "id": "update-followup-counter",
+      "name": "Actualizar follow_up_count",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1540, -80],
+      "parameters": {
+        "operation": "update",
+        "table": "conversations",
+        "id": "={{ $('Build follow-up message').item.json.id }}",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "follow_up_sent_at", "fieldValue": "={{ $now.toISO() }}" },
+            { "fieldId": "follow_up_count",   "fieldValue": "={{ $('Build follow-up message').item.json.next_followup_number }}" },
+            { "fieldId": "updated_at",        "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "loop-back",
+      "name": "Continuar batch",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1760, -80],
+      "parameters": { "batchSize": 1, "options": {} },
+      "notes": "Loop back to split-conversations to process next conversation."
+    }
+  ],
+  "connections": {
+    "Cron — cada hora":                { "main": [[{ "node": "Conversaciones sin respuesta",  "type": "main", "index": 0 }]] },
+    "Conversaciones sin respuesta":    { "main": [[{ "node": "Calcular slot de follow-up",   "type": "main", "index": 0 }]] },
+    "Calcular slot de follow-up":      { "main": [[{ "node": "Hay elegibles?",               "type": "main", "index": 0 }]] },
+    "Hay elegibles?":                  { "main": [[{ "node": "Split por conversación",       "type": "main", "index": 0 }]] },
+    "Split por conversación":          { "main": [[{ "node": "Construir mensaje follow-up",  "type": "main", "index": 0 }]] },
+    "Construir mensaje follow-up":     { "main": [[{ "node": "Insertar outbox follow-up",    "type": "main", "index": 0 }]] },
+    "Insertar outbox follow-up":       { "main": [[{ "node": "Actualizar follow_up_count",   "type": "main", "index": 0 }]] },
+    "Actualizar follow_up_count":      { "main": [[{ "node": "Continuar batch",              "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "_notes": [
+    "Logic: slot 1=24h, slot 2=48h desde follow_up_sent_at (no desde last_message_at), slot 3=72h. After 3 follow-ups, follow_up_count=3 and the Supabase filter excludes the conversation.",
+    "If the client replies (inbound), n8n auto-reply workflow sets last_message_direction='inbound'. Add a reset: when direction changes to inbound, reset follow_up_count=0 and follow_up_sent_at=null in the auto-reply workflow.",
+    "For slot 3 (last follow-up) consider using a Meta template instead of free text to ensure delivery even if the 24h window has closed.",
+    "To reset follow-ups when inbound arrives: add an Update node in inbox_auto_reply.json after 'Insert inbound message' that sets follow_up_count=0, follow_up_sent_at=null on conversations."
+  ]
+}

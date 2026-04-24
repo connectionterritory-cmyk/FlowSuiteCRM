@@ -1,0 +1,246 @@
+{
+  "name": "Inbox — Auto-reply inbound keywords",
+  "nodes": [
+    {
+      "id": "webhook-meta",
+      "name": "Meta Webhook (inbound)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {
+        "path": "meta-whatsapp-inbound",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "{ \"status\": \"ok\" }"
+      },
+      "notes": "Configure as the Meta webhook URL in the WhatsApp Business dashboard. Must verify the same verify_token you set in Meta."
+    },
+    {
+      "id": "parse-inbound",
+      "name": "Parse inbound message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [220, 0],
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            { "name": "wa_id",       "type": "string", "value": "={{ $json.entry[0].changes[0].value.contacts[0].wa_id }}" },
+            { "name": "phone_e164",  "type": "string", "value": "={{ '+' + $json.entry[0].changes[0].value.contacts[0].wa_id }}" },
+            { "name": "body",        "type": "string", "value": "={{ $json.entry[0].changes[0].value.messages[0].text.body }}" },
+            { "name": "body_lower",  "type": "string", "value": "={{ $json.entry[0].changes[0].value.messages[0].text.body.toLowerCase() }}" },
+            { "name": "wam_id",      "type": "string", "value": "={{ $json.entry[0].changes[0].value.messages[0].id }}" },
+            { "name": "msg_type",    "type": "string", "value": "={{ $json.entry[0].changes[0].value.messages[0].type }}" }
+          ]
+        }
+      },
+      "notes": "Only text messages are handled here. Status webhooks (delivered/read) have no messages[0] — guard with the IF below."
+    },
+    {
+      "id": "filter-text-only",
+      "name": "Is text message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            { "id": "1", "leftValue": "={{ $json.msg_type }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "text" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "upsert-conversation",
+      "name": "Upsert conversation",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [660, -80],
+      "parameters": {
+        "operation": "upsert",
+        "table": "conversations",
+        "upsertColumn": "wa_id",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "wa_id",               "fieldValue": "={{ $json.wa_id }}" },
+            { "fieldId": "phone_e164",           "fieldValue": "={{ $json.phone_e164 }}" },
+            { "fieldId": "canal",                "fieldValue": "whatsapp" },
+            { "fieldId": "status",               "fieldValue": "open" },
+            { "fieldId": "last_message_at",      "fieldValue": "={{ $now.toISO() }}" },
+            { "fieldId": "last_message_preview", "fieldValue": "={{ $json.body.substring(0, 120) }}" },
+            { "fieldId": "last_message_direction","fieldValue": "inbound" },
+            { "fieldId": "unread_count",         "fieldValue": "={{ ($json.unread_count || 0) + 1 }}" }
+          ]
+        },
+        "returnAll": true
+      },
+      "notes": "Upsert on wa_id ensures one conversation per phone. org_id must be added separately if multi-tenant (join on contacts table or hardcode org)."
+    },
+    {
+      "id": "insert-message-inbound",
+      "name": "Insert inbound message",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, -80],
+      "parameters": {
+        "operation": "create",
+        "table": "messages",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "conversation_id",     "fieldValue": "={{ $('Upsert conversation').item.json.id }}" },
+            { "fieldId": "direction",            "fieldValue": "inbound" },
+            { "fieldId": "message",              "fieldValue": "={{ $('Parse inbound message').item.json.body }}" },
+            { "fieldId": "provider_message_id",  "fieldValue": "={{ $('Parse inbound message').item.json.wam_id }}" },
+            { "fieldId": "status",               "fieldValue": "received" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-matching-rule",
+      "name": "Get matching auto_reply_rule",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1100, -80],
+      "parameters": {
+        "operation": "getAll",
+        "table": "auto_reply_rules",
+        "filterType": "string",
+        "filterString": "active=eq.true&org_id=eq.{{ $('Upsert conversation').item.json.org_id }}&order=priority.desc&limit=1",
+        "returnAll": false
+      },
+      "notes": "This fetches all active rules sorted by priority. The Code node below does the keyword match in JS. This avoids needing a DB function."
+    },
+    {
+      "id": "match-keyword",
+      "name": "Match keyword",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -80],
+      "parameters": {
+        "jsCode": "const body = $('Parse inbound message').item.json.body_lower;\nconst rules = $input.all();\n\nconst match = rules\n  .map(r => r.json)\n  .sort((a, b) => (b.priority || 0) - (a.priority || 0))\n  .find(r => body.includes(r.keyword.toLowerCase()));\n\nif (!match) return [];\nreturn [{ json: match }];"
+      }
+    },
+    {
+      "id": "rule-found?",
+      "name": "Rule matched?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1540, -80],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "id": "1", "leftValue": "={{ $json.id }}", "operator": { "type": "string", "operation": "isNotEmpty" } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "check-24h-window",
+      "name": "Within 24h window?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -160],
+      "parameters": {
+        "jsCode": "// WhatsApp allows free-form text only within 24h of last inbound.\n// Outside that window we must use a template.\nconst conv = $('Upsert conversation').item.json;\nconst lastInbound = conv.last_message_at ? new Date(conv.last_message_at) : null;\nconst diffMs = lastInbound ? Date.now() - lastInbound.getTime() : Infinity;\nconst inWindow = diffMs < 24 * 60 * 60 * 1000;\n\nconst rule = $input.item.json;\nreturn [{ json: { ...rule, in_24h_window: inWindow } }];"
+      }
+    },
+    {
+      "id": "insert-outbox-text",
+      "name": "Outbox — text reply",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1980, -240],
+      "parameters": {
+        "operation": "create",
+        "table": "outbox_messages",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "org_id",          "fieldValue": "={{ $('Upsert conversation').item.json.org_id }}" },
+            { "fieldId": "canal",           "fieldValue": "whatsapp" },
+            { "fieldId": "destinatario",    "fieldValue": "={{ $('Upsert conversation').item.json.phone_e164 }}" },
+            { "fieldId": "contact_tipo",    "fieldValue": "={{ $('Upsert conversation').item.json.contact_tipo || null }}" },
+            { "fieldId": "contact_id",      "fieldValue": "={{ $('Upsert conversation').item.json.contact_id || null }}" },
+            { "fieldId": "mensaje",         "fieldValue": "={{ $('Match keyword').item.json.reply_text }}" },
+            { "fieldId": "mensaje_resuelto","fieldValue": "={{ $('Match keyword').item.json.reply_text }}" },
+            { "fieldId": "tipo_envio",      "fieldValue": "text" },
+            { "fieldId": "status",          "fieldValue": "programado" },
+            { "fieldId": "contexto_tipo",   "fieldValue": "seguimiento" },
+            { "fieldId": "scheduled_for",   "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "notes": "Only used when in_24h_window = true AND rule has reply_text."
+    },
+    {
+      "id": "insert-outbox-template",
+      "name": "Outbox — template reply",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1980, -80],
+      "parameters": {
+        "operation": "create",
+        "table": "outbox_messages",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "org_id",          "fieldValue": "={{ $('Upsert conversation').item.json.org_id }}" },
+            { "fieldId": "canal",           "fieldValue": "whatsapp" },
+            { "fieldId": "destinatario",    "fieldValue": "={{ $('Upsert conversation').item.json.phone_e164 }}" },
+            { "fieldId": "contact_tipo",    "fieldValue": "={{ $('Upsert conversation').item.json.contact_tipo || null }}" },
+            { "fieldId": "contact_id",      "fieldValue": "={{ $('Upsert conversation').item.json.contact_id || null }}" },
+            { "fieldId": "tipo_envio",      "fieldValue": "template" },
+            { "fieldId": "template_id",     "fieldValue": "={{ $('Match keyword').item.json.template_id }}" },
+            { "fieldId": "status",          "fieldValue": "programado" },
+            { "fieldId": "contexto_tipo",   "fieldValue": "seguimiento" },
+            { "fieldId": "scheduled_for",   "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "notes": "Used when outside 24h window OR rule has no reply_text. process-outbox worker picks this up and sends via Meta template API."
+    },
+    {
+      "id": "mark-auto-reply-sent",
+      "name": "Mark auto_reply_sent_at",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2200, -160],
+      "parameters": {
+        "operation": "update",
+        "table": "conversations",
+        "id": "={{ $('Upsert conversation').item.json.id }}",
+        "fieldsToSend": {
+          "field": [
+            { "fieldId": "auto_reply_sent_at", "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Meta Webhook (inbound)":            { "main": [[{ "node": "Parse inbound message",    "type": "main", "index": 0 }]] },
+    "Parse inbound message":             { "main": [[{ "node": "Is text message?",          "type": "main", "index": 0 }]] },
+    "Is text message?":                  { "main": [[{ "node": "Upsert conversation",        "type": "main", "index": 0 }]] },
+    "Upsert conversation":               { "main": [[{ "node": "Insert inbound message",     "type": "main", "index": 0 }]] },
+    "Insert inbound message":            { "main": [[{ "node": "Get matching auto_reply_rule","type": "main", "index": 0 }]] },
+    "Get matching auto_reply_rule":      { "main": [[{ "node": "Match keyword",              "type": "main", "index": 0 }]] },
+    "Match keyword":                     { "main": [[{ "node": "Rule matched?",              "type": "main", "index": 0 }]] },
+    "Rule matched?":                     { "main": [[{ "node": "Within 24h window?",         "type": "main", "index": 0 }]] },
+    "Within 24h window?": {
+      "main": [
+        [{ "node": "Outbox — text reply",     "type": "main", "index": 0 }],
+        [{ "node": "Outbox — template reply", "type": "main", "index": 0 }]
+      ]
+    },
+    "Outbox — text reply":               { "main": [[{ "node": "Mark auto_reply_sent_at",    "type": "main", "index": 0 }]] },
+    "Outbox — template reply":           { "main": [[{ "node": "Mark auto_reply_sent_at",    "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "_notes": [
+    "1. Set Supabase credentials in n8n (service_role key, project URL).",
+    "2. In Meta dashboard: Webhook URL = https://<n8n>/webhook/meta-whatsapp-inbound, subscribe to 'messages'.",
+    "3. process-outbox worker must run after outbox_messages are inserted to actually dispatch.",
+    "4. 'Within 24h window' node output[0] = text (in window), output[1] = template (outside window).",
+    "5. After inserting into outbox you can optionally invoke the process-outbox edge function via HTTP Request node."
+  ]
+}

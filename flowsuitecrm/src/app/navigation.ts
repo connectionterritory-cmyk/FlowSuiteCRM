@@ -9,6 +9,7 @@ import {
   IconService,
   IconUsers,
   IconSales,
+  IconWhatsapp,
 } from '../components/icons'
 
 export type NavItem = {
@@ -60,6 +61,12 @@ export const navItems: NavItem[] = [
     labelKey: 'nav.marketingFlow',
     path: '/marketing-flow',
     icon: IconLeads,
+  },
+  {
+    key: 'inbox',
+    labelKey: 'nav.inbox',
+    path: '/inbox',
+    icon: IconWhatsapp,
   },
   {
     key: 'citas',

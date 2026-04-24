@@ -5547,3 +5547,502 @@ body.theme-light .arp-owner-pill {
     gap: 4px;
   }
 }
+
+/* Inbox WhatsApp */
+.inbox-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  min-height: calc(100vh - 220px);
+  overflow: hidden;
+  padding: 0;
+}
+
+.inbox-sidebar {
+  border-right: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.inbox-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--color-text);
+}
+
+.inbox-sidebar-header span {
+  color: var(--color-muted);
+  font-size: 0.86rem;
+}
+
+.inbox-conversation-list {
+  overflow: auto;
+  min-height: 0;
+}
+
+.inbox-conversation-item {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--card-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+}
+
+.inbox-conversation-item:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.inbox-conversation-item.active {
+  background: rgba(59, 130, 246, 0.14);
+}
+
+.inbox-conversation-top,
+.inbox-conversation-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.inbox-conversation-top strong {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-conversation-top span {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+
+.inbox-conversation-bottom {
+  margin-top: 0.35rem;
+}
+
+.inbox-conversation-bottom > span {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-conversation-bottom em {
+  font-style: normal;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0 0.35rem;
+  flex-shrink: 0;
+}
+
+.inbox-chat {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.inbox-chat-header {
+  border-bottom: 1px solid var(--card-border);
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.inbox-chat-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inbox-chat-header p {
+  margin: 0.15rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+.inbox-chat-messages {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.inbox-bubble-row {
+  display: flex;
+}
+
+.inbox-bubble-row.inbound {
+  justify-content: flex-start;
+}
+
+.inbox-bubble-row.outbound {
+  justify-content: flex-end;
+}
+
+.inbox-bubble {
+  max-width: min(70ch, 82%);
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  padding: 0.65rem 0.8rem;
+  background: var(--card-bg);
+}
+
+.inbox-bubble.inbound {
+  border-top-left-radius: 4px;
+}
+
+.inbox-bubble.outbound {
+  border-top-right-radius: 4px;
+  background: rgba(37, 99, 235, 0.2);
+}
+
+body.theme-light .inbox-bubble.outbound {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.inbox-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.inbox-bubble-meta {
+  margin-top: 0.4rem;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.inbox-chat-input {
+  border-top: 1px solid var(--card-border);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.inbox-chat-input textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.inbox-chat-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.inbox-empty {
+  color: var(--color-muted);
+  text-align: center;
+  padding: 1.1rem;
+}
+
+@media (max-width: 1100px) {
+  .inbox-layout {
+    grid-template-columns: 290px 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .inbox-layout {
+    grid-template-columns: 1fr;
+    min-height: calc(100vh - 190px);
+  }
+
+  .inbox-sidebar {
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--card-border);
+  }
+}
+
+.inbox-attachments-list {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.inbox-attachment-image {
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  max-width: 320px;
+}
+
+.inbox-attachment-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+  object-fit: cover;
+}
+
+.inbox-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  text-decoration: none;
+  color: var(--color-text);
+  background: rgba(148, 163, 184, 0.08);
+  max-width: 380px;
+}
+
+.inbox-attachment-file span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-composer-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.inbox-composer-tools small {
+  color: var(--color-muted);
+  font-size: 0.74rem;
+}
+
+.inbox-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.inbox-preview-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  padding: 0.4rem;
+}
+
+.inbox-preview-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--card-border);
+}
+
+.inbox-preview-doc {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--card-border);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.inbox-preview-name {
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 0.83rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-preview-remove {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* ── Inbox sales panel (3-column layout) ─────────────────────────── */
+.inbox-layout--three {
+  grid-template-columns: 300px 1fr 260px;
+}
+
+.inbox-detail {
+  border-left: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  gap: 0;
+}
+
+.inbox-detail-section {
+  padding: 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.inbox-detail-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+  margin: 0 0 0.55rem;
+}
+
+.inbox-detail-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.55rem;
+}
+
+.inbox-detail-section-header .inbox-detail-label {
+  margin: 0;
+}
+
+.inbox-detail-select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--color-text);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.inbox-detail-add-btn {
+  border: 0;
+  background: transparent;
+  color: var(--color-primary, #2563eb);
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.inbox-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.inbox-tag {
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.inbox-tag.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.inbox-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.inbox-task-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--color-text);
+  font-size: 0.84rem;
+}
+
+.inbox-task-save-btn {
+  align-self: flex-end;
+  padding: 0.3rem 0.9rem;
+  border-radius: 6px;
+  border: 0;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.inbox-task-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inbox-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.inbox-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.84rem;
+}
+
+.inbox-task-item.done .inbox-task-body span {
+  text-decoration: line-through;
+  color: var(--color-muted);
+}
+
+.inbox-task-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-task-body span {
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.inbox-task-body small {
+  color: var(--color-muted);
+  font-size: 0.74rem;
+}
+
+@media (max-width: 900px) {
+  .inbox-layout--three {
+    grid-template-columns: 1fr;
+  }
+  .inbox-detail {
+    border-left: 0;
+    border-top: 1px solid var(--card-border);
+  }
+}
