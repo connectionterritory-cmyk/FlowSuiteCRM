@@ -84,50 +84,12 @@ export function TelemercadeoCarteraPage() {
       }
     }
 
-    const missingIds = ids.filter((id) => !cobClients.has(id))
-    if (missingIds.length > 0) {
-      const { data } = await supabase
-        .from('llamadas_telemercadeo')
-        .select('cliente_id, resultado, created_at, followup_at')
-        .in('cliente_id', missingIds)
-        .order('created_at', { ascending: false })
-
-      type Row = { cliente_id: string; resultado: string; created_at: string; followup_at: string | null }
-      const rows = (data ?? []) as Row[]
-
-      const byLegacy: Record<string, Row[]> = {}
-      for (const row of rows) {
-        if (!map[row.cliente_id]) {
-          map[row.cliente_id] = {
-            resultado: row.resultado,
-            created_at: row.created_at,
-            followup_at: row.followup_at,
-          }
-        }
-        if (row.followup_at === today) hoy.add(row.cliente_id)
-        if (!byLegacy[row.cliente_id]) byLegacy[row.cliente_id] = []
-        byLegacy[row.cliente_id].push(row)
-      }
-
-      for (const [clienteId, calls] of Object.entries(byLegacy)) {
-        for (const call of calls) {
-          if (call.resultado === 'pago_prometido' && call.followup_at && call.followup_at < today) {
-            const hasPago = calls.some(
-              (c) => c.resultado === 'pago_realizado' && c.created_at > call.created_at,
-            )
-            if (!hasPago) vencidas.add(clienteId)
-            break
-          }
-        }
-      }
-    }
-
     setLastCallMap(map)
     setSeguimientosHoyIds(hoy)
     setPromesasVencidasIds(vencidas)
   }
 
-  // Batch-load the most recent gestion per client (cob_gestiones, legacy fallback)
+  // Batch-load the most recent gestion per client from cob_gestiones.
   useEffect(() => {
     if (clientes.length === 0) {
       startTransition(() => {

@@ -165,21 +165,7 @@ export function TelemercadeoCallModal({
       return
     }
 
-    // 2. Compatibilidad legacy en llamadas_telemercadeo
-    const { error: errorLlamada } = await supabase.from('llamadas_telemercadeo').insert({
-      cliente_id: cliente.id,
-      telemercadista_id: session.user.id,
-      resultado,
-      notas: notas || null,
-      followup_at: fechaFollowup || null,
-      monto_prometido: montoProme ? parseFloat(montoProme) : null,
-    })
-
-    if (errorLlamada) {
-      showToast(`Gestión registrada, pero fallo legacy: ${errorLlamada.message}`, 'error')
-    }
-
-    // 3. Registrar actividad visible en timeline
+    // 2. Registrar actividad visible en timeline
     const resumen = `Gestión de cobranza: ${resultadoLabel(resultado)}`
     const { error: actividadError } = await supabase.from('contacto_actividades').insert({
       org_id: orgId,
