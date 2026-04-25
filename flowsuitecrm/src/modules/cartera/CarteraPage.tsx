@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
 import { Modal } from '../../components/Modal'
 import { INPUT_STYLE, LABEL_STYLE } from '../../components/formControlStyles'
+import { RegistrarGestionModal, type GestionContactoRef, type GestionDraft, type GestionRole } from '../../components/RegistrarGestionModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -471,11 +472,29 @@ type DetailTab = 'gestiones' | 'ptps' | 'pagos' | 'plan'
 type CaseDetailProps = {
   caso: Case
   orgId: string
+  role: GestionRole
+  currentUserId: string | null
   usersById: Record<string, { nombre_completo?: string; email?: string } | undefined>
   onCaseUpdated: () => void
 }
 
-function CaseDetail({ caso, orgId, usersById, onCaseUpdated }: CaseDetailProps) {
+function formatGestionTipo(tipo: GestionDraft['tipo']) {
+  const map: Record<GestionDraft['tipo'], string> = {
+    llamada: 'Llamada',
+    whatsapp: 'WhatsApp',
+    nota: 'Nota',
+    seguimiento: 'Seguimiento',
+    visita: 'Visita',
+    email: 'Email',
+    cita_completada: 'Cita completada',
+    venta: 'Venta',
+    referidos: 'Referidos',
+    envio_material: 'Envío de material',
+  }
+  return map[tipo] ?? tipo
+}
+
+function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated }: CaseDetailProps) {
   const [tab, setTab] = useState<DetailTab>('gestiones')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
   const [ptps, setPtps] = useState<PTP[]>([])
@@ -485,6 +504,7 @@ function CaseDetail({ caso, orgId, usersById, onCaseUpdated }: CaseDetailProps) 
   const [ptpOpen, setPtpOpen] = useState(false)
   const [pagoOpen, setPagoOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
+  const [gestionOpen, setGestionOpen] = useState(false)
 
   const loadDetail = async () => {
     setLoading(true)
@@ -523,6 +543,53 @@ function CaseDetail({ caso, orgId, usersById, onCaseUpdated }: CaseDetailProps) 
 
   const handleRefresh = () => { void loadDetail(); onCaseUpdated() }
 
+  const handleGestionSubmit = async (draft: GestionDraft) => {
+    if (!currentUserId) throw new Error('No se pudo identificar el usuario actual.')
+
+    const montoComprometido = draft.montoPrometido.trim() ? parseFloat(draft.montoPrometido) : null
+    const notas = draft.contenido.trim() || draft.resumen.trim() || null
+    const resultado = draft.resultado ?? (draft.resumen.trim() || null)
+
+    const { error: gestionError } = await supabase.from('cob_gestiones').insert({
+      org_id: orgId,
+      cliente_id: caso.cliente_id,
+      case_id: caso.id,
+      tipo_gestion: formatGestionTipo(draft.tipo),
+      resultado,
+      monto_comprometido: Number.isFinite(montoComprometido ?? NaN) ? montoComprometido : null,
+      fecha_compromiso: draft.followupAt || null,
+      notas,
+      gestionado_por: currentUserId,
+    })
+
+    if (gestionError) throw gestionError
+
+    const { error: actividadError } = await supabase.from('contacto_actividades').insert({
+      org_id: orgId,
+      contacto_tipo: 'cliente',
+      contacto_id: caso.cliente_id,
+      tipo: draft.tipo,
+      resumen: draft.resumen.trim() || `Gestión de cobranza: ${formatGestionTipo(draft.tipo)}`,
+      contenido: draft.contenido.trim() || null,
+      metadata: {
+        resultado: draft.resultado,
+        followup_at: draft.followupAt || null,
+        monto_prometido: Number.isFinite(montoComprometido ?? NaN) ? montoComprometido : null,
+        source: 'cartera',
+        case_id: caso.id,
+        modulo_origen: draft.moduloOrigen ?? 'cartera',
+        origen_id: draft.origenId ?? caso.id,
+      },
+      autor_id: currentUserId,
+      fecha_actividad: new Date().toISOString(),
+    })
+
+    if (actividadError) throw actividadError
+
+    handleRefresh()
+    setGestionOpen(false)
+  }
+
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + p.monto, 0), [pagos])
   const saldo = caso.monto_total - totalPagado
   const cuotasAbiertas = useMemo(
@@ -531,6 +598,13 @@ function CaseDetail({ caso, orgId, usersById, onCaseUpdated }: CaseDetailProps) 
   )
 
   const cliente = caso.clientes
+  const gestionContacto: GestionContactoRef = {
+    tipo: 'cliente',
+    id: caso.cliente_id,
+    nombre: nombreCliente(cliente),
+    telefono: cliente?.telefono ?? null,
+    subtitle: caso.acuerdo_tipo ? `Caso de cartera · ${caso.acuerdo_tipo}` : 'Caso de cartera',
+  }
   const chips = [
     { label: `${caso.dias_vencido}d vencido`, color: diasColor(caso.dias_vencido) },
     { label: caso.estado, color: estadoColor(caso.estado) },
@@ -566,6 +640,7 @@ function CaseDetail({ caso, orgId, usersById, onCaseUpdated }: CaseDetailProps) 
 
       {/* Action bar */}
       <div style={{ padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <ActionBtn label="+ Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
         <ActionBtn label="+ PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
         <ActionBtn label="+ Pago" color="#10b981" onClick={() => setPagoOpen(true)} />
         <ActionBtn label="+ Plan" color="#7c3aed" onClick={() => setPlanOpen(true)} />
@@ -597,6 +672,16 @@ function CaseDetail({ caso, orgId, usersById, onCaseUpdated }: CaseDetailProps) 
       </div>
 
       {/* Modals */}
+      <RegistrarGestionModal
+        open={gestionOpen}
+        role={role}
+        onClose={() => setGestionOpen(false)}
+        onSubmit={handleGestionSubmit}
+        contacto={gestionContacto}
+        tipoDefault="llamada"
+        moduloOrigen="cartera"
+        origenId={caso.id}
+      />
       <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
       <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} ptps={ptps} cuotas={cuotasAbiertas} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
@@ -752,6 +837,8 @@ export function CarteraPage() {
   const [cases, setCases] = useState<Case[]>([])
   const [loading, setLoading] = useState(true)
   const [orgId, setOrgId] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentRole, setCurrentRole] = useState<GestionRole>('telemercadeo')
   const [busqueda, setBusqueda] = useState('')
   const [estadoTab, setEstadoTab] = useState<EstadoTab>('all')
   const [selectedCase, setSelectedCase] = useState<Case | null>(null)
@@ -760,9 +847,16 @@ export function CarteraPage() {
     setLoading(true)
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) { setLoading(false); return }
+    setCurrentUserId(userData.user.id)
 
-    const { data: userRow } = await supabase.from('usuarios').select('org_id').eq('id', userData.user.id).single()
-    if (userRow) setOrgId(userRow.org_id as string)
+    const { data: userRow } = await supabase.from('usuarios').select('org_id, rol').eq('id', userData.user.id).single()
+    if (userRow) {
+      setOrgId(userRow.org_id as string)
+      const rol = userRow.rol as GestionRole | null
+      if (rol === 'admin' || rol === 'distribuidor' || rol === 'vendedor' || rol === 'telemercadeo') {
+        setCurrentRole(rol)
+      }
+    }
 
     const { data } = await supabase
       .from('cargo_vuelta_cases')
@@ -855,6 +949,8 @@ export function CarteraPage() {
             key={selectedCase.id}
             caso={selectedCase}
             orgId={orgId ?? selectedCase.org_id}
+            role={currentRole}
+            currentUserId={currentUserId}
             usersById={usersById as Record<string, { nombre_completo?: string } | undefined>}
             onCaseUpdated={handleCaseUpdated}
           />
