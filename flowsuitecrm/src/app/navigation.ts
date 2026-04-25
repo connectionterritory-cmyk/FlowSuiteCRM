@@ -81,6 +81,12 @@ export const navItems: NavItem[] = [
     icon: IconCustomers,
   },
   {
+    key: 'cartera',
+    labelKey: 'nav.cartera',
+    path: '/cartera',
+    icon: IconService,
+  },
+  {
     key: 'ventas',
     labelKey: 'nav.ventas',
     path: '/ventas',

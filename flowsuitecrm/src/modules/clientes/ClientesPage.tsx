@@ -286,7 +286,7 @@ export function ClientesPage() {
   const [selectedRow, setSelectedRow] = useState<DataTableRow | null>(null)
   const [perfilPersonaId, setPerfilPersonaId] = useState<string | null>(null)
   const { openWhatsapp, ModalRenderer } = useMessaging()
-  const { openGestionModal } = useModalHost()
+  const { openGestionModal, openCitaModal } = useModalHost()
   const configured = isSupabaseConfigured
   const sessionUserId = session?.user.id ?? null
 
@@ -2285,9 +2285,32 @@ export function ClientesPage() {
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (
-            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* PRIMARY */}
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <Button
+                type="button"
+                onClick={() =>
+                  openCitaModal({
+                    initialData: {
+                      contacto_tipo: 'cliente',
+                      contacto_id: selectedClienteDetail.id,
+                      contacto_nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'Cliente',
+                      contacto_telefono: selectedClienteDetail.telefono ?? selectedClienteDetail.telefono_casa ?? '',
+                      direccion: selectedClienteDetail.direccion ?? '',
+                      ciudad: selectedClienteDetail.ciudad ?? '',
+                      estado_region: selectedClienteDetail.estado_region ?? '',
+                      zip: selectedClienteDetail.codigo_postal ?? '',
+                      assigned_to: selectedClienteDetail.vendedor_id ?? '',
+                    },
+                    onSaved: () => showToast('Cita creada'),
+                  })
+                }
+                disabled={detailLoading}
+              >
+                Agendar cita
+              </Button>
+
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() =>
                   openGestionModal({
@@ -2309,38 +2332,8 @@ export function ClientesPage() {
                   })
                 }
               >
-                + Gestión
+                Registrar gestión
               </Button>
-
-              {/* WhatsApp con texto */}
-              {selectedClienteDetail.telefono && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    openWhatsapp({
-                      nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' '),
-                      telefono: selectedClienteDetail.telefono ?? '',
-                      email: selectedClienteDetail.email ?? '',
-                      vendedor: selectedClienteDetail.vendedor_id ? (usersById[selectedClienteDetail.vendedor_id] ?? '') : '',
-                      cuentaHycite: selectedClienteDetail.hycite_id ?? selectedClienteDetail.numero_cuenta_financiera ?? '',
-                      saldoActual: selectedClienteDetail.saldo_actual,
-                      montoMoroso: selectedClienteDetail.monto_moroso,
-                      diasAtraso: selectedClienteDetail.dias_atraso,
-                      estadoMorosidad: selectedClienteDetail.estado_morosidad,
-                      clienteId: selectedClienteDetail.id,
-                    })
-                  }
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                    padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #16a34a44',
-                    background: '#16a34a11', color: '#16a34a', cursor: 'pointer',
-                    fontSize: '0.82rem', fontWeight: 600,
-                  }}
-                >
-                  <IconWhatsapp style={{ width: '14px', height: '14px' }} />
-                  WhatsApp
-                </button>
-              )}
 
               {canEditClientes && (
                 <Button variant="ghost" type="button" onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
