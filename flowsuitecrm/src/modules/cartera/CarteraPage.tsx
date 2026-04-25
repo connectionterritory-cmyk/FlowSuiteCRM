@@ -841,6 +841,8 @@ export function CarteraPage() {
   const [currentRole, setCurrentRole] = useState<GestionRole>('telemercadeo')
   const [busqueda, setBusqueda] = useState('')
   const [estadoTab, setEstadoTab] = useState<EstadoTab>('all')
+  const [diasRango, setDiasRango] = useState<string>('all')
+  const [responsableFiltro, setResponsableFiltro] = useState<string>('all')
   const [selectedCase, setSelectedCase] = useState<Case | null>(null)
 
   const loadCases = async () => {
@@ -875,10 +877,30 @@ export function CarteraPage() {
     return m
   }, [cases])
 
+  const responsableOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const opts: { id: string; nombre: string }[] = []
+    for (const c of cases) {
+      if (c.updated_by && !seen.has(c.updated_by)) {
+        seen.add(c.updated_by)
+        opts.push({ id: c.updated_by, nombre: usersById[c.updated_by] ?? c.updated_by.slice(0, 8) })
+      }
+    }
+    return opts.sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [cases, usersById])
+
   const filtered = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     return cases.filter(c => {
       if (estadoTab !== 'all' && c.estado !== estadoTab) return false
+      if (diasRango !== 'all') {
+        const d = c.dias_vencido
+        if (diasRango === '1-30' && !(d >= 1 && d <= 30)) return false
+        if (diasRango === '31-60' && !(d >= 31 && d <= 60)) return false
+        if (diasRango === '61-90' && !(d >= 61 && d <= 90)) return false
+        if (diasRango === '90+' && d <= 90) return false
+      }
+      if (responsableFiltro !== 'all' && c.updated_by !== responsableFiltro) return false
       if (q) {
         const nombre = nombreCliente(c.clientes).toLowerCase()
         const hid = (c.clientes?.hycite_id ?? '').toLowerCase()
@@ -886,7 +908,7 @@ export function CarteraPage() {
       }
       return true
     })
-  }, [cases, estadoTab, busqueda])
+  }, [cases, estadoTab, busqueda, diasRango, responsableFiltro])
 
   const handleCaseUpdated = () => void loadCases()
 
@@ -898,6 +920,27 @@ export function CarteraPage() {
           <h2 style={{ margin: '0 0 0.6rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Cartera</h2>
           <input type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar cliente o #ID…"
             style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 0.65rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.82rem' }} />
+          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.69rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>Días:</span>
+            {(['all', '1-30', '31-60', '61-90', '90+'] as const).map(r => {
+              const active = diasRango === r
+              return (
+                <button key={r} type="button" onClick={() => setDiasRango(r)}
+                  style={{ padding: '0.15rem 0.45rem', borderRadius: '0.35rem', border: `1px solid ${active ? '#6b7280' : 'var(--color-border)'}`, cursor: 'pointer', fontSize: '0.69rem', fontWeight: 600, background: active ? '#6b728022' : 'transparent', color: active ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+                  {r === 'all' ? 'Todos' : r}
+                </button>
+              )
+            })}
+          </div>
+          {responsableOptions.length > 0 && (
+            <select value={responsableFiltro} onChange={e => setResponsableFiltro(e.target.value)}
+              style={{ marginTop: '0.4rem', width: '100%', height: '30px', padding: '0 0.5rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.78rem', boxSizing: 'border-box' }}>
+              <option value="all">Último responsable: Todos</option>
+              {responsableOptions.map(u => (
+                <option key={u.id} value={u.id}>{u.nombre}</option>
+              ))}
+            </select>
+          )}
         </div>
         {/* Estado tabs */}
         <div style={{ padding: '0.4rem 0.75rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
