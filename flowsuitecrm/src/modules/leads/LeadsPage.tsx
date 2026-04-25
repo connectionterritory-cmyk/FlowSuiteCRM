@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, type ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type CSSProperties, type FormEvent, type ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
@@ -10,11 +10,13 @@ import { EmptyState } from '../../components/EmptyState'
 import { IconRestore, IconSwap, IconTrash, IconWhatsapp } from '../../components/icons'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { applyContactScope } from '../../lib/contactSearch'
 import { LEADS_BASE_SELECT, LEADS_COMPAT_SELECT, LEADS_EXTENDED_SELECT, isMissingLeadAddressColumnError, isMissingLeadReferidorColumnError } from '../../lib/leadsSchema'
 import { formatProperName } from '../../lib/textFormat'
 import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/useUsers'
 import { useViewMode } from '../../data/useViewMode'
+import { useLeadSearch } from '../../hooks/useLeadSearch'
 import { useMessaging } from '../../hooks/useMessaging'
 import {
   LEAD_PIPELINE_FOLLOWUP_STAGES,
@@ -94,6 +96,13 @@ type OwnerOption = {
   label: string
 }
 
+type ReferidorOption = {
+  id: string
+  tipo: 'cliente' | 'lead' | 'embajador'
+  label: string
+  telefono: string | null
+}
+
 const initialForm = {
   nombre: '',
   apellido: '',
@@ -150,6 +159,28 @@ function stageBadgeTextColor(stage: string): string {
   return map[stage] ?? '#6b7280'
 }
 
+const leadFormSelectStyle: CSSProperties = {
+  width: '100%',
+  padding: '0.75rem 0.95rem',
+  borderRadius: '0.9rem',
+  border: '1px solid rgba(148, 163, 184, 0.35)',
+  background: 'rgba(51, 65, 85, 0.92)',
+  color: 'var(--color-text, #e5e7eb)',
+  fontSize: '0.95rem',
+  lineHeight: 1.3,
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+  boxSizing: 'border-box',
+}
+
+const leadFormHintStyle: CSSProperties = {
+  marginTop: '0.35rem',
+  fontSize: '0.78rem',
+  lineHeight: 1.35,
+  color: 'var(--color-text-muted, #94a3b8)',
+}
+
 export function LeadsPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
@@ -180,6 +211,12 @@ export function LeadsPage() {
   const [manageSaving, setManageSaving] = useState(false)
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([])
   const [ownersLoading, setOwnersLoading] = useState(false)
+  const [referidorSearch, setReferidorSearch] = useState('')
+  const [referidorOptions, setReferidorOptions] = useState<ReferidorOption[]>([])
+  const [referidorLoading, setReferidorLoading] = useState(false)
+  const [selectedReferidorLabel, setSelectedReferidorLabel] = useState('')
+  const [birthDateInputMode, setBirthDateInputMode] = useState<'text' | 'date'>('text')
+  const [nextActionDateInputMode, setNextActionDateInputMode] = useState<'text' | 'date'>('text')
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const configured = isSupabaseConfigured
   const canDeleteLeads = scopeMode === 'distributor' && (role === 'admin' || role === 'distribuidor')
@@ -194,6 +231,7 @@ export function LeadsPage() {
       ''
     return name || usersById[session.user.id] || session.user.email || null
   }, [session?.user, usersById])
+  const noneLabel = t('common.none') === 'common.none' ? 'Sin referidor' : t('common.none')
 
   // --- FILTROS ---
   const [busqueda, setBusqueda] = useState('')
@@ -207,7 +245,6 @@ export function LeadsPage() {
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
   const [filtrosVisible, setFiltrosVisible] = useState(true)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 720)
-  const [isTablet, setIsTablet] = useState(() => window.innerWidth > 720 && window.innerWidth <= 1024)
   const [sortCol, setSortCol] = useState<number | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [visibleCount, setVisibleCount] = useState(200)
@@ -235,22 +272,32 @@ export function LeadsPage() {
       .maybeSingle()
     if (roleError) {
       setRole(null)
+      showToast('No se pudo cargar el rol del usuario.', 'error')
     } else {
       setRole((data as { rol?: string } | null)?.rol ?? null)
     }
-  }, [configured, session?.user.id])
+  }, [configured, session?.user.id, showToast])
 
   const loadOwnerOptions = useCallback(async () => {
     if (!configured || !session?.user.id || !canReassignLeads) return
     setOwnersLoading(true)
-    const { data, error: fetchError } = await supabase
+    let query = supabase
       .from('usuarios')
-      .select('id, nombre, apellido, email, rol')
+      .select('id, nombre, apellido, email, rol, activo')
       .in('rol', ['distribuidor', 'vendedor'])
+      .eq('activo', true)
+
+    if (hasDistribuidorScope) {
+      const scopedIds = distributionUserIds.length > 0 ? distributionUserIds : [session.user.id]
+      query = query.in('id', scopedIds)
+    }
+
+    const { data, error: fetchError } = await query
 
     if (fetchError) {
       setOwnerOptions([])
       setOwnersLoading(false)
+      showToast('No se pudo cargar la lista de responsables.', 'error')
       return
     }
 
@@ -263,7 +310,7 @@ export function LeadsPage() {
     })
     setOwnerOptions(options)
     setOwnersLoading(false)
-  }, [configured, session?.user.id, canReassignLeads])
+  }, [configured, session?.user.id, canReassignLeads, distributionUserIds, hasDistribuidorScope, showToast])
 
   const loadLastActivity = useCallback(
     async (leadIds: string[]) => {
@@ -277,6 +324,7 @@ export function LeadsPage() {
         .in('lead_id', leadIds)
       if (activityError) {
         setLastActivityMap({})
+        showToast('No se pudo cargar la actividad reciente de los prospectos.', 'error')
         return
       }
       const nextMap: Record<string, string | null> = {}
@@ -285,21 +333,168 @@ export function LeadsPage() {
       })
       setLastActivityMap(nextMap)
     },
-    [configured]
+    [configured, showToast]
   )
+
+  const referidorLeadSearch = useLeadSearch(referidorSearch, {
+    enabled: formOpen && formValues.referidor_tipo === 'lead',
+    role,
+    viewMode: scopeMode,
+    sessionUserId: session?.user.id,
+    hasDistribuidorScope,
+    distributionUserIds,
+  })
+
+  useEffect(() => {
+    if (!formOpen || formValues.referidor_tipo !== 'cliente') {
+      if (formValues.referidor_tipo !== 'lead') {
+        setReferidorOptions([])
+      }
+      setReferidorLoading(false)
+      return
+    }
+    const term = referidorSearch.trim()
+    if (term.length < 2) {
+      setReferidorOptions([])
+      setReferidorLoading(false)
+      return
+    }
+
+    let active = true
+    const handle = window.setTimeout(async () => {
+      setReferidorLoading(true)
+      const searchValue = `%${term}%`
+      let query = supabase
+        .from('clientes')
+        .select('id, nombre, apellido, telefono, vendedor_id, distribuidor_id')
+        .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
+        .limit(10)
+      query = applyContactScope(query, {
+        role,
+        viewMode: scopeMode,
+        sessionUserId: session?.user.id,
+        hasDistribuidorScope,
+        distributionUserIds,
+      })
+      const { data, error: fetchError } = await query
+      if (!active) return
+      if (fetchError) {
+        setReferidorOptions([])
+      } else {
+        setReferidorOptions(
+          ((data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }>).map((row) => ({
+            id: row.id,
+            tipo: 'cliente',
+            label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.id,
+            telefono: row.telefono ?? null,
+          })),
+        )
+      }
+      setReferidorLoading(false)
+    }, 300)
+
+    return () => {
+      active = false
+      window.clearTimeout(handle)
+    }
+  }, [distributionUserIds, formOpen, formValues.referidor_tipo, hasDistribuidorScope, referidorSearch, role, scopeMode, session?.user.id])
+
+  useEffect(() => {
+    if (!formOpen || formValues.referidor_tipo !== 'embajador') {
+      if (formValues.referidor_tipo !== 'lead') {
+        setReferidorOptions([])
+      }
+      setReferidorLoading(false)
+      return
+    }
+    const term = referidorSearch.trim()
+    if (term.length < 2) {
+      setReferidorOptions([])
+      setReferidorLoading(false)
+      return
+    }
+
+    let active = true
+    const handle = window.setTimeout(async () => {
+      setReferidorLoading(true)
+      const searchValue = `%${term}%`
+      let query = supabase
+        .from('embajadores')
+        .select('id, nombre, apellido, telefono, owner_id, vendedor_id')
+        .or(`nombre.ilike.${searchValue},apellido.ilike.${searchValue},telefono.ilike.${searchValue}`)
+        .limit(10)
+
+      if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
+        query = query.or(`vendedor_id.eq.${session.user.id},owner_id.eq.${session.user.id}`)
+      } else if (hasDistribuidorScope && scopeMode === 'distributor' && distributionUserIds.length > 0) {
+        const ids = Array.from(new Set([...distributionUserIds, ...(session?.user.id ? [session.user.id] : [])])).join(',')
+        query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
+      }
+
+      const { data, error: fetchError } = await query
+      if (!active) return
+      if (fetchError) {
+        setReferidorOptions([])
+      } else {
+        setReferidorOptions(
+          ((data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null; telefono: string | null }>).map((row) => ({
+            id: row.id,
+            tipo: 'embajador',
+            label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.id,
+            telefono: row.telefono ?? null,
+          })),
+        )
+      }
+      setReferidorLoading(false)
+    }, 300)
+
+    return () => {
+      active = false
+      window.clearTimeout(handle)
+    }
+  }, [distributionUserIds, formOpen, formValues.referidor_tipo, hasDistribuidorScope, referidorSearch, role, scopeMode, session?.user.id])
+
+  useEffect(() => {
+    if (formValues.referidor_tipo !== 'lead') return
+    setReferidorOptions(
+      referidorLeadSearch.results.map((row) => ({
+        id: row.id,
+        tipo: 'lead',
+        label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.id,
+        telefono: row.telefono ?? null,
+      })),
+    )
+    setReferidorLoading(referidorLeadSearch.loading)
+  }, [formValues.referidor_tipo, referidorLeadSearch.loading, referidorLeadSearch.results])
 
   const loadLeads = useCallback(async () => {
     if (!configured) return
     setLoading(true)
     setError(null)
     if (isMobile && session?.user.id) {
-      const { data, error: fetchError } = await supabase
+      let query = supabase
         .from('leads')
         .select('id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, deleted_at')
-        .or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
         .is('deleted_at', null)
         .order('next_action_date', { ascending: true, nullsFirst: false })
         .order('updated_at', { ascending: false })
+
+      if (role === 'telemercadeo') {
+        query = query.eq('estado_pipeline', 'nuevo')
+      }
+      if (role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) {
+        query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+      } else if (hasDistribuidorScope && scopeMode === 'distributor') {
+        const scopedIds = Array.from(new Set([...distributionUserIds, session.user.id]))
+        if (scopedIds.length === 0) {
+          setMobileLeadsData([])
+          setLoading(false)
+          return
+        }
+        query = query.or(`owner_id.in.(${scopedIds.join(',')}),vendedor_id.in.(${scopedIds.join(',')})`)
+      }
+
+      const { data, error: fetchError } = await query
 
       if (fetchError) {
         setError(fetchError.message)
@@ -368,6 +563,7 @@ export function LeadsPage() {
       return
     }
     let active = true
+    let mapLoadErrorNotified = false
     // Canónico — recoger IDs por tipo desde referidor_id
     const embajadorIds = Array.from(new Set([
       ...leads.filter((l) => l.referidor_tipo === 'embajador' && l.referidor_id).map((l) => l.referidor_id as string),
@@ -379,8 +575,13 @@ export function LeadsPage() {
       // Fallback legacy para registros no migrados
       ...leads.filter((l) => !l.referidor_tipo && l.referido_por_cliente_id).map((l) => l.referido_por_cliente_id as string),
     ]))
-
     const loadMaps = async () => {
+      const notifyMapLoadError = () => {
+        if (!active || mapLoadErrorNotified) return
+        mapLoadErrorNotified = true
+        showToast('No se pudo cargar información relacionada del referidor.', 'error')
+      }
+
       if (embajadorIds.length === 0) {
         setEmbajadorMap({})
       } else {
@@ -391,6 +592,7 @@ export function LeadsPage() {
         if (!active) return
         if (error) {
           setEmbajadorMap({})
+          notifyMapLoadError()
         } else {
           const map: Record<string, string> = {}
           ;((data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach((row) => {
@@ -411,6 +613,7 @@ export function LeadsPage() {
         if (!active) return
         if (error) {
           setClienteReferidoMap({})
+          notifyMapLoadError()
         } else {
           const map: Record<string, string> = {}
           ;((data ?? []) as Array<{ id: string; nombre: string | null; apellido: string | null }>).forEach((row) => {
@@ -426,7 +629,7 @@ export function LeadsPage() {
     return () => {
       active = false
     }
-  }, [configured, leads])
+  }, [configured, leads, showToast])
 
   useEffect(() => {
     if (configured) loadRole()
@@ -443,14 +646,16 @@ export function LeadsPage() {
   }, [configured, loadLeads])
 
   useEffect(() => {
-    if (!manageOpen || manageMode !== 'reassign') return
+    if (!canReassignLeads) {
+      setOwnerOptions([])
+      return
+    }
     loadOwnerOptions()
-  }, [manageOpen, manageMode, loadOwnerOptions])
+  }, [canReassignLeads, loadOwnerOptions])
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth <= 720)
-      setIsTablet(window.innerWidth > 720 && window.innerWidth <= 1024)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -638,7 +843,6 @@ export function LeadsPage() {
 
       if (tipo === 'embajador' && id && embajadorMap[id])   return embajadorMap[id]
       if (tipo === 'cliente'   && id && clienteReferidoMap[id]) return clienteReferidoMap[id]
-      // tipo 'lead': sin mapa de lookup hoy — mostrar vacío (Fase 3 completa lo resolverá)
 
       // Fallback legacy para registros no migrados
       if (lead.embajador_id && embajadorMap[lead.embajador_id]) return embajadorMap[lead.embajador_id]
@@ -1051,13 +1255,35 @@ export function LeadsPage() {
       : t('common.noData')
 
   const handleOpenForm = () => {
-    setFormValues({ ...initialForm, owner_id: session?.user.id ?? '' })
+    setFormValues({
+      ...initialForm,
+      owner_id: canReassignLeads ? (ownerOptions[0]?.id ?? session?.user.id ?? '') : (session?.user.id ?? ''),
+    })
     setFuenteOtro('')
+    setReferidorSearch('')
+    setReferidorOptions([])
+    setReferidorLoading(false)
+    setSelectedReferidorLabel('')
+    setBirthDateInputMode('text')
+    setNextActionDateInputMode('text')
     setFormError(null)
     setFormOpen(true)
   }
 
+  useEffect(() => {
+    if (!formOpen || !canReassignLeads || ownerOptions.length === 0) return
+    setFormValues((prev) => {
+      if (prev.owner_id && ownerOptions.some((option) => option.id === prev.owner_id)) return prev
+      return { ...prev, owner_id: ownerOptions[0]?.id ?? prev.owner_id }
+    })
+  }, [canReassignLeads, formOpen, ownerOptions])
+
   const ownerName = session?.user.id ? (usersById[session.user.id] ?? session.user.id) : '-'
+  const trimmedNombre = formValues.nombre.trim()
+  const trimmedTelefono = formValues.telefono.trim()
+  const trimmedNextAction = formValues.next_action.trim()
+  const missingBasicLeadData = trimmedNombre === '' && trimmedTelefono === ''
+  const missingNextActionDate = trimmedNextAction !== '' && !formValues.next_action_date
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1065,10 +1291,22 @@ export function LeadsPage() {
       setFormError(t('common.supabaseRequired'))
       return
     }
+    if (missingBasicLeadData) {
+      setFormError('Ingresa al menos el nombre o el teléfono del prospecto.')
+      return
+    }
+    if (formValues.referidor_tipo && !formValues.referidor_id.trim()) {
+      setFormError('Selecciona un referidor válido antes de guardar.')
+      return
+    }
+    if (missingNextActionDate) {
+      setFormError('Si defines "¿Qué sigue?", agrega también la fecha del próximo paso.')
+      return
+    }
     setSubmitting(true)
     setFormError(null)
     const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
-    const ownerId = session?.user.id ?? null
+    const ownerId = (canReassignLeads ? formValues.owner_id : session?.user.id) ?? session?.user.id ?? null
     const fuenteValue =
       formValues.fuente === 'otro'
         ? fuenteOtro.trim() || t('leads.sources.otro')
@@ -1118,6 +1356,32 @@ export function LeadsPage() {
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       setFormValues((prev) => ({ ...prev, [field]: event.target.value }))
     }
+
+  const handleReferidorTipoChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value as '' | 'cliente' | 'lead' | 'embajador'
+    setFormValues((prev) => ({
+      ...prev,
+      referidor_tipo: value,
+      referidor_id: '',
+      embajador_id: '',
+    }))
+    setReferidorSearch('')
+    setReferidorOptions([])
+    setReferidorLoading(false)
+    setSelectedReferidorLabel('')
+  }
+
+  const handleSelectReferidor = (option: ReferidorOption) => {
+    setFormValues((prev) => ({
+      ...prev,
+      referidor_tipo: option.tipo,
+      referidor_id: option.id,
+      embajador_id: option.tipo === 'embajador' ? option.id : '',
+    }))
+    setSelectedReferidorLabel(option.label)
+    setReferidorSearch(option.label)
+    setReferidorOptions([])
+  }
 
   const handleFuenteChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value
@@ -1687,7 +1951,7 @@ export function LeadsPage() {
       )}
 
       {/* TABLA / CARDS */}
-      {(isMobile || isTablet) ? (
+      {isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {leadsOrdenados.length === 0 ? (
             <div
@@ -1888,13 +2152,13 @@ export function LeadsPage() {
             <Button variant="ghost" type="button" onClick={() => setFormOpen(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" form="lead-form" disabled={submitting}>
+            <Button type="submit" form="lead-form" disabled={submitting || missingBasicLeadData || missingNextActionDate}>
               {submitting ? t('common.saving') : t('common.save')}
             </Button>
           </>
         }
       >
-        <form id="lead-form" className="form-grid" onSubmit={handleSubmit}>
+        <form id="lead-form" className="form-grid" onSubmit={handleSubmit} autoComplete="off">
           <label className="form-field">
             <span>{t('leads.fields.nombre')}</span>
             <input value={formValues.nombre} onChange={handleChange('nombre')} />
@@ -1913,11 +2177,23 @@ export function LeadsPage() {
           </label>
           <label className="form-field">
             <span>{t('leads.fields.fechaNacimiento')}</span>
-            <input type="date" value={formValues.fecha_nacimiento} onChange={handleChange('fecha_nacimiento')} />
+            <input
+              type={birthDateInputMode}
+              name="lead_birth_date"
+              value={formValues.fecha_nacimiento || ''}
+              onChange={handleChange('fecha_nacimiento')}
+              onFocus={() => setBirthDateInputMode('date')}
+              onBlur={() => {
+                if (!formValues.fecha_nacimiento) setBirthDateInputMode('text')
+              }}
+              placeholder="MM/DD/AAAA"
+              autoComplete="off"
+            />
+            <div style={leadFormHintStyle}>Opcional. Déjalo vacío si no la conoces todavía.</div>
           </label>
           <label className="form-field">
             <span>{t('leads.fields.fuente')}</span>
-            <select value={formValues.fuente} onChange={handleFuenteChange}>
+            <select value={formValues.fuente} onChange={handleFuenteChange} style={leadFormSelectStyle}>
               <option value="">{t('common.select')}</option>
               {sourceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1934,12 +2210,19 @@ export function LeadsPage() {
           )}
           <label className="form-field">
             <span>{t('leads.fields.programaId')}</span>
-            <input value={formValues.programa_id} onChange={handleChange('programa_id')} />
+            <input
+              name="lead_programa"
+              value={formValues.programa_id}
+              onChange={handleChange('programa_id')}
+              placeholder="Ej: 4 en 14, canastas o código interno"
+              autoComplete="off"
+            />
+            <div style={leadFormHintStyle}>Programa o campaña asociada, si aplica.</div>
           </label>
           <label className="form-field">
             <span>{t('leads.fields.referidorTipo')}</span>
-            <select value={formValues.referidor_tipo} onChange={handleChange('referidor_tipo')}>
-              <option value="">{t('common.none') || 'Sin referidor'}</option>
+            <select value={formValues.referidor_tipo} onChange={handleReferidorTipoChange} style={leadFormSelectStyle}>
+              <option value="">{noneLabel}</option>
               <option value="cliente">Cliente</option>
               <option value="lead">Prospecto</option>
               <option value="embajador">{t('leads.fields.embajadorId')}</option>
@@ -1948,20 +2231,82 @@ export function LeadsPage() {
           {formValues.referidor_tipo !== '' && (
             <label className="form-field">
               <span>{t('leads.fields.referidorId')}</span>
-              <input
-                value={formValues.referidor_id}
-                onChange={handleChange('referidor_id')}
-                placeholder="ID del referidor"
-              />
+              {formValues.referidor_id && selectedReferidorLabel ? (
+                <div className="card" style={{ padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                  <span>{selectedReferidorLabel}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setFormValues((prev) => ({ ...prev, referidor_id: '', embajador_id: '' }))
+                      setReferidorSearch('')
+                      setReferidorOptions([])
+                      setSelectedReferidorLabel('')
+                    }}
+                  >
+                    Cambiar
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    value={referidorSearch}
+                    onChange={(event) => setReferidorSearch(event.target.value)}
+                    placeholder={
+                      formValues.referidor_tipo === 'cliente'
+                        ? 'Buscar cliente por nombre o teléfono'
+                        : formValues.referidor_tipo === 'lead'
+                          ? 'Buscar prospecto por nombre o teléfono'
+                          : 'Buscar embajador por nombre o teléfono'
+                    }
+                  />
+                  {referidorLoading && <div className="form-hint">Buscando...</div>}
+                  {!referidorLoading && referidorSearch.trim().length >= 2 && referidorOptions.length === 0 && (
+                    <div className="form-hint">Sin resultados.</div>
+                  )}
+                  {referidorOptions.length > 0 && (
+                    <div className="card" style={{ marginTop: '0.5rem', maxHeight: 220, overflow: 'auto' }}>
+                      {referidorOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          className="list-row"
+                          onMouseDown={(event) => {
+                            event.preventDefault()
+                            handleSelectReferidor(option)
+                          }}
+                          style={{ width: '100%', textAlign: 'left' }}
+                        >
+                          <strong>{option.label}</strong>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                            {option.telefono || 'Sin teléfono'}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </label>
           )}
           <label className="form-field">
             <span>{t('leads.fields.ownerId')}</span>
-            <input value={ownerName} readOnly />
+            {canReassignLeads ? (
+              <select value={formValues.owner_id} onChange={handleChange('owner_id')} disabled={ownersLoading} style={leadFormSelectStyle}>
+                <option value="">{ownersLoading ? 'Cargando...' : 'Selecciona responsable'}</option>
+                {ownerOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input value={ownerName} readOnly />
+            )}
           </label>
           <label className="form-field">
             <span>{t('leads.fields.estadoPipeline')}</span>
-            <select value={formValues.estado_pipeline} onChange={handleChange('estado_pipeline')}>
+            <select value={formValues.estado_pipeline} onChange={handleChange('estado_pipeline')} style={leadFormSelectStyle}>
               <option value="nuevo">{t('pipeline.columns.nuevo')}</option>
               <option value="contactado">{t('pipeline.columns.contactado')}</option>
               <option value="cita">{t('pipeline.columns.cita')}</option>
@@ -1972,11 +2317,31 @@ export function LeadsPage() {
           </label>
           <label className="form-field">
             <span>{t('leads.fields.nextAction')}</span>
-            <input value={formValues.next_action} onChange={handleChange('next_action')} />
+            <input
+              name="lead_next_action"
+              value={formValues.next_action}
+              onChange={handleChange('next_action')}
+              placeholder="Ej: Llamar mañana, enviar demo o confirmar cita"
+              autoComplete="off"
+            />
           </label>
           <label className="form-field">
             <span>{t('leads.fields.nextActionDate')}</span>
-            <input type="date" value={formValues.next_action_date} onChange={handleChange('next_action_date')} />
+            <input
+              type={nextActionDateInputMode}
+              name="lead_next_action_date"
+              value={formValues.next_action_date}
+              onChange={handleChange('next_action_date')}
+              onFocus={() => setNextActionDateInputMode('date')}
+              onBlur={() => {
+                if (!formValues.next_action_date) setNextActionDateInputMode('text')
+              }}
+              placeholder="MM/DD/AAAA"
+              autoComplete="off"
+            />
+            {trimmedNextAction !== '' && !formValues.next_action_date && (
+              <div style={leadFormHintStyle}>Agrega una fecha para guardar este próximo paso.</div>
+            )}
           </label>
           {formError && <div className="form-error">{formError}</div>}
         </form>

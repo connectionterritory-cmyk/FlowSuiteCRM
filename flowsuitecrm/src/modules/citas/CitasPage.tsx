@@ -426,6 +426,28 @@ export function CitasPage() {
       })
   }, [citas, servicios])
 
+  const assignedLabels = useMemo(() => {
+    const map = new Map<string, string>()
+    assignedOptions.forEach((option) => {
+      map.set(option.id, option.label)
+    })
+    if (sessionUserId && !map.has(sessionUserId)) {
+      map.set(sessionUserId, 'Yo')
+    }
+    return map
+  }, [assignedOptions, sessionUserId])
+
+  const getAssignedLabel = useCallback((item: AgendaItem) => {
+    if (item.tipo_evento === 'cita') {
+      const assignedId = item.cita?.assigned_to ?? item.cita?.owner_id ?? null
+      if (!assignedId) return 'Sin asignar'
+      return assignedLabels.get(assignedId) ?? 'Asignado'
+    }
+    const assignedId = item.servicio?.vendedor_id ?? null
+    if (!assignedId) return 'Sin asignar'
+    return assignedLabels.get(assignedId) ?? 'Asignado'
+  }, [assignedLabels])
+
   const hasResults = agendaItems.length > 0
 
   return (
@@ -491,6 +513,7 @@ export function CitasPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', color: 'var(--color-text-muted, #6b7280)' }}>
                   <span>Tipo: {tipoLabel}</span>
+                  <span>Asignado: {getAssignedLabel(item)}</span>
                   <span>Ciudad: {[item.ciudad, item.estado_region].filter(Boolean).join(', ') || '-'}</span>
                 </div>
                 <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>

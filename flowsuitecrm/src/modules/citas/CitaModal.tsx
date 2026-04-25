@@ -179,6 +179,11 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     [cierreTarea, form.estado],
   )
 
+  const requiresNextActionDate = useMemo(
+    () => form.resultado === 'reagendar' || form.estado === 'no_show',
+    [form.estado, form.resultado],
+  )
+
   const handleRequestClose = () => {
     if (saving) return
     if (isDirty && !window.confirm('Tienes cambios sin guardar. Si cierras ahora, los perderas.')) {
@@ -385,6 +390,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
   const contactResults = form.contacto_tipo === 'lead' ? leadResults : clientResults
   const contactLoading = form.contacto_tipo === 'lead' ? leadSearch.loading : clientLoading
 
+  const resetSearchResults = () => {
+    setClientResults([])
+  }
+
   const handleSelectContact = (contact: ContactSearchResult) => {
     updateForm((prev) => ({
       ...prev,
@@ -399,7 +408,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       zip: contact.zip ?? prev.zip,
     }))
     setContactSearch(contact.nombre)
-    setClientResults([])
+    resetSearchResults()
     setShowSearch(false)
   }
 
@@ -428,6 +437,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     }
     if (form.estado === 'completada' && !form.resultado?.trim()) {
       showToast('Selecciona el resultado de la cita antes de marcarla como completada.', 'error')
+      return
+    }
+    if (requiresNextActionDate && !form.next_action_date?.trim()) {
+      showToast('Completa la fecha del próximo paso para reagendar o registrar no show.', 'error')
       return
     }
     if (isFollowUpTaskInvalid) {
@@ -614,7 +627,11 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           <Button variant="ghost" type="button" onClick={handleRequestClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="button" onClick={handleSave} disabled={saving || !form.start_at || !form.tipo || isFollowUpTaskInvalid}>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !form.start_at || !form.tipo || isFollowUpTaskInvalid || (requiresNextActionDate && !form.next_action_date?.trim())}
+          >
             {saving ? 'Guardando...' : 'Guardar'}
           </Button>
         </>
@@ -728,7 +745,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                       if (form.contacto_id) {
                         setShowSearch(false)
                         setContactSearch(form.contacto_nombre)
-                        setClientResults([])
+                        resetSearchResults()
                       }
                     }, 150)
                   }}
@@ -751,7 +768,10 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                         key={result.id}
                         type="button"
                         className="list-row"
-                        onClick={() => handleSelectContact(result)}
+                        onMouseDown={(event) => {
+                          event.preventDefault()
+                          handleSelectContact(result)
+                        }}
                         style={{ width: '100%', textAlign: 'left' }}
                       >
                         <strong>{result.nombre}</strong>

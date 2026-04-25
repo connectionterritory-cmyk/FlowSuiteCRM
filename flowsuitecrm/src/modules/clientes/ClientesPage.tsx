@@ -324,6 +324,7 @@ export function ClientesPage() {
   const [serviciosLoading, setServiciosLoading] = useState(false)
   const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
   const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; label: string; rol: string | null }>>([])
+  const [citaAssignedOptions, setCitaAssignedOptions] = useState<Array<{ id: string; label: string }>>([])
   const [editingNextAction, setEditingNextAction] = useState(false)
   const [nextActionDraft, setNextActionDraft] = useState('')
   const [nextActionDateDraft, setNextActionDateDraft] = useState('')
@@ -480,6 +481,83 @@ export function ClientesPage() {
       active = false
     }
   }, [configured, currentUser])
+
+  useEffect(() => {
+    if (!configured || !sessionUserId || !currentRole) return
+    let active = true
+    const loadCitaAssignedOptions = async () => {
+      if (currentRole === 'admin' || currentRole === 'distribuidor') {
+        let query = supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, email')
+          .eq('activo', true)
+        if (hasDistribuidorScope && distributionUserIds.length > 0) {
+          query = query.in('id', distributionUserIds)
+        }
+        const { data, error } = await query
+        if (!active) return
+        if (error) {
+          setCitaAssignedOptions([{ id: sessionUserId, label: 'Yo' }])
+          return
+        }
+        const options = (data ?? []).map((row) => {
+          const name = [row.nombre, row.apellido].filter(Boolean).join(' ').trim()
+          return {
+            id: row.id,
+            label: name || row.email || row.id,
+          }
+        })
+        setCitaAssignedOptions(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
+        return
+      }
+
+      if (currentRole === 'telemercadeo') {
+        const { data: assignments } = await supabase
+          .from('tele_vendedor_assignments')
+          .select('vendedor_id')
+          .eq('tele_id', sessionUserId)
+        if (!active) return
+        const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
+        if (vendedorIds.length > 0) {
+          const { data: vendedores } = await supabase
+            .from('usuarios')
+            .select('id, nombre, apellido, email')
+            .in('id', vendedorIds)
+            .eq('activo', true)
+          if (!active) return
+          const options = [
+            { id: sessionUserId, label: 'Yo' },
+            ...(vendedores ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+              id: row.id,
+              label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+            })),
+          ]
+          setCitaAssignedOptions(options)
+          return
+        }
+      }
+
+      if (currentRole === 'supervisor_telemercadeo') {
+        const { data } = await supabase
+          .from('usuarios')
+          .select('id, nombre, apellido, email')
+          .eq('activo', true)
+        if (!active) return
+        const options = (data ?? []).map((row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => ({
+          id: row.id,
+          label: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || row.email || row.id,
+        }))
+        setCitaAssignedOptions(options.length > 0 ? options : [{ id: sessionUserId, label: 'Yo' }])
+        return
+      }
+
+      setCitaAssignedOptions([{ id: sessionUserId, label: 'Yo' }])
+    }
+    void loadCitaAssignedOptions()
+    return () => {
+      active = false
+    }
+  }, [configured, currentRole, distributionUserIds, hasDistribuidorScope, sessionUserId])
 
   // --- VENDEDORES UNICOS para el filtro ---
   const getClienteVendedorLabel = useCallback(
@@ -2301,6 +2379,12 @@ export function ClientesPage() {
                       zip: selectedClienteDetail.codigo_postal ?? '',
                       assigned_to: selectedClienteDetail.vendedor_id ?? '',
                     },
+                    assignedOptions:
+                      citaAssignedOptions.length > 0
+                        ? citaAssignedOptions
+                        : [{ id: selectedClienteDetail.vendedor_id ?? sessionUserId ?? '', label: 'Responsable actual' }].filter(
+                            (option): option is { id: string; label: string } => Boolean(option.id),
+                          ),
                     onSaved: () => showToast('Cita creada'),
                   })
                 }
