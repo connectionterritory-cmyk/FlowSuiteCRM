@@ -637,7 +637,7 @@ function GestionesList({ gestiones, usersById }: { gestiones: Gestion[]; usersBy
 
 // ── PTPs list ─────────────────────────────────────────────────────────────────
 
-function PTPsList({ ptps, usersById, onRefresh }: { ptps: PTP[]; usersById: Record<string, { nombre_completo?: string } | undefined>; onRefresh: () => void }) {
+function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string, { nombre_completo?: string } | undefined>; onRefresh: () => void }) {
   if (ptps.length === 0) return <Empty label="No hay promesas de pago para este caso" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -769,7 +769,7 @@ export function CarteraPage() {
       .select('id,org_id,cliente_id,monto_total,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,clientes(nombre,apellido,telefono,hycite_id,saldo_actual)')
       .order('dias_vencido', { ascending: false })
 
-    setCases((data ?? []) as Case[])
+    setCases((data ?? []) as unknown as Case[])
     setLoading(false)
   }
 
