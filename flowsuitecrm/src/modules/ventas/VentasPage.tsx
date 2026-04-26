@@ -547,7 +547,8 @@ export function VentasPage() {
   }
 
   const calcularTotales = useMemo(() => {
-    const subtotal = formItems.reduce((acc, item) => acc + (item.subtotal || 0), 0)
+    const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+    const subtotal = formItems.reduce((acc, item) => acc + (item.cantidad * roundMoney(item.precio_unitario || 0)), 0)
     const impuesto = parseFloat(formValues.impuesto) || 0
     const cargo_envio = parseFloat(formValues.cargo_envio) || 0
     const descuento = parseFloat(formValues.descuento) || 0
@@ -594,61 +595,59 @@ export function VentasPage() {
     if (!configured) { setFormError(t('common.supabaseRequired')); return }
     setSubmitting(true)
     setFormError(null)
-    const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
-    const rollbackVenta = async (ventaId: string) => {
-      await supabase.from('venta_transacciones').delete().eq('venta_id', ventaId)
-      await supabase.from('venta_items').delete().eq('venta_id', ventaId)
-      await supabase.from('ventas').delete().eq('id', ventaId)
-    }
-    const vendedorId = session?.user.id ?? null
-    let clienteIdFinal = toNull(formValues.cliente_id)
 
-    if (ventaOwnerType === 'cliente') {
-      if (!clienteIdFinal) { setFormError(t('ventas.errors.selectCliente')); setSubmitting(false); return }
-    } else {
+    const toNull = (value: string) => (value.trim() === '' ? null : value.trim())
+    const vendedorId = session?.user.id ?? null
+
+    if (ventaOwnerType === 'cliente' && !formValues.cliente_id) {
+      setFormError(t('ventas.errors.selectCliente'))
+      setSubmitting(false)
+      return
+    }
+
+    if (ventaOwnerType === 'prospecto') {
       if (!prospectoId) { setFormError(t('ventas.errors.selectProspecto')); setSubmitting(false); return }
       const cuenta = prospectoCuenta.trim()
       if (!cuenta) { setFormError(t('ventas.errors.accountRequired')); setSubmitting(false); return }
-      const prospecto = leads.find((lead) => lead.id === prospectoId)
-      if (!prospecto) { setFormError(t('ventas.errors.prospectoMissing')); setSubmitting(false); return }
-      const clientePayload = {
-        org_id: currentOrgId,
-        nombre: toNull(prospecto.nombre ?? ''),
-        apellido: toNull(prospecto.apellido ?? ''),
-        email: toNull(prospecto.email ?? ''),
-        telefono: toNull(prospecto.telefono ?? ''),
-        numero_cuenta_financiera: toNull(cuenta),
-        vendedor_id: vendedorId,
-        referido_por_cliente_id: prospecto.referido_por_cliente_id ?? null,
-        activo: true,
-      }
-      const { data: clienteData, error: clienteError } = await supabase
-        .from('clientes').insert(clientePayload).select('id').single()
-      if (clienteError || !clienteData) {
-        setFormError(clienteError?.message ?? t('toast.error'))
-        showToast(clienteError?.message ?? t('toast.error'), 'error')
-        setSubmitting(false)
-        return
-      }
-      clienteIdFinal = clienteData.id
-      const { error: leadUpdateError } = await supabase
-        .from('leads').update({ estado_pipeline: 'cierre', next_action: 'Convertido' }).eq('id', prospectoId)
-      if (leadUpdateError) {
-        setFormError(leadUpdateError.message)
-        showToast(leadUpdateError.message, 'error')
-        setSubmitting(false)
-        return
+    }
+
+    for (const item of formItems) {
+      if (item.producto_id) {
+        if (!Number.isInteger(item.cantidad) || item.cantidad <= 0) {
+          setFormError('La cantidad de los ítems debe ser un número entero mayor a 0.')
+          setSubmitting(false)
+          return
+        }
       }
     }
 
-    const payload = {
-      numero_nota_pedido: toNull(formValues.numero_nota_pedido),
-      cliente_id: clienteIdFinal,
+    const items = formItems
+      .filter((item) => item.producto_id && item.cantidad > 0)
+      .map((item, index) => ({
+        linea: index + 1,
+        producto_id: item.producto_id,
+        codigo: item.codigo,
+        descripcion: item.descripcion,
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario
+      }))
+
+    if (items.length === 0) {
+      setFormError('Debe agregar al menos un ítem válido a la venta.')
+      setSubmitting(false)
+      return
+    }
+
+    const rpcPayload = {
+      owner_type: ventaOwnerType === 'prospecto' ? 'lead' : 'cliente',
+      cliente_id: ventaOwnerType === 'cliente' ? toNull(formValues.cliente_id) : null,
+      lead_id: ventaOwnerType === 'prospecto' ? toNull(prospectoId) : null,
+      numero_cuenta_financiera: ventaOwnerType === 'prospecto' ? toNull(prospectoCuenta) : null,
       vendedor_id: vendedorId,
+      numero_nota_pedido: toNull(formValues.numero_nota_pedido),
       tipo_movimiento: formValues.tipo_movimiento,
       fecha_venta: formValues.fecha_venta || null,
       estado: formValues.estado,
-      subtotal: calcularTotales.subtotal,
       impuesto: calcularTotales.impuesto,
       cargo_envio: calcularTotales.cargo_envio,
       descuento: calcularTotales.descuento,
@@ -656,61 +655,14 @@ export function VentasPage() {
       pago_inicial: calcularTotales.pago_inicial,
       saldo_pendiente: calcularTotales.saldo_pendiente,
       notas: toNull(formValues.notas),
+      items: items
     }
 
-    const { data: ventaData, error: insertError } = await supabase.from('ventas').insert(payload).select('id').single()
-    if (insertError) {
-      setFormError(insertError.message)
-      showToast(insertError.message, 'error')
-      setSubmitting(false)
-      return
-    }
+    const { error: rpcError } = await supabase.rpc('fn_crear_venta_completa', { payload: rpcPayload })
 
-    const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
-
-    const itemsPayload = formItems
-      .filter((item) => item.producto_id && item.cantidad > 0)
-      .map((item, index) => ({
-        venta_id: ventaData.id,
-        linea: index + 1,
-        producto_id: item.producto_id,
-        codigo_articulo: item.codigo,
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-        precio_unitario: roundMoney(item.precio_unitario),
-        // subtotal omitido — es columna GENERATED ALWAYS (cantidad * precio_unitario)
-      }))
-
-    if (itemsPayload.length > 0) {
-      const { error: itemsError } = await supabase.from('venta_items').insert(itemsPayload)
-      if (itemsError) {
-        await rollbackVenta(ventaData.id)
-        setFormError(itemsError.message)
-        showToast(itemsError.message, 'error')
-        setSubmitting(false)
-        return
-      }
-    }
-
-    let saldoAcum = 0
-    const transaccionesPayload: Array<{ venta_id: string; descripcion: string; cantidad: number; saldo: number }> = []
-
-    saldoAcum += calcularTotales.subtotal
-    transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'SALES PRICE', cantidad: calcularTotales.subtotal, saldo: saldoAcum })
-
-    saldoAcum += calcularTotales.impuesto
-    transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'SALES TAX CHARGE', cantidad: calcularTotales.impuesto, saldo: saldoAcum })
-
-    if (calcularTotales.pago_inicial > 0) {
-      saldoAcum -= calcularTotales.pago_inicial
-      transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'CONSUMER DOWN PAYMENT', cantidad: -calcularTotales.pago_inicial, saldo: saldoAcum })
-    }
-
-    const { error: transaccionesError } = await supabase.from('venta_transacciones').insert(transaccionesPayload)
-    if (transaccionesError) {
-      await rollbackVenta(ventaData.id)
-      setFormError(transaccionesError.message)
-      showToast(transaccionesError.message, 'error')
+    if (rpcError) {
+      setFormError(rpcError.message)
+      showToast(rpcError.message, 'error')
       setSubmitting(false)
       return
     }
