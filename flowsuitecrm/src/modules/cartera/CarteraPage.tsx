@@ -29,6 +29,10 @@ type Case = {
   } | null
 }
 
+type ClienteResumen = NonNullable<Case['clientes']> & {
+  id: string
+}
+
 type Gestion = {
   id: string
   tipo_gestion: string
@@ -860,12 +864,54 @@ export function CarteraPage() {
       }
     }
 
-    const { data } = await supabase
+    const { data, error: casesError } = await supabase
       .from('cargo_vuelta_cases')
-      .select('id,org_id,cliente_id,monto_total,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,clientes(nombre,apellido,telefono,hycite_id,saldo_actual)')
+      .select('id,org_id,cliente_id,monto_total,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by')
       .order('dias_vencido', { ascending: false })
 
-    setCases((data ?? []) as unknown as Case[])
+    if (casesError) {
+      console.error('[CarteraPage] error cargando casos:', casesError)
+      setCases([])
+      setLoading(false)
+      return
+    }
+
+    const baseCases = ((data ?? []) as Omit<Case, 'clientes'>[]).map((row) => ({
+      ...row,
+      clientes: null,
+    }))
+
+    const clienteIds = Array.from(new Set(baseCases.map((row) => row.cliente_id).filter(Boolean)))
+
+    if (clienteIds.length === 0) {
+      setCases(baseCases)
+      setLoading(false)
+      return
+    }
+
+    const { data: clientesData, error: clientesError } = await supabase
+      .from('clientes')
+      .select('id,nombre,apellido,telefono,hycite_id,saldo_actual')
+      .in('id', clienteIds)
+
+    if (clientesError) {
+      console.error('[CarteraPage] error cargando clientes de casos:', clientesError)
+      setCases(baseCases)
+      setLoading(false)
+      return
+    }
+
+    const clientesMap = new Map<string, ClienteResumen>()
+    ;((clientesData ?? []) as ClienteResumen[]).forEach((cliente) => {
+      clientesMap.set(cliente.id, cliente)
+    })
+
+    setCases(
+      baseCases.map((row) => ({
+        ...row,
+        clientes: clientesMap.get(row.cliente_id) ?? null,
+      })),
+    )
     setLoading(false)
   }
 
