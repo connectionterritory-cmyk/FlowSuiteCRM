@@ -676,7 +676,7 @@ export function VentasPage() {
         descripcion: item.descripcion,
         cantidad: item.cantidad,
         precio_unitario: item.precio_unitario,
-        subtotal: item.subtotal,
+        // subtotal omitido — es columna GENERATED ALWAYS (cantidad * precio_unitario)
       }))
 
     if (itemsPayload.length > 0) {
@@ -690,12 +690,18 @@ export function VentasPage() {
       }
     }
 
-    const transaccionesPayload = [
-      { venta_id: ventaData.id, descripcion: 'SALES PRICE', cantidad: calcularTotales.subtotal },
-      { venta_id: ventaData.id, descripcion: 'SALES TAX CHARGE', cantidad: calcularTotales.impuesto },
-    ]
+    let saldoAcum = 0
+    const transaccionesPayload: Array<{ venta_id: string; descripcion: string; cantidad: number; saldo: number }> = []
+
+    saldoAcum += calcularTotales.subtotal
+    transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'SALES PRICE', cantidad: calcularTotales.subtotal, saldo: saldoAcum })
+
+    saldoAcum += calcularTotales.impuesto
+    transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'SALES TAX CHARGE', cantidad: calcularTotales.impuesto, saldo: saldoAcum })
+
     if (calcularTotales.pago_inicial > 0) {
-      transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'CONSUMER DOWN PAYMENT', cantidad: -calcularTotales.pago_inicial })
+      saldoAcum -= calcularTotales.pago_inicial
+      transaccionesPayload.push({ venta_id: ventaData.id, descripcion: 'CONSUMER DOWN PAYMENT', cantidad: -calcularTotales.pago_inicial, saldo: saldoAcum })
     }
 
     const { error: transaccionesError } = await supabase.from('venta_transacciones').insert(transaccionesPayload)
