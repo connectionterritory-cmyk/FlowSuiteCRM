@@ -163,11 +163,12 @@ type PTPModalProps = {
   caseId: string
   clienteId: string
   orgId: string
+  currentUserId: string | null
   onClose: () => void
   onSaved: () => void
 }
 
-function PTPModal({ open, caseId, clienteId, orgId, onClose, onSaved }: PTPModalProps) {
+function PTPModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PTPModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState('')
   const [notas, setNotas] = useState('')
@@ -189,6 +190,7 @@ function PTPModal({ open, caseId, clienteId, orgId, onClose, onSaved }: PTPModal
       monto: parseFloat(monto),
       fecha_compromiso: fecha,
       notas: notas || null,
+      creado_por: currentUserId ?? null,
     })
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -686,7 +688,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         moduloOrigen="cartera"
         origenId={caso.id}
       />
-      <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
+      <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
       <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} ptps={ptps} cuotas={cuotasAbiertas} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
     </div>
@@ -740,7 +742,7 @@ function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string,
             </div>
             <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vence: {fmtFecha(p.fecha_compromiso)}</p>
             {p.notas && <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{p.notas}</p>}
-            {p.estado === 'pendiente' && (
+            {(p.estado === 'pendiente' || p.estado === 'vencido') && (
               <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.4rem' }}>
                 <SmallBtn label="Cumplido" color="#10b981" onClick={async () => { await supabase.from('cob_ptps').update({ estado: 'cumplido', fecha_cumplimiento: todayYmd() }).eq('id', p.id); onRefresh() }} />
                 <SmallBtn label="Incumplido" color="#ea580c" onClick={async () => { await supabase.from('cob_ptps').update({ estado: 'incumplido' }).eq('id', p.id); onRefresh() }} />
