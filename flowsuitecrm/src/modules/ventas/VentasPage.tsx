@@ -666,6 +666,8 @@ export function VentasPage() {
       return
     }
 
+    const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+
     const itemsPayload = formItems
       .filter((item) => item.producto_id && item.cantidad > 0)
       .map((item, index) => ({
@@ -675,7 +677,7 @@ export function VentasPage() {
         codigo_articulo: item.codigo,
         descripcion: item.descripcion,
         cantidad: item.cantidad,
-        precio_unitario: item.precio_unitario,
+        precio_unitario: roundMoney(item.precio_unitario),
         // subtotal omitido — es columna GENERATED ALWAYS (cantidad * precio_unitario)
       }))
 
