@@ -15,6 +15,7 @@ type SheetCell = string | number | boolean | Date | null | undefined
 type SheetRow = SheetCell[]
 
 interface ClienteImport {
+  org_id: string | null
   hycite_id: string
   tipo_cliente: string
   nombre: string | null
@@ -492,6 +493,7 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     const telCasa = limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO CASA', 'Home Phone', 'Tel Casa']))
 
     return {
+      org_id: null,
       hycite_id: hyciteId,
       tipo_cliente: obtenerCampo(row, normalizedRow, ['CLIENTE']).trim() || 'HC',
       nombre,
@@ -803,8 +805,15 @@ export function ImportacionesPage() {
   // ── Step 2: Apply mapping → parse rows → fetch KPIs → preview ─────────────
 
   const procesarConMapping = useCallback(async () => {
+    if (!org_id) {
+      showToast('No se pudo determinar la organización del usuario actual.', 'error')
+      return
+    }
     const mappedRows = rawRows.map(row => applyMapping(row, columnMapping))
-    const validos = mappedRows.map(parsearFila).filter((c): c is ClienteImport => c !== null)
+    const validos = mappedRows
+      .map(parsearFila)
+      .filter((c): c is ClienteImport => c !== null)
+      .map((c) => ({ ...c, org_id }))
     if (validos.length === 0) {
       showToast('No se encontraron registros válidos con el mapeo actual.', 'error')
       return
@@ -832,12 +841,12 @@ export function ImportacionesPage() {
       sinTelefono: uniqueClientes.filter(c => !c.telefono).length,
     })
     setKpisLoading(false)
-  }, [rawRows, columnMapping, showToast])
+  }, [rawRows, columnMapping, org_id, showToast])
 
   // ── Step 4 → import ───────────────────────────────────────────────────────
 
   const handleImportar = async () => {
-    if (!session?.user.id || clientes.length === 0) return
+    if (!session?.user.id || !org_id || clientes.length === 0) return
     setStep('importing')
     let imp = 0, up = 0, err = 0
     const newErrorRows: Array<{ hycite_id: string; nombre: string; error: string }> = []
@@ -883,6 +892,7 @@ export function ImportacionesPage() {
 
         const base = ex ? {
           ...c,
+          org_id,
           id: ex.id,
           // Preserve preferred fields
           fecha_nacimiento: ex.fecha_nacimiento || c.fecha_nacimiento,
@@ -910,6 +920,7 @@ export function ImportacionesPage() {
           codigo_dist_hycite: c.codigo_dist_hycite || ex.codigo_dist_hycite || null,
         } : {
           ...c,
+          org_id,
           vendedor_id: session!.user.id,
           numero_cuenta_financiera: c.hycite_id,
         }

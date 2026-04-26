@@ -52,6 +52,8 @@ interface ImportRevisionesProps {
   onRefreshCount?: () => void
 }
 
+type JsonRecord = Record<string, unknown>
+
 function getDriveImageUrl(driveUrl: string | null): string | null {
   if (!driveUrl) return null
   const match = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)
@@ -63,17 +65,101 @@ function strVal(v: unknown): string {
   return String(v)
 }
 
+function asRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null
+}
+
+function firstDefined<T>(...values: T[]): T | undefined {
+  return values.find((value) => value !== undefined && value !== null)
+}
+
+function numVal(value: unknown): number | null {
+  if (value == null || value === '') return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const normalized = String(value).replace(/[^0-9.-]/g, '')
+  if (!normalized) return null
+  const parsed = Number.parseFloat(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function nestedJson(rawData: JsonRecord): JsonRecord | null {
+  return asRecord(rawData.raw_data)
+}
+
+function cuentaHyciteData(rawData: JsonRecord): JsonRecord | null {
+  const nested = nestedJson(rawData)
+  return asRecord(nested?.cuenta_hycite)
+}
+
+function rawLookup(rawData: JsonRecord, ...keys: string[]): unknown {
+  const nested = nestedJson(rawData)
+  const cuenta = cuentaHyciteData(rawData)
+  for (const key of keys) {
+    const direct = rawData[key]
+    if (direct !== undefined && direct !== null) return direct
+    const nestedValue = nested?.[key]
+    if (nestedValue !== undefined && nestedValue !== null) return nestedValue
+    const cuentaValue = cuenta?.[key]
+    if (cuentaValue !== undefined && cuentaValue !== null) return cuentaValue
+  }
+  return undefined
+}
+
+function financialClientePayload(rawData: JsonRecord): Record<string, unknown> {
+  const cuenta = cuentaHyciteData(rawData)
+  const hyciteId = strVal(firstDefined(
+    rawLookup(rawData, 'hycite_id', 'customer_no'),
+    cuenta?.numero_cuenta_financiera,
+    cuenta?.cuenta,
+    cuenta?.numero_cuenta,
+  )) || null
+
+  const payload: Record<string, unknown> = {
+    hycite_id: hyciteId,
+    numero_cuenta_financiera: strVal(firstDefined(
+      rawLookup(rawData, 'numero_cuenta_financiera'),
+      cuenta?.numero_cuenta_financiera,
+      cuenta?.cuenta,
+      cuenta?.numero_cuenta,
+      hyciteId,
+    )) || hyciteId,
+    saldo_actual: numVal(rawLookup(rawData, 'saldo_actual')),
+    credito_disponible: numVal(rawLookup(rawData, 'credito_disponible')),
+    pago_minimo_mensual: numVal(rawLookup(rawData, 'pago_minimo_mensual')),
+    factor_ingresos: numVal(rawLookup(rawData, 'factor_ingresos')),
+    tipo_cuenta_hycite: strVal(firstDefined(
+      rawLookup(rawData, 'tipo_cuenta_hycite'),
+      cuenta?.tipo_cuenta,
+    )) || null,
+    estado_cuenta_raw: strVal(rawLookup(rawData, 'estado_cuenta_raw')) || null,
+    fecha_orden: strVal(rawLookup(rawData, 'fecha_orden')) || null,
+    fecha_cierre: strVal(rawLookup(rawData, 'fecha_cierre')) || null,
+    metodo_pago: strVal(rawLookup(rawData, 'metodo_pago')) || null,
+    vendedor_hycite_nombre: strVal(rawLookup(rawData, 'vendedor_hycite_nombre')) || null,
+  }
+
+  const nivel = firstDefined(rawLookup(rawData, 'nivel'), cuenta?.nivel)
+  if (nivel !== undefined && nivel !== null && strVal(nivel) !== '') {
+    const parsedLevel = Number.parseInt(strVal(nivel), 10)
+    if (Number.isFinite(parsedLevel)) payload.nivel = parsedLevel
+  }
+
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  )
+}
+
 function initForm(r: Revision): RevisionForm {
   const d = r.raw_data
   return {
-    nombre: strVal(d.nombre),
-    apellido: strVal(d.apellido),
-    telefono: strVal(d.telefono ?? d.telefono_1 ?? d.telefono_casa ?? d.phone ?? d.home_phone),
-    email: strVal(d.email),
-    direccion: strVal(d.direccion),
-    ciudad: strVal(d.ciudad),
-    estado_region: strVal(d.estado_region),
-    codigo_postal: strVal(d.codigo_postal),
+    nombre: strVal(rawLookup(d, 'nombre', 'first_name')),
+    apellido: strVal(rawLookup(d, 'apellido', 'last_name')),
+    telefono: strVal(rawLookup(d, 'telefono', 'telefono_1', 'telefono_casa', 'phone', 'home_phone')),
+    email: strVal(rawLookup(d, 'email')),
+    direccion: strVal(rawLookup(d, 'direccion')),
+    ciudad: strVal(rawLookup(d, 'ciudad')),
+    estado_region: strVal(rawLookup(d, 'estado_region')),
+    codigo_postal: strVal(rawLookup(d, 'codigo_postal')),
     destino: (r.tipo_tentativo as 'lead' | 'cliente') ?? 'lead',
     notas: r.notas_revisor ?? '',
   }
@@ -150,12 +236,14 @@ export function ImportRevisiones({ onRefreshCount }: ImportRevisionesProps) {
         import_file_name: selected.file_name,
         import_drive_url: selected.drive_url,
       }
+      const financialPayload = financialClientePayload(selected.raw_data)
 
       const { error: insertError } = accion === 'creado_cliente'
         ? await supabase.from('clientes').insert({
             ...base,
             estado_region: form.estado_region || null,
             codigo_postal: form.codigo_postal || null,
+            ...financialPayload,
           })
         : await supabase.from('leads').insert({
             ...base,
