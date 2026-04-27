@@ -93,6 +93,7 @@ const initialForm = {
   tipo_movimiento: 'venta_inicial',
   fecha_venta: '',
   estado: 'borrador',
+  subtotal_manual: '0',
   impuesto: '0',
   cargo_envio: '0',
   descuento: '0',
@@ -547,16 +548,15 @@ export function VentasPage() {
   }
 
   const calcularTotales = useMemo(() => {
-    const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
-    const subtotal = formItems.reduce((acc, item) => acc + (item.cantidad * roundMoney(item.precio_unitario || 0)), 0)
-    const impuesto = parseFloat(formValues.impuesto) || 0
-    const cargo_envio = parseFloat(formValues.cargo_envio) || 0
-    const descuento = parseFloat(formValues.descuento) || 0
-    const total = subtotal + impuesto + cargo_envio - descuento
+    const subtotal     = parseFloat(formValues.subtotal_manual) || 0
+    const impuesto     = parseFloat(formValues.impuesto) || 0
+    const cargo_envio  = parseFloat(formValues.cargo_envio) || 0
+    const descuento    = parseFloat(formValues.descuento) || 0
+    const total        = subtotal + impuesto + cargo_envio - descuento
     const pago_inicial = parseFloat(formValues.pago_inicial) || 0
     const saldo_pendiente = total - pago_inicial
     return { subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente }
-  }, [formItems, formValues.impuesto, formValues.cargo_envio, formValues.descuento, formValues.pago_inicial])
+  }, [formValues.subtotal_manual, formValues.impuesto, formValues.cargo_envio, formValues.descuento, formValues.pago_inicial])
 
   const validateStep = (step: number): boolean => {
     if (step === 1) {
@@ -638,6 +638,12 @@ export function VentasPage() {
       return
     }
 
+    if (calcularTotales.subtotal <= 0) {
+      setFormError('El SALES PRICE / Precio de venta debe ser mayor a 0.')
+      setSubmitting(false)
+      return
+    }
+
     const rpcPayload = {
       owner_type: ventaOwnerType === 'prospecto' ? 'lead' : 'cliente',
       cliente_id: ventaOwnerType === 'cliente' ? toNull(formValues.cliente_id) : null,
@@ -648,6 +654,7 @@ export function VentasPage() {
       tipo_movimiento: formValues.tipo_movimiento,
       fecha_venta: formValues.fecha_venta || null,
       estado: formValues.estado,
+      subtotal: calcularTotales.subtotal,
       impuesto: calcularTotales.impuesto,
       cargo_envio: calcularTotales.cargo_envio,
       descuento: calcularTotales.descuento,
@@ -1269,8 +1276,8 @@ export function VentasPage() {
                 </tbody>
               </table>
               <Button type="button" variant="ghost" onClick={addItem} style={{ marginTop: '0.75rem' }}>+ Agregar línea</Button>
-              <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '0.375rem', textAlign: 'right' }}>
-                <span style={{ fontWeight: 600 }}>Subtotal: {numberFormat.format(calcularTotales.subtotal)}</span>
+              <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '0.375rem', fontSize: '0.82rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                El precio total de la orden (SALES PRICE) se ingresa en el paso Financiero.
               </div>
             </div>
           )}
@@ -1278,8 +1285,8 @@ export function VentasPage() {
           {formStep === 3 && (
             <div className="form-grid">
               <label className="form-field">
-                <span>{t('ventas.fields.subtotal')}</span>
-                <input value={numberFormat.format(calcularTotales.subtotal)} readOnly style={{ background: 'var(--color-surface)' }} />
+                <span>SALES PRICE / Precio de venta</span>
+                <input type="number" min="0" step="0.01" value={formValues.subtotal_manual} onChange={handleChange('subtotal_manual')} />
               </label>
               <label className="form-field">
                 <span>{t('ventas.fields.impuesto')}</span>
