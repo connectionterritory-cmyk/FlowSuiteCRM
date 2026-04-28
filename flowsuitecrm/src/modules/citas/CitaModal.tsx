@@ -109,7 +109,7 @@ const buildDirtySnapshot = ({ form, cierreActividad, cierreTarea }: DirtySnapsho
   cierreTarea,
 })
 
-export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions = [] }: CitaModalProps) {
+export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions: assignedOptionsProp }: CitaModalProps) {
   const { showToast } = useToast()
   const { session } = useAuth()
   const { distributionUserIds, hasDistribuidorScope, viewMode } = useViewMode()
@@ -123,10 +123,14 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
   const [clientLoading, setClientLoading] = useState(false)
   const [showSearch, setShowSearch] = useState(true)
   const [role, setRole] = useState<string | null>(null)
+  const [internalAssignedOptions, setInternalAssignedOptions] = useState<AssignedOption[]>([])
   const [cierreActividad, setCierreActividad] = useState<CierreActividad>(emptyCierreActividad)
   const [cierreTarea, setCierreTarea] = useState<CierreTarea>(emptyCierreTarea)
   const [initialEstado, setInitialEstado] = useState('')
   const [initialSnapshot, setInitialSnapshot] = useState('')
+
+  // When the caller doesn't provide assignedOptions, load them based on role
+  const assignedOptions = assignedOptionsProp ?? internalAssignedOptions
 
   useEffect(() => {
     mountedRef.current = true
@@ -300,6 +304,61 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     }
     void loadRole()
   }, [open, sessionUserId])
+
+  // Load assignedOptions internally when the caller doesn't provide them
+  useEffect(() => {
+    if (assignedOptionsProp !== undefined) return
+    if (!open || !isSupabaseConfigured || !sessionUserId || !role) {
+      setInternalAssignedOptions([])
+      return
+    }
+    let active = true
+    const selfOption = { id: sessionUserId, label: 'Yo' }
+    const toOption = (row: { id: string; nombre: string | null; apellido: string | null; email: string | null }) => {
+      const name = [row.nombre, row.apellido].filter(Boolean).join(' ').trim()
+      return { id: row.id, label: name || row.email || row.id }
+    }
+    const load = async () => {
+      if (role === 'admin' || role === 'distribuidor') {
+        let query = supabase.from('usuarios').select('id, nombre, apellido, email').eq('activo', true)
+        if (hasDistribuidorScope && distributionUserIds.length > 0) {
+          query = query.in('id', distributionUserIds)
+        }
+        const { data } = await query
+        if (!active) return
+        const options = (data ?? []).map(toOption)
+        setInternalAssignedOptions(options.length > 0 ? options : [selfOption])
+        return
+      }
+      if (role === 'telemercadeo') {
+        const { data: assignments } = await supabase
+          .from('tele_vendedor_assignments')
+          .select('vendedor_id')
+          .eq('tele_id', sessionUserId)
+        const vendedorIds = (assignments ?? []).map((a: { vendedor_id: string }) => a.vendedor_id)
+        if (vendedorIds.length > 0) {
+          const { data: vendedores } = await supabase
+            .from('usuarios')
+            .select('id, nombre, apellido, email')
+            .in('id', vendedorIds)
+            .eq('activo', true)
+          if (!active) return
+          setInternalAssignedOptions([selfOption, ...(vendedores ?? []).map(toOption)])
+          return
+        }
+      }
+      if (role === 'supervisor_telemercadeo') {
+        const { data } = await supabase.from('usuarios').select('id, nombre, apellido, email').eq('activo', true)
+        if (!active) return
+        const options = (data ?? []).map(toOption)
+        setInternalAssignedOptions(options.length > 0 ? options : [selfOption])
+        return
+      }
+      if (active) setInternalAssignedOptions([selfOption])
+    }
+    void load()
+    return () => { active = false }
+  }, [assignedOptionsProp, distributionUserIds, hasDistribuidorScope, open, role, sessionUserId])
 
   const selectedContactLabel = useMemo(() => {
     if (!form.contacto_id) return ''
@@ -791,7 +850,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           <select
             value={form.assigned_to}
             onChange={(event) => updateForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
-            disabled={assignedOptions.length <= 1}
+            disabled={assignedOptions.length === 0}
           >
             {assignedOptions.length === 0 && <option value="">Sin asignar</option>}
             {assignedOptions.map((option) => (
@@ -799,6 +858,9 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
                 {option.label}
               </option>
             ))}
+            {form.assigned_to && assignedOptions.length > 0 && !assignedOptions.some((o) => o.id === form.assigned_to) && (
+              <option value={form.assigned_to}>Asignado actual</option>
+            )}
           </select>
         </label>
         <label className="form-field">

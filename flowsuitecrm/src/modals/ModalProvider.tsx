@@ -159,7 +159,11 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
         onClose={closeCitaModal}
         onSaved={(citaId) => citaIntent?.onSaved?.(citaId)}
         initialData={citaIntent?.initialData}
-        assignedOptions={citaIntent?.assignedOptions}
+        assignedOptions={
+          citaIntent?.assignedOptions && citaIntent.assignedOptions.length > 0
+            ? citaIntent.assignedOptions
+            : assignedOptionsFallback
+        }
       />
       <RegistrarGestionModal
         open={Boolean(gestionIntent)}
