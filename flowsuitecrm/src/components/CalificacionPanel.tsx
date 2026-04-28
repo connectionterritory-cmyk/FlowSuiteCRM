@@ -52,6 +52,7 @@ type CalificacionPanelProps = {
   focusAddress?: boolean
   onOpenManage?: (lead: LeadCalificacion, mode: 'delete' | 'reassign' | 'restore') => void
   onVerPerfil?: () => void
+  onAgendarCita?: () => void
   onClose: () => void
   onSaved: () => Promise<void>
 }
@@ -171,6 +172,7 @@ export function CalificacionPanel({
   focusAddress = false,
   onOpenManage,
   onVerPerfil,
+  onAgendarCita,
   onClose,
   onSaved,
 }: CalificacionPanelProps) {
@@ -794,6 +796,15 @@ export function CalificacionPanel({
               >
                 + Gestión
               </button>
+              {onAgendarCita && !isDeleted && (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={onAgendarCita}
+                >
+                  📅 + Cita
+                </button>
+              )}
             </div>
             <p className="drawer-subtitle">{fullName}</p>
             {(fuenteLabel || ownerName || lead.next_action) && (

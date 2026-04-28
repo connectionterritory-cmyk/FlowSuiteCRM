@@ -191,14 +191,101 @@ export function Programa4en14Page() {
 
   const handleCitaSaved4en14 = async (citaId?: string) => {
     setCitaOpen(false)
-    if (!citaId || !citaReferidoId || !configured) return
-    await supabase
-      .from('programa_4en14_referidos')
-      .update({ cita_id: citaId })
-      .eq('id', citaReferidoId)
-    setCitaReferidoId(null)
+    if (citaReferidoId && citaId && configured) {
+      await supabase
+        .from('programa_4en14_referidos')
+        .update({ cita_id: citaId, estado_presentacion: 'agendada' })
+        .eq('id', citaReferidoId)
+      setCitaReferidoId(null)
+    }
     void loadData()
   }
+
+  const handleVerCita4en14 = async (citaId: string) => {
+    if (!configured) return
+    const { data, error } = await supabase
+      .from('citas')
+      .select('id, start_at, tipo, estado, notas, direccion, ciudad, estado_region, zip, apartamento, assigned_to, nombre, telefono, contacto_tipo, contacto_id, timezone, resultado, resultado_notas')
+      .eq('id', citaId)
+      .maybeSingle()
+    if (error || !data) return
+    const row = data as {
+      id: string; start_at: string | null; tipo: string | null; estado: string | null
+      notas: string | null; direccion: string | null; ciudad: string | null
+      estado_region: string | null; zip: string | null; apartamento: string | null
+      assigned_to: string | null; nombre: string | null; telefono: string | null
+      contacto_tipo: string | null; contacto_id: string | null; timezone: string | null
+      resultado: string | null; resultado_notas: string | null
+    }
+    const startAt = row.start_at ? new Date(row.start_at).toISOString().slice(0, 16) : ''
+    setCitaInitial({
+      id: row.id,
+      start_at: startAt,
+      tipo: row.tipo ?? 'demo',
+      estado: row.estado ?? 'programada',
+      notas: row.notas ?? '',
+      direccion: row.direccion ?? '',
+      ciudad: row.ciudad ?? '',
+      estado_region: row.estado_region ?? '',
+      zip: row.zip ?? '',
+      apartamento: row.apartamento ?? '',
+      assigned_to: row.assigned_to ?? '',
+      contacto_nombre: row.nombre ?? '',
+      contacto_telefono: row.telefono ?? '',
+      contacto_tipo: (row.contacto_tipo as 'cliente' | 'lead') ?? 'lead',
+      contacto_id: row.contacto_id ?? '',
+      timezone: row.timezone ?? '',
+      resultado: row.resultado ?? '',
+      resultado_notas: row.resultado_notas ?? '',
+    })
+    setCitaReferidoId(null)
+    setCitaOpen(true)
+  }
+
+  const handleCrearLeadYCitar4en14 = useCallback(async (ref: ReferidoRecord) => {
+    if (!configured) return
+    const vendedorId = session?.user.id ?? null
+    let leadId: string | null = null
+    if (ref.telefono) {
+      const { data: existing } = await supabase
+        .from('leads').select('id').eq('telefono', ref.telefono).maybeSingle()
+      if (existing) leadId = (existing as { id: string }).id
+    }
+    if (!leadId) {
+      const { data: newLead, error: leadError } = await supabase
+        .from('leads')
+        .insert({
+          nombre: ref.nombre ?? '',
+          telefono: ref.telefono,
+          fuente: 'referido',
+          owner_id: vendedorId,
+          estado_pipeline: 'nuevo',
+        })
+        .select('id')
+        .single()
+      if (leadError || !newLead) {
+        showToast(leadError?.message ?? t('toast.error'), 'error')
+        return
+      }
+      leadId = (newLead as { id: string }).id
+    }
+    await supabase.from('programa_4en14_referidos').update({ lead_id: leadId }).eq('id', ref.id)
+    const now = new Date()
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    setCitaInitial({
+      owner_id: session?.user.id ?? '',
+      start_at: local.toISOString().slice(0, 16),
+      tipo: 'demo',
+      estado: 'programada',
+      assigned_to: session?.user.id ?? '',
+      contacto_tipo: 'lead',
+      contacto_id: leadId,
+      contacto_nombre: ref.nombre ?? '',
+      contacto_telefono: ref.telefono ?? '',
+    })
+    setCitaReferidoId(ref.id)
+    setCitaOpen(true)
+  }, [configured, session?.user.id, showToast, t])
 
   const loadData = useCallback(async () => {
     if (!configured) return
@@ -712,6 +799,15 @@ export function Programa4en14Page() {
                               >
                                 ✏️
                               </button>
+                              {!referido.cita_id && !referido.lead_id && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => handleCrearLeadYCitar4en14(referido)}
+                                >
+                                  + Cita
+                                </Button>
+                              )}
                               {referido.lead_id && !referido.cita_id && (
                                 <Button
                                   type="button"
@@ -722,7 +818,14 @@ export function Programa4en14Page() {
                                 </Button>
                               )}
                               {referido.cita_id && (
-                                <Badge label="Cita" tone="blue" />
+                                <button
+                                  type="button"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                  onClick={() => handleVerCita4en14(referido.cita_id!)}
+                                  title="Ver / editar cita"
+                                >
+                                  <Badge label="📅 Cita" tone="blue" />
+                                </button>
                               )}
                               <div className="contact-actions">
                                 <button
@@ -798,7 +901,9 @@ export function Programa4en14Page() {
     getLeadScore,
     giftSubmittingId,
     handleAgendarCita4en14,
+    handleCrearLeadYCitar4en14,
     handleDeliverGift,
+    handleVerCita4en14,
     openCalificacionPanel,
     openEmail,
     openReferralModal,

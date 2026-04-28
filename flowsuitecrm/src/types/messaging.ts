@@ -22,6 +22,13 @@ export type MessagingContact = {
   clienteId?: string | null
   leadId?: string | null
   contactRef?: ContactRef | null
+  // Campos de cita pre-agendada
+  cita_fecha?: string | null
+  cita_hora?: string | null
+  cita_direccion?: string | null
+  // Campos de equipo/producto
+  equipo_nombre?: string | null
+  equipo_serie?: string | null
 }
 
 export type MessagingChannel = 'whatsapp' | 'sms' | 'email' | 'telegram'

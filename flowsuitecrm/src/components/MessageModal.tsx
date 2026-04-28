@@ -10,7 +10,6 @@ import {
   WhatsappIcon,
   MailIcon,
   MessageSquareIcon,
-  NavigationIcon
 } from './icons'
 
 type MessageModalProps = {
@@ -102,12 +101,6 @@ function MessageModalContent({ onClose }: { onClose: () => void }) {
               icon={<MessageSquareIcon style={{ width: 16, height: 16 }} />} 
               onClick={() => setActiveChannel('sms')} 
             />
-            <ChannelButton 
-              active={activeChannel === 'telegram'} 
-              channel="telegram" 
-              icon={<NavigationIcon style={{ width: 14, height: 14 }} />} 
-              onClick={() => setActiveChannel('telegram')} 
-            />
           </div>
           <div style={{ width: 1, height: 16, background: 'var(--card-border)', margin: '0 0.5rem' }} />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -196,9 +189,10 @@ export function MessageModal(props: MessageModalProps) {
       size="xl" 
       title="Gestión de Mensajería"
     >
-      <MessagingProvider 
-        initialChannel={props.channel} 
+      <MessagingProvider
+        initialChannel={props.channel}
         initialContact={props.contact}
+        initialTemplateId={props.initialTemplateId ?? null}
         contextType={props.contextType}
         mkMessageId={props.mkMessageId ?? null}
         onClose={props.onClose}
