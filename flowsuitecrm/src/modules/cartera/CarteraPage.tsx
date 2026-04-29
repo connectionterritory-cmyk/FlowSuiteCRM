@@ -220,7 +220,7 @@ function buildHistorial(gestiones: Gestion[], ptps: PTP[], pagos: Pago[], caso: 
       id: `ptp-${p.id}`,
       timestamp: p.created_at,
       tipo: 'ptp',
-      label: 'Promesa de pago',
+      label: p.estado === 'cumplido' ? 'Promesa cumplida' : 'Promesa de pago',
       monto: p.monto,
       estado: p.estado,
       notas: p.notas,
@@ -241,7 +241,15 @@ function buildHistorial(gestiones: Gestion[], ptps: PTP[], pagos: Pago[], caso: 
     })
   }
 
-  return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  const TIPO_PRIORITY: Record<HistorialEvent['tipo'], number> = { pago: 0, ptp: 1, gestion: 2, apertura: 3, cierre: 4 }
+  return events.sort((a, b) => {
+    const dayA = a.timestamp.slice(0, 10)
+    const dayB = b.timestamp.slice(0, 10)
+    if (dayA !== dayB) return dayA < dayB ? 1 : -1
+    const prioDiff = TIPO_PRIORITY[a.tipo] - TIPO_PRIORITY[b.tipo]
+    if (prioDiff !== 0) return prioDiff
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  })
 }
 
 // ── PTP Modal ────────────────────────────────────────────────────────────────
