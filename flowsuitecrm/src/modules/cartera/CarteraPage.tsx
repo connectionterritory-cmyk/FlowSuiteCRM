@@ -86,6 +86,17 @@ type Cuota = {
   estado: string
 }
 
+type HistorialEvent = {
+  id: string
+  timestamp: string
+  tipo: 'apertura' | 'gestion' | 'ptp' | 'pago' | 'cierre'
+  label: string
+  monto: number | null
+  estado: string | null
+  notas: string | null
+  actor: string | null
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pad2(n: number) {
@@ -154,6 +165,83 @@ function ptpEstadoColor(e: string) {
   if (e === 'incumplido') return '#ea580c'
   if (e === 'cancelado') return '#6b7280'
   return '#f59e0b'
+}
+
+function historialColor(tipo: HistorialEvent['tipo']) {
+  if (tipo === 'apertura') return '#3b82f6'
+  if (tipo === 'pago') return '#10b981'
+  if (tipo === 'ptp') return '#f59e0b'
+  if (tipo === 'cierre') return '#6b7280'
+  return '#94a3b8'
+}
+
+function buildHistorial(gestiones: Gestion[], ptps: PTP[], pagos: Pago[], caso: Case): HistorialEvent[] {
+  const events: HistorialEvent[] = []
+
+  events.push({
+    id: `case-open-${caso.id}`,
+    timestamp: caso.fecha_apertura,
+    tipo: 'apertura',
+    label: 'Caso abierto',
+    monto: caso.monto_total,
+    estado: caso.estado,
+    notas: caso.acuerdo_tipo ?? null,
+    actor: null,
+  })
+
+  if (caso.fecha_cierre) {
+    events.push({
+      id: `case-close-${caso.id}`,
+      timestamp: caso.fecha_cierre,
+      tipo: 'cierre',
+      label: 'Caso cerrado',
+      monto: null,
+      estado: caso.estado,
+      notas: null,
+      actor: caso.updated_by,
+    })
+  }
+
+  for (const g of gestiones) {
+    events.push({
+      id: `g-${g.id}`,
+      timestamp: g.created_at,
+      tipo: 'gestion',
+      label: g.tipo_gestion,
+      monto: g.monto_comprometido,
+      estado: g.resultado,
+      notas: g.notas,
+      actor: g.gestionado_por,
+    })
+  }
+
+  for (const p of ptps) {
+    events.push({
+      id: `ptp-${p.id}`,
+      timestamp: p.created_at,
+      tipo: 'ptp',
+      label: 'Promesa de pago',
+      monto: p.monto,
+      estado: p.estado,
+      notas: p.notas,
+      actor: p.creado_por,
+    })
+  }
+
+  for (const p of pagos) {
+    events.push({
+      id: `pago-${p.id}`,
+      timestamp: p.fecha_pago,
+      tipo: 'pago',
+      label: 'Pago registrado',
+      monto: p.monto,
+      estado: null,
+      notas: [p.metodo_pago, p.referencia, p.notas].filter(Boolean).join(' · ') || null,
+      actor: p.creado_por,
+    })
+  }
+
+  return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 }
 
 // ── PTP Modal ────────────────────────────────────────────────────────────────
@@ -473,7 +561,7 @@ function PlanModal({ open, caseId, clienteId, orgId, onClose, onSaved }: PlanMod
 
 // ── Case Detail Panel ─────────────────────────────────────────────────────────
 
-type DetailTab = 'gestiones' | 'ptps' | 'pagos' | 'plan'
+type DetailTab = 'historial' | 'gestiones' | 'ptps' | 'pagos' | 'plan'
 
 type CaseDetailProps = {
   caso: Case
@@ -501,7 +589,7 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
 }
 
 function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated }: CaseDetailProps) {
-  const [tab, setTab] = useState<DetailTab>('gestiones')
+  const [tab, setTab] = useState<DetailTab>('historial')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
   const [ptps, setPtps] = useState<PTP[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
@@ -618,6 +706,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   if (caso.acuerdo_tipo) chips.push({ label: caso.acuerdo_tipo, color: '#7c3aed' })
 
   const TABS: { key: DetailTab; label: string }[] = [
+    { key: 'historial', label: 'Historial' },
     { key: 'gestiones', label: `Gestiones (${gestiones.length})` },
     { key: 'ptps', label: `PTPs (${ptps.length})` },
     { key: 'pagos', label: `Pagos (${pagos.length})` },
@@ -666,6 +755,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }}>
         {loading ? (
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Cargando…</p>
+        ) : tab === 'historial' ? (
+          <HistorialList events={buildHistorial(gestiones, ptps, pagos, caso)} usersById={usersById} />
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
         ) : tab === 'ptps' ? (
@@ -834,6 +925,36 @@ function PlanesList({ planes }: { planes: Plan[] }) {
 
 function Empty({ label }: { label: string }) {
   return <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>{label}</p>
+}
+
+// ── Historial list ────────────────────────────────────────────────────────────
+
+function HistorialList({ events, usersById }: { events: HistorialEvent[]; usersById: Record<string, { nombre_completo?: string } | undefined> }) {
+  if (events.length === 0) return <Empty label="Sin eventos registrados en este caso" />
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {events.map(ev => {
+        const color = historialColor(ev.tipo)
+        return (
+          <div key={ev.id} style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, marginTop: '0.38rem', flexShrink: 0 }} />
+            <div style={{ flex: 1, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', border: `1px solid ${color}33`, background: color + '0a' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text)' }}>{ev.label}</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>{fmtFecha(ev.timestamp)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.2rem', alignItems: 'center' }}>
+                {ev.monto !== null && <span style={{ fontSize: '0.75rem', fontWeight: 600, color }}>{fmtMonto(ev.monto)}</span>}
+                {ev.estado && <span style={{ fontSize: '0.68rem', padding: '0.08rem 0.35rem', borderRadius: '999px', background: color + '22', color, border: `1px solid ${color}44` }}>{ev.estado}</span>}
+                {ev.actor && <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>{usersById[ev.actor]?.nombre_completo ?? ev.actor.slice(0, 8)}</span>}
+              </div>
+              {ev.notas && <p style={{ margin: '0.22rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{ev.notas}</p>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 // ── Main CarteraPage ──────────────────────────────────────────────────────────
