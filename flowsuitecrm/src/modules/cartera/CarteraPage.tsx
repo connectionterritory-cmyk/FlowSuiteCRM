@@ -252,7 +252,7 @@ function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSa
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const ptpsPendientes = useMemo(() => ptps.filter(p => p.estado === 'pendiente'), [ptps])
+  const ptpsPendientes = useMemo(() => ptps.filter(p => p.estado === 'pendiente' || p.estado === 'vencido'), [ptps])
   const cuotasAbiertas = useMemo(() => cuotas.filter(c => c.estado === 'pendiente' || c.estado === 'vencida'), [cuotas])
 
   useEffect(() => {
@@ -729,9 +729,19 @@ function GestionesList({ gestiones, usersById }: { gestiones: Gestion[]; usersBy
 // ── PTPs list ─────────────────────────────────────────────────────────────────
 
 function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string, { nombre_completo?: string } | undefined>; onRefresh: () => void }) {
+  const [ptpError, setPtpError] = useState<string | null>(null)
+
+  const handlePtpUpdate = async (id: string, payload: Record<string, unknown>) => {
+    setPtpError(null)
+    const { error } = await supabase.from('cob_ptps').update(payload).eq('id', id)
+    if (error) { setPtpError(error.message); return }
+    onRefresh()
+  }
+
   if (ptps.length === 0) return <Empty label="No hay promesas de pago para este caso" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {ptpError && <p style={{ color: '#f87171', fontSize: '0.78rem', margin: '0 0 0.25rem' }}>{ptpError}</p>}
       {ptps.map(p => {
         const color = ptpEstadoColor(p.estado)
         return (
@@ -744,8 +754,8 @@ function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string,
             {p.notas && <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{p.notas}</p>}
             {(p.estado === 'pendiente' || p.estado === 'vencido') && (
               <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.4rem' }}>
-                <SmallBtn label="Cumplido" color="#10b981" onClick={async () => { await supabase.from('cob_ptps').update({ estado: 'cumplido', fecha_cumplimiento: todayYmd() }).eq('id', p.id); onRefresh() }} />
-                <SmallBtn label="Incumplido" color="#ea580c" onClick={async () => { await supabase.from('cob_ptps').update({ estado: 'incumplido' }).eq('id', p.id); onRefresh() }} />
+                <SmallBtn label="Cumplido" color="#10b981" onClick={() => handlePtpUpdate(p.id, { estado: 'cumplido', fecha_cumplimiento: todayYmd() })} />
+                <SmallBtn label="Incumplido" color="#ea580c" onClick={() => handlePtpUpdate(p.id, { estado: 'incumplido' })} />
               </div>
             )}
           </div>
