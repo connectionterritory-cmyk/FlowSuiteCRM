@@ -9,6 +9,7 @@ import { useUsers } from '../../data/UsersProvider'
 type TargetTable = 'clientes' | 'leads'
 type Step = 'upload' | 'mapping' | 'preview' | 'confirm' | 'importing' | 'result'
 type SheetRow = (string | number | boolean | Date | null | undefined)[]
+type ImportErrorRow = { nombre: string; telefono: string; error: string }
 
 // ── Parsed row types ──────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ interface ClienteGeneral {
   dias_atraso: number
   saldo_actual: number
   emprendedor_raw: string | null
-  origen: 'general_import'
+  origen: 'hycite_import'
 }
 
 interface LeadGeneral {
@@ -42,6 +43,40 @@ interface LeadGeneral {
   codigo_postal: string | null
   fuente: string | null
   estado_pipeline: string
+}
+
+type ClientePayload = {
+  org_id: string
+  nombre: string | null
+  apellido: string | null
+  email: string | null
+  telefono: string | null
+  telefono_casa: string | null
+  direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
+  tipo_cliente: string
+  estado_cuenta: string | null
+  estado_morosidad: string | null
+  dias_atraso: number
+  saldo_actual: number
+  monto_moroso: number
+  nivel: number
+  elegible_addon: boolean
+  activo: boolean
+  vendedor_id: string
+  codigo_vendedor_hycite: string | null
+  origen: 'hycite_import'
+  fuente_import: string
+  updated_at: string
+  id?: string
+}
+
+type LeadPayload = LeadGeneral & {
+  org_id: string
+  owner_id: string
+  vendedor_id: string
 }
 
 // ── Field definitions ─────────────────────────────────────────────────────────
@@ -173,6 +208,14 @@ function parseEmprendedorCode(raw: string): string | null {
   return null
 }
 
+function getDisplayName(row: { nombre: string | null; apellido: string | null }): string {
+  return [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Sin nombre'
+}
+
+function isTelefonoDuplicateError(message: string): boolean {
+  return message.includes('clientes_org_telefono_uidx')
+}
+
 function autoDetectMapping(headers: string[], fields: FieldDef[]): Record<string, string> {
   const mapping: Record<string, string> = {}
   fields.forEach(field => {
@@ -232,7 +275,7 @@ function parseClienteRow(row: Record<string, string>, mapping: Record<string, st
     dias_atraso,
     saldo_actual: parseMonto(getCell(row, mapping, 'saldo_actual')),
     emprendedor_raw: getCell(row, mapping, 'emprendedor') || null,
-    origen: 'general_import',
+    origen: 'hycite_import',
   }
 }
 
@@ -337,6 +380,8 @@ export function ImportGeneral() {
   const [importados, setImportados] = useState(0)
   const [actualizados, setActualizados] = useState(0)
   const [errores, setErrores] = useState(0)
+  const [primerError, setPrimerError] = useState<string | null>(null)
+  const [errorRows, setErrorRows] = useState<ImportErrorRow[]>([])
 
   const fields = target === 'clientes' ? CLIENTE_FIELDS : LEAD_FIELDS
 
@@ -422,7 +467,11 @@ export function ImportGeneral() {
   const importarClientes = async () => {
     if (!session?.user.id || !org_id) return
     setStep('importing')
+    setPrimerError(null)
+    setErrorRows([])
     let imp = 0, up = 0, err = 0
+    let firstErr: string | null = null
+    const newErrorRows: ImportErrorRow[] = []
 
     // Build emprendedor code → vendedor_id map
     const codes = [...new Set(clienteRows.map(r => parseEmprendedorCode(r.emprendedor_raw ?? '')).filter(Boolean))] as string[]
@@ -447,13 +496,14 @@ export function ImportGeneral() {
         const { data: existentes } = await supabase
           .from('clientes')
           .select('id, telefono')
+          .eq('org_id', org_id)
           .in('telefono', tels)
         for (const e of existentes ?? []) {
           if (e.telefono) existingMap.set(e.telefono, e.id)
         }
       }
 
-      const payloads = lote.map(r => {
+      const payloads: ClientePayload[] = lote.map(r => {
         const code = parseEmprendedorCode(r.emprendedor_raw ?? '')
         const vendedorId = (code && vendedorMap.get(code)) || session!.user.id
         const existingId = r.telefono ? existingMap.get(r.telefono) : undefined
@@ -473,9 +523,13 @@ export function ImportGeneral() {
           estado_morosidad: r.estado_morosidad,
           dias_atraso: r.dias_atraso,
           saldo_actual: r.saldo_actual,
+          monto_moroso: 0,
+          nivel: 1,
+          elegible_addon: true,
+          activo: r.estado_cuenta !== 'cancelacion_total' && r.estado_cuenta !== 'inactivo',
           vendedor_id: vendedorId,
           codigo_vendedor_hycite: code,
-          origen: 'general_import' as const,
+          origen: 'hycite_import' as const,
           fuente_import: fileName,
           updated_at: new Date().toISOString(),
         }
@@ -488,14 +542,105 @@ export function ImportGeneral() {
 
       if (toInsert.length > 0) {
         const { error } = await supabase.from('clientes').insert(toInsert)
-        if (error) { err += toInsert.length; console.error('Insert error:', error) }
+        if (error) {
+          console.error('Insert batch error:', error)
+          const processedPhones = new Set(existingMap.keys())
+
+          for (const payload of toInsert) {
+            const { data: existing, error: lookupError } = payload.telefono
+              ? await supabase
+                  .from('clientes')
+                  .select('id')
+                  .eq('org_id', org_id)
+                  .eq('telefono', payload.telefono)
+                  .maybeSingle()
+              : { data: null, error: null }
+
+            if (lookupError) {
+              err++
+              firstErr ||= lookupError.message
+              newErrorRows.push({ nombre: getDisplayName(payload), telefono: payload.telefono ?? '', error: lookupError.message })
+              console.error('Lookup existing cliente error:', lookupError)
+              continue
+            }
+
+            if (existing?.id) {
+              const rest = { ...payload }
+              delete rest.id
+              const { error: updateError } = await supabase
+                .from('clientes')
+                .update(rest)
+                .eq('id', existing.id)
+                .eq('org_id', org_id)
+              if (updateError) {
+                err++
+                firstErr ||= updateError.message
+                newErrorRows.push({ nombre: getDisplayName(payload), telefono: payload.telefono ?? '', error: updateError.message })
+                console.error('Fallback update error:', updateError)
+              } else {
+                up++
+                if (payload.telefono) processedPhones.add(payload.telefono)
+              }
+            } else {
+              const wasAlreadyProcessed = Boolean(payload.telefono && processedPhones.has(payload.telefono))
+              const { error: upsertError } = payload.telefono
+                ? await supabase.from('clientes').upsert(payload, { onConflict: 'org_id,telefono' })
+                : await supabase.from('clientes').insert(payload)
+
+              if (upsertError) {
+                const rest = { ...payload }
+                delete rest.id
+                const { data: updatedExisting, error: directUpdateError } = payload.telefono
+                  ? await supabase
+                      .from('clientes')
+                      .update(rest)
+                      .eq('org_id', org_id)
+                      .eq('telefono', payload.telefono)
+                      .select('id')
+                      .maybeSingle()
+                  : { data: null, error: upsertError }
+
+                if (directUpdateError || !updatedExisting?.id) {
+                  const finalError = directUpdateError?.message ?? upsertError.message
+                  if (isTelefonoDuplicateError(finalError)) {
+                    up++
+                    if (payload.telefono) processedPhones.add(payload.telefono)
+                    console.warn('Duplicate telefono treated as existing cliente:', payload.telefono)
+                  } else {
+                    err++
+                    firstErr ||= finalError
+                    newErrorRows.push({ nombre: getDisplayName(payload), telefono: payload.telefono ?? '', error: finalError })
+                    console.error('Fallback upsert/update error:', directUpdateError ?? upsertError)
+                  }
+                } else {
+                  up++
+                  if (payload.telefono) processedPhones.add(payload.telefono)
+                }
+              } else {
+                if (wasAlreadyProcessed) up++
+                else imp++
+                if (payload.telefono) processedPhones.add(payload.telefono)
+              }
+            }
+          }
+        }
         else imp += toInsert.length
       }
 
       for (const payload of toUpdate) {
-        const { id, ...rest } = payload as typeof payload & { id: string }
-        const { error } = await supabase.from('clientes').update(rest).eq('id', id)
-        if (error) { err++; console.error('Update error:', error) }
+        const { id, ...rest } = payload
+        if (!id) continue
+        const { error } = await supabase
+          .from('clientes')
+          .update(rest)
+          .eq('id', id)
+          .eq('org_id', org_id)
+        if (error) {
+          err++
+          firstErr ||= error.message
+          newErrorRows.push({ nombre: getDisplayName(payload), telefono: payload.telefono ?? '', error: error.message })
+          console.error('Update error:', error)
+        }
         else up++
       }
     }
@@ -503,6 +648,8 @@ export function ImportGeneral() {
     setImportados(imp)
     setActualizados(up)
     setErrores(err)
+    setPrimerError(firstErr)
+    setErrorRows(newErrorRows)
     setStep('result')
     if (err === 0) showToast(`✅ ${imp} nuevos, ${up} actualizados`)
     else showToast(`⚠️ ${imp} nuevos, ${up} actualizados, ${err} errores`, 'error')
@@ -513,11 +660,15 @@ export function ImportGeneral() {
   const importarLeads = async () => {
     if (!session?.user.id || !org_id) return
     setStep('importing')
+    setPrimerError(null)
+    setErrorRows([])
     let imp = 0, err = 0
+    let firstErr: string | null = null
+    const newErrorRows: ImportErrorRow[] = []
 
     for (let i = 0; i < leadRows.length; i += 50) {
       const lote = leadRows.slice(i, i + 50)
-      const payloads = lote.map(r => ({
+      const payloads: LeadPayload[] = lote.map(r => ({
         org_id,
         nombre: r.nombre,
         apellido: r.apellido,
@@ -534,12 +685,52 @@ export function ImportGeneral() {
       }))
 
       const { error } = await supabase.from('leads').insert(payloads)
-      if (error) { err += lote.length; console.error('Lead insert error:', error) }
+      if (error) {
+        console.error('Lead insert batch error:', error)
+
+        for (const payload of payloads) {
+          const { data: existing, error: lookupError } = payload.telefono
+            ? await supabase
+                .from('leads')
+                .select('id')
+                .eq('org_id', org_id)
+                .eq('telefono', payload.telefono)
+                .maybeSingle()
+            : { data: null, error: null }
+
+          if (lookupError) {
+            err++
+            firstErr ||= lookupError.message
+            newErrorRows.push({ nombre: getDisplayName(payload), telefono: payload.telefono ?? '', error: lookupError.message })
+            console.error('Lookup existing lead error:', lookupError)
+            continue
+          }
+
+          const { error: rowError } = existing?.id
+            ? await supabase
+                .from('leads')
+                .update(payload)
+                .eq('id', existing.id)
+                .eq('org_id', org_id)
+            : await supabase.from('leads').insert(payload)
+
+          if (rowError) {
+            err++
+            firstErr ||= rowError.message
+            newErrorRows.push({ nombre: getDisplayName(payload), telefono: payload.telefono ?? '', error: rowError.message })
+            console.error('Lead fallback error:', rowError)
+          } else {
+            imp++
+          }
+        }
+      }
       else imp += lote.length
     }
 
     setImportados(imp)
     setErrores(err)
+    setPrimerError(firstErr)
+    setErrorRows(newErrorRows)
     setStep('result')
     if (err === 0) showToast(`✅ ${imp} leads importados`)
     else showToast(`⚠️ ${imp} importados, ${err} errores`, 'error')
@@ -560,6 +751,8 @@ export function ImportGeneral() {
     setImportados(0)
     setActualizados(0)
     setErrores(0)
+    setPrimerError(null)
+    setErrorRows([])
   }
 
   const previewRows = target === 'clientes' ? clienteRows : leadRows
@@ -786,6 +979,30 @@ export function ImportGeneral() {
               </div>
             ))}
           </div>
+
+          {primerError && (
+            <div style={{ padding: '0.75rem 1rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.35)', borderRadius: '0.5rem', color: '#dc2626', fontSize: '0.82rem' }}>
+              Primer error: {primerError}
+            </div>
+          )}
+
+          {errorRows.length > 0 && (
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: '0.5rem', overflow: 'hidden' }}>
+              <div style={{ padding: '0.6rem 0.875rem', background: 'var(--color-surface)', fontSize: '0.8rem', fontWeight: 700 }}>
+                Detalle de errores
+              </div>
+              {errorRows.slice(0, 5).map((row, index) => (
+                <div key={`${row.telefono}-${index}`} style={{ padding: '0.6rem 0.875rem', borderTop: '1px solid var(--color-border)', fontSize: '0.78rem' }}>
+                  <strong>{row.nombre}</strong>{row.telefono ? ` · ${row.telefono}` : ''}: <span style={{ color: '#dc2626' }}>{row.error}</span>
+                </div>
+              ))}
+              {errorRows.length > 5 && (
+                <div style={{ padding: '0.6rem 0.875rem', borderTop: '1px solid var(--color-border)', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  + {errorRows.length - 5} errores más
+                </div>
+              )}
+            </div>
+          )}
 
           <Button type="button" onClick={resetear}>Nueva importación</Button>
         </div>
