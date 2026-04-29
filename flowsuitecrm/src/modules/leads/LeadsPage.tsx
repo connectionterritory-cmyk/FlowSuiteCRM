@@ -18,6 +18,7 @@ import { useUsers } from '../../data/useUsers'
 import { useViewMode } from '../../data/useViewMode'
 import { useLeadSearch } from '../../hooks/useLeadSearch'
 import { useMessaging } from '../../hooks/useMessaging'
+import { CitaModal, type CitaForm } from '../citas/CitaModal'
 import {
   LEAD_PIPELINE_FOLLOWUP_STAGES,
   LEAD_PIPELINE_NEW_STAGES,
@@ -259,6 +260,8 @@ export function LeadsPage() {
   const [rescheduleAction, setRescheduleAction] = useState('')
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleSaving, setRescheduleSaving] = useState(false)
+  const [citaOpen, setCitaOpen] = useState(false)
+  const [citaInitial, setCitaInitial] = useState<Partial<CitaForm>>({})
 
   const loadRole = useCallback(async () => {
     if (!configured || !session?.user.id) {
@@ -1677,6 +1680,28 @@ export function LeadsPage() {
     )
   }
 
+  const handleAgendarCita = useCallback((lead: LeadRecord) => {
+    const now = new Date()
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    setCitaInitial({
+      owner_id: session?.user.id ?? '',
+      start_at: local.toISOString().slice(0, 16),
+      tipo: 'demo',
+      estado: 'programada',
+      assigned_to: session?.user.id ?? '',
+      contacto_tipo: 'lead',
+      contacto_id: lead.id,
+      contacto_nombre: [lead.nombre, lead.apellido].filter(Boolean).join(' '),
+      contacto_telefono: lead.telefono ?? '',
+    })
+    setCitaOpen(true)
+  }, [session?.user.id])
+
+  const handleCitaLeadSaved = useCallback(() => {
+    setCitaOpen(false)
+    void loadLeads()
+  }, [loadLeads])
+
   return (
     <div className="page-stack">
       <SectionHeader
@@ -2476,8 +2501,15 @@ export function LeadsPage() {
         canManage={canDeleteLeads || canReassignLeads}
         onOpenManage={(lead, mode) => openManageModal(lead as LeadRecord, mode)}
         onVerPerfil={selectedLead?.persona_id ? () => setPerfilPersonaId(selectedLead.persona_id ?? null) : undefined}
+        onAgendarCita={selectedLead ? () => handleAgendarCita(selectedLead) : undefined}
         onClose={() => setSelectedLead(null)}
         onSaved={loadLeads}
+      />
+      <CitaModal
+        open={citaOpen}
+        onClose={() => setCitaOpen(false)}
+        onSaved={handleCitaLeadSaved}
+        initialData={citaInitial}
       />
       <PersonaPerfilPanel
         personaId={perfilPersonaId}

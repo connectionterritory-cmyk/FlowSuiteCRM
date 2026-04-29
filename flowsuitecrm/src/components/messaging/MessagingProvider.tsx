@@ -92,17 +92,19 @@ export const useMessaging = () => {
   return context
 }
 
-export function MessagingProvider({ 
-  children, 
-  initialChannel, 
+export function MessagingProvider({
+  children,
+  initialChannel,
   initialContact,
+  initialTemplateId,
   contextType,
   mkMessageId,
   onClose
-}: { 
+}: {
   children: React.ReactNode
   initialChannel: MessagingChannel
   initialContact: MessagingContact | null
+  initialTemplateId?: string | null
   contextType?: MessagingContextType
   mkMessageId?: string | null
   onClose?: () => void
@@ -126,9 +128,7 @@ export function MessagingProvider({
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
     const organizacion = currentUser?.organizacion || 'Connection Worldwide Group'
     
-    const raw = initialContact as any || {}
-
-    const vars: Record<string, any> = {
+    const vars: Record<string, string> = {
       cliente: nombre,
       nombre,
       vendedor_nombre: currentUserName,
@@ -144,19 +144,14 @@ export function MessagingProvider({
       fuente: initialContact?.fuente || '',
       programa: initialContact?.programa || '',
       ciudad: initialContact?.ciudad || '',
-      cita_fecha: raw.cita_fecha || raw.citaFecha || '',
-      cita_hora: raw.cita_hora || raw.citaHora || '',
-      cita_direccion: raw.direccion || raw.cita_direccion || '',
-      equipo_nombre: raw.equipo_nombre || '',
-      equipo_serie: raw.equipo_serie || '',
+      cita_fecha: initialContact?.cita_fecha || '',
+      cita_hora: initialContact?.cita_hora || '',
+      cita_direccion: initialContact?.cita_direccion || '',
+      equipo_nombre: initialContact?.equipo_nombre || '',
+      equipo_serie: initialContact?.equipo_serie || '',
     }
 
-    // Sanitización obligatoria: Convertir todo a string puro
-    const sanitized: Record<string, string> = {}
-    Object.entries(vars).forEach(([k, v]) => {
-      sanitized[k] = (v && typeof v === 'object') ? (v.text || JSON.stringify(v)) : String(v || '')
-    })
-    return sanitized
+    return vars
   }, [initialContact, currentUser])
 
   const resolveMessage = useCallback((template: string) => {
@@ -209,6 +204,29 @@ export function MessagingProvider({
     refreshTemplates()
   }, [refreshTemplates])
 
+  useEffect(() => {
+    if (!initialTemplateId) return
+    const allTemplates: UnifiedTemplate[] = [
+      ...systemTemplates,
+      ...cloudTemplates.map((t) => ({
+        id: t.id,
+        label: t.nombre,
+        message: t.cuerpo,
+        subject: t.asunto ?? undefined,
+        category: t.category,
+        channel: (t.canal === 'all' ? activeChannel : t.canal) as MessagingChannel,
+        source: 'cloud' as const,
+        raw: t,
+      })),
+    ]
+    const match = allTemplates.find((t) => t.id === initialTemplateId)
+    if (!match) return
+    setMessage(match.message)
+    if (match.subject) setSubject(match.subject)
+  // Solo correr cuando los templates terminen de cargar
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTemplateId, loadingTemplates])
+
   const sendMessage = async () => {
     if (sending) return
     setSending(true)
@@ -234,6 +252,12 @@ export function MessagingProvider({
 
       // Para todos los demás canales: insertar en outbox y dejar que process-outbox envíe
       // scheduled_for = 1s atrás garantiza que process-outbox lo recoja inmediatamente
+      const contactId = initialContact?.clienteId || initialContact?.leadId || null
+      if (!contactId) {
+        showToast('No se puede enviar: contacto sin ID registrado.', 'error')
+        return
+      }
+
       const scheduleTime = scheduledFor || new Date(Date.now() - 1000).toISOString()
 
       const { data: outboxRow, error: outboxError } = await supabase
@@ -242,7 +266,7 @@ export function MessagingProvider({
           owner_id: session?.user.id,
           org_id: currentUser?.organizacion,
           contact_tipo: initialContact?.clienteId ? 'cliente' : 'lead',
-          contact_id: initialContact?.clienteId || initialContact?.leadId,
+          contact_id: contactId,
           contexto_tipo: contextType ?? 'ad_hoc',
           canal: activeChannel,
           destinatario: activeChannel === 'email' ? initialContact?.email : (initialContact?.telefono || initialContact?.telegramChatId),

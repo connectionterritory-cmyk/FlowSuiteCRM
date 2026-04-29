@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/UsersProvider'
 import { ImportRevisiones } from './ImportRevisiones'
+import { ImportGeneral } from './ImportGeneral'
 
 type EstadoCuenta = 'actual' | 'cancelacion_total' | 'inactivo'
 type Step = 'upload' | 'mapping' | 'preview' | 'confirm' | 'importing' | 'result'
@@ -664,7 +665,7 @@ export function ImportacionesPage() {
   const [errorRows, setErrorRows] = useState<Array<{ hycite_id: string; nombre: string; error: string }>>([])
 
   // Tab
-  const [activeTab, setActiveTab] = useState<'hycite' | 'revisiones'>('hycite')
+  const [activeTab, setActiveTab] = useState<'hycite' | 'general' | 'revisiones'>('hycite')
   const [pendingRevisiones, setPendingRevisiones] = useState(0)
 
   // History
@@ -1033,8 +1034,9 @@ export function ImportacionesPage() {
           <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--color-border)', marginBottom: '0.25rem' }}>
             {([
               { key: 'hycite', label: 'Excel / Hy-Cite' },
+              { key: 'general', label: 'General / Google Sheets' },
               { key: 'revisiones', label: `Revisiones OCR${pendingRevisiones > 0 ? ` (${pendingRevisiones})` : ''}` },
-            ] as { key: 'hycite' | 'revisiones'; label: string }[]).map(t => (
+            ] as { key: 'hycite' | 'general' | 'revisiones'; label: string }[]).map(t => (
               <button
                 key={t.key}
                 type="button"
@@ -1059,6 +1061,9 @@ export function ImportacionesPage() {
 
           {/* OCR Review tab */}
           {activeTab === 'revisiones' && <ImportRevisiones onRefreshCount={refrescarContador} />}
+
+          {/* General import tab */}
+          {activeTab === 'general' && <ImportGeneral />}
 
           {/* Hy-Cite wizard tab */}
           {activeTab === 'hycite' && (<><div className="card" style={{ padding: '1.5rem' }}>

@@ -22,6 +22,7 @@ export function MessageEditor() {
     setScheduledFor,
     emailSender,
     setEmailSender,
+    sendMessage,
   } = useMessaging()
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -158,13 +159,13 @@ export function MessageEditor() {
         {/* Toolbar */}
         <div style={toolbarStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <button onClick={() => applyFormat('bold')} style={toolbarButtonStyle} title="Negrita">
+            <button type="button" onClick={() => applyFormat('bold')} style={toolbarButtonStyle} title="Negrita">
               <BoldIcon style={{ width: 16, height: 16 }} />
             </button>
-            <button onClick={() => applyFormat('italic')} style={toolbarButtonStyle} title="Cursiva">
+            <button type="button" onClick={() => applyFormat('italic')} style={toolbarButtonStyle} title="Cursiva">
               <ItalicIcon style={{ width: 16, height: 16 }} />
             </button>
-            <button onClick={() => applyFormat('list')} style={toolbarButtonStyle} title="Lista">
+            <button type="button" onClick={() => applyFormat('list')} style={toolbarButtonStyle} title="Lista">
               <ListIcon style={{ width: 16, height: 16 }} />
             </button>
             <div style={{ width: 1, height: 16, background: 'var(--color-border)', margin: '0 4px' }} />
@@ -187,6 +188,12 @@ export function MessageEditor() {
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              void sendMessage()
+            }
+          }}
           placeholder="Escribe tu mensaje aquí..."
           style={{
             flex: 1,
