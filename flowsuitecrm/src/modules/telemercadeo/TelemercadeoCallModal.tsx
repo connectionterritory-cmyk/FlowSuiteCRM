@@ -25,6 +25,24 @@ type LlamadaHistorial = {
   created_at: string
 }
 
+type CobGestionHistorialRow = {
+  id: string
+  resultado: string | null
+  notas: string | null
+  fecha_compromiso: string | null
+  monto_comprometido: number | null
+  created_at: string
+}
+
+type LlamadaLegacyHistorialRow = {
+  id: string
+  resultado: string | null
+  notas: string | null
+  followup_at: string | null
+  monto_prometido: number | null
+  created_at: string
+}
+
 type TelemercadeoCallModalProps = {
   open: boolean
   cliente: Cliente | null
@@ -105,14 +123,46 @@ export function TelemercadeoCallModal({
       setLoadingHistorial(true)
     })
     const load = async () => {
-      const { data } = await supabase
-        .from('llamadas_telemercadeo')
-        .select('id, resultado, notas, followup_at, monto_prometido, created_at')
-        .eq('cliente_id', cliente.id)
-        .order('created_at', { ascending: false })
-        .limit(6)
+      const [gestionesRes, legacyRes] = await Promise.all([
+        supabase
+          .from('cob_gestiones')
+          .select('id, resultado, notas, fecha_compromiso, monto_comprometido, created_at')
+          .eq('cliente_id', cliente.id)
+          .eq('tipo_gestion', 'Llamada')
+          .order('created_at', { ascending: false })
+          .limit(6),
+        supabase
+          .from('llamadas_telemercadeo')
+          .select('id, resultado, notas, followup_at, monto_prometido, created_at')
+          .eq('cliente_id', cliente.id)
+          .order('created_at', { ascending: false })
+          .limit(6),
+      ])
       if (!active) return
-      setHistorial((data as LlamadaHistorial[]) ?? [])
+
+      const gestiones = ((gestionesRes.data as CobGestionHistorialRow[] | null) ?? []).map((row) => ({
+        id: `cob-${row.id}`,
+        resultado: row.resultado ?? 'llamada',
+        notas: row.notas,
+        followup_at: row.fecha_compromiso,
+        monto_prometido: row.monto_comprometido,
+        created_at: row.created_at,
+      }))
+
+      const legacy = ((legacyRes.data as LlamadaLegacyHistorialRow[] | null) ?? []).map((row) => ({
+        id: `legacy-${row.id}`,
+        resultado: row.resultado ?? 'llamada',
+        notas: row.notas,
+        followup_at: row.followup_at,
+        monto_prometido: row.monto_prometido,
+        created_at: row.created_at,
+      }))
+
+      setHistorial(
+        [...gestiones, ...legacy]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 6),
+      )
       setExpandedHistoryIds(new Set())
       setLoadingHistorial(false)
     }

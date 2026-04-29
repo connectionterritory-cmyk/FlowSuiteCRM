@@ -22,10 +22,16 @@ export function segmentoLabel(dias: number | null, _moroso: number | null): stri
 
 export function resultadoLabel(resultado: string): string {
   const map: Record<string, string> = {
+    llamada: 'Llamada',
+    contesto: 'Contesto',
     no_contesta: 'No contesto',
+    ocupado: 'Ocupado',
+    buzon_voz: 'Buzon de voz',
     cita_agendada: 'Cita agendada',
+    promesa_pago: 'Promesa de pago',
     pago_prometido: 'Promesa de pago',
     pago_realizado: 'Pago',
+    interesado: 'Interesado',
     no_interesado: 'No interesado',
     numero_equivocado: 'Numero equivocado',
   }
@@ -34,10 +40,16 @@ export function resultadoLabel(resultado: string): string {
 
 export function resultadoColor(resultado: string): string {
   const map: Record<string, string> = {
+    llamada: '#6b7280',
+    contesto: '#10b981',
     no_contesta: '#6b7280',
+    ocupado: '#f59e0b',
+    buzon_voz: '#64748b',
     cita_agendada: '#3b82f6',
+    promesa_pago: '#f59e0b',
     pago_prometido: '#f59e0b',
     pago_realizado: '#10b981',
+    interesado: '#10b981',
     no_interesado: '#ef4444',
     numero_equivocado: '#9ca3af',
   }
