@@ -45,3 +45,16 @@ evolution-api/
 
 .agent/
 **/supabase/.temp/
+
+# Local AI / MCP configs
+.claude/settings.json
+.mcp.json
+.mcp-secrets.env
+
+# Generated / temporary outputs
+outputs/
+flowsuitecrm/outputs/
+
+# Local OCR/security test files
+test_ocr_approval.ts
+**/test_ocr_approval.ts
