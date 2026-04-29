@@ -179,7 +179,7 @@ export function CalificacionPanel({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { showToast } = useToast()
-  const { openGestionModal } = useModalHost()
+  const { openGestionModal, openCitaModal } = useModalHost()
   const [formValues, setFormValues] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -773,6 +773,22 @@ export function CalificacionPanel({
                   Ver perfil
                 </button>
               )}
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() =>
+                  openCitaModal({
+                    initialData: {
+                      contacto_tipo: 'lead',
+                      contacto_id: lead.id,
+                      contacto_nombre: fullName,
+                      contacto_telefono: lead.telefono ?? '',
+                    },
+                  })
+                }
+              >
+                Agendar cita
+              </button>
               <button
                 type="button"
                 className="btn ghost"
