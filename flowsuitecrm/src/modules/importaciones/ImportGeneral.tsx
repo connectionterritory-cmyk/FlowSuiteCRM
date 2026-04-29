@@ -10,6 +10,15 @@ type TargetTable = 'clientes' | 'leads'
 type Step = 'upload' | 'mapping' | 'preview' | 'confirm' | 'importing' | 'result'
 type SheetRow = (string | number | boolean | Date | null | undefined)[]
 
+interface ImportErrorRow {
+  rowNumber: number
+  registro: string
+  campo: string
+  valor: string
+  mensaje: string
+  recomendacion: string
+}
+
 // ── Parsed row types ──────────────────────────────────────────────────────────
 
 interface ClienteGeneral {
@@ -28,7 +37,7 @@ interface ClienteGeneral {
   dias_atraso: number
   saldo_actual: number
   emprendedor_raw: string | null
-  origen: 'general_import'
+  origen: 'manual'
 }
 
 interface LeadGeneral {
@@ -87,7 +96,7 @@ const LEAD_FIELDS: FieldDef[] = [
 
 function normHeader(v: string): string {
   return v
-    .replace(/﻿/g, '')
+    .replace(/\uFEFF/g, '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .replace(/[^A-Za-z0-9]+/g, ' ')
@@ -173,6 +182,89 @@ function parseEmprendedorCode(raw: string): string | null {
   return null
 }
 
+function getRegistroLabel(row: Pick<ClienteGeneral | LeadGeneral, 'nombre' | 'apellido' | 'telefono' | 'email'>): string {
+  return [row.nombre, row.apellido].filter(Boolean).join(' ') || row.telefono || row.email || 'Sin nombre'
+}
+
+function compactValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'vacío'
+  return String(value)
+}
+
+function inferErrorDetail(message: string, payload: Record<string, unknown>): Pick<ImportErrorRow, 'campo' | 'valor' | 'recomendacion'> {
+  const lower = message.toLowerCase()
+  const quotedColumn = message.match(/column "([^"]+)"/i)?.[1]
+  const nullColumn = message.match(/null value in column "([^"]+)"/i)?.[1]
+  const keyColumn = message.match(/key \(([^)]+)\)=/i)?.[1]?.split(',')[0]?.trim()
+  const invalidEnumValue = message.match(/invalid input value for enum [^:]+: "([^"]+)"/i)?.[1]
+  const invalidEnumField = invalidEnumValue
+    ? Object.entries(payload).find(([, value]) => String(value) === invalidEnumValue)?.[0]
+    : null
+  const campo = nullColumn || quotedColumn || keyColumn || 'registro'
+
+  if (invalidEnumValue) {
+    return {
+      campo: invalidEnumField || campo,
+      valor: invalidEnumValue,
+      recomendacion: 'Usa un valor permitido por el enum de Supabase o guarda este dato en una columna de trazabilidad.',
+    }
+  }
+
+  if (lower.includes('row-level security') || lower.includes('rls')) {
+    return {
+      campo: 'permisos',
+      valor: 'RLS',
+      recomendacion: 'Verifica que el usuario tenga permiso para insertar o actualizar este registro en su organización.',
+    }
+  }
+
+  if (lower.includes('duplicate key')) {
+    return {
+      campo,
+      valor: compactValue(payload[campo]),
+      recomendacion: 'Revisa duplicados o define una regla de actualización para este identificador.',
+    }
+  }
+
+  if (lower.includes('violates not-null constraint') || lower.includes('null value in column')) {
+    return {
+      campo,
+      valor: compactValue(payload[campo]),
+      recomendacion: `Completa el campo obligatorio ${campo} antes de importar.`,
+    }
+  }
+
+  if (lower.includes('invalid input syntax')) {
+    return {
+      campo,
+      valor: compactValue(payload[campo]),
+      recomendacion: 'Revisa el formato del valor en el archivo o en el mapeo.',
+    }
+  }
+
+  if (lower.includes('violates check constraint')) {
+    return {
+      campo,
+      valor: compactValue(payload[campo]),
+      recomendacion: 'El valor no coincide con los valores permitidos por la base de datos.',
+    }
+  }
+
+  if (lower.includes('foreign key constraint')) {
+    return {
+      campo,
+      valor: compactValue(payload[campo]),
+      recomendacion: 'Verifica que el ID relacionado exista y pertenezca a la organización correcta.',
+    }
+  }
+
+  return {
+    campo,
+    valor: compactValue(payload[campo]),
+    recomendacion: 'Revisa el mensaje técnico y el valor enviado a Supabase.',
+  }
+}
+
 function autoDetectMapping(headers: string[], fields: FieldDef[]): Record<string, string> {
   const mapping: Record<string, string> = {}
   fields.forEach(field => {
@@ -232,7 +324,7 @@ function parseClienteRow(row: Record<string, string>, mapping: Record<string, st
     dias_atraso,
     saldo_actual: parseMonto(getCell(row, mapping, 'saldo_actual')),
     emprendedor_raw: getCell(row, mapping, 'emprendedor') || null,
-    origen: 'general_import',
+    origen: 'manual',
   }
 }
 
@@ -273,7 +365,7 @@ function parseLeadRow(row: Record<string, string>, mapping: Record<string, strin
     estado_region: getCell(row, mapping, 'estado_region') || null,
     codigo_postal: getCell(row, mapping, 'codigo_postal') || null,
     fuente: getCell(row, mapping, 'fuente') || null,
-    estado_pipeline: 'prospecto',
+    estado_pipeline: 'nuevo',
   }
 }
 
@@ -337,6 +429,8 @@ export function ImportGeneral() {
   const [importados, setImportados] = useState(0)
   const [actualizados, setActualizados] = useState(0)
   const [errores, setErrores] = useState(0)
+  const [errorRows, setErrorRows] = useState<ImportErrorRow[]>([])
+  const [showErrorDetails, setShowErrorDetails] = useState(false)
 
   const fields = target === 'clientes' ? CLIENTE_FIELDS : LEAD_FIELDS
 
@@ -423,6 +517,7 @@ export function ImportGeneral() {
     if (!session?.user.id || !org_id) return
     setStep('importing')
     let imp = 0, up = 0, err = 0
+    const nextErrorRows: ImportErrorRow[] = []
 
     // Build emprendedor code → vendedor_id map
     const codes = [...new Set(clienteRows.map(r => parseEmprendedorCode(r.emprendedor_raw ?? '')).filter(Boolean))] as string[]
@@ -431,6 +526,7 @@ export function ImportGeneral() {
       const { data: vendedores } = await supabase
         .from('usuarios')
         .select('id, codigo_vendedor_hycite')
+        .eq('org_id', org_id)
         .in('codigo_vendedor_hycite', codes)
       for (const v of vendedores ?? []) {
         if (v.codigo_vendedor_hycite) vendedorMap.set(v.codigo_vendedor_hycite, v.id)
@@ -447,6 +543,7 @@ export function ImportGeneral() {
         const { data: existentes } = await supabase
           .from('clientes')
           .select('id, telefono')
+          .eq('org_id', org_id)
           .in('telefono', tels)
         for (const e of existentes ?? []) {
           if (e.telefono) existingMap.set(e.telefono, e.id)
@@ -475,31 +572,67 @@ export function ImportGeneral() {
           saldo_actual: r.saldo_actual,
           vendedor_id: vendedorId,
           codigo_vendedor_hycite: code,
-          origen: 'general_import' as const,
-          fuente_import: fileName,
+          origen: 'manual' as const,
+          fuente_import: 'general_import',
+          import_file_name: fileName,
           updated_at: new Date().toISOString(),
         }
         if (existingId) return { ...base, id: existingId }
         return base
       })
 
-      const toInsert = payloads.filter(p => !('id' in p))
-      const toUpdate = payloads.filter(p => 'id' in p)
+      const toInsert = payloads
+        .map((payload, sourceIndex) => ({ payload, sourceIndex }))
+        .filter(item => !('id' in item.payload))
+      const toUpdate = payloads
+        .map((payload, sourceIndex) => ({ payload, sourceIndex }))
+        .filter(item => 'id' in item.payload)
 
       if (toInsert.length > 0) {
-        const { error } = await supabase.from('clientes').insert(toInsert)
-        if (error) { err += toInsert.length; console.error('Insert error:', error) }
-        else imp += toInsert.length
+        const { error } = await supabase.from('clientes').insert(toInsert.map(item => item.payload))
+        if (error) {
+          console.error('Insert batch error:', error)
+          for (let j = 0; j < toInsert.length; j++) {
+            const { payload, sourceIndex } = toInsert[j]
+            const { error: singleError } = await supabase.from('clientes').insert(payload)
+            if (singleError) {
+              console.error('Insert row error:', singleError)
+              err++
+              const detail = inferErrorDetail(singleError.message, payload as Record<string, unknown>)
+              const row = lote[sourceIndex]
+              nextErrorRows.push({
+                rowNumber: i + sourceIndex + 2,
+                registro: getRegistroLabel(row),
+                mensaje: singleError.message,
+                ...detail,
+              })
+            } else {
+              imp++
+            }
+          }
+        } else imp += toInsert.length
       }
 
-      for (const payload of toUpdate) {
+      for (const { payload, sourceIndex } of toUpdate) {
         const { id, ...rest } = payload as typeof payload & { id: string }
         const { error } = await supabase.from('clientes').update(rest).eq('id', id)
-        if (error) { err++; console.error('Update error:', error) }
+        if (error) {
+          err++
+          console.error('Update error:', error)
+          const detail = inferErrorDetail(error.message, rest as Record<string, unknown>)
+          nextErrorRows.push({
+            rowNumber: i + sourceIndex + 2,
+            registro: getRegistroLabel(lote[sourceIndex]),
+            mensaje: error.message,
+            ...detail,
+          })
+        }
         else up++
       }
     }
 
+    setErrorRows(nextErrorRows)
+    setShowErrorDetails(nextErrorRows.length > 0)
     setImportados(imp)
     setActualizados(up)
     setErrores(err)
@@ -514,6 +647,7 @@ export function ImportGeneral() {
     if (!session?.user.id || !org_id) return
     setStep('importing')
     let imp = 0, err = 0
+    const nextErrorRows: ImportErrorRow[] = []
 
     for (let i = 0; i < leadRows.length; i += 50) {
       const lote = leadRows.slice(i, i + 50)
@@ -531,13 +665,36 @@ export function ImportGeneral() {
         estado_pipeline: r.estado_pipeline,
         owner_id: session!.user.id,
         vendedor_id: session!.user.id,
+        fuente_import: 'general_import',
+        import_file_name: fileName,
       }))
 
       const { error } = await supabase.from('leads').insert(payloads)
-      if (error) { err += lote.length; console.error('Lead insert error:', error) }
+      if (error) {
+        console.error('Lead insert batch error:', error)
+        for (let j = 0; j < payloads.length; j++) {
+          const payload = payloads[j] as Record<string, unknown>
+          const { error: singleError } = await supabase.from('leads').insert(payload)
+          if (singleError) {
+            console.error('Lead insert row error:', singleError)
+            err++
+            const detail = inferErrorDetail(singleError.message, payload)
+            nextErrorRows.push({
+              rowNumber: i + j + 2,
+              registro: getRegistroLabel(lote[j]),
+              mensaje: singleError.message,
+              ...detail,
+            })
+          } else {
+            imp++
+          }
+        }
+      }
       else imp += lote.length
     }
 
+    setErrorRows(nextErrorRows)
+    setShowErrorDetails(nextErrorRows.length > 0)
     setImportados(imp)
     setErrores(err)
     setStep('result')
@@ -560,6 +717,8 @@ export function ImportGeneral() {
     setImportados(0)
     setActualizados(0)
     setErrores(0)
+    setErrorRows([])
+    setShowErrorDetails(false)
   }
 
   const previewRows = target === 'clientes' ? clienteRows : leadRows
@@ -786,6 +945,61 @@ export function ImportGeneral() {
               </div>
             ))}
           </div>
+
+          {errores > 0 && errorRows.length > 0 && (
+            <div style={{ border: '1px solid #fecaca', borderRadius: '0.5rem', overflow: 'hidden', background: '#fef2f2' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#991b1b' }}>
+                    {errorRows.length} error{errorRows.length !== 1 ? 'es' : ''} con detalle
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '0.15rem' }}>
+                    Supabase devolvió el mensaje técnico por fila.
+                  </div>
+                </div>
+                <Button variant="ghost" type="button" onClick={() => setShowErrorDetails(prev => !prev)}>
+                  {showErrorDetails ? 'Ocultar errores' : 'Ver errores'}
+                </Button>
+              </div>
+
+              {showErrorDetails && (
+                <div style={{ overflowX: 'auto', background: 'var(--color-surface)', borderTop: '1px solid #fecaca' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <thead>
+                      <tr>
+                        {['Fila', 'Registro', 'Campo', 'Valor', 'Mensaje técnico', 'Recomendación'].map(h => (
+                          <th key={h} style={{ padding: '0.55rem 0.65rem', textAlign: 'left', color: 'var(--color-text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {errorRows.slice(0, 100).map((row, i) => (
+                        <tr key={`${row.rowNumber}-${i}`} style={{ borderTop: '1px solid var(--color-border)' }}>
+                          <td style={{ padding: '0.5rem 0.65rem', fontFamily: 'monospace' }}>{row.rowNumber}</td>
+                          <td style={{ padding: '0.5rem 0.65rem', minWidth: '9rem' }}>{row.registro}</td>
+                          <td style={{ padding: '0.5rem 0.65rem', fontFamily: 'monospace', color: '#dc2626' }}>{row.campo}</td>
+                          <td style={{ padding: '0.5rem 0.65rem', maxWidth: '12rem', wordBreak: 'break-word' }}>{row.valor}</td>
+                          <td style={{ padding: '0.5rem 0.65rem', maxWidth: '20rem', wordBreak: 'break-word' }}>{row.mensaje}</td>
+                          <td style={{ padding: '0.5rem 0.65rem', minWidth: '14rem' }}>{row.recomendacion}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {errorRows.length > 100 && (
+                    <p style={{ margin: 0, padding: '0.6rem 0.75rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
+                      Mostrando los primeros 100 errores de {errorRows.length}.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {errores > 0 && errorRows.length === 0 && (
+            <div style={{ padding: '0.75rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', color: '#b91c1c', fontSize: '0.85rem' }}>
+              La importación falló antes de recibir detalles por fila. Revisa sesión, organización y permisos.
+            </div>
+          )}
 
           <Button type="button" onClick={resetear}>Nueva importación</Button>
         </div>
