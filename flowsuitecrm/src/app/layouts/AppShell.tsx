@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Sidebar } from '../../components/Sidebar'
 import { Topbar } from '../../components/Topbar'
 import { BottomNav } from '../../components/BottomNav'
-import { navItems, programSubItems } from '../navigation'
+import { allNavigationItems, programSubItems } from '../navigation'
 import { ViewModeProvider } from '../../data/ViewModeProvider'
 import { ModalProvider } from '../../modals/ModalProvider'
 
@@ -49,7 +49,7 @@ export function AppShell() {
 
   const currentTitle = useMemo(() => {
     const titleItems = [
-      ...navItems.map((item) => ({ labelKey: item.labelKey, path: item.path })),
+      ...allNavigationItems.map((item) => ({ labelKey: item.labelKey, path: item.path })),
       ...programSubItems,
       { labelKey: 'nav.perfil', path: '/perfil' },
     ]

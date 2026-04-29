@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { navItems, programSubItems, telemercadeoSubItems } from '../app/navigation'
+import { isNavGroupItem, isNavLeafItem, navItems } from '../app/navigation'
+import type { NavItem, NavLeafItem } from '../app/navigation'
 import logoFull from '../assets/FlowSuiteCRM_Vector_Antigravity.svg'
 import logoMark from '../assets/FlowSuiteCRM_Isotype_48px.png'
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client'
@@ -23,14 +25,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
   const { viewMode } = useViewMode()
   const configured = isSupabaseConfigured
   const [role, setRole] = useState<string | null>(null)
-  const isProgramRoute =
-    location.pathname === '/programas' ||
-    location.pathname.startsWith('/4en14') ||
-    location.pathname.startsWith('/conexiones-infinitas')
-  const isTelemercadeoRoute = location.pathname.startsWith('/telemercadeo')
-  const [programsOpen, setProgramsOpen] = useState(isProgramRoute)
-  const [telemercadeoOpen, setTelemercadeoOpen] = useState(isTelemercadeoRoute)
-  const uniqueNavItems = Array.from(new Map(navItems.map((item) => [item.path, item])).values())
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let active = true
@@ -49,17 +44,119 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
     }
   }, [configured, session?.user.id])
 
-  const handleProgramsToggle = () => {
-    setProgramsOpen((prev) => !prev)
-  }
-
-  const handleTelemercadeoToggle = () => {
-    setTelemercadeoOpen((prev) => !prev)
-  }
-
-  const isProgramsExpanded = programsOpen || isProgramRoute
-  const isTelemercadeoExpanded = telemercadeoOpen || isTelemercadeoRoute
   const effectiveRole = session?.user.id ? role : null
+  const isAdminLike = effectiveRole === 'admin' || effectiveRole === 'distribuidor'
+  const canUseTelemercadeo =
+    effectiveRole === 'admin' ||
+    effectiveRole === 'distribuidor' ||
+    effectiveRole === 'telemercadeo' ||
+    effectiveRole === 'supervisor_telemercadeo'
+
+  const canShowItem = (item: NavLeafItem) => {
+    if (viewMode === 'seller' && (item.key === 'usuarios' || item.key === 'importaciones')) {
+      return false
+    }
+    if (item.key === 'telemercadeo' || item.key.startsWith('telemercadeo-')) {
+      if (viewMode === 'seller') {
+        return effectiveRole === 'telemercadeo' || effectiveRole === 'supervisor_telemercadeo'
+      }
+      return canUseTelemercadeo
+    }
+    if (item.key === 'importaciones' || item.key === 'usuarios') {
+      return isAdminLike
+    }
+    if (item.key === 'productos') {
+      if (viewMode === 'seller') return false
+      return isAdminLike
+    }
+    return true
+  }
+
+  const filterVisibleItems = (items: NavItem[]): NavItem[] =>
+    items.reduce<NavItem[]>((visibleItems, item) => {
+      const children = item.children ? filterVisibleItems(item.children) : undefined
+
+      if (isNavLeafItem(item)) {
+        if (!canShowItem(item)) return visibleItems
+        visibleItems.push({ ...item, children })
+        return visibleItems
+      }
+
+      if (isNavGroupItem(item)) {
+        if (children?.length) {
+          visibleItems.push({ ...item, children })
+        }
+        return visibleItems
+      }
+
+      return visibleItems
+    }, [])
+
+  const isRouteActive = (item: NavItem): boolean => {
+    if (isNavLeafItem(item)) {
+      return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+    }
+    if (isNavGroupItem(item)) {
+      return item.children.some((child) => isRouteActive(child))
+    }
+    return false
+  }
+
+  const toggleGroup = (key: string) => {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const renderNavItem = (item: NavItem, depth = 0): ReactNode => {
+    const Icon = item.icon
+    const label = t(item.labelKey)
+    const isActive = isRouteActive(item)
+    const isOpen = openGroups[item.key] || isActive
+    const hasChildren = Boolean(item.children?.length)
+
+    if (hasChildren) {
+      return (
+        <div key={item.key} className={`nav-group nav-depth-${depth}`}>
+          <button
+            type="button"
+            className={`nav-link nav-group-trigger ${isActive ? 'active' : ''}`}
+            onClick={() => toggleGroup(item.key)}
+            aria-expanded={isOpen}
+            title={label}
+          >
+            <Icon className="nav-icon" />
+            {isNavExpanded && <span className="nav-label">{label}</span>}
+            {isNavExpanded && (
+              <span className={`nav-arrow ${isOpen ? 'open' : ''}`}>▸</span>
+            )}
+          </button>
+          {isNavExpanded && isOpen && (
+            <div className="nav-subnav">
+              {item.children?.map((child) => renderNavItem(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    if (!isNavLeafItem(item)) return null
+
+    return (
+      <NavLink
+        key={item.key}
+        to={item.path}
+        end={item.path === '/dashboard'}
+        title={label}
+        className={({ isActive }) =>
+          `nav-link ${depth > 0 ? 'nav-sublink' : ''} ${isActive ? 'active' : ''}`
+        }
+      >
+        <Icon className="nav-icon" />
+        {isNavExpanded && <span className="nav-label">{label}</span>}
+      </NavLink>
+    )
+  }
+
+  const visibleNavItems = filterVisibleItems(navItems)
 
   return (
     <>
@@ -85,130 +182,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
         </button>
       </div>
       <nav className="sidebar-nav">
-        {uniqueNavItems
-          .filter((item) => {
-            if (viewMode !== 'seller') return true
-            return item.key !== 'usuarios' && item.key !== 'importaciones'
-          })
-          .filter((item) => {
-            if (item.key !== 'hoy') return true
-            return viewMode === 'seller'
-          })
-          .filter((item) => {
-            if (item.key !== 'telemercadeo') return true
-              if (viewMode === 'seller') {
-                return effectiveRole === 'telemercadeo' || effectiveRole === 'supervisor_telemercadeo'
-              }
-              return effectiveRole === 'admin' || effectiveRole === 'distribuidor' || effectiveRole === 'telemercadeo' || effectiveRole === 'supervisor_telemercadeo'
-            })
-            .filter((item) => {
-              if (item.key !== 'importaciones') return true
-              return effectiveRole === 'admin' || effectiveRole === 'distribuidor'
-            })
-            .filter((item) => {
-              if (item.key !== 'usuarios') return true
-              return effectiveRole === 'admin' || effectiveRole === 'distribuidor'
-            })
-            .filter((item) => {
-              if (item.key !== 'productos') return true
-              if (viewMode === 'seller') return false
-              return effectiveRole === 'admin' || effectiveRole === 'distribuidor'
-            })
-          .map((item) => {
-          const Icon = item.icon
-
-          if (item.key === 'programas') {
-            return (
-              <div key={item.key} className="nav-group">
-                <button
-                  type="button"
-                  className={`nav-link nav-group-trigger ${isProgramRoute ? 'active' : ''}`}
-                  onClick={handleProgramsToggle}
-                  aria-expanded={isProgramsExpanded}
-                >
-                  <Icon className="nav-icon" />
-                  {isNavExpanded && (
-                    <span className="nav-label">{t(item.labelKey)}</span>
-                  )}
-                  {isNavExpanded && (
-                    <span className={`nav-arrow ${isProgramsExpanded ? 'open' : ''}`}>
-                      ▸
-                    </span>
-                  )}
-                </button>
-                {isNavExpanded && isProgramsExpanded && (
-                  <div className="nav-subnav">
-                    {programSubItems.map((subItem) => (
-                      <NavLink
-                        key={subItem.key}
-                        to={subItem.path}
-                        className={({ isActive }) =>
-                          `nav-link nav-sublink ${isActive ? 'active' : ''}`
-                        }
-                      >
-                        <span className="nav-label">{t(subItem.labelKey)}</span>
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          }
-
-          if (item.key === 'telemercadeo') {
-            return (
-              <div key={item.key} className="nav-group">
-                <button
-                  type="button"
-                  className={`nav-link nav-group-trigger ${isTelemercadeoRoute ? 'active' : ''}`}
-                  onClick={handleTelemercadeoToggle}
-                  aria-expanded={isTelemercadeoExpanded}
-                >
-                  <Icon className="nav-icon" />
-                  {isNavExpanded && (
-                    <span className="nav-label">{t(item.labelKey)}</span>
-                  )}
-                  {isNavExpanded && (
-                    <span className={`nav-arrow ${isTelemercadeoExpanded ? 'open' : ''}`}>
-                      ▸
-                    </span>
-                  )}
-                </button>
-                {isNavExpanded && isTelemercadeoExpanded && (
-                  <div className="nav-subnav">
-                    {telemercadeoSubItems.map((subItem) => (
-                      <NavLink
-                        key={subItem.key}
-                        to={subItem.path}
-                        className={({ isActive }) =>
-                          `nav-link nav-sublink ${isActive ? 'active' : ''}`
-                        }
-                      >
-                        <span className="nav-label">{t(subItem.labelKey)}</span>
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          }
-
-          return (
-            <NavLink
-              key={item.key}
-              to={item.path}
-              end={item.path === '/dashboard'}
-              className={({ isActive }) =>
-                `nav-link ${isActive ? 'active' : ''}`
-              }
-            >
-              <Icon className="nav-icon" />
-              {isNavExpanded && (
-                <span className="nav-label">{t(item.labelKey)}</span>
-              )}
-            </NavLink>
-          )
-        })}
+        {visibleNavItems.map((item) => renderNavItem(item))}
       </nav>
     </aside>
     </>

@@ -240,11 +240,12 @@ img {
 }
 
 .nav-link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--sidebar-muted);
   transition: all 0.2s ease;
   background: transparent;
@@ -255,14 +256,24 @@ img {
 }
 
 .nav-link:hover {
-  background: rgba(37, 99, 235, 0.16);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--sidebar-text);
 }
 
 .nav-link.active {
-  background: rgba(37, 99, 235, 0.22);
+  background: rgba(37, 99, 235, 0.14);
   color: var(--sidebar-text);
-  border: 1px solid rgba(37, 99, 235, 0.35);
+}
+
+.nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
 }
 
 .nav-icon {
@@ -3671,12 +3682,19 @@ body.theme-light .ci-owner-selected strong {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding-left: 28px;
+  padding-left: 18px;
+  margin-left: 10px;
+  border-left: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .nav-sublink {
-  padding: 8px 12px;
+  padding: 8px 10px;
   font-size: 0.86rem;
+}
+
+.nav-sublink .nav-icon {
+  width: 17px;
+  height: 17px;
 }
 
 @media (max-width: 1100px) {

@@ -23,6 +23,31 @@ export function IconDashboard(props: IconProps) {
   )
 }
 
+export function IconCalendarCheck(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4" />
+      <path d="M8 3v4" />
+      <path d="M3 10h18" />
+      <path d="M8 16l2.5 2.5L16 13" />
+    </svg>
+  )
+}
+
+export function IconCalendarClock(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4" />
+      <path d="M8 3v4" />
+      <path d="M3 10h18" />
+      <circle cx="12" cy="16" r="3" />
+      <path d="M12 14.5V16l1 1" />
+    </svg>
+  )
+}
+
 export function IconPipeline(props: IconProps) {
   return (
     <svg {...baseProps} viewBox="0 0 24 24" {...props}>
@@ -113,11 +138,40 @@ export function IconService(props: IconProps) {
   )
 }
 
+export function IconMoreHorizontal(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <circle cx="5" cy="12" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="19" cy="12" r="1.5" />
+    </svg>
+  )
+}
+
+export function IconWallet(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M4 7a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2z" />
+      <path d="M4 9h16" />
+      <path d="M16 14h2" />
+    </svg>
+  )
+}
+
 export function IconUsers(props: IconProps) {
   return (
     <svg {...baseProps} viewBox="0 0 24 24" {...props}>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" />
+    </svg>
+  )
+}
+
+export function IconShieldCheck(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 3l7 3v5c0 4.5-2.8 8.4-7 10-4.2-1.6-7-5.5-7-10V6z" />
+      <path d="M8.5 12.5l2 2 5-5" />
     </svg>
   )
 }

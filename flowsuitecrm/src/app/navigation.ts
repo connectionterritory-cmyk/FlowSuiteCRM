@@ -1,23 +1,43 @@
 import type { ComponentType } from 'react'
 import {
+  IconCalendarCheck,
+  IconCalendarClock,
   IconCustomers,
-  IconDashboard,
   IconLeads,
+  IconMoreHorizontal,
   IconPipeline,
   IconProducts,
   IconPrograms,
   IconService,
+  IconShieldCheck,
   IconUsers,
   IconSales,
   IconWhatsapp,
+  IconWallet,
 } from '../components/icons'
 
-export type NavItem = {
+export type NavLeafItem = {
   key: string
   labelKey: string
   path: string
   icon: ComponentType<{ className?: string }>
+  children?: NavItem[]
 }
+
+export type NavGroupItem = {
+  key: string
+  labelKey: string
+  icon: ComponentType<{ className?: string }>
+  children: NavItem[]
+}
+
+export type NavItem = NavLeafItem | NavGroupItem
+
+export const isNavLeafItem = (item: NavItem): item is NavLeafItem =>
+  'path' in item && typeof item.path === 'string'
+
+export const isNavGroupItem = (item: NavItem): item is NavGroupItem =>
+  !isNavLeafItem(item) && 'children' in item && Array.isArray(item.children)
 
 export type NavSubItem = {
   key: string
@@ -27,28 +47,10 @@ export type NavSubItem = {
 
 export const navItems: NavItem[] = [
   {
-    key: 'dashboard',
-    labelKey: 'nav.dashboard',
-    path: '/dashboard',
-    icon: IconDashboard,
-  },
-  {
     key: 'hoy',
     labelKey: 'nav.hoy',
     path: '/hoy',
-    icon: IconDashboard,
-  },
-  {
-    key: 'cierres',
-    labelKey: 'nav.cierres',
-    path: '/cierres',
-    icon: IconSales,
-  },
-  {
-    key: 'pipeline',
-    labelKey: 'nav.oportunidades',
-    path: '/pipeline',
-    icon: IconPipeline,
+    icon: IconCalendarCheck,
   },
   {
     key: 'leads',
@@ -57,10 +59,22 @@ export const navItems: NavItem[] = [
     icon: IconLeads,
   },
   {
-    key: 'marketing-flow',
-    labelKey: 'nav.marketingFlow',
-    path: '/marketing-flow',
-    icon: IconLeads,
+    key: 'clientes',
+    labelKey: 'nav.clientes',
+    path: '/clientes',
+    icon: IconCustomers,
+  },
+  {
+    key: 'pipeline',
+    labelKey: 'nav.pipeline',
+    path: '/pipeline',
+    icon: IconPipeline,
+  },
+  {
+    key: 'cartera',
+    labelKey: 'nav.cartera',
+    path: '/cartera',
+    icon: IconWallet,
   },
   {
     key: 'inbox',
@@ -69,70 +83,117 @@ export const navItems: NavItem[] = [
     icon: IconWhatsapp,
   },
   {
-    key: 'citas',
-    labelKey: 'nav.citas',
-    path: '/citas',
-    icon: IconPrograms,
-  },
-  {
-    key: 'clientes',
-    labelKey: 'nav.clientes',
-    path: '/clientes',
-    icon: IconCustomers,
-  },
-  {
-    key: 'cartera',
-    labelKey: 'nav.cartera',
-    path: '/cartera',
-    icon: IconService,
-  },
-  {
-    key: 'ventas',
-    labelKey: 'nav.ventas',
-    path: '/ventas',
-    icon: IconSales,
-  },
-  {
-    key: 'productos',
-    labelKey: 'nav.productos',
-    path: '/productos',
-    icon: IconProducts,
-  },
-  {
-    key: 'catalogo-productos',
-    labelKey: 'nav.catalogoProductos',
-    path: '/catalogo',
-    icon: IconProducts,
-  },
-  {
-    key: 'programas',
-    labelKey: 'nav.programas',
-    path: '/programas',
-    icon: IconPrograms,
-  },
-  {
-    key: 'servicio-cliente',
-    labelKey: 'nav.servicioCliente',
-    path: '/servicio-cliente',
-    icon: IconService,
-  },
-  {
-    key: 'telemercadeo',
-    labelKey: 'nav.telemercadeo',
-    path: '/telemercadeo',
-    icon: IconUsers,
-  },
-  {
-    key: 'importaciones',
-    labelKey: 'nav.importaciones',
-    path: '/importaciones',
-    icon: IconUsers,
-  },
-  {
-    key: 'usuarios',
-    labelKey: 'nav.usuarios',
-    path: '/usuarios',
-    icon: IconUsers,
+    key: 'mas',
+    labelKey: 'nav.mas',
+    icon: IconMoreHorizontal,
+    children: [
+      {
+        key: 'citas',
+        labelKey: 'nav.citas',
+        path: '/citas',
+        icon: IconCalendarClock,
+      },
+      {
+        key: 'ventas',
+        labelKey: 'nav.ventas',
+        path: '/ventas',
+        icon: IconSales,
+      },
+      {
+        key: 'marketing-flow',
+        labelKey: 'nav.marketingFlow',
+        path: '/marketing-flow',
+        icon: IconLeads,
+      },
+      {
+        key: 'telemercadeo',
+        labelKey: 'nav.telemercadeo',
+        path: '/telemercadeo',
+        icon: IconUsers,
+        children: [
+          {
+            key: 'telemercadeo-gestiones',
+            labelKey: 'nav.telemercadeoGestiones',
+            path: '/telemercadeo/gestiones',
+            icon: IconUsers,
+          },
+          {
+            key: 'telemercadeo-cartera',
+            labelKey: 'nav.telemercadeoCartera',
+            path: '/telemercadeo/cartera',
+            icon: IconWallet,
+          },
+          {
+            key: 'telemercadeo-cumpleanos',
+            labelKey: 'nav.telemercadeoCumpleanos',
+            path: '/telemercadeo/cumpleanos',
+            icon: IconCalendarCheck,
+          },
+          {
+            key: 'telemercadeo-filtros',
+            labelKey: 'nav.telemercadeoFiltros',
+            path: '/telemercadeo/filtros',
+            icon: IconProducts,
+          },
+          {
+            key: 'telemercadeo-referidos',
+            labelKey: 'nav.telemercadeoReferidos',
+            path: '/telemercadeo/referidos',
+            icon: IconCustomers,
+          },
+        ],
+      },
+      {
+        key: 'productos',
+        labelKey: 'nav.productos',
+        path: '/productos',
+        icon: IconProducts,
+      },
+      {
+        key: 'catalogo-productos',
+        labelKey: 'nav.catalogoProductos',
+        path: '/catalogo',
+        icon: IconProducts,
+      },
+      {
+        key: 'programas',
+        labelKey: 'nav.programas',
+        path: '/programas',
+        icon: IconPrograms,
+        children: [
+          {
+            key: 'programa4en14',
+            labelKey: 'nav.programa4en14',
+            path: '/4en14',
+            icon: IconCalendarCheck,
+          },
+          {
+            key: 'conexiones-infinitas',
+            labelKey: 'nav.conexionesInfinitas',
+            path: '/conexiones-infinitas',
+            icon: IconPrograms,
+          },
+        ],
+      },
+      {
+        key: 'servicio-cliente',
+        labelKey: 'nav.servicioCliente',
+        path: '/servicio-cliente',
+        icon: IconService,
+      },
+      {
+        key: 'importaciones',
+        labelKey: 'nav.importaciones',
+        path: '/importaciones',
+        icon: IconProducts,
+      },
+      {
+        key: 'usuarios',
+        labelKey: 'nav.usuarios',
+        path: '/usuarios',
+        icon: IconShieldCheck,
+      },
+    ],
   },
 ]
 
@@ -176,3 +237,17 @@ export const telemercadeoSubItems: NavSubItem[] = [
     path: '/telemercadeo/referidos',
   },
 ]
+
+export function flattenNavItems(items: NavItem[]): NavLeafItem[] {
+  return items.flatMap((item) => {
+    if (isNavLeafItem(item)) {
+      return [item, ...(item.children ? flattenNavItems(item.children) : [])]
+    }
+    if (isNavGroupItem(item)) {
+      return flattenNavItems(item.children)
+    }
+    return []
+  })
+}
+
+export const allNavigationItems = flattenNavItems(navItems)
