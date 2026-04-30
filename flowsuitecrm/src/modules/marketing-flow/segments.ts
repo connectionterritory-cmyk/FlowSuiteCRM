@@ -100,6 +100,8 @@ export const fetchSegmentTargets = async (params: {
     .select('id, nombre, apellido, telefono, ciudad, fecha_nacimiento, ultimo_contacto_at, next_action_date, activo, vendedor_id, distribuidor_id')
     .not('telefono', 'is', null)
     .neq('telefono', '')
+    .eq('whatsapp_opt_in', true)
+    .eq('whatsapp_no_molestar', false)
 
   if (segmentParams?.vendedor_id) {
     query = query.eq('vendedor_id', segmentParams.vendedor_id)
@@ -166,6 +168,8 @@ export const estimateSegmentTargets = async (params: {
     .select('id, fecha_nacimiento, ultimo_contacto_at, next_action_date, activo, vendedor_id, distribuidor_id', { count: 'exact' })
     .not('telefono', 'is', null)
     .neq('telefono', '')
+    .eq('whatsapp_opt_in', true)
+    .eq('whatsapp_no_molestar', false)
 
   if (segmentParams?.vendedor_id) {
     query = query.eq('vendedor_id', segmentParams.vendedor_id)

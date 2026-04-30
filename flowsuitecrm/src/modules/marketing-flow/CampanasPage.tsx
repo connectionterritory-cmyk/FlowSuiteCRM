@@ -9,7 +9,10 @@ import { Badge } from '../../components/Badge'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
+import { useUsers } from '../../data/useUsers'
 import { useViewMode } from '../../data/useViewMode'
+import { resolveTemplate } from '../../lib/messagePlaceholders'
+import { baseTemplates } from '../../lib/whatsappTemplates'
 import { estimateSegmentTargets, fetchSegmentTargets, getSegmentsByFuente, type CampaignSegmentParams, type Fuente } from './segments'
 import type { LeadScope } from './leadSegments'
 
@@ -46,6 +49,25 @@ type ProgramaOption = {
   nombre: string
 }
 
+type PreviewTarget = {
+  id: string
+  nombre: string | null
+  telefono: string | null
+  ciudad?: string | null
+}
+
+const toDatetimeLocalValue = (date: Date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
+const localDatetimeToIso = (value: string) => {
+  if (!value) return new Date().toISOString()
+  return new Date(value).toISOString()
+}
+
+const getDefaultScheduledFor = () => toDatetimeLocalValue(new Date(Date.now() + 5 * 60 * 1000))
+
 const initialForm = {
   nombre: '',
   descripcion: '',
@@ -55,6 +77,8 @@ const initialForm = {
   segmento_key: 'nuevos',
   mensaje_base: '',
   template_key: '',
+  scheduled_for: getDefaultScheduledFor(),
+  test_phone: '',
   owner_id: '',
   vendedor_id: '',
   programa_id: '',
@@ -86,6 +110,7 @@ const mapClienteFilterType = (segmentoKey: string) => {
 
 export function CampanasPage() {
   const { session } = useAuth()
+  const { currentUser } = useUsers()
   const navigate = useNavigate()
   const { viewMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
   const { showToast } = useToast()
@@ -112,6 +137,9 @@ export function CampanasPage() {
   const [estimateError, setEstimateError] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [mensajeBaseAvailable, setMensajeBaseAvailable] = useState(true)
+  const [previewTargets, setPreviewTargets] = useState<PreviewTarget[]>([])
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [testSending, setTestSending] = useState(false)
 
   const loadRole = useCallback(async () => {
     if (!configured || !session?.user.id) {
@@ -270,10 +298,12 @@ export function CampanasPage() {
       audiencia: prev.audiencia,
       lead_source: 'all',
       segmento_key: getSegmentsByFuente(prev.audiencia)[0]?.key ?? initialForm.segmento_key,
+      scheduled_for: getDefaultScheduledFor(),
     }))
     setFormError(null)
     setEstimate(null)
     setEstimateError(null)
+    setPreviewTargets([])
     setAdvancedOpen(false)
     setFormOpen(true)
   }
@@ -332,6 +362,26 @@ export function CampanasPage() {
 
   const audienceReady = Boolean(formValues.segmento_key)
   const messageEnabled = audienceReady
+  const whatsappTemplateOptions = useMemo(
+    () => baseTemplates.filter((template) => ['campana', 'client', 'pipeline', 'source', 'general', 'seguimiento', 'cumpleanos'].includes(template.category)),
+    []
+  )
+
+  const renderMessageForTarget = useCallback((target: PreviewTarget | null, fallbackName = 'Contacto') => {
+    const fullName = target?.nombre?.trim() || fallbackName
+    const firstName = fullName.split(' ')[0] || fullName
+    const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
+    const result = resolveTemplate(formValues.mensaje_base, {
+      nombre: firstName,
+      cliente: firstName,
+      telefono: target?.telefono ?? '',
+      ciudad: target?.ciudad ?? '',
+      vendedor_nombre: currentUserName,
+      vendedor_telefono: currentUser?.telefono ?? '',
+      organizacion: currentUser?.organizacion ?? 'Connection Worldwide Group',
+    })
+    return typeof result === 'string' ? result : result.text
+  }, [currentUser, formValues.mensaje_base])
 
   useEffect(() => {
     if (!formOpen || !audienceReady) {
@@ -387,34 +437,134 @@ export function CampanasPage() {
     }
   }, [audienceReady, buildSegmentParams, formOpen, formValues.audiencia, formValues.lead_source, formValues.owner_id, formValues.programa_id, formValues.segmento_key, formValues.vendedor_id, leadSourceOptions.length, scope])
 
-  const materializeCampaignTargets = useCallback(async (campaign: CampaignRecord, fuente: Fuente, segmentKey: string) => {
+  useEffect(() => {
+    if (!formOpen || !audienceReady) {
+      setPreviewTargets([])
+      return
+    }
+    let active = true
+    setPreviewLoading(true)
+    const timer = window.setTimeout(async () => {
+      try {
+        const targets = await fetchSegmentTargets({
+          fuente: formValues.audiencia,
+          segmentKey: formValues.segmento_key,
+          scope,
+          segmentParams: buildSegmentParams(),
+        })
+        if (!active) return
+        setPreviewTargets(targets.filter((target) => Boolean(target.telefono)).slice(0, 3))
+      } finally {
+        if (active) setPreviewLoading(false)
+      }
+    }, 450)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [audienceReady, buildSegmentParams, formOpen, formValues.audiencia, formValues.segmento_key, scope])
+
+  const materializeCampaignTargets = useCallback(async (campaign: CampaignRecord, fuente: Fuente, segmentKey: string, scheduledForIso: string) => {
     const targets = await fetchSegmentTargets({
       fuente,
       segmentKey,
       scope,
       segmentParams: (campaign.segment_params as CampaignSegmentParams | null) ?? undefined,
     })
-    const validTargets = targets.filter((target) => Boolean(target.telefono))
-    if (validTargets.length === 0) return
-    const messages = validTargets.map((target, index) => ({
-      campaign_id: campaign.id,
-      owner_id: campaign.owner_id ?? session?.user.id ?? null,
-      contacto_tipo: fuente === 'leads' ? 'lead' : 'cliente',
-      contacto_id: target.id,
-      telefono: target.telefono ?? null,
-      nombre: target.nombre ?? null,
-      mensaje_texto: campaign.mensaje_base ?? null,
-      canal: campaign.canal ?? 'whatsapp',
-      orden: index + 1,
-      status: 'pendiente',
-    }))
-    const { error: insertError } = await supabase
+    const uniqueTargets = new Map<string, PreviewTarget>()
+    targets.forEach((target) => {
+      const phoneKey = (target.telefono ?? '').replace(/\D/g, '')
+      if (!phoneKey || phoneKey.length < 10 || uniqueTargets.has(phoneKey)) return
+      uniqueTargets.set(phoneKey, target)
+    })
+    const validTargets = Array.from(uniqueTargets.values())
+    if (validTargets.length === 0) return 0
+    const ownerId = campaign.owner_id ?? session?.user.id ?? null
+    const messages = validTargets.map((target, index) => {
+      const messageText = renderMessageForTarget(target)
+      return {
+        id: crypto.randomUUID(),
+        campaign_id: campaign.id,
+        owner_id: ownerId,
+        contacto_tipo: fuente === 'leads' ? 'lead' : 'cliente',
+        contacto_id: target.id,
+        telefono: target.telefono ?? null,
+        nombre: target.nombre ?? null,
+        mensaje_texto: messageText,
+        canal: 'whatsapp',
+        orden: index + 1,
+        status: 'programado',
+      }
+    })
+    const { data: insertedMessages, error: insertError } = await supabase
       .from('mk_messages')
-      .upsert(messages, { onConflict: 'campaign_id,telefono', ignoreDuplicates: true })
+      .insert(messages)
+      .select('id, contacto_id, contacto_tipo, telefono, nombre, mensaje_texto, owner_id')
     if (insertError) {
       showToast(insertError.message, 'error')
+      throw insertError
     }
-  }, [scope, session?.user.id, showToast])
+    const rows = (insertedMessages as {
+      id: string
+      contacto_id: string | null
+      contacto_tipo: string | null
+      telefono: string | null
+      nombre: string | null
+      mensaje_texto: string | null
+      owner_id: string | null
+    }[] | null) ?? []
+    if (rows.length === 0) return 0
+
+    const outboxRows = rows.map((row) => ({
+      owner_id: row.owner_id,
+      org_id: currentUser?.organizacion ?? null,
+      contact_tipo: row.contacto_tipo,
+      contact_id: row.contacto_id,
+      contexto_tipo: 'campaign',
+      canal: 'whatsapp',
+      destinatario: row.telefono,
+      mensaje: campaign.mensaje_base ?? row.mensaje_texto,
+      mensaje_resuelto: row.mensaje_texto,
+      status: 'programado',
+      scheduled_for: scheduledForIso,
+      dispatch_provider: 'n8n',
+    }))
+    const { data: outboxData, error: outboxError } = await supabase
+      .from('outbox_messages')
+      .insert(outboxRows)
+      .select('id')
+    if (outboxError) {
+      await supabase
+        .from('mk_messages')
+        .update({ status: 'fallido' })
+        .in('id', rows.map((row) => row.id))
+      showToast(outboxError.message, 'error')
+      throw outboxError
+    }
+    const outboxIds = ((outboxData as { id: string }[] | null) ?? []).map((row) => row.id)
+    const linkResults = await Promise.all(rows.map((row, index) => {
+      const outboxId = outboxIds[index]
+      if (!outboxId) {
+        return Promise.resolve({
+          error: new Error(`No se recibio outbox id para mk_message ${row.id}`),
+        })
+      }
+      return supabase
+        .from('mk_messages')
+        .update({ outbox_message_id: outboxId })
+        .eq('id', row.id)
+    }))
+    const linkError = linkResults.find((result) => result.error)?.error
+    if (linkError) {
+      await supabase
+        .from('mk_messages')
+        .update({ status: 'fallido' })
+        .in('id', rows.map((row) => row.id))
+      throw linkError
+    }
+    return rows.length
+  }, [currentUser?.organizacion, renderMessageForTarget, scope, session?.user.id, showToast])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -436,6 +586,10 @@ export function CampanasPage() {
     }
     if (!formValues.mensaje_base.trim()) {
       setFormError('Texto del mensaje requerido.')
+      return
+    }
+    if (!formValues.scheduled_for) {
+      setFormError('Fecha de programación requerida.')
       return
     }
     if (!estimate || estimateLoading) {
@@ -461,13 +615,14 @@ export function CampanasPage() {
     const segmentParams = buildSegmentParams()
     const payload = {
       nombre: formValues.nombre.trim(),
-      canal: formValues.canal,
+      canal: 'whatsapp',
       segmento_key: formValues.segmento_key,
       segment_params: segmentParams,
       template_key: formValues.template_key.trim() || null,
       descripcion: formValues.descripcion.trim() || null,
       mensaje_base: formValues.mensaje_base.trim(),
       estado: 'borrador',
+      total_contactos: 0,
       owner_id: session?.user.id ?? null,
     }
     const { data, error: insertError } = await supabase
@@ -482,18 +637,79 @@ export function CampanasPage() {
       setSubmitting(false)
       return
     }
-    await materializeCampaignTargets(
-      data as CampaignRecord,
-      formValues.audiencia,
-      formValues.segmento_key,
-    )
+    let queued = 0
+    try {
+      queued = await materializeCampaignTargets(
+        data as CampaignRecord,
+        formValues.audiencia,
+        formValues.segmento_key,
+        localDatetimeToIso(formValues.scheduled_for),
+      )
+      if (queued === 0) {
+        throw new Error('No se programaron destinatarios validos para esta campaña.')
+      }
+      const { error: campaignUpdateError } = await supabase
+        .from('mk_campaigns')
+        .update({
+          estado: 'activa',
+          total_contactos: queued,
+          dispatched_at: new Date().toISOString(),
+        })
+        .eq('id', data.id)
+      if (campaignUpdateError) throw campaignUpdateError
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo programar la campaña.'
+      setFormError(message)
+      showToast(message, 'error')
+      setSubmitting(false)
+      return
+    }
     setConfirmOpen(false)
     setFormOpen(false)
     await loadCampaigns()
-    showToast('Campaña creada')
+    showToast(`${queued} mensajes programados para n8n`)
     navigate(`/marketing-flow/envios?campana=${data.id}`)
     setSubmitting(false)
   }
+
+  const handleSendTest = useCallback(async () => {
+    if (!configured || testSending) return
+    if (!formValues.mensaje_base.trim()) {
+      setFormError('Escribe un mensaje antes de enviar la prueba.')
+      return
+    }
+    const testPhone = formValues.test_phone.trim() || currentUser?.telefono?.trim()
+    if (!testPhone) {
+      setFormError('Agrega un teléfono de prueba.')
+      return
+    }
+    setTestSending(true)
+    setFormError(null)
+    const resolved = renderMessageForTarget(null, currentUser?.nombre || 'Prueba')
+    const { error: insertError } = await supabase
+      .from('outbox_messages')
+      .insert({
+        owner_id: session?.user.id ?? null,
+        org_id: currentUser?.organizacion ?? null,
+        contact_tipo: null,
+        contact_id: null,
+        contexto_tipo: 'campaign',
+        canal: 'whatsapp',
+        destinatario: testPhone,
+        mensaje: formValues.mensaje_base,
+        mensaje_resuelto: resolved,
+        status: 'programado',
+        scheduled_for: new Date(Date.now() - 1000).toISOString(),
+        dispatch_provider: 'n8n',
+      })
+    if (insertError) {
+      setFormError(insertError.message)
+      showToast(insertError.message, 'error')
+    } else {
+      showToast('Prueba en cola para n8n')
+    }
+    setTestSending(false)
+  }, [configured, currentUser, formValues.mensaje_base, formValues.test_phone, renderMessageForTarget, session?.user.id, showToast, testSending])
 
   const updateCampaignState = useCallback(
     async (campaignId: string, nextEstado: string) => {
@@ -614,7 +830,7 @@ export function CampanasPage() {
               Cancelar
             </Button>
             <Button type="submit" form="mk-campaign-form" disabled={submitting}>
-              {submitting ? 'Guardando...' : 'Guardar'}
+              {submitting ? 'Programando...' : 'Programar'}
             </Button>
           </>
         }
@@ -810,8 +1026,29 @@ export function CampanasPage() {
                 onChange={(e) => setFormValues((prev) => ({ ...prev, canal: e.target.value }))}
               >
                 <option value="whatsapp">WhatsApp</option>
-                <option value="sms">SMS</option>
-                <option value="email">Email</option>
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Plantilla</span>
+              <select
+                value={formValues.template_key}
+                onChange={(e) => {
+                  const templateId = e.target.value
+                  const template = whatsappTemplateOptions.find((item) => item.id === templateId)
+                  setFormValues((prev) => ({
+                    ...prev,
+                    template_key: templateId,
+                    mensaje_base: template?.message ?? prev.mensaje_base,
+                  }))
+                }}
+                disabled={!messageEnabled}
+              >
+                <option value="">Personalizado</option>
+                {whatsappTemplateOptions.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="form-field">
@@ -830,14 +1067,47 @@ export function CampanasPage() {
               )}
             </label>
             <label className="form-field">
-              <span>Plantilla (opcional / avanzado)</span>
+              <span>Programar para</span>
               <input
-                value={formValues.template_key}
-                onChange={(e) => setFormValues((prev) => ({ ...prev, template_key: e.target.value }))}
-                placeholder="template_key"
-                disabled={!messageEnabled}
+                type="datetime-local"
+                value={formValues.scheduled_for}
+                onChange={(e) => setFormValues((prev) => ({ ...prev, scheduled_for: e.target.value }))}
               />
             </label>
+            <div className="form-grid" style={{ gap: '0.65rem' }}>
+              <label className="form-field">
+                <span>Teléfono de prueba</span>
+                <input
+                  value={formValues.test_phone}
+                  onChange={(e) => setFormValues((prev) => ({ ...prev, test_phone: e.target.value }))}
+                  placeholder={currentUser?.telefono || 'Número WhatsApp'}
+                />
+              </label>
+              <div style={{ alignSelf: 'end' }}>
+                <Button type="button" variant="ghost" onClick={handleSendTest} disabled={testSending || !messageEnabled}>
+                  {testSending ? 'Encolando...' : 'Enviar prueba'}
+                </Button>
+              </div>
+            </div>
+            <div className="card" style={{ padding: '10px 12px', background: 'var(--color-input)' }}>
+              <strong>Previsualización</strong>
+              {previewLoading && <div style={{ marginTop: 6, fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Cargando muestra...</div>}
+              {!previewLoading && previewTargets.length === 0 && (
+                <div style={{ marginTop: 6, fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                  No hay contactos de muestra para este segmento.
+                </div>
+              )}
+              {!previewLoading && previewTargets.map((target) => (
+                <div key={target.id} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                    {target.nombre || 'Contacto'} · {target.telefono}
+                  </div>
+                  <div style={{ marginTop: 4, whiteSpace: 'pre-wrap', fontSize: '0.86rem' }}>
+                    {renderMessageForTarget(target)}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
           {!mensajeBaseAvailable && (
             <div className="form-error">Falta migración: mk_campaigns.mensaje_base. Aplica la migración antes de crear campañas.</div>
@@ -862,11 +1132,12 @@ export function CampanasPage() {
       >
         <div className="form-grid" style={{ gap: '0.65rem' }}>
           <div><strong>Crear campaña para {estimate?.count ?? 0} {isLeadAudience ? 'prospectos' : 'clientes'}</strong></div>
-          <div>Canal: {formValues.canal}</div>
+          <div>Canal: WhatsApp</div>
           <div>Audiencia: {isLeadAudience ? 'Prospectos' : 'Clientes'}</div>
           {isLeadAudience && <div>Fuente del prospecto: {leadSourceLabel}</div>}
           <div>{isLeadAudience ? 'Estado del prospecto' : 'Grupo de clientes'}: {selectedSegment?.label ?? '-'}</div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Los mensajes quedarán en estado Pendiente.</div>
+          <div>Programación: {formValues.scheduled_for ? new Date(formValues.scheduled_for).toLocaleString('es') : '-'}</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Se insertará una fila por contacto en outbox_messages con status programado y dispatch_provider n8n.</div>
         </div>
       </Modal>
     </div>

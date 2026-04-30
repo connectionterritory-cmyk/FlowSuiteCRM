@@ -10,6 +10,8 @@ export type LeadRow = {
   next_action_date: string | null
   updated_at: string | null
   created_at: string | null
+  whatsapp_opt_in?: boolean | null
+  whatsapp_no_molestar?: boolean | null
 }
 
 type LastActivityRow = {
@@ -29,7 +31,7 @@ export const SEGMENTS: { key: SegmentKey; label: string; hint?: string }[] = [
 ]
 
 export const LEAD_SELECT =
-  'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at'
+  'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, whatsapp_opt_in, whatsapp_no_molestar'
 
 export type LeadScope = {
   role: string | null
@@ -147,6 +149,8 @@ export const fetchLeadsForSegment = async (segment: SegmentKey, scope: LeadScope
     .is('deleted_at', null)
     .not('telefono', 'is', null)
     .neq('telefono', '')
+    .eq('whatsapp_opt_in', true)
+    .eq('whatsapp_no_molestar', false)
   query = applyLeadScope(query, scope)
 
   const paramResult = await applyLeadParams(query, segmentParams)
@@ -195,6 +199,8 @@ export const countLeadsForSegment = async (
       .is('deleted_at', null)
       .not('telefono', 'is', null)
       .neq('telefono', '')
+      .eq('whatsapp_opt_in', true)
+      .eq('whatsapp_no_molestar', false)
     countQuery = applyLeadScope(countQuery, scope)
     const paramResult = await applyLeadParams(countQuery, segmentParams)
     if (paramResult.error) return { count: 0, isEstimate: false, error: paramResult.error }
@@ -227,6 +233,8 @@ export const countLeadsForSegment = async (
     .is('deleted_at', null)
     .not('telefono', 'is', null)
     .neq('telefono', '')
+    .eq('whatsapp_opt_in', true)
+    .eq('whatsapp_no_molestar', false)
   sampleQuery = applyLeadScope(sampleQuery, scope)
   const sampleParams = await applyLeadParams(sampleQuery, segmentParams)
   if (sampleParams.error) return { count: 0, isEstimate: false, error: sampleParams.error }

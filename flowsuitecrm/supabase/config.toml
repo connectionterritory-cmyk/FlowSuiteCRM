@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.dispatch-campaign]
 verify_jwt = false
+
+[functions.dispatch-outbox-n8n]
+verify_jwt = false
