@@ -8,6 +8,7 @@ import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
 import { ActivacionReferidosPanel } from '../../components/ActivacionReferidosPanel'
+import { CILlamadasPanel } from './CILlamadasPanel'
 import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { useToast } from '../../components/useToast'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics'
@@ -1795,6 +1796,12 @@ export function ConexionesActivacionesTabLegacy() {
                 </span>
               </div>
             </div>
+
+            <CILlamadasPanel
+              clienteId={selectedActivation.cliente_id ?? null}
+              leadId={selectedActivation.lead_id ?? null}
+              ownerName={selectedActivationOwnerName || undefined}
+            />
 
             <div className="ci-client-message">
               <h4>{t('conexiones.activaciones.form.clientMessageTitle')}</h4>

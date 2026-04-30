@@ -8,6 +8,7 @@ import { useToast } from './useToast'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
 import { useModalHost } from '../modals/useModalHost'
+import { CILlamadasPanel } from '../modules/conexiones-infinitas/CILlamadasPanel'
 
 type LeadCalificacion = {
   id: string
@@ -84,7 +85,7 @@ type LeadContextState = {
   }
 }
 
-type LeadDetailTab = 'resumen' | 'referidos' | 'programas' | 'historial'
+type LeadDetailTab = 'resumen' | 'referidos' | 'programas' | 'historial' | 'llamadas'
 
 const initialForm = {
   nombre: '',
@@ -908,6 +909,7 @@ export function CalificacionPanel({
                 { key: 'referidos', label: `Referidos (${context.referidos.total})` },
                 { key: 'programas', label: `Programas (${programCount})` },
                 { key: 'historial', label: 'Historial' },
+                { key: 'llamadas', label: '📞 Llamadas' },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -1257,6 +1259,17 @@ export function CalificacionPanel({
             <ContactoTimeline contactoTipo="lead" contactoId={lead.id} emptyLabel="Sin historial de actividades para este prospecto" />
           </div>
           )}
+
+          {activeTab === 'llamadas' && (
+          <div className="drawer-section">
+            <CILlamadasPanel
+              clienteId={null}
+              leadId={lead.id}
+              ownerName={fullName}
+            />
+          </div>
+          )}
+
           {showActions && (
             <div className="drawer-section">
               <div className="calificacion-next-actions">

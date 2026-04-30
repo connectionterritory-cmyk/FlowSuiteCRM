@@ -49,6 +49,38 @@ type TelemercadeoCallModalProps = {
   onClose: () => void
 }
 
+type ContactoActividadPayload = {
+  org_id?: string | null
+  contacto_tipo: 'cliente'
+  contacto_id: string
+  tipo: 'llamada'
+  resumen: string
+  contenido: string | null
+  metadata: Record<string, unknown>
+  autor_id: string
+  fecha_actividad: string
+}
+
+function isMissingOrgIdSchemaCacheError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes("could not find the 'org_id' column") ||
+    normalized.includes('schema cache') && normalized.includes('org_id')
+  )
+}
+
+async function insertContactoActividad(payload: ContactoActividadPayload) {
+  const { error } = await supabase.from('contacto_actividades').insert(payload)
+  if (!error || !payload.org_id || !isMissingOrgIdSchemaCacheError(error.message)) {
+    return error
+  }
+
+  const legacyPayload = { ...payload }
+  delete legacyPayload.org_id
+  const { error: retryError } = await supabase.from('contacto_actividades').insert(legacyPayload)
+  return retryError
+}
+
 function guionContextual(dias: number | null, moroso: number | null) {
   if (!moroso || moroso === 0) return null
   if (!dias || dias < 1) return null
@@ -217,7 +249,7 @@ export function TelemercadeoCallModal({
 
     // 2. Registrar actividad visible en timeline
     const resumen = `Gestión de cobranza: ${resultadoLabel(resultado)}`
-    const { error: actividadError } = await supabase.from('contacto_actividades').insert({
+    const actividadError = await insertContactoActividad({
       org_id: orgId,
       contacto_tipo: 'cliente',
       contacto_id: cliente.id,
