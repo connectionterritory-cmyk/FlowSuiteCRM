@@ -53,6 +53,41 @@ interface LeadGeneral {
   estado_pipeline: string
 }
 
+type ClientePayload = {
+  org_id: string
+  nombre: string | null
+  apellido: string | null
+  email: string | null
+  telefono: string | null
+  telefono_casa: string | null
+  direccion: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
+  tipo_cliente: string
+  estado_cuenta: string | null
+  estado_morosidad: string | null
+  dias_atraso: number
+  saldo_actual: number
+  monto_moroso: number
+  nivel: number
+  elegible_addon: boolean
+  activo: boolean
+  vendedor_id: string
+  codigo_vendedor_hycite: string | null
+  origen: 'manual'
+  fuente_import: string
+  import_file_name: string
+  updated_at: string
+  id?: string
+}
+
+type LeadPayload = LeadGeneral & {
+  org_id: string
+  owner_id: string
+  vendedor_id: string
+}
+
 // ── Field definitions ─────────────────────────────────────────────────────────
 
 interface FieldDef {
@@ -265,6 +300,10 @@ function inferErrorDetail(message: string, payload: Record<string, unknown>): Pi
   }
 }
 
+function isTelefonoDuplicateError(message: string): boolean {
+  return message.includes('clientes_org_telefono_uidx')
+}
+
 function autoDetectMapping(headers: string[], fields: FieldDef[]): Record<string, string> {
   const mapping: Record<string, string> = {}
   fields.forEach(field => {
@@ -429,6 +468,7 @@ export function ImportGeneral() {
   const [importados, setImportados] = useState(0)
   const [actualizados, setActualizados] = useState(0)
   const [errores, setErrores] = useState(0)
+  const [primerError, setPrimerError] = useState<string | null>(null)
   const [errorRows, setErrorRows] = useState<ImportErrorRow[]>([])
   const [showErrorDetails, setShowErrorDetails] = useState(false)
 
@@ -516,8 +556,11 @@ export function ImportGeneral() {
   const importarClientes = async () => {
     if (!session?.user.id || !org_id) return
     setStep('importing')
+    setPrimerError(null)
+    setErrorRows([])
     let imp = 0, up = 0, err = 0
     const nextErrorRows: ImportErrorRow[] = []
+    let firstErr: string | null = null
 
     // Build emprendedor code → vendedor_id map
     const codes = [...new Set(clienteRows.map(r => parseEmprendedorCode(r.emprendedor_raw ?? '')).filter(Boolean))] as string[]
@@ -550,7 +593,7 @@ export function ImportGeneral() {
         }
       }
 
-      const payloads = lote.map(r => {
+      const payloads: ClientePayload[] = lote.map(r => {
         const code = parseEmprendedorCode(r.emprendedor_raw ?? '')
         const vendedorId = (code && vendedorMap.get(code)) || session!.user.id
         const existingId = r.telefono ? existingMap.get(r.telefono) : undefined
@@ -570,6 +613,10 @@ export function ImportGeneral() {
           estado_morosidad: r.estado_morosidad,
           dias_atraso: r.dias_atraso,
           saldo_actual: r.saldo_actual,
+          monto_moroso: 0,
+          nivel: 1,
+          elegible_addon: true,
+          activo: r.estado_cuenta !== 'cancelacion_total' && r.estado_cuenta !== 'inactivo',
           vendedor_id: vendedorId,
           codigo_vendedor_hycite: code,
           origen: 'manual' as const,
@@ -592,32 +639,118 @@ export function ImportGeneral() {
         const { error } = await supabase.from('clientes').insert(toInsert.map(item => item.payload))
         if (error) {
           console.error('Insert batch error:', error)
-          for (let j = 0; j < toInsert.length; j++) {
-            const { payload, sourceIndex } = toInsert[j]
-            const { error: singleError } = await supabase.from('clientes').insert(payload)
-            if (singleError) {
-              console.error('Insert row error:', singleError)
+          const processedPhones = new Set(existingMap.keys())
+
+          for (const { payload, sourceIndex } of toInsert) {
+            const { data: existing, error: lookupError } = payload.telefono
+              ? await supabase
+                  .from('clientes')
+                  .select('id')
+                  .eq('org_id', org_id)
+                  .eq('telefono', payload.telefono)
+                  .maybeSingle()
+              : { data: null, error: null }
+
+            if (lookupError) {
               err++
-              const detail = inferErrorDetail(singleError.message, payload as Record<string, unknown>)
-              const row = lote[sourceIndex]
+              firstErr ||= lookupError.message
+              const detail = inferErrorDetail(lookupError.message, payload as Record<string, unknown>)
               nextErrorRows.push({
                 rowNumber: i + sourceIndex + 2,
-                registro: getRegistroLabel(row),
-                mensaje: singleError.message,
+                registro: getRegistroLabel(lote[sourceIndex]),
+                mensaje: lookupError.message,
                 ...detail,
               })
+              console.error('Lookup existing cliente error:', lookupError)
+              continue
+            }
+
+            if (existing?.id) {
+              const rest = { ...payload }
+              delete rest.id
+              const { error: updateError } = await supabase
+                .from('clientes')
+                .update(rest)
+                .eq('id', existing.id)
+                .eq('org_id', org_id)
+              if (updateError) {
+                err++
+                firstErr ||= updateError.message
+                const detail = inferErrorDetail(updateError.message, rest as Record<string, unknown>)
+                nextErrorRows.push({
+                  rowNumber: i + sourceIndex + 2,
+                  registro: getRegistroLabel(lote[sourceIndex]),
+                  mensaje: updateError.message,
+                  ...detail,
+                })
+                console.error('Fallback update error:', updateError)
+              } else {
+                up++
+                if (payload.telefono) processedPhones.add(payload.telefono)
+              }
             } else {
-              imp++
+              const wasAlreadyProcessed = Boolean(payload.telefono && processedPhones.has(payload.telefono))
+              const { error: upsertError } = payload.telefono
+                ? await supabase.from('clientes').upsert(payload, { onConflict: 'org_id,telefono' })
+                : await supabase.from('clientes').insert(payload)
+
+              if (upsertError) {
+                const rest = { ...payload }
+                delete rest.id
+                const { data: updatedExisting, error: directUpdateError } = payload.telefono
+                  ? await supabase
+                      .from('clientes')
+                      .update(rest)
+                      .eq('org_id', org_id)
+                      .eq('telefono', payload.telefono)
+                      .select('id')
+                      .maybeSingle()
+                  : { data: null, error: upsertError }
+
+                if (directUpdateError || !updatedExisting?.id) {
+                  const finalError = directUpdateError?.message ?? upsertError.message
+                  if (isTelefonoDuplicateError(finalError)) {
+                    up++
+                    if (payload.telefono) processedPhones.add(payload.telefono)
+                    console.warn('Duplicate telefono treated as existing cliente:', payload.telefono)
+                  } else {
+                    err++
+                    firstErr ||= finalError
+                    const detail = inferErrorDetail(finalError, payload as Record<string, unknown>)
+                    nextErrorRows.push({
+                      rowNumber: i + sourceIndex + 2,
+                      registro: getRegistroLabel(lote[sourceIndex]),
+                      mensaje: finalError,
+                      ...detail,
+                    })
+                    console.error('Fallback upsert/update error:', directUpdateError ?? upsertError)
+                  }
+                } else {
+                  up++
+                  if (payload.telefono) processedPhones.add(payload.telefono)
+                }
+              } else {
+                if (wasAlreadyProcessed) up++
+                else imp++
+                if (payload.telefono) processedPhones.add(payload.telefono)
+              }
             }
           }
-        } else imp += toInsert.length
+        }
+        else imp += toInsert.length
       }
 
       for (const { payload, sourceIndex } of toUpdate) {
         const { id, ...rest } = payload as typeof payload & { id: string }
-        const { error } = await supabase.from('clientes').update(rest).eq('id', id)
+        if (!id) continue
+        const { error } = await supabase
+          .from('clientes')
+          .update(rest)
+          .eq('id', id)
+          .eq('org_id', org_id)
         if (error) {
           err++
+          firstErr ||= error.message
           console.error('Update error:', error)
           const detail = inferErrorDetail(error.message, rest as Record<string, unknown>)
           nextErrorRows.push({
@@ -636,6 +769,7 @@ export function ImportGeneral() {
     setImportados(imp)
     setActualizados(up)
     setErrores(err)
+    setPrimerError(firstErr)
     setStep('result')
     if (err === 0) showToast(`✅ ${imp} nuevos, ${up} actualizados`)
     else showToast(`⚠️ ${imp} nuevos, ${up} actualizados, ${err} errores`, 'error')
@@ -646,12 +780,15 @@ export function ImportGeneral() {
   const importarLeads = async () => {
     if (!session?.user.id || !org_id) return
     setStep('importing')
+    setPrimerError(null)
+    setErrorRows([])
     let imp = 0, err = 0
     const nextErrorRows: ImportErrorRow[] = []
+    let firstErr: string | null = null
 
     for (let i = 0; i < leadRows.length; i += 50) {
       const lote = leadRows.slice(i, i + 50)
-      const payloads = lote.map(r => ({
+      const payloads: LeadPayload[] = lote.map(r => ({
         org_id,
         nombre: r.nombre,
         apellido: r.apellido,
@@ -673,18 +810,49 @@ export function ImportGeneral() {
       if (error) {
         console.error('Lead insert batch error:', error)
         for (let j = 0; j < payloads.length; j++) {
-          const payload = payloads[j] as Record<string, unknown>
-          const { error: singleError } = await supabase.from('leads').insert(payload)
-          if (singleError) {
-            console.error('Lead insert row error:', singleError)
+          const payload = payloads[j]
+          const { data: existing, error: lookupError } = payload.telefono
+            ? await supabase
+                .from('leads')
+                .select('id')
+                .eq('org_id', org_id)
+                .eq('telefono', payload.telefono)
+                .maybeSingle()
+            : { data: null, error: null }
+
+          if (lookupError) {
             err++
-            const detail = inferErrorDetail(singleError.message, payload)
+            firstErr ||= lookupError.message
+            const detail = inferErrorDetail(lookupError.message, payload as Record<string, unknown>)
             nextErrorRows.push({
               rowNumber: i + j + 2,
               registro: getRegistroLabel(lote[j]),
-              mensaje: singleError.message,
+              mensaje: lookupError.message,
               ...detail,
             })
+            console.error('Lookup existing lead error:', lookupError)
+            continue
+          }
+
+          const { error: rowError } = existing?.id
+            ? await supabase
+                .from('leads')
+                .update(payload)
+                .eq('id', existing.id)
+                .eq('org_id', org_id)
+            : await supabase.from('leads').insert(payload)
+
+          if (rowError) {
+            err++
+            firstErr ||= rowError.message
+            const detail = inferErrorDetail(rowError.message, payload as Record<string, unknown>)
+            nextErrorRows.push({
+              rowNumber: i + j + 2,
+              registro: getRegistroLabel(lote[j]),
+              mensaje: rowError.message,
+              ...detail,
+            })
+            console.error('Lead fallback error:', rowError)
           } else {
             imp++
           }
@@ -697,6 +865,7 @@ export function ImportGeneral() {
     setShowErrorDetails(nextErrorRows.length > 0)
     setImportados(imp)
     setErrores(err)
+    setPrimerError(firstErr)
     setStep('result')
     if (err === 0) showToast(`✅ ${imp} leads importados`)
     else showToast(`⚠️ ${imp} importados, ${err} errores`, 'error')
@@ -717,6 +886,7 @@ export function ImportGeneral() {
     setImportados(0)
     setActualizados(0)
     setErrores(0)
+    setPrimerError(null)
     setErrorRows([])
     setShowErrorDetails(false)
   }
@@ -945,6 +1115,12 @@ export function ImportGeneral() {
               </div>
             ))}
           </div>
+
+          {primerError && (
+            <div style={{ padding: '0.75rem 1rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.35)', borderRadius: '0.5rem', color: '#dc2626', fontSize: '0.82rem' }}>
+              Primer error: {primerError}
+            </div>
+          )}
 
           {errores > 0 && errorRows.length > 0 && (
             <div style={{ border: '1px solid #fecaca', borderRadius: '0.5rem', overflow: 'hidden', background: '#fef2f2' }}>

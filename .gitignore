@@ -41,6 +41,8 @@ memory.md
 *.swp
 *.xls
 *.xlsx
+*.numbers
+private-data/
 evolution-api/
 
 .agent/
