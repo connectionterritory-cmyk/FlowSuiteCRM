@@ -46,8 +46,8 @@ evolution-api/
 .agent/
 **/supabase/.temp/
 
-# Local AI / MCP configs
-.claude/settings.json
+# Local AI / MCP configs - never commit the whole .claude/ folder
+.claude/
 .mcp.json
 .mcp-secrets.env
 
