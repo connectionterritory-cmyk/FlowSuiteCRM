@@ -44,6 +44,15 @@ type ClienteRecord = {
   saldo_actual: number | null
   monto_moroso: number | null
   dias_atraso: number | null
+  credito_disponible: number | null
+  pago_minimo_mensual: number | null
+  factor_ingresos: number | null
+  tipo_cuenta_hycite: string | null
+  estado_cuenta_raw: string | null
+  fecha_orden: string | null
+  fecha_cierre: string | null
+  metodo_pago: string | null
+  vendedor_hycite_nombre: string | null
   estado_morosidad: string | null
   estado_cuenta: string | null
   nivel: number | null
@@ -94,10 +103,20 @@ const CLIENTES_LIST_SELECT = [
   'estado_region',
   'codigo_postal',
   'hycite_id',
+  'numero_cuenta_financiera',
   'nivel',
   'saldo_actual',
   'monto_moroso',
   'dias_atraso',
+  'credito_disponible',
+  'pago_minimo_mensual',
+  'factor_ingresos',
+  'tipo_cuenta_hycite',
+  'estado_cuenta_raw',
+  'fecha_orden',
+  'fecha_cierre',
+  'metodo_pago',
+  'vendedor_hycite_nombre',
   'estado_morosidad',
   'vendedor_id',
   'distribuidor_id',
@@ -113,7 +132,8 @@ const CLIENTES_LIST_SELECT = [
   'next_action_date',
   'estado_operativo',
   'fuente_import',
-  // Excluded (sensitive): numero_cuenta_financiera, codigo_vendedor_hycite
+  // Excluded from table columns, but still fetched for readonly detail/edit snapshot:
+  // codigo_vendedor_hycite
 ].join(', ')
 
 const initialForm = {
@@ -218,6 +238,16 @@ function normalizeSearch(value: string | null | undefined): string {
 function normalizeStateRegionFilter(value: string): string {
   const formatted = formatStateRegion(value)
   return formatted.trim()
+}
+
+function formatSnapshotMoney(value: number | null | undefined): string {
+  return value !== null && value !== undefined
+    ? `$${Number(value).toFixed(2)}`
+    : 'No registrado'
+}
+
+function formatSnapshotText(value: string | null | undefined): string {
+  return value && value.trim() ? value : 'No registrado'
 }
 
 function badgeColor(segmento: string): string {
@@ -941,7 +971,7 @@ export function ClientesPage() {
         supabase
           .from('clientes')
           .select(
-            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, ultima_fecha_pago, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
+            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, credito_disponible, pago_minimo_mensual, factor_ingresos, tipo_cuenta_hycite, estado_cuenta_raw, fecha_orden, fecha_cierre, metodo_pago, vendedor_hycite_nombre, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, ultima_fecha_pago, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
           )
           .eq('id', selectedRow.id)
           .maybeSingle(),
@@ -1251,9 +1281,6 @@ export function ClientesPage() {
       ciudad: canonicalDraft.ciudad,
       estado_region: canonicalDraft.estado_region,
       codigo_postal: canonicalDraft.codigo_postal,
-      hycite_id: toNull(formValues.hycite_id),
-      numero_cuenta_financiera: toNull(formValues.numero_cuenta_financiera),
-      saldo_actual: formValues.saldo_actual === '' ? 0 : Number(formValues.saldo_actual),
       vendedor_id: toNull(formValues.vendedor_id),
       distribuidor_id: toNull(formValues.distribuidor_id),
       fecha_nacimiento: birthDate,
@@ -1922,6 +1949,11 @@ export function ClientesPage() {
         }
       >
         <form id="cliente-form" className="form-grid" onSubmit={handleSubmit}>
+
+          {/* ── INFORMACIÓN PERSONAL ──────────────────────────── */}
+          <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '0.3rem' }}>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.06em' }}>INFORMACIÓN PERSONAL</span>
+          </div>
           <label className="form-field">
             <span>{t('clientes.fields.nombre')}</span>
             <input value={formValues.nombre} onChange={handleChange('nombre')} onBlur={handleCapitalize('nombre')} />
@@ -1935,13 +1967,35 @@ export function ClientesPage() {
             <input type="email" value={formValues.email} onChange={handleChange('email')} />
           </label>
           <label className="form-field">
-            <span>Telefono movil</span>
+            <span>Teléfono móvil</span>
             <input value={formValues.telefono} onChange={handleChange('telefono')} />
           </label>
           <label className="form-field">
-            <span>Telefono casa</span>
+            <span>Teléfono casa</span>
             <input value={formValues.telefono_casa} onChange={handleChange('telefono_casa')} />
           </label>
+          <label className="form-field">
+            <span>Cumpleaños (día y mes)</span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select value={birthDay} onChange={(event) => setBirthDay(event.target.value)}>
+                <option value="">Día</option>
+                {DAY_OPTIONS.map((day) => (
+                  <option key={day} value={day}>{day}</option>
+                ))}
+              </select>
+              <select value={birthMonth} onChange={(event) => setBirthMonth(event.target.value)}>
+                <option value="">Mes</option>
+                {MONTH_OPTIONS.map((month) => (
+                  <option key={month.value} value={month.value}>{month.label}</option>
+                ))}
+              </select>
+            </div>
+          </label>
+
+          {/* ── DIRECCIÓN ────────────────────────────────────── */}
+          <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '0.3rem', marginTop: '0.5rem' }}>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.06em' }}>DIRECCIÓN</span>
+          </div>
           <label className="form-field">
             <span>{t('clientes.fields.direccion')}</span>
             <input
@@ -1949,7 +2003,7 @@ export function ClientesPage() {
               onChange={handleChange('direccion')}
               onBlur={handleFormatText('direccion')}
               onPaste={handleDireccionPaste}
-              placeholder="Pega la dirección completa aquí para auto-rellenar"
+              placeholder="Pega la dirección completa"
             />
           </label>
           {parsedAddr && (
@@ -1975,60 +2029,76 @@ export function ClientesPage() {
             <input value={formValues.ciudad} onChange={handleChange('ciudad')} onBlur={handleFormatText('ciudad')} />
           </label>
           <label className="form-field">
-            <span>Estado (Dirección)</span>
+            <span>Estado</span>
             <input value={formValues.estado_region} onChange={handleChange('estado_region')} onBlur={handleFormatState} />
           </label>
           <label className="form-field">
-            <span>Código postal</span>
+            <span>ZIP / Código postal</span>
             <input value={formValues.codigo_postal} onChange={handleChange('codigo_postal')} />
           </label>
-          <label className="form-field">
-            <span>No. Hycite</span>
-            <input value={formValues.hycite_id} onChange={handleChange('hycite_id')} placeholder="Número de cliente Hycite" />
-          </label>
-          <label className="form-field">
-            <span>No. Financiero</span>
-            <input value={formValues.numero_cuenta_financiera} onChange={handleChange('numero_cuenta_financiera')} placeholder="Número de cuenta financiera" />
-          </label>
-          <label className="form-field">
-            <span>{t('clientes.fields.saldoActual')}</span>
-            <input type="number" value={formValues.saldo_actual} onChange={handleChange('saldo_actual')} />
-          </label>
+
+          {/* ── CUENTA HY-CITE (solo lectura) ───────────────── */}
+          {editingCliente ? (
+            <>
+              <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '0.3rem', marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.06em' }}>CUENTA HY-CITE</span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted, #94a3b8)' }}>solo lectura · datos de Hy-Cite</span>
+              </div>
+              {((editingCliente.dias_atraso ?? 0) >= 30 || (editingCliente.monto_moroso ?? 0) > 0) && (
+                <div style={{ gridColumn: '1 / -1', padding: '0.55rem 0.75rem', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '0.375rem', fontSize: '0.82rem', color: '#92400e', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  <span>⚠</span>
+                  <span>
+                    {[
+                      (editingCliente.dias_atraso ?? 0) >= 30 && `${editingCliente.dias_atraso} días de atraso`,
+                      (editingCliente.monto_moroso ?? 0) > 0 && `monto moroso $${Number(editingCliente.monto_moroso).toFixed(2)}`,
+                    ].filter(Boolean).join(' · ')}
+                    {' — revisar estado de cuenta'}
+                  </span>
+                </div>
+              )}
+              <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                {([
+                  { label: 'Saldo actual', value: formatSnapshotMoney(editingCliente.saldo_actual) },
+                  { label: 'Monto moroso', value: formatSnapshotMoney(editingCliente.monto_moroso) },
+                  { label: 'Días atraso', value: editingCliente.dias_atraso != null ? String(editingCliente.dias_atraso) : '—' },
+                  { label: 'Crédito disponible', value: formatSnapshotMoney(editingCliente.credito_disponible) },
+                ] as const).map(({ label, value }) => (
+                  <div key={label} style={{ padding: '0.6rem 0.75rem', background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '0.5rem' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted, #94a3b8)', marginBottom: '0.2rem' }}>{label}</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.3rem 1rem', fontSize: '0.78rem', color: 'var(--color-text-muted, #64748b)' }}>
+                <div><strong>No. Hy-Cite:</strong> {formatSnapshotText(editingCliente.hycite_id)}</div>
+                <div><strong>Cuenta financiera:</strong> {formatSnapshotText(editingCliente.numero_cuenta_financiera)}</div>
+                <div><strong>Pago mínimo mensual:</strong> {formatSnapshotMoney(editingCliente.pago_minimo_mensual)}</div>
+                <div><strong>Tipo cuenta Hy-Cite:</strong> {formatSnapshotText(editingCliente.tipo_cuenta_hycite)}</div>
+                <div><strong>Estado Hy-Cite:</strong> {formatSnapshotText(editingCliente.estado_cuenta_raw)}</div>
+                <div><strong>Fecha de orden:</strong> {formatSnapshotText(editingCliente.fecha_orden)}</div>
+                <div><strong>Fecha de cierre:</strong> {formatSnapshotText(editingCliente.fecha_cierre)}</div>
+                <div><strong>Método de pago:</strong> {formatSnapshotText(editingCliente.metodo_pago)}</div>
+                <div><strong>Vendedor Hy-Cite:</strong> {formatSnapshotText(editingCliente.vendedor_hycite_nombre)}</div>
+              </div>
+            </>
+          ) : null}
+
+          {/* ── SEGUIMIENTO CRM ──────────────────────────────── */}
+          <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '0.3rem', marginTop: '0.5rem' }}>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.06em' }}>SEGUIMIENTO CRM</span>
+          </div>
           <label className="form-field">
             <span>{t('clientes.fields.vendedorId')}</span>
             {canEditClientes && !isSellerView ? (
               <select value={formValues.vendedor_id} onChange={handleChange('vendedor_id')}>
                 <option value="">Sin asignar</option>
                 {vendorSelectOptions.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.label}
-                  </option>
+                  <option key={user.id} value={user.id}>{user.label}</option>
                 ))}
               </select>
             ) : (
               <input value={formVendedorName} readOnly />
             )}
-          </label>
-          <label className="form-field">
-            <span>Cumpleaños (día y mes)</span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <select value={birthDay} onChange={(event) => setBirthDay(event.target.value)}>
-                <option value="">Día</option>
-                {DAY_OPTIONS.map((day) => (
-                  <option key={day} value={day}>
-                    {day}
-                  </option>
-                ))}
-              </select>
-              <select value={birthMonth} onChange={(event) => setBirthMonth(event.target.value)}>
-                <option value="">Mes</option>
-                {MONTH_OPTIONS.map((month) => (
-                  <option key={month.value} value={month.value}>
-                    {month.label}
-                  </option>
-                ))}
-              </select>
-            </div>
           </label>
           <label className="form-field">
             <span>Estado de cuenta</span>
@@ -2046,19 +2116,6 @@ export function ClientesPage() {
             <span>Fecha próxima acción</span>
             <input type="date" value={formValues.next_action_date as string} onChange={handleChange('next_action_date')} />
           </label>
-          {editingCliente && (editingCliente.nivel || (editingCliente.monto_moroso ?? 0) > 0 || (editingCliente.dias_atraso ?? 0) > 0 || editingCliente.fecha_ultimo_pedido) && (
-            <div style={{ gridColumn: '1 / -1', padding: '0.75rem', background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '0.375rem' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-muted, #94a3b8)', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                DATOS DEL SISTEMA HYCITE (solo lectura)
-              </div>
-              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.82rem' }}>
-                {editingCliente.nivel ? <span><strong>Nivel:</strong> {editingCliente.nivel}</span> : null}
-                {(editingCliente.monto_moroso ?? 0) > 0 ? <span><strong>Moroso:</strong> ${Number(editingCliente.monto_moroso).toFixed(2)}</span> : null}
-                {(editingCliente.dias_atraso ?? 0) > 0 ? <span><strong>Días atraso:</strong> {editingCliente.dias_atraso}</span> : null}
-                {editingCliente.fecha_ultimo_pedido ? <span><strong>Último pedido:</strong> {editingCliente.fecha_ultimo_pedido}</span> : null}
-              </div>
-            </div>
-          )}
           {formError && <div className="form-error">{formError}</div>}
         </form>
       </Modal>
@@ -2085,6 +2142,8 @@ export function ClientesPage() {
           }
           if (detailTab === 'cartera') {
             return [
+              { label: 'Cuenta Hy-Cite', value: selectedClienteDetail.hycite_id ?? '-' },
+              { label: 'Cuenta financiera', value: selectedClienteDetail.numero_cuenta_financiera ?? '-' },
               {
                 label: 'Saldo actual',
                 value: selectedClienteDetail.saldo_actual !== null && selectedClienteDetail.saldo_actual !== undefined
@@ -2104,6 +2163,30 @@ export function ClientesPage() {
                   selectedClienteDetail.monto_moroso,
                 ),
               },
+              {
+                label: 'Crédito disponible',
+                value: selectedClienteDetail.credito_disponible !== null && selectedClienteDetail.credito_disponible !== undefined
+                  ? `$${Number(selectedClienteDetail.credito_disponible).toFixed(2)}`
+                  : '-',
+              },
+              {
+                label: 'Pago mínimo mensual',
+                value: selectedClienteDetail.pago_minimo_mensual !== null && selectedClienteDetail.pago_minimo_mensual !== undefined
+                  ? `$${Number(selectedClienteDetail.pago_minimo_mensual).toFixed(2)}`
+                  : '-',
+              },
+              {
+                label: 'Factor ingresos',
+                value: selectedClienteDetail.factor_ingresos !== null && selectedClienteDetail.factor_ingresos !== undefined
+                  ? String(selectedClienteDetail.factor_ingresos)
+                  : '-',
+              },
+              { label: 'Tipo cuenta Hy-Cite', value: selectedClienteDetail.tipo_cuenta_hycite ?? '-' },
+              { label: 'Estado cuenta raw', value: selectedClienteDetail.estado_cuenta_raw ?? '-' },
+              { label: 'Fecha orden', value: formatDateValue(selectedClienteDetail.fecha_orden) },
+              { label: 'Fecha cierre', value: formatDateValue(selectedClienteDetail.fecha_cierre) },
+              { label: 'Método pago', value: selectedClienteDetail.metodo_pago ?? '-' },
+              { label: 'Vendedor Hy-Cite', value: selectedClienteDetail.vendedor_hycite_nombre ?? '-' },
               { label: 'Última fecha de pago', value: formatDateValue(selectedClienteDetail.ultima_fecha_pago) },
               { label: 'Último pedido', value: formatDateValue(selectedClienteDetail.fecha_ultimo_pedido) },
             ]
