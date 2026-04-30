@@ -50,7 +50,7 @@ export function CILlamadasPanel({ clienteId, leadId, ownerName }: Props) {
     }
     startTransition(() => setLoading(true))
 
-    const promises: Promise<LlamadaRow[]>[] = []
+    const promises: Array<PromiseLike<LlamadaRow[]>> = []
 
     // Gestiones de cobranza
     if (clienteId) {

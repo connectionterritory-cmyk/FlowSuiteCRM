@@ -823,7 +823,7 @@ export function ImportGeneral() {
           if (lookupError) {
             err++
             firstErr ||= lookupError.message
-            const detail = inferErrorDetail(lookupError.message, payload as Record<string, unknown>)
+            const detail = inferErrorDetail(lookupError.message, payload as unknown as Record<string, unknown>)
             nextErrorRows.push({
               rowNumber: i + j + 2,
               registro: getRegistroLabel(lote[j]),
@@ -845,7 +845,7 @@ export function ImportGeneral() {
           if (rowError) {
             err++
             firstErr ||= rowError.message
-            const detail = inferErrorDetail(rowError.message, payload as Record<string, unknown>)
+            const detail = inferErrorDetail(rowError.message, payload as unknown as Record<string, unknown>)
             nextErrorRows.push({
               rowNumber: i + j + 2,
               registro: getRegistroLabel(lote[j]),
