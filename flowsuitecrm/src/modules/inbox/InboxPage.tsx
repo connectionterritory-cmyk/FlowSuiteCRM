@@ -26,7 +26,7 @@ type ConversationRow = {
   contact_tipo: 'cliente' | 'lead' | 'embajador' | null
   contact_id: string | null
   phone_e164: string
-  status: 'open' | 'pending' | 'closed' | 'archived'
+  status: 'open' | 'closed' | 'archived'
   last_message_at: string | null
   last_message_preview: string | null
   unread_count: number | null
