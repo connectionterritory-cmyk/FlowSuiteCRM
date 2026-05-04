@@ -24,6 +24,27 @@ const normalizePhone = (phone: string): string | null => {
   return null
 }
 
+const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+
+const summarizeError = (message?: string | null) => {
+  const clean = (message ?? '').trim()
+  if (!clean) return 'Error desconocido'
+  return clean.length > 140 ? `${clean.slice(0, 137)}...` : clean
+}
+
+type ProcessOutboxResult = {
+  ok?: boolean
+  outbox_id?: string
+  status?: 'borrador' | 'programado' | 'en_proceso' | 'enviado' | 'fallido' | 'retry_pending' | 'cancelado'
+  provider?: string | null
+  provider_message_id?: string | null
+  error_message?: string | null
+  attempt_count?: number
+}
+
+const formatMoney = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : null
+
 export type CloudTemplate = {
   id: string
   nombre: string
@@ -99,6 +120,7 @@ export function MessagingProvider({
   initialTemplateId,
   contextType,
   mkMessageId,
+  ccEmails,
   onClose
 }: {
   children: React.ReactNode
@@ -107,6 +129,7 @@ export function MessagingProvider({
   initialTemplateId?: string | null
   contextType?: MessagingContextType
   mkMessageId?: string | null
+  ccEmails?: string[]
   onClose?: () => void
 }) {
   const { showToast } = useToast()
@@ -127,6 +150,12 @@ export function MessagingProvider({
     const nombre = initialContact?.nombre?.split(' ')[0] || ''
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
     const organizacion = currentUser?.organizacion || 'Connection Worldwide Group'
+    const montoCargoVuelta = initialContact?.montoCargoVuelta
+    const saldoOperativo = initialContact?.saldoOperativo
+    const montoCargoVueltaDisplay =
+      typeof montoCargoVuelta === 'number' && montoCargoVuelta > 0
+        ? formatMoney(montoCargoVuelta)
+        : (typeof saldoOperativo === 'number' && saldoOperativo > 0 ? formatMoney(saldoOperativo) : formatMoney(montoCargoVuelta))
     
     const vars: Record<string, string> = {
       cliente: nombre,
@@ -139,6 +168,9 @@ export function MessagingProvider({
       cuenta_hycite: initialContact?.cuentaHycite || '',
       saldo_actual: initialContact?.saldoActual?.toFixed(2) || '0.00',
       monto_moroso: initialContact?.montoMoroso?.toFixed(2) || '0.00',
+      monto_cargo_vuelta: montoCargoVueltaDisplay || '0.00',
+      saldo_operativo: formatMoney(saldoOperativo) || montoCargoVueltaDisplay || '0.00',
+      fecha_cargo_vuelta: initialContact?.fechaCargoVuelta || 'No registrada',
       dias_atraso: String(initialContact?.diasAtraso || '0'),
       estado_morosidad: initialContact?.estadoMorosidad || '',
       fuente: initialContact?.fuente || '',
@@ -233,6 +265,8 @@ export function MessagingProvider({
     try {
       const resolved = resolveMessage(message)
       const isDirect = !scheduledFor
+      const emailRecipient = initialContact?.email?.trim() ?? ''
+      const phoneRecipient = initialContact?.telefono?.trim() ?? ''
 
       // SMS: único canal que sigue usando la app nativa (no hay API)
       if (isDirect && activeChannel === 'sms') {
@@ -251,14 +285,37 @@ export function MessagingProvider({
       }
 
       // Para todos los demás canales: insertar en outbox y dejar que process-outbox envíe
-      // scheduled_for = 1s atrás garantiza que process-outbox lo recoja inmediatamente
+      // Envío inmediato usa scheduled_for = now y se despacha por outbox_id.
       const contactId = initialContact?.clienteId || initialContact?.leadId || null
       if (!contactId) {
         showToast('No se puede enviar: contacto sin ID registrado.', 'error')
         return
       }
 
-      const scheduleTime = scheduledFor || new Date(Date.now() - 1000).toISOString()
+      if (activeChannel === 'email') {
+        if (!isValidEmail(emailRecipient)) {
+          showToast('Email invalido o faltante.', 'error')
+          return
+        }
+        if (!subject.trim()) {
+          showToast('El asunto del email es obligatorio.', 'error')
+          return
+        }
+      }
+
+      if (activeChannel === 'whatsapp') {
+        if (!normalizePhone(phoneRecipient)) {
+          showToast('Numero de WhatsApp invalido o faltante.', 'error')
+          return
+        }
+      }
+
+      if (activeChannel === 'telegram' && !initialContact?.telegramChatId) {
+        showToast('Chat ID de Telegram faltante.', 'error')
+        return
+      }
+
+      const scheduleTime = scheduledFor || new Date().toISOString()
 
       const { data: outboxRow, error: outboxError } = await supabase
         .from('outbox_messages')
@@ -269,7 +326,7 @@ export function MessagingProvider({
           contact_id: contactId,
           contexto_tipo: contextType ?? 'ad_hoc',
           canal: activeChannel,
-          destinatario: activeChannel === 'email' ? initialContact?.email : (initialContact?.telefono || initialContact?.telegramChatId),
+          destinatario: activeChannel === 'email' ? emailRecipient : (activeChannel === 'telegram' ? initialContact?.telegramChatId : phoneRecipient),
           asunto: activeChannel === 'email' ? subject : null,
           mensaje: message,
           mensaje_resuelto: resolved,
@@ -278,6 +335,7 @@ export function MessagingProvider({
           from_name: activeChannel === 'email' ? emailSender.fromName : null,
           reply_to: activeChannel === 'email' ? emailSender.replyTo : null,
           sender_name: activeChannel === 'email' ? variables.vendedor_nombre || null : null,
+          cc_emails: activeChannel === 'email' && ccEmails && ccEmails.length > 0 ? ccEmails : null,
           status: 'programado',
           scheduled_for: scheduleTime,
           sent_at: null
@@ -303,15 +361,43 @@ export function MessagingProvider({
 
       // Envío directo: invocar process-outbox para despachar ahora mismo
       if (isDirect) {
-        const { error: processError } = await supabase.functions.invoke('process-outbox')
+        const { data: processResult, error: processError } = await supabase.functions.invoke<ProcessOutboxResult>('process-outbox', {
+          body: { outbox_id: outboxRow.id },
+        })
         if (processError) {
           showToast('Mensaje en cola, se enviará en breve')
           if (onClose) onClose()
           return
         }
+
+        if (processResult?.status === 'enviado') {
+          const providerLabel = processResult.provider === 'resend'
+            ? 'Resend'
+            : processResult.provider === 'meta'
+              ? 'Meta'
+              : processResult.provider || 'proveedor'
+          showToast(activeChannel === 'email' ? `Email enviado por ${providerLabel}.` : activeChannel === 'whatsapp' ? `WhatsApp enviado por ${providerLabel}.` : 'Mensaje enviado.', 'success')
+          if (onClose) onClose()
+          return
+        }
+
+        if (processResult?.status === 'fallido') {
+          showToast(`No se pudo enviar: ${summarizeError(processResult.error_message)}`, 'error')
+          return
+        }
+
+        if (processResult?.status === 'retry_pending') {
+          showToast('Mensaje quedo en cola para procesamiento.', 'success')
+          if (onClose) onClose()
+          return
+        }
+
+        showToast('Mensaje quedo en cola para procesamiento.', 'success')
+        if (onClose) onClose()
+        return
       }
 
-      showToast(scheduledFor ? 'Mensaje programado' : 'Mensaje enviado', 'success')
+      showToast(scheduledFor ? `Mensaje programado para ${new Date(scheduleTime).toLocaleString()}.` : 'Mensaje quedo en cola para procesamiento.', 'success')
       if (onClose) onClose()
     } catch (err) {
       console.error('Send error:', err)

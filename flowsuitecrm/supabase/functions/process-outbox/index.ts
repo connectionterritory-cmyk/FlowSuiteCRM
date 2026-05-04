@@ -12,6 +12,7 @@ type OutboxStatus =
 
 type OutboxMessage = {
   id: string
+  org_id: string | null
   canal: 'whatsapp' | 'sms' | 'email' | 'telegram'
   destinatario: string | null
   asunto: string | null
@@ -27,9 +28,33 @@ type OutboxMessage = {
   from_name: string | null
   reply_to: string | null
   sender_name: string | null
+  cc_emails: string[] | null
   tipo_envio?: 'text' | 'template' | null
   template_name?: string | null
   template_params?: unknown
+  provider?: string | null
+  provider_message_id?: string | null
+  error_message?: string | null
+  attempt_count?: number | null
+  dispatch_provider?: string | null
+}
+
+type AttemptStatus = 'started' | 'accepted' | 'sent' | 'retry_pending' | 'failed'
+
+type DeliveryResult = {
+  providerMessageId: string | null
+  requestPayload: Record<string, unknown>
+  responsePayload: unknown
+}
+
+type ProcessResult = {
+  ok: boolean
+  outbox_id: string
+  status: OutboxStatus
+  provider: string | null
+  provider_message_id: string | null
+  error_message: string | null
+  attempt_count: number
 }
 
 const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
@@ -104,6 +129,38 @@ function isRetryableError(err: unknown) {
 
 function nextRetryAfter() {
   return new Date(Date.now() + RETRY_DELAY_MS).toISOString()
+}
+
+function toJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return { value }
+}
+
+function sanitizeMetaPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const type = typeof payload.type === 'string' ? payload.type : null
+  const template = toJsonObject(payload.template)
+  return {
+    messaging_product: payload.messaging_product,
+    to: payload.to,
+    type,
+    template_name: type === 'template' ? template.name ?? null : null,
+    media_link_present: Boolean(type && ['image', 'video', 'audio', 'document'].includes(type)),
+    text_present: type === 'text',
+  }
+}
+
+function rowResult(row: OutboxMessage, ok: boolean): ProcessResult {
+  return {
+    ok,
+    outbox_id: row.id,
+    status: row.status,
+    provider: row.provider ?? null,
+    provider_message_id: row.provider_message_id ?? null,
+    error_message: row.error_message ?? null,
+    attempt_count: row.attempt_count ?? 0,
+  }
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200, req?: Request) {
@@ -347,6 +404,58 @@ async function updateOutbox(id: string, payload: Record<string, unknown>) {
   }
 }
 
+async function fetchOutboxResult(id: string, ok: boolean): Promise<ProcessResult> {
+  const { data, error } = await supabase
+    .from('outbox_messages')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error || !data) {
+    return {
+      ok: false,
+      outbox_id: id,
+      status: 'fallido',
+      provider: null,
+      provider_message_id: null,
+      error_message: error?.message ?? 'Outbox message not found',
+      attempt_count: 0,
+    }
+  }
+
+  return rowResult(data as OutboxMessage, ok && (data as OutboxMessage).status === 'enviado')
+}
+
+async function insertAttempt(opts: {
+  row: OutboxMessage
+  attemptNumber: number
+  provider: string | null
+  status: AttemptStatus
+  requestPayload?: Record<string, unknown> | null
+  responsePayload?: unknown
+  errorMessage?: string | null
+}) {
+  const payload = {
+    provider: opts.provider,
+    ...(opts.requestPayload ?? {}),
+  }
+
+  const { error } = await supabase.from('outbox_delivery_attempts').insert({
+    outbox_message_id: opts.row.id,
+    org_id: opts.row.org_id,
+    attempt_number: opts.attemptNumber,
+    dispatcher: 'process-outbox',
+    status: opts.status,
+    request_payload: payload,
+    response_payload: opts.responsePayload === undefined ? null : toJsonObject(opts.responsePayload),
+    error_message: opts.errorMessage ?? null,
+  })
+
+  if (error) {
+    console.warn('process-outbox: failed to insert delivery attempt', opts.row.id, error.message)
+  }
+}
+
 async function sendMetaRequest(body: Record<string, unknown>) {
   if (!metaAccessToken || !metaPhoneNumberId) {
     throw new Error('Missing Meta Cloud API configuration')
@@ -389,18 +498,23 @@ function parseTemplateParams(raw: unknown): string[] {
     .filter((v) => v.trim() !== '')
 }
 
-async function sendWhatsAppText(destinatario: string, message: string, attachments?: string[] | null): Promise<string | null> {
+async function sendWhatsAppText(destinatario: string, message: string, attachments?: string[] | null): Promise<DeliveryResult> {
   const to = normalizePhone(destinatario)
   let providerMessageId: string | null = null
+  const requests: Record<string, unknown>[] = []
+  const responses: unknown[] = []
 
   const trimmed = String(message ?? '').trim()
   if (trimmed) {
-    const data = await sendMetaRequest({
+    const request = {
       messaging_product: 'whatsapp',
       to,
       type: 'text',
       text: { body: trimmed },
-    })
+    }
+    requests.push(sanitizeMetaPayload(request))
+    const data = await sendMetaRequest(request)
+    responses.push(data)
     providerMessageId = data?.messages?.[0]?.id ?? providerMessageId
   }
 
@@ -415,7 +529,9 @@ async function sendWhatsAppText(destinatario: string, message: string, attachmen
       },
     }
 
+    requests.push(sanitizeMetaPayload(mediaPayload))
     const mediaResult = await sendMetaRequest(mediaPayload)
+    responses.push(mediaResult)
     providerMessageId = providerMessageId ?? mediaResult?.messages?.[0]?.id ?? null
   }
 
@@ -423,10 +539,14 @@ async function sendWhatsAppText(destinatario: string, message: string, attachmen
     throw new Error('Missing WhatsApp content (text/template/media)')
   }
 
-  return providerMessageId
+  return {
+    providerMessageId,
+    requestPayload: { provider: 'meta', requests },
+    responsePayload: { responses },
+  }
 }
 
-async function sendWhatsAppTemplate(destinatario: string, templateName: string, templateParams: unknown): Promise<string | null> {
+async function sendWhatsAppTemplate(destinatario: string, templateName: string, templateParams: unknown): Promise<DeliveryResult> {
   const to = normalizePhone(destinatario)
   const name = String(templateName ?? '').trim()
   if (!name) {
@@ -459,7 +579,11 @@ async function sendWhatsAppTemplate(destinatario: string, templateName: string, 
   }
 
   const result = await sendMetaRequest(payload)
-  return result?.messages?.[0]?.id ?? null
+  return {
+    providerMessageId: result?.messages?.[0]?.id ?? null,
+    requestPayload: { provider: 'meta', request: sanitizeMetaPayload(payload) },
+    responsePayload: result,
+  }
 }
 
 // Returns the Resend message ID for tracking
@@ -472,7 +596,8 @@ async function sendEmail(
   fromName?: string | null,
   replyTo?: string | null,
   senderName?: string | null,
-): Promise<string | null> {
+  ccEmails?: string[] | null,
+): Promise<DeliveryResult> {
   if (!resendApiKey) throw new Error('Missing Resend API key')
 
   const html = buildEmailHtml(message, attachments, senderName, fromName)
@@ -498,6 +623,19 @@ async function sendEmail(
   if (replyTo && replyTo.includes('@')) {
     body.reply_to = replyTo
   }
+  if (ccEmails && ccEmails.length > 0) {
+    body.cc = ccEmails.filter(e => e.includes('@'))
+  }
+
+  const requestPayload = {
+    provider: 'resend',
+    from: body.from,
+    to: body.to,
+    subject: body.subject,
+    reply_to: body.reply_to ?? null,
+    cc: body.cc ?? null,
+    attachment_count: resendAttachments.length,
+  }
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -514,7 +652,11 @@ async function sendEmail(
     const retryable = res.status === 429 || res.status >= 500
     throw asProviderError(`Resend error (${res.status}): ${msg}`, retryable)
   }
-  return (data as { id?: string } | null)?.id ?? null
+  return {
+    providerMessageId: (data as { id?: string } | null)?.id ?? null,
+    requestPayload,
+    responsePayload: data,
+  }
 }
 
 async function sendTelegram(chatId: string, message: string) {
@@ -535,6 +677,247 @@ async function sendTelegram(chatId: string, message: string) {
   }
 }
 
+async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<ProcessResult> {
+  // n8n-dispatched rows must not be processed by this worker
+  if (row.dispatch_provider === 'n8n' || row.dispatch_provider === 'n8n_mock') {
+    console.log('process-outbox: skipping n8n-dispatched row', row.id, row.dispatch_provider)
+    return rowResult(row, true)
+  }
+
+  const scheduledAt = row.scheduled_for ? Date.parse(row.scheduled_for) : NaN
+  if (row.status === 'programado' && Number.isFinite(scheduledAt) && scheduledAt > Date.now()) {
+    return rowResult(row, true)
+  }
+
+  if (!['programado', 'retry_pending'].includes(row.status)) {
+    return rowResult(row, row.status === 'enviado')
+  }
+
+  const { data: lockRows } = await supabase
+    .from('outbox_messages')
+    .update({
+      status: 'en_proceso',
+      locked_at: nowIso,
+      locked_by: workerId,
+      attempt_count: (row.attempt_count ?? 0) + 1,
+    })
+    .eq('id', row.id)
+    .in('status', ['programado', 'retry_pending'])
+    .select('*')
+
+  if (!lockRows || lockRows.length === 0) {
+    return fetchOutboxResult(row.id, false)
+  }
+
+  const lockedRow = lockRows[0] as OutboxMessage
+  const attemptNumber = lockedRow.attempt_count ?? ((row.attempt_count ?? 0) + 1)
+  console.log('process-outbox: locked message', row.id, 'by', workerId)
+  await syncMkMessage(row.id, { status: 'en_proceso' })
+
+  const message = (lockedRow.mensaje_resuelto ?? lockedRow.mensaje ?? '').trim()
+  const destinatario = lockedRow.destinatario?.trim() ?? ''
+  const attachments = lockedRow.attachment_urls
+  const tipoEnvio = lockedRow.tipo_envio === 'template' ? 'template' : 'text'
+
+  if (!destinatario) {
+    await insertAttempt({
+      row: lockedRow,
+      attemptNumber,
+      provider: null,
+      status: 'failed',
+      requestPayload: { canal: lockedRow.canal },
+      responsePayload: { ok: false, validation: 'Missing destinatario' },
+      errorMessage: 'Missing destinatario',
+    })
+    await updateOutbox(row.id, {
+      status: 'fallido',
+      failed_at: nowIso,
+      error_message: 'Missing destinatario',
+      locked_at: null,
+      locked_by: null,
+    })
+    await syncMkMessage(row.id, { status: 'fallido' })
+    console.warn('process-outbox: permanent failure (missing destinatario)', row.id)
+    return fetchOutboxResult(row.id, false)
+  }
+
+  if (lockedRow.canal !== 'whatsapp' && !message) {
+    await insertAttempt({
+      row: lockedRow,
+      attemptNumber,
+      provider: null,
+      status: 'failed',
+      requestPayload: { canal: lockedRow.canal, destinatario },
+      responsePayload: { ok: false, validation: 'Missing mensaje' },
+      errorMessage: 'Missing mensaje',
+    })
+    await updateOutbox(row.id, {
+      status: 'fallido',
+      failed_at: nowIso,
+      error_message: 'Missing mensaje',
+      locked_at: null,
+      locked_by: null,
+    })
+    await syncMkMessage(row.id, { status: 'fallido' })
+    console.warn('process-outbox: permanent failure (missing mensaje)', row.id)
+    return fetchOutboxResult(row.id, false)
+  }
+
+  try {
+    let delivery: DeliveryResult | null = null
+    let provider: string | null = null
+
+    if (lockedRow.canal === 'whatsapp') {
+      provider = 'meta'
+      if (tipoEnvio === 'template') {
+        delivery = await sendWhatsAppTemplate(destinatario, lockedRow.template_name ?? '', lockedRow.template_params)
+        if (attachments && attachments.length > 0) {
+          const mediaDelivery = await sendWhatsAppText(destinatario, '', attachments)
+          delivery = {
+            providerMessageId: delivery.providerMessageId ?? mediaDelivery.providerMessageId,
+            requestPayload: {
+              provider,
+              requests: [delivery.requestPayload, mediaDelivery.requestPayload],
+            },
+            responsePayload: {
+              responses: [delivery.responsePayload, mediaDelivery.responsePayload],
+            },
+          }
+        }
+      } else {
+        delivery = await sendWhatsAppText(destinatario, message, attachments)
+      }
+    } else if (lockedRow.canal === 'email') {
+      provider = 'resend'
+      delivery = await sendEmail(
+        destinatario,
+        lockedRow.asunto?.trim() || 'Mensaje',
+        message,
+        attachments,
+        lockedRow.from_email,
+        lockedRow.from_name,
+        lockedRow.reply_to,
+        lockedRow.sender_name,
+        lockedRow.cc_emails,
+      )
+    } else if (lockedRow.canal === 'sms') {
+      throw new Error('SMS requiere envio manual (app nativa)')
+    } else if (lockedRow.canal === 'telegram') {
+      provider = 'telegram'
+      await sendTelegram(destinatario, message)
+      delivery = {
+        providerMessageId: null,
+        requestPayload: { provider, chat_id: destinatario },
+        responsePayload: { ok: true },
+      }
+    }
+
+    await insertAttempt({
+      row: lockedRow,
+      attemptNumber,
+      provider,
+      status: 'sent',
+      requestPayload: delivery?.requestPayload ?? { canal: lockedRow.canal, destinatario },
+      responsePayload: delivery?.responsePayload ?? { ok: true },
+    })
+
+    await updateOutbox(row.id, {
+      status: 'enviado',
+      sent_at: nowIso,
+      error_message: null,
+      provider,
+      provider_message_id: delivery?.providerMessageId ?? null,
+      provider_response: delivery?.responsePayload ?? null,
+      locked_at: null,
+      locked_by: null,
+    })
+    await syncMkMessage(row.id, { status: 'enviado', sent_at: nowIso })
+
+    if (lockedRow.canal === 'whatsapp') {
+      await syncConversationOutbound({
+        destinatario,
+        messageText: message,
+        providerMessageId: delivery?.providerMessageId ?? null,
+        attachmentUrls: attachments,
+      })
+    }
+
+    return fetchOutboxResult(row.id, true)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Error enviando'
+    const provider = lockedRow.canal === 'whatsapp' ? 'meta' : lockedRow.canal === 'email' ? 'resend' : lockedRow.canal
+
+    if (lockedRow.canal === 'whatsapp') {
+      await insertAttempt({
+        row: lockedRow,
+        attemptNumber,
+        provider,
+        status: 'failed',
+        requestPayload: { canal: lockedRow.canal, destinatario, tipo_envio: tipoEnvio },
+        responsePayload: { ok: false },
+        errorMessage: errorMsg,
+      })
+      await updateOutbox(row.id, {
+        status: 'fallido',
+        failed_at: nowIso,
+        error_message: errorMsg,
+        provider,
+        locked_at: null,
+        locked_by: null,
+      })
+      await syncMkMessage(row.id, { status: 'fallido' })
+      console.warn('process-outbox: whatsapp meta permanent failure', row.id, errorMsg)
+      return fetchOutboxResult(row.id, false)
+    }
+
+    const retryable = isRetryableError(err)
+    if (retryable) {
+      const retryAfter = nextRetryAfter()
+      await insertAttempt({
+        row: lockedRow,
+        attemptNumber,
+        provider,
+        status: 'retry_pending',
+        requestPayload: { canal: lockedRow.canal, destinatario },
+        responsePayload: { ok: false, retry_after: retryAfter },
+        errorMessage: errorMsg,
+      })
+      await updateOutbox(row.id, {
+        status: 'retry_pending',
+        retry_after: retryAfter,
+        error_message: errorMsg,
+        provider,
+        locked_at: null,
+        locked_by: null,
+      })
+      await syncMkMessage(row.id, { status: 'programado' })
+      console.warn('process-outbox: retry_pending', row.id, 'after', retryAfter, errorMsg)
+    } else {
+      await insertAttempt({
+        row: lockedRow,
+        attemptNumber,
+        provider,
+        status: 'failed',
+        requestPayload: { canal: lockedRow.canal, destinatario },
+        responsePayload: { ok: false },
+        errorMessage: errorMsg,
+      })
+      await updateOutbox(row.id, {
+        status: 'fallido',
+        failed_at: nowIso,
+        error_message: errorMsg,
+        provider,
+        locked_at: null,
+        locked_by: null,
+      })
+      await syncMkMessage(row.id, { status: 'fallido' })
+      console.warn('process-outbox: permanent failure', row.id, errorMsg)
+    }
+
+    return fetchOutboxResult(row.id, false)
+  }
+}
+
 serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -543,6 +926,16 @@ serve(async (req: Request) => {
 
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: 'Missing service role configuration' }, 500, req)
+  }
+
+  let requestedOutboxId: string | null = null
+  try {
+    const body = req.method === 'POST' ? await req.json().catch(() => null) : null
+    requestedOutboxId = typeof body?.outbox_id === 'string' && body.outbox_id.trim()
+      ? body.outbox_id.trim()
+      : null
+  } catch {
+    requestedOutboxId = null
   }
 
   const nowIso = new Date().toISOString()
@@ -569,6 +962,41 @@ serve(async (req: Request) => {
     }
   }
 
+  if (requestedOutboxId) {
+    const { data, error } = await supabase
+      .from('outbox_messages')
+      .select('*')
+      .eq('id', requestedOutboxId)
+      .maybeSingle()
+
+    if (error) {
+      return jsonResponse({
+        ok: false,
+        outbox_id: requestedOutboxId,
+        status: 'fallido',
+        provider: null,
+        provider_message_id: null,
+        error_message: error.message,
+        attempt_count: 0,
+      }, 500, req)
+    }
+
+    if (!data) {
+      return jsonResponse({
+        ok: false,
+        outbox_id: requestedOutboxId,
+        status: 'fallido',
+        provider: null,
+        provider_message_id: null,
+        error_message: 'Outbox message not found',
+        attempt_count: 0,
+      }, 404, req)
+    }
+
+    const result = await processOutboxRow(data as OutboxMessage, nowIso)
+    return jsonResponse(result as unknown as Record<string, unknown>, 200, req)
+  }
+
   const { data, error } = await supabase
     .from('outbox_messages')
     .select('*')
@@ -579,6 +1007,8 @@ serve(async (req: Request) => {
         `and(status.eq.retry_pending,retry_after.is.null)`
       ].join(',')
     )
+    // Exclude rows delegated to n8n — those are processed by the n8n workflow, not here
+    .or('dispatch_provider.is.null,dispatch_provider.not.in.(n8n,n8n_mock)')
     .order('scheduled_for', { ascending: true })
     .limit(50)
 
@@ -587,174 +1017,19 @@ serve(async (req: Request) => {
   }
 
   const rows = (data as OutboxMessage[] | null) ?? []
-  let sent = 0
-  let failed = 0
-  const failures: { id: string; error: string }[] = []
+  const results: ProcessResult[] = []
 
   for (const row of rows) {
-    const sentAt = new Date().toISOString()
-    const { data: lockRows } = await supabase
-      .from('outbox_messages')
-      .update({
-        status: 'en_proceso',
-        locked_at: sentAt,
-        locked_by: workerId,
-      })
-      .eq('id', row.id)
-      .in('status', ['programado', 'retry_pending'])
-      .select('id')
-
-    if (!lockRows || lockRows.length === 0) {
-      continue
-    }
-
-    console.log('process-outbox: locked message', row.id, 'by', workerId)
-    await syncMkMessage(row.id, { status: 'en_proceso' })
-
-    const message = (row.mensaje_resuelto ?? row.mensaje ?? '').trim()
-    const destinatario = row.destinatario?.trim() ?? ''
-    const attachments = row.attachment_urls
-    const tipoEnvio = row.tipo_envio === 'template' ? 'template' : 'text'
-
-    if (!destinatario) {
-      await updateOutbox(row.id, {
-        status: 'fallido',
-        failed_at: sentAt,
-        error_message: 'Missing destinatario',
-        locked_at: null,
-        locked_by: null,
-      })
-      await syncMkMessage(row.id, { status: 'fallido' })
-      failed += 1
-      console.warn('process-outbox: permanent failure (missing destinatario)', row.id)
-      failures.push({ id: row.id, error: 'Missing destinatario' })
-      continue
-    }
-
-    if (row.canal !== 'whatsapp' && !message) {
-      await updateOutbox(row.id, {
-        status: 'fallido',
-        failed_at: sentAt,
-        error_message: 'Missing mensaje',
-        locked_at: null,
-        locked_by: null,
-      })
-      await syncMkMessage(row.id, { status: 'fallido' })
-      failed += 1
-      console.warn('process-outbox: permanent failure (missing mensaje)', row.id)
-      failures.push({ id: row.id, error: 'Missing mensaje' })
-      continue
-    }
-
-    try {
-      let providerMessageId: string | null = null
-      let provider: string | null = null
-
-      if (row.canal === 'whatsapp') {
-        provider = 'meta'
-        if (tipoEnvio === 'template') {
-          providerMessageId = await sendWhatsAppTemplate(destinatario, row.template_name ?? '', row.template_params)
-          if (attachments && attachments.length > 0) {
-            const mediaProviderMessageId = await sendWhatsAppText(destinatario, '', attachments)
-            providerMessageId = providerMessageId ?? mediaProviderMessageId
-          }
-        } else {
-          providerMessageId = await sendWhatsAppText(destinatario, message, attachments)
-        }
-      } else if (row.canal === 'email') {
-        provider = 'resend'
-        providerMessageId = await sendEmail(
-          destinatario,
-          row.asunto?.trim() || 'Mensaje',
-          message,
-          attachments,
-          row.from_email,
-          row.from_name,
-          row.reply_to,
-          row.sender_name,
-        )
-      } else if (row.canal === 'sms') {
-        throw new Error('SMS requiere envio manual (app nativa)')
-      } else if (row.canal === 'telegram') {
-        provider = 'telegram'
-        await sendTelegram(destinatario, message)
-      }
-
-      await updateOutbox(row.id, {
-        status: 'enviado',
-        sent_at: sentAt,
-        error_message: null,
-        provider,
-        provider_message_id: providerMessageId,
-        locked_at: null,
-        locked_by: null,
-      })
-      await syncMkMessage(row.id, { status: 'enviado', sent_at: sentAt })
-
-      if (row.canal === 'whatsapp') {
-        await syncConversationOutbound({
-          destinatario,
-          messageText: message,
-          providerMessageId,
-          attachmentUrls: attachments,
-        })
-      }
-
-      sent += 1
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Error enviando'
-
-      // WhatsApp requirement: if Meta fails, mark as failed (no fallback, no provider switch)
-      if (row.canal === 'whatsapp') {
-        await updateOutbox(row.id, {
-          status: 'fallido',
-          failed_at: sentAt,
-          error_message: errorMsg,
-          provider: 'meta',
-          locked_at: null,
-          locked_by: null,
-        })
-        await syncMkMessage(row.id, { status: 'fallido' })
-        failed += 1
-        console.warn('process-outbox: whatsapp meta permanent failure', row.id, errorMsg)
-        failures.push({ id: row.id, error: errorMsg })
-        continue
-      }
-
-      const retryable = isRetryableError(err)
-      if (retryable) {
-        const retryAfter = nextRetryAfter()
-        await updateOutbox(row.id, {
-          status: 'retry_pending',
-          retry_after: retryAfter,
-          error_message: errorMsg,
-          locked_at: null,
-          locked_by: null,
-        })
-        await syncMkMessage(row.id, { status: 'programado' })
-        console.warn('process-outbox: retry_pending', row.id, 'after', retryAfter, errorMsg)
-        failures.push({ id: row.id, error: `retry_pending: ${errorMsg}` })
-      } else {
-        await updateOutbox(row.id, {
-          status: 'fallido',
-          failed_at: sentAt,
-          error_message: errorMsg,
-          locked_at: null,
-          locked_by: null,
-        })
-        await syncMkMessage(row.id, { status: 'fallido' })
-        failed += 1
-        console.warn('process-outbox: permanent failure', row.id, errorMsg)
-        failures.push({ id: row.id, error: errorMsg })
-      }
-    }
+    results.push(await processOutboxRow(row, new Date().toISOString()))
   }
 
   return jsonResponse({
     ok: true,
     processed: rows.length,
-    sent,
-    failed,
-    failures,
+    sent: results.filter(r => r.status === 'enviado').length,
+    failed: results.filter(r => r.status === 'fallido').length,
+    failures: results
+      .filter(r => r.error_message)
+      .map(r => ({ id: r.outbox_id, error: r.error_message })),
   }, 200, req)
 })
