@@ -1,7 +1,11 @@
 {
+  "updatedAt": "2026-05-04T14:12:55.759Z",
+  "createdAt": "2026-05-03T18:11:21.598Z",
   "id": "jRJAhjnBcXBjBwFE",
-  "name": "Cargo de Vuelta / DFP - Cobranza Automatica MOCK",
-  "active": false,
+  "name": "Cargo de Vuelta / DFP - Cobranza Automatica",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -21,8 +25,7 @@
       "position": [
         160,
         300
-      ],
-      "disabled": true
+      ]
     },
     {
       "parameters": {
@@ -40,12 +43,13 @@
       ],
       "notes": "TEMPORAL: para ejecucion manual de prueba E2E. Eliminar antes de produccion.",
       "onError": "continueRegularOutput",
-      "webhookId": "cargo-vuelta-mock-test"
+      "webhookId": "cargo-vuelta-mock-test",
+      "disabled": true
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets?limit=3",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets?limit=5",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -65,7 +69,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"p_org_id\":\"{{ $env.FLOWSUITE_ORG_ID }}\",\"p_today\":\"{{ $now.toISODate() }}\",\"p_max_auto_attempts\":7,\"p_recent_payment_days\":7,\"p_daily_cooldown_hours\":20,\"p_mock\":true}",
+        "jsonBody": "={\"p_org_id\":\"{{ $env.FLOWSUITE_ORG_ID }}\",\"p_today\":\"{{ $now.toISODate() }}\",\"p_max_auto_attempts\":7,\"p_recent_payment_days\":7,\"p_daily_cooldown_hours\":20,\"p_mock\":false}",
         "options": {}
       },
       "id": "cvdfp-0002-targets",
@@ -95,7 +99,7 @@
     },
     {
       "parameters": {
-        "jsCode": "function money(value) {\n  const n = Number(value || 0);\n  return n > 0 ? `$${n.toFixed(2)}` : 'pendiente de confirmar';\n}\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '');\n  if (!raw) return '';\n  if (raw.length === 10) return `1${raw}`;\n  if (raw.length === 11 && raw.startsWith('1')) return raw;\n  return raw;\n}\nfunction cadence(attempts, daysOpen) {\n  const n = Number(attempts || 0) + 1;\n  if (n <= 1) return { step: 'dia_1', label: 'Aviso formal amable' };\n  if (n === 2) return { step: 'dia_2', label: 'Recordatorio corto' };\n  if (n === 3) return { step: 'dia_3', label: 'Revision interna de cuenta' };\n  if (n === 4 || Number(daysOpen || 0) >= 5) return { step: 'dia_4', label: 'Ultimo intento automatico' };\n  return { step: 'dia_8_plus', label: 'Seguimiento cada 3 dias' };\n}\nfunction buildMessage(target, channel, cadenceInfo) {\n  const nombre = target.nombre || 'Cliente';\n  const cuenta = target.cuenta_hycite || 'S/N';\n  const monto = money(target.monto_cargo_vuelta);\n  const fecha = target.fecha_cargo_vuelta || 'No registrada';\n  const stop = channel === 'whatsapp' ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.' : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.';\n  const variants = {\n    dia_1: `Estimado/a ${nombre},\\n\\nLe contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente de regularizar: ${monto}\\nFecha de referencia: ${fecha}\\n\\nQueremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.${stop}`,\n    dia_2: `Hola ${nombre}, le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nTenemos opciones de pago disponibles para regularizar el balance de ${monto}. Responda a este mensaje y coordinamos un acuerdo comodo.${stop}`,\n    dia_3: `Estimado/a ${nombre}, su cuenta #${cuenta} continua en revision interna por balance pendiente de ${monto}.\\n\\nNuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.${stop}`,\n    dia_4: `Hola ${nombre}, este es nuestro ultimo intento automatico de seguimiento sobre la cuenta #${cuenta}.\\n\\nQueremos darle oportunidad de establecer un acuerdo de pago comodo por el balance pendiente de ${monto}. Comuniquese con Patricia Caicedo al (786) 291-3042 o responda este mensaje.${stop}`,\n    dia_8_plus: `Hola ${nombre}, seguimos disponibles para ayudarle a regularizar la cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente: ${monto}. Responda este mensaje para revisar opciones de pago.${stop}`\n  };\n  return variants[cadenceInfo.step] || variants.dia_8_plus;\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json;\n  const cadenceInfo = cadence(t.auto_attempt_count, t.days_since_case_opened);\n  const metaText = `campaign_key=cargo_vuelta_dfp_auto_mock; case_id=${t.case_id}; cadence_step=${cadenceInfo.step}; mock=true`;\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id;\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID;\n  const scheduledFor = new Date(Date.now() - 1000).toISOString();\n  const emailMessage = buildMessage(t, 'email', cadenceInfo);\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceInfo);\n  const phone = digitsOnly(t.telefono || t.telefono_casa);\n  out.push({ json: { ...t, cadence: cadenceInfo, provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(), normalized_phone: phone, emailOutbox: t.email ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'email', destinatario: t.email, asunto: `Revision de cuenta Royal Prestige #${t.cuenta_hycite || 'S/N'}`, mensaje: emailMessage, mensaje_resuelto: emailMessage, cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null, from_name: 'Equipo de Resolucion CWG', dispatch_provider: 'n8n_mock', status: 'programado', scheduled_for: scheduledFor } : null, whatsappOutbox: phone ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'whatsapp', destinatario: phone, mensaje: whatsappMessage, mensaje_resuelto: whatsappMessage, dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, gestion: { org_id: orgId, cliente_id: t.cliente_id, case_id: t.case_id, tipo_gestion: 'seguimiento', resultado: 'recordatorio_automatico_cargo_vuelta_mock', notas: `Recordatorio automatico de cargo de vuelta enviado (MOCK). ${cadenceInfo.label}. No se enviaron mensajes reales a proveedor. ${metaText}` } } });\n}\nreturn out;"
+        "jsCode": "function money(value) {\n  const n = Number(value || 0);\n  return n > 0 ? `$${n.toFixed(2)}` : 'pendiente de confirmar';\n}\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '');\n  if (!raw) return '';\n  if (raw.length === 10) return `1${raw}`;\n  if (raw.length === 11 && raw.startsWith('1')) return raw;\n  return raw;\n}\nfunction cadence(attempts, daysOpen) {\n  const n = Number(attempts || 0) + 1;\n  if (n <= 1) return { step: 'dia_1', label: 'Aviso formal amable' };\n  if (n === 2) return { step: 'dia_2', label: 'Recordatorio corto' };\n  if (n === 3) return { step: 'dia_3', label: 'Revision interna de cuenta' };\n  if (n === 4 || Number(daysOpen || 0) >= 5) return { step: 'dia_4', label: 'Ultimo intento automatico' };\n  return { step: 'dia_8_plus', label: 'Seguimiento cada 3 dias' };\n}\nfunction buildMessage(target, channel, cadenceInfo) {\n  const nombre = target.nombre || 'Cliente';\n  const cuenta = target.cuenta_hycite || 'S/N';\n  const monto = money(target.monto_cargo_vuelta);\n  const fecha = target.fecha_cargo_vuelta || 'No registrada';\n  const stop = channel === 'whatsapp' ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.' : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.';\n  const variants = {\n    dia_1: `Estimado/a ${nombre},\\n\\nLe contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente de regularizar: ${monto}\\nFecha de referencia: ${fecha}\\n\\nQueremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.${stop}`,\n    dia_2: `Hola ${nombre}, le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nTenemos opciones de pago disponibles para regularizar el balance de ${monto}. Responda a este mensaje y coordinamos un acuerdo comodo.${stop}`,\n    dia_3: `Estimado/a ${nombre}, su cuenta #${cuenta} continua en revision interna por balance pendiente de ${monto}.\\n\\nNuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.${stop}`,\n    dia_4: `Hola ${nombre}, este es nuestro ultimo intento automatico de seguimiento sobre la cuenta #${cuenta}.\\n\\nQueremos darle oportunidad de establecer un acuerdo de pago comodo por el balance pendiente de ${monto}. Comuniquese con Patricia Caicedo al (786) 291-3042 o responda este mensaje.${stop}`,\n    dia_8_plus: `Hola ${nombre}, seguimos disponibles para ayudarle a regularizar la cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente: ${monto}. Responda este mensaje para revisar opciones de pago.${stop}`\n  };\n  return variants[cadenceInfo.step] || variants.dia_8_plus;\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json;\n  const cadenceInfo = cadence(t.auto_attempt_count, t.days_since_case_opened);\n  const metaText = `campaign_key=cargo_vuelta_dfp_auto; case_id=${t.case_id}; cadence_step=${cadenceInfo.step}`;\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id;\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID;\n  const scheduledFor = new Date(Date.now() - 1000).toISOString();\n  const emailMessage = buildMessage(t, 'email', cadenceInfo);\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceInfo);\n  const phone = digitsOnly(t.telefono || t.telefono_casa);\n  out.push({ json: { ...t, cadence: cadenceInfo, provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(), normalized_phone: phone, emailOutbox: t.email ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'email', destinatario: t.email, asunto: `Revision de cuenta Royal Prestige #${t.cuenta_hycite || 'S/N'}`, mensaje: emailMessage, mensaje_resuelto: emailMessage, cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null, from_name: 'Equipo de Resolucion CWG', dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, whatsappOutbox: phone ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'whatsapp', destinatario: phone, mensaje: whatsappMessage, mensaje_resuelto: whatsappMessage, dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, gestion: { org_id: orgId, cliente_id: t.cliente_id, case_id: t.case_id, tipo_gestion: 'seguimiento', resultado: 'recordatorio_automatico_cargo_vuelta', notas: `Recordatorio automatico de cargo de vuelta enviado. ${cadenceInfo.label}. ${metaText}` } } });\n}\nreturn out;"
       },
       "id": "cvdfp-0004-build",
       "name": "Build Message Cadence",
@@ -167,7 +171,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return $input.all().map(item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  return { json: {\n    outbox: row,\n    provider: 'resend_mock',\n    provider_message_id: `mock_email_${row.id}`,\n    request_payload: { mock: true, channel: 'email', to: row.destinatario, subject: row.asunto },\n    response_payload: { ok: true, mock: true, provider: 'resend', provider_message_id: `mock_email_${row.id}` }\n  }};\n});"
+        "jsCode": "return await Promise.all($input.all().map(async item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const fromEmail = $env.RESEND_FROM_EMAIL || 'no-reply@flowsuite.app';\n  const fromName = row.from_name || 'Equipo de Resolucion CWG';\n  const body = {\n    from: `${fromName} <${fromEmail}>`,\n    to: [row.destinatario],\n    subject: row.asunto,\n    text: row.mensaje_resuelto || row.mensaje\n  };\n  if (row.cc_emails && Array.isArray(row.cc_emails) && row.cc_emails.length > 0) {\n    body.cc = row.cc_emails;\n  }\n  let responsePayload;\n  let providerMessageId = null;\n  let errorMessage = null;\n  try {\n    const resp = await fetch('https://api.resend.com/emails', {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${$env.RESEND_API_KEY}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify(body)\n    });\n    const data = await resp.json();\n    responsePayload = data;\n    providerMessageId = data.id || null;\n    if (!resp.ok) {\n      errorMessage = data.message || data.error || `HTTP ${resp.status}`;\n    }\n  } catch (e) {\n    responsePayload = { error: e.message };\n    errorMessage = e.message;\n  }\n  return { json: {\n    outbox: row,\n    provider: 'resend',\n    provider_message_id: providerMessageId,\n    request_payload: { to: row.destinatario, subject: row.asunto, from: body.from },\n    response_payload: responsePayload,\n    error_message: errorMessage\n  }};\n}));"
       },
       "id": "cvdfp-0007-email-mock",
       "name": "Send Email Resend MOCK",
@@ -206,7 +210,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_resend_mock\",\"status\":\"sent\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":null}",
+        "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_resend\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
         "options": {}
       },
       "id": "cvdfp-0008-email-attempt",
@@ -241,7 +245,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"status\":\"enviado\",\"sent_at\":\"{{ $now.toISO() }}\",\"provider\":\"resend_mock\",\"provider_message_id\":\"{{ $('Send Email Resend MOCK').item.json.provider_message_id }}\",\"provider_response\":{{ JSON.stringify($('Send Email Resend MOCK').item.json.response_payload) }},\"error_message\":null}",
+        "jsonBody": "={\"status\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? 'error' : 'enviado' }}\",\"sent_at\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? null : $now.toISO() }}\",\"provider\":\"resend\",\"provider_message_id\":\"{{ $('Send Email Resend MOCK').item.json.provider_message_id }}\",\"provider_response\":{{ JSON.stringify($('Send Email Resend MOCK').item.json.response_payload) }},\"error_message\":{{ $('Send Email Resend MOCK').item.json.error_message ? JSON.stringify($('Send Email Resend MOCK').item.json.error_message) : 'null' }}}",
         "options": {}
       },
       "id": "cvdfp-0009-email-update",
@@ -444,7 +448,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_whatsapp_mock\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+        "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_whatsapp_mock\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
         "options": {}
       },
       "id": "cvdfp-0017-whatsapp-attempt",
@@ -479,7 +483,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"status\":\"enviado\",\"sent_at\":\"{{ $now.toISO() }}\",\"provider\":\"whatsapp_mock\",\"error_message\":null}",
+        "jsonBody": "={\"status\":\"enviado\",\"sent_at\":\"{{ $now.toISO() }}\",\"provider\":\"whatsapp_mock\",\"error_message\":null}",
         "options": {}
       },
       "id": "cvdfp-0018-whatsapp-update",
@@ -752,7 +756,770 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "staticData": null,
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
   "meta": null,
-  "pinData": null
+  "pinData": null,
+  "versionId": "9551d3f6-5f01-4489-8a35-282c4c9ea819",
+  "activeVersionId": "9551d3f6-5f01-4489-8a35-282c4c9ea819",
+  "versionCounter": 65,
+  "triggerCount": 1,
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-05-04T14:12:55.762Z",
+    "createdAt": "2026-05-04T14:12:55.762Z",
+    "versionId": "9551d3f6-5f01-4489-8a35-282c4c9ea819",
+    "workflowId": "jRJAhjnBcXBjBwFE",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * 1-6"
+              }
+            ]
+          }
+        },
+        "id": "cvdfp-0001-schedule",
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          160,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "cargo-vuelta-mock-test",
+          "responseMode": "onReceived"
+        },
+        "id": "cvdfp-0000-webhook",
+        "name": "Webhook MOCK TEST",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          160,
+          540
+        ],
+        "notes": "TEMPORAL: para ejecucion manual de prueba E2E. Eliminar antes de produccion.",
+        "onError": "continueRegularOutput",
+        "webhookId": "cargo-vuelta-mock-test",
+        "disabled": true
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets?limit=5",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"p_org_id\":\"{{ $env.FLOWSUITE_ORG_ID }}\",\"p_today\":\"{{ $now.toISODate() }}\",\"p_max_auto_attempts\":7,\"p_recent_payment_days\":7,\"p_daily_cooldown_hours\":20,\"p_mock\":false}",
+          "options": {}
+        },
+        "id": "cvdfp-0002-targets",
+        "name": "Get Campaign Targets",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          380,
+          420
+        ],
+        "notes": "MOCK entrypoint. Requires proposed RPC fn_get_cargo_vuelta_campaign_targets."
+      },
+      {
+        "parameters": {
+          "batchSize": 1,
+          "options": {},
+          "jsCode": "return $input.all();"
+        },
+        "id": "cvdfp-0003-split",
+        "name": "Pass Items",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          600,
+          420
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "function money(value) {\n  const n = Number(value || 0);\n  return n > 0 ? `$${n.toFixed(2)}` : 'pendiente de confirmar';\n}\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '');\n  if (!raw) return '';\n  if (raw.length === 10) return `1${raw}`;\n  if (raw.length === 11 && raw.startsWith('1')) return raw;\n  return raw;\n}\nfunction cadence(attempts, daysOpen) {\n  const n = Number(attempts || 0) + 1;\n  if (n <= 1) return { step: 'dia_1', label: 'Aviso formal amable' };\n  if (n === 2) return { step: 'dia_2', label: 'Recordatorio corto' };\n  if (n === 3) return { step: 'dia_3', label: 'Revision interna de cuenta' };\n  if (n === 4 || Number(daysOpen || 0) >= 5) return { step: 'dia_4', label: 'Ultimo intento automatico' };\n  return { step: 'dia_8_plus', label: 'Seguimiento cada 3 dias' };\n}\nfunction buildMessage(target, channel, cadenceInfo) {\n  const nombre = target.nombre || 'Cliente';\n  const cuenta = target.cuenta_hycite || 'S/N';\n  const monto = money(target.monto_cargo_vuelta);\n  const fecha = target.fecha_cargo_vuelta || 'No registrada';\n  const stop = channel === 'whatsapp' ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.' : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.';\n  const variants = {\n    dia_1: `Estimado/a ${nombre},\\n\\nLe contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente de regularizar: ${monto}\\nFecha de referencia: ${fecha}\\n\\nQueremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.${stop}`,\n    dia_2: `Hola ${nombre}, le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nTenemos opciones de pago disponibles para regularizar el balance de ${monto}. Responda a este mensaje y coordinamos un acuerdo comodo.${stop}`,\n    dia_3: `Estimado/a ${nombre}, su cuenta #${cuenta} continua en revision interna por balance pendiente de ${monto}.\\n\\nNuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.${stop}`,\n    dia_4: `Hola ${nombre}, este es nuestro ultimo intento automatico de seguimiento sobre la cuenta #${cuenta}.\\n\\nQueremos darle oportunidad de establecer un acuerdo de pago comodo por el balance pendiente de ${monto}. Comuniquese con Patricia Caicedo al (786) 291-3042 o responda este mensaje.${stop}`,\n    dia_8_plus: `Hola ${nombre}, seguimos disponibles para ayudarle a regularizar la cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente: ${monto}. Responda este mensaje para revisar opciones de pago.${stop}`\n  };\n  return variants[cadenceInfo.step] || variants.dia_8_plus;\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json;\n  const cadenceInfo = cadence(t.auto_attempt_count, t.days_since_case_opened);\n  const metaText = `campaign_key=cargo_vuelta_dfp_auto; case_id=${t.case_id}; cadence_step=${cadenceInfo.step}`;\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id;\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID;\n  const scheduledFor = new Date(Date.now() - 1000).toISOString();\n  const emailMessage = buildMessage(t, 'email', cadenceInfo);\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceInfo);\n  const phone = digitsOnly(t.telefono || t.telefono_casa);\n  out.push({ json: { ...t, cadence: cadenceInfo, provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(), normalized_phone: phone, emailOutbox: t.email ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'email', destinatario: t.email, asunto: `Revision de cuenta Royal Prestige #${t.cuenta_hycite || 'S/N'}`, mensaje: emailMessage, mensaje_resuelto: emailMessage, cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null, from_name: 'Equipo de Resolucion CWG', dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, whatsappOutbox: phone ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'whatsapp', destinatario: phone, mensaje: whatsappMessage, mensaje_resuelto: whatsappMessage, dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, gestion: { org_id: orgId, cliente_id: t.cliente_id, case_id: t.case_id, tipo_gestion: 'seguimiento', resultado: 'recordatorio_automatico_cargo_vuelta', notas: `Recordatorio automatico de cargo de vuelta enviado. ${cadenceInfo.label}. ${metaText}` } } });\n}\nreturn out;"
+        },
+        "id": "cvdfp-0004-build",
+        "name": "Build Message Cadence",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          820,
+          420
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "boolean": [
+              {
+                "value1": "={{ !!$json.emailOutbox }}",
+                "value2": true
+              }
+            ]
+          }
+        },
+        "id": "cvdfp-0005-has-email",
+        "name": "IF Has Email",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          1040,
+          280
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.emailOutbox }}",
+          "options": {}
+        },
+        "id": "cvdfp-0006-email-outbox",
+        "name": "Insert Email Outbox",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1260,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return await Promise.all($input.all().map(async item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const fromEmail = $env.RESEND_FROM_EMAIL || 'no-reply@flowsuite.app';\n  const fromName = row.from_name || 'Equipo de Resolucion CWG';\n  const body = {\n    from: `${fromName} <${fromEmail}>`,\n    to: [row.destinatario],\n    subject: row.asunto,\n    text: row.mensaje_resuelto || row.mensaje\n  };\n  if (row.cc_emails && Array.isArray(row.cc_emails) && row.cc_emails.length > 0) {\n    body.cc = row.cc_emails;\n  }\n  let responsePayload;\n  let providerMessageId = null;\n  let errorMessage = null;\n  try {\n    const resp = await fetch('https://api.resend.com/emails', {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${$env.RESEND_API_KEY}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify(body)\n    });\n    const data = await resp.json();\n    responsePayload = data;\n    providerMessageId = data.id || null;\n    if (!resp.ok) {\n      errorMessage = data.message || data.error || `HTTP ${resp.status}`;\n    }\n  } catch (e) {\n    responsePayload = { error: e.message };\n    errorMessage = e.message;\n  }\n  return { json: {\n    outbox: row,\n    provider: 'resend',\n    provider_message_id: providerMessageId,\n    request_payload: { to: row.destinatario, subject: row.asunto, from: body.from },\n    response_payload: responsePayload,\n    error_message: errorMessage\n  }};\n}));"
+        },
+        "id": "cvdfp-0007-email-mock",
+        "name": "Send Email Resend MOCK",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1480,
+          180
+        ],
+        "notes": "MOCK only."
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_delivery_attempts",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=minimal"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_resend\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+          "options": {}
+        },
+        "id": "cvdfp-0008-email-attempt",
+        "name": "Insert Email Attempt",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1700,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "method": "PATCH",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?id=eq.{{ $('Send Email Resend MOCK').item.json.outbox.id }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"status\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? 'error' : 'enviado' }}\",\"sent_at\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? null : $now.toISO() }}\",\"provider\":\"resend\",\"provider_message_id\":\"{{ $('Send Email Resend MOCK').item.json.provider_message_id }}\",\"provider_response\":{{ JSON.stringify($('Send Email Resend MOCK').item.json.response_payload) }},\"error_message\":{{ $('Send Email Resend MOCK').item.json.error_message ? JSON.stringify($('Send Email Resend MOCK').item.json.error_message) : 'null' }}}",
+          "options": {}
+        },
+        "id": "cvdfp-0009-email-update",
+        "name": "Update Email Outbox",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1920,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "boolean": [
+              {
+                "value1": "={{ !!$json.whatsappOutbox }}",
+                "value2": true
+              }
+            ]
+          }
+        },
+        "id": "cvdfp-0010-has-whatsapp",
+        "name": "IF Has WhatsApp",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          1040,
+          560
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.whatsappOutbox }}",
+          "options": {}
+        },
+        "id": "cvdfp-0011-whatsapp-outbox",
+        "name": "Insert WhatsApp Outbox",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1260,
+          520
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "evolution-check",
+                "leftValue": "={{ $env.WHATSAPP_PROVIDER }}",
+                "rightValue": "evolution",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "cvdfp-0012-if-evolution",
+        "name": "IF Provider Evolution",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1480,
+          520
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map(item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const requestPayload = { mock: true, provider: 'evolution', url: `${$env.EVOLUTION_API_URL || 'MISSING_EVOLUTION_API_URL'}/message/sendText/${$env.EVOLUTION_INSTANCE || 'MISSING_INSTANCE'}`, instance: $env.EVOLUTION_INSTANCE || null, to: row.destinatario, text: row.mensaje_resuelto || row.mensaje, headers: { apikey: $env.EVOLUTION_API_KEY ? '***configured***' : 'missing' } };\n  return { json: {\n    outbox: row,\n    provider: 'evolution_mock',\n    provider_message_id: `mock_evolution_${row.id}`,\n    request_payload: requestPayload,\n    response_payload: { ok: true, mock: true, provider: 'evolution', provider_message_id: `mock_evolution_${row.id}` }\n  }};\n});"
+        },
+        "id": "cvdfp-0013-evolution-mock",
+        "name": "Send WhatsApp Evolution MOCK",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1700,
+          420
+        ],
+        "notes": "Replace with HTTP Request after approval."
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "cloud-check",
+                "leftValue": "={{ $env.WHATSAPP_PROVIDER }}",
+                "rightValue": "whatsapp_cloud",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "cvdfp-0014-if-cloud",
+        "name": "IF Provider WhatsApp Cloud",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1700,
+          640
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map(item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const version = $env.WHATSAPP_API_VERSION || 'v20.0';\n  const phoneNumberId = $env.WHATSAPP_PHONE_NUMBER_ID || 'MISSING_PHONE_NUMBER_ID';\n  const requestPayload = { mock: true, provider: 'whatsapp_cloud', url: `https://graph.facebook.com/${version}/${phoneNumberId}/messages`, messaging_product: 'whatsapp', to: row.destinatario, type: 'template', template: { name: $env.WHATSAPP_CLOUD_COBRANZA_TEMPLATE || 'cargo_vuelta_resolucion', language: { code: 'es' } }, headers: { Authorization: $env.WHATSAPP_CLOUD_TOKEN ? 'Bearer ***configured***' : 'missing' } };\n  return { json: {\n    outbox: row,\n    provider: 'whatsapp_cloud_mock',\n    provider_message_id: `mock_cloud_${row.id}`,\n    request_payload: requestPayload,\n    response_payload: { ok: true, mock: true, provider: 'whatsapp_cloud', messages: [{ id: `mock_cloud_${row.id}` }] }\n  }};\n});"
+        },
+        "id": "cvdfp-0015-cloud-mock",
+        "name": "Send WhatsApp Cloud MOCK",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1920,
+          600
+        ],
+        "notes": "Replace with HTTP Request after approval."
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map(item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  return { json: {\n    outbox: row,\n    provider: 'unsupported_whatsapp_provider',\n    provider_message_id: null,\n    request_payload: { provider: $env.WHATSAPP_PROVIDER || null, mock: true },\n    response_payload: { ok: false, mock: true, error: 'Unsupported WHATSAPP_PROVIDER. Use evolution or whatsapp_cloud.' },\n    error_message: 'Unsupported WHATSAPP_PROVIDER'\n  }};\n});"
+        },
+        "id": "cvdfp-0016-unsupported",
+        "name": "Unsupported Provider MOCK",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1920,
+          780
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_delivery_attempts",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_whatsapp_mock\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+          "options": {}
+        },
+        "id": "cvdfp-0017-whatsapp-attempt",
+        "name": "Insert WhatsApp Attempt",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2160,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "method": "PATCH",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?id=eq.{{ (Array.isArray($json) ? $json[0] : $json).outbox_message_id }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"status\":\"enviado\",\"sent_at\":\"{{ $now.toISO() }}\",\"provider\":\"whatsapp_mock\",\"error_message\":null}",
+          "options": {}
+        },
+        "id": "cvdfp-0018-whatsapp-update",
+        "name": "Update WhatsApp Outbox",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2380,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/cob_gestiones",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=minimal"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.gestion }}",
+          "options": {}
+        },
+        "id": "cvdfp-0019-gestion",
+        "name": "Insert cob_gestiones",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2600,
+          600
+        ],
+        "notes": "MOCK audit only."
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Campaign Targets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook MOCK TEST": {
+        "main": [
+          [
+            {
+              "node": "Get Campaign Targets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Campaign Targets": {
+        "main": [
+          [
+            {
+              "node": "Pass Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pass Items": {
+        "main": [
+          [
+            {
+              "node": "Build Message Cadence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Message Cadence": {
+        "main": [
+          [
+            {
+              "node": "IF Has Email",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "IF Has WhatsApp",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Insert cob_gestiones",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF Has Email": {
+        "main": [
+          [
+            {
+              "node": "Insert Email Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "Insert Email Outbox": {
+        "main": [
+          [
+            {
+              "node": "Send Email Resend MOCK",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Email Resend MOCK": {
+        "main": [
+          [
+            {
+              "node": "Insert Email Attempt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Insert Email Attempt": {
+        "main": [
+          [
+            {
+              "node": "Update Email Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF Has WhatsApp": {
+        "main": [
+          [
+            {
+              "node": "Insert WhatsApp Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "Insert WhatsApp Outbox": {
+        "main": [
+          [
+            {
+              "node": "IF Provider Evolution",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF Provider Evolution": {
+        "main": [
+          [
+            {
+              "node": "Send WhatsApp Evolution MOCK",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "IF Provider WhatsApp Cloud",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF Provider WhatsApp Cloud": {
+        "main": [
+          [
+            {
+              "node": "Send WhatsApp Cloud MOCK",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Unsupported Provider MOCK",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send WhatsApp Evolution MOCK": {
+        "main": [
+          [
+            {
+              "node": "Insert WhatsApp Attempt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send WhatsApp Cloud MOCK": {
+        "main": [
+          [
+            {
+              "node": "Insert WhatsApp Attempt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Unsupported Provider MOCK": {
+        "main": [
+          [
+            {
+              "node": "Insert WhatsApp Attempt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Insert WhatsApp Attempt": {
+        "main": [
+          [
+            {
+              "node": "Update WhatsApp Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Moises Caicedo",
+    "name": null,
+    "description": null
+  }
 }
