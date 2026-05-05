@@ -188,6 +188,7 @@ type RegistrarGestionModalProps = {
   tipoDefault?: GestionTipo
   moduloOrigen?: string
   origenId?: string
+  errorMessage?: string | null
 }
 
 type ActividadRow = {
@@ -231,6 +232,7 @@ export function RegistrarGestionModal({
   tipoDefault,
   moduloOrigen,
   origenId,
+  errorMessage = null,
 }: RegistrarGestionModalProps) {
   const [draft, setDraft] = useState<GestionDraft>(() =>
     createInitialDraft({ contacto, role, tipoDefault, moduloOrigen, origenId }),
@@ -600,6 +602,22 @@ export function RegistrarGestionModal({
             }}
           >
             ¿Quieres crear una cita ahora?
+          </div>
+        )}
+        {errorMessage && (
+          <div
+            role="alert"
+            style={{
+              padding: '0.7rem 0.85rem',
+              borderRadius: '0.6rem',
+              border: '1px solid rgba(248,113,113,0.45)',
+              background: 'rgba(248,113,113,0.12)',
+              color: '#fca5a5',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+            }}
+          >
+            {errorMessage}
           </div>
         )}
         <div style={{ padding: '0.85rem', borderRadius: '0.75rem', border: '1px solid var(--color-input-border)', background: 'var(--color-surface-strong)' }}>

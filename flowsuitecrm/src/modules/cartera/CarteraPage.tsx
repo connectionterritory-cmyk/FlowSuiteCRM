@@ -132,6 +132,12 @@ function fmtFecha(s: string) {
   return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function dateOnly(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return trimmed.slice(0, 10)
+}
+
 function diasColor(d: number) {
   if (d >= 91) return '#7c3aed'
   if (d >= 61) return '#dc2626'
@@ -511,6 +517,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const [pagoOpen, setPagoOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [gestionOpen, setGestionOpen] = useState(false)
+  const [gestionSaving, setGestionSaving] = useState(false)
+  const [gestionError, setGestionError] = useState<string | null>(null)
 
   const loadDetail = async () => {
     setLoading(true)
@@ -555,45 +563,63 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     const montoComprometido = draft.montoPrometido.trim() ? parseFloat(draft.montoPrometido) : null
     const notas = draft.contenido.trim() || draft.resumen.trim() || null
     const resultado = draft.resultado ?? (draft.resumen.trim() || null)
+    const fechaCompromiso = dateOnly(draft.followupAt)
 
-    const { error: gestionError } = await supabase.from('cob_gestiones').insert({
-      org_id: orgId,
-      cliente_id: caso.cliente_id,
-      case_id: caso.id,
-      tipo_gestion: formatGestionTipo(draft.tipo),
-      resultado,
-      monto_comprometido: Number.isFinite(montoComprometido ?? NaN) ? montoComprometido : null,
-      fecha_compromiso: draft.followupAt || null,
-      notas,
-      gestionado_por: currentUserId,
-    })
+    setGestionSaving(true)
+    setGestionError(null)
+    try {
+      const { data: gestionData, error: gestionInsertError } = await supabase
+        .from('cob_gestiones')
+        .insert({
+          org_id: orgId,
+          cliente_id: caso.cliente_id,
+          case_id: caso.id,
+          tipo_gestion: formatGestionTipo(draft.tipo),
+          resultado,
+          monto_comprometido: Number.isFinite(montoComprometido ?? NaN) ? montoComprometido : null,
+          fecha_compromiso: fechaCompromiso,
+          notas,
+          gestionado_por: currentUserId,
+        })
+        .select('id')
+        .single()
 
-    if (gestionError) throw gestionError
+      if (gestionInsertError) throw gestionInsertError
 
-    const { error: actividadError } = await supabase.from('contacto_actividades').insert({
-      org_id: orgId,
-      contacto_tipo: 'cliente',
-      contacto_id: caso.cliente_id,
-      tipo: draft.tipo,
-      resumen: draft.resumen.trim() || `Gestión de cobranza: ${formatGestionTipo(draft.tipo)}`,
-      contenido: draft.contenido.trim() || null,
-      metadata: {
-        resultado: draft.resultado,
-        followup_at: draft.followupAt || null,
-        monto_prometido: Number.isFinite(montoComprometido ?? NaN) ? montoComprometido : null,
-        source: 'cartera',
-        case_id: caso.id,
-        modulo_origen: draft.moduloOrigen ?? 'cartera',
-        origen_id: draft.origenId ?? caso.id,
-      },
-      autor_id: currentUserId,
-      fecha_actividad: new Date().toISOString(),
-    })
+      const { error: actividadError } = await supabase.from('contacto_actividades').insert({
+        org_id: orgId,
+        contacto_tipo: 'cliente',
+        contacto_id: caso.cliente_id,
+        tipo: draft.tipo,
+        resumen: draft.resumen.trim() || `Gestión de cobranza: ${formatGestionTipo(draft.tipo)}`,
+        contenido: draft.contenido.trim() || null,
+        metadata: {
+          resultado: draft.resultado,
+          followup_at: draft.followupAt || null,
+          monto_prometido: Number.isFinite(montoComprometido ?? NaN) ? montoComprometido : null,
+          source: 'cartera',
+          case_id: caso.id,
+          cob_gestion_id: gestionData?.id ?? null,
+          modulo_origen: draft.moduloOrigen ?? 'cartera',
+          origen_id: draft.origenId ?? caso.id,
+        },
+        autor_id: currentUserId,
+        fecha_actividad: new Date().toISOString(),
+      })
 
-    if (actividadError) throw actividadError
+      if (actividadError) {
+        console.warn('[CarteraPage] gestión guardada sin actividad de timeline:', actividadError.message)
+      }
 
-    handleRefresh()
-    setGestionOpen(false)
+      handleRefresh()
+      setGestionOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo guardar la gestión.'
+      setGestionError(message)
+      throw error
+    } finally {
+      setGestionSaving(false)
+    }
   }
 
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + p.monto, 0), [pagos])
@@ -646,7 +672,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 
       {/* Action bar */}
       <div style={{ padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <ActionBtn label="+ Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
+        <ActionBtn label="+ Gestión" color="#3b82f6" onClick={() => { setGestionError(null); setGestionOpen(true) }} />
         <ActionBtn label="+ PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
         <ActionBtn label="+ Pago" color="#10b981" onClick={() => setPagoOpen(true)} />
         <ActionBtn label="+ Plan" color="#7c3aed" onClick={() => setPlanOpen(true)} />
@@ -681,8 +707,10 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       <RegistrarGestionModal
         open={gestionOpen}
         role={role}
-        onClose={() => setGestionOpen(false)}
+        onClose={() => { setGestionError(null); setGestionOpen(false) }}
         onSubmit={handleGestionSubmit}
+        submitting={gestionSaving}
+        errorMessage={gestionError}
         contacto={gestionContacto}
         tipoDefault="llamada"
         moduloOrigen="cartera"
