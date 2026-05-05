@@ -9,14 +9,25 @@ import {
   XIcon, 
   LoaderIcon
 } from '../icons'
+import patriciaBusinessCardUrl from '../../assets/messaging/patricia-caicedo-business-card.jpg'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export function AttachmentManager() {
-  const { attachmentUrls, setAttachmentUrls } = useMessaging()
+  const { attachmentUrls, setAttachmentUrls, activeChannel } = useMessaging()
   const { showToast } = useToast()
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const addPatriciaCard = () => {
+    const cardUrl = new URL(patriciaBusinessCardUrl, window.location.origin).href
+    if (attachmentUrls.includes(cardUrl)) {
+      showToast('La tarjeta de Patricia ya está adjunta.', 'error')
+      return
+    }
+    setAttachmentUrls([...attachmentUrls, cardUrl])
+    showToast('Tarjeta de Patricia adjunta.', 'success')
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -70,19 +81,30 @@ export function AttachmentManager() {
           <PaperclipIcon style={{ width: 16, height: 16 }} />
           Adjuntos
         </label>
-        <Button
-          variant="ghost"
-          style={{ height: '32px', fontSize: '0.75rem' }}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          {uploading ? (
-            <LoaderIcon style={{ width: 14, height: 14, marginRight: '6px' }} />
-          ) : (
-            <PaperclipIcon style={{ width: 14, height: 14, marginRight: '6px' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {(activeChannel === 'whatsapp' || activeChannel === 'email') && (
+            <Button
+              variant="ghost"
+              style={{ height: '32px', fontSize: '0.75rem' }}
+              onClick={addPatriciaCard}
+            >
+              Tarjeta Patricia
+            </Button>
           )}
-          Subir archivo
-        </Button>
+          <Button
+            variant="ghost"
+            style={{ height: '32px', fontSize: '0.75rem' }}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <LoaderIcon style={{ width: 14, height: 14, marginRight: '6px' }} />
+            ) : (
+              <PaperclipIcon style={{ width: 14, height: 14, marginRight: '6px' }} />
+            )}
+            Subir archivo
+          </Button>
+        </div>
         <input
           type="file"
           ref={fileInputRef}
