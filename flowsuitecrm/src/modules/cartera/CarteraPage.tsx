@@ -761,6 +761,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const [planOpen, setPlanOpen] = useState(false)
   const [gestionOpen, setGestionOpen] = useState(false)
   const [capturarMontoOpen, setCapturarMontoOpen] = useState(false)
+  const [cierreOpen, setCierreOpen] = useState(false)
+  const [cierreNota, setCierreNota] = useState('')
+  const [cerrando, setCerrando] = useState(false)
   const detailLoadSeq = useRef(0)
 
   const loadDetail = async () => {
@@ -829,6 +832,22 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   useEffect(() => { void loadDetail() }, [caso.id])
 
   const handleRefresh = () => { void loadDetail(); onCaseUpdated() }
+
+  const handleCerrarCaso = async () => {
+    setCerrando(true)
+    const { error } = await supabase.rpc('fn_cerrar_cargo_vuelta_case', {
+      p_case_id: caso.id,
+      p_nota: cierreNota.trim() || null,
+    })
+    setCerrando(false)
+    setCierreOpen(false)
+    setCierreNota('')
+    if (error) {
+      alert(`Error al cerrar el caso: ${error.message}`)
+    } else {
+      handleRefresh()
+    }
+  }
 
   const handleGestionSubmit = async (draft: GestionDraft) => {
     if (!currentUserId) throw new Error('No se pudo identificar el usuario actual.')
@@ -1013,6 +1032,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         <ActionBtn label="Email carta" color="#2563eb" onClick={() => openCarta('email')} />
         <ActionBtn label="WhatsApp carta" color="#16a34a" onClick={() => openCarta('whatsapp')} disabled={!cliente?.telefono} />
         <ActionBtn label="SMS carta" color="#6b7280" onClick={() => openCarta('sms')} disabled={!cliente?.telefono} />
+        {caso.estado !== 'Cerrado' && (
+          <ActionBtn label="✓ Pago recibido / Cerrar caso" color="#059669" onClick={() => setCierreOpen(true)} />
+        )}
       </div>
 
       {/* Tabs */}
@@ -1059,6 +1081,36 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} dfpAccount={safeDfpAccount} disabled={loading || Boolean(dfpAccount && dfpAccount.case_id !== caso.id)} ptps={ptps} cuotas={cuotasAbiertas} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
+
+      {/* Confirmación cierre de caso */}
+      {cierreOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--color-bg)', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 700 }}>Cerrar caso</h3>
+            <p style={{ margin: '0 0 1rem', fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+              Este botón <strong>no registra un pago financiero</strong>. Solo cerrará el caso porque el pago ya fue confirmado externamente.
+            </p>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem' }}>Nota (opcional)</label>
+            <textarea
+              value={cierreNota}
+              onChange={e => setCierreNota(e.target.value)}
+              placeholder="Ej: Cliente pagó el 2026-05-05 según confirmación del distribuidor"
+              rows={3}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)', fontSize: '0.82rem', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <button type="button" onClick={() => { setCierreOpen(false); setCierreNota('') }} disabled={cerrando}
+                style={{ padding: '0.4rem 1rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)', cursor: 'pointer', fontSize: '0.82rem' }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={handleCerrarCaso} disabled={cerrando}
+                style={{ padding: '0.4rem 1rem', borderRadius: '0.4rem', border: 'none', background: '#059669', color: '#fff', cursor: cerrando ? 'not-allowed' : 'pointer', fontSize: '0.82rem', fontWeight: 700, opacity: cerrando ? 0.7 : 1 }}>
+                {cerrando ? 'Cerrando…' : 'Confirmar cierre'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
