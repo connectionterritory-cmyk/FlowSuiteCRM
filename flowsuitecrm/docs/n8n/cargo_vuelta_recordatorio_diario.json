@@ -4,7 +4,7 @@
   "id": "jRJAhjnBcXBjBwFE",
   "name": "Cargo de Vuelta / DFP - Cobranza Automatica",
   "description": null,
-  "active": true,
+  "active": false,
   "isArchived": false,
   "nodes": [
     {
@@ -49,7 +49,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets?limit=5",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -171,17 +171,36 @@
     },
     {
       "parameters": {
-        "jsCode": "return await Promise.all($input.all().map(async item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const fromEmail = $env.RESEND_FROM_EMAIL || 'no-reply@flowsuite.app';\n  const fromName = row.from_name || 'Equipo de Resolucion CWG';\n  const body = {\n    from: `${fromName} <${fromEmail}>`,\n    to: [row.destinatario],\n    subject: row.asunto,\n    text: row.mensaje_resuelto || row.mensaje\n  };\n  if (row.cc_emails && Array.isArray(row.cc_emails) && row.cc_emails.length > 0) {\n    body.cc = row.cc_emails;\n  }\n  let responsePayload;\n  let providerMessageId = null;\n  let errorMessage = null;\n  try {\n    const resp = await fetch('https://api.resend.com/emails', {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${$env.RESEND_API_KEY}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify(body)\n    });\n    const data = await resp.json();\n    responsePayload = data;\n    providerMessageId = data.id || null;\n    if (!resp.ok) {\n      errorMessage = data.message || data.error || `HTTP ${resp.status}`;\n    }\n  } catch (e) {\n    responsePayload = { error: e.message };\n    errorMessage = e.message;\n  }\n  return { json: {\n    outbox: row,\n    provider: 'resend',\n    provider_message_id: providerMessageId,\n    request_payload: { to: row.destinatario, subject: row.asunto, from: body.from },\n    response_payload: responsePayload,\n    error_message: errorMessage\n  }};\n}));"
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.RESEND_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"from\": \"{{ $env.RESEND_FROM_EMAIL || 'cobranza@flowiadigital.com' }}\",\n  \"to\": \"{{ $('Insert Email Outbox').item.json.destinatario }}\",\n  \"subject\": \"{{ $('Insert Email Outbox').item.json.asunto }}\",\n  \"text\": \"{{ $('Insert Email Outbox').item.json.mensaje_resuelto || $('Insert Email Outbox').item.json.mensaje }}\"\n}",
+        "options": {}
       },
       "id": "cvdfp-0007-email-mock",
       "name": "Send Email Resend MOCK",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         1480,
         180
       ],
-      "notes": "MOCK only."
+      "notes": "Replaced Code node with HTTP Request to fix 'fetch is not defined' error.",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -210,7 +229,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_resend\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+        "jsonBody": "={\"outbox_message_id\":\"{{ $('Insert Email Outbox').item.json.id }}\",\"org_id\":\"{{ $('Insert Email Outbox').item.json.org_id }}\",\"attempt_number\":{{ $('Insert Email Outbox').item.json.attempt_count || 1 }},\"dispatcher\":\"n8n_resend\",\"status\":\"{{ $json.id ? 'sent' : 'failed' }}\",\"request_payload\":{\"to\":\"{{ $('Insert Email Outbox').item.json.destinatario }}\",\"subject\":\"{{ $('Insert Email Outbox').item.json.asunto }}\"},\"response_payload\":{{ JSON.stringify($json) }},\"error_message\":{{ $json.id ? 'null' : JSON.stringify($json.message || $json.error || 'Resend error') }}}",
         "options": {}
       },
       "id": "cvdfp-0008-email-attempt",
@@ -225,7 +244,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?id=eq.{{ $('Send Email Resend MOCK').item.json.outbox.id }}",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?id=eq.{{ $('Insert Email Outbox').item.json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -245,7 +264,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"status\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? 'error' : 'enviado' }}\",\"sent_at\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? null : $now.toISO() }}\",\"provider\":\"resend\",\"provider_message_id\":\"{{ $('Send Email Resend MOCK').item.json.provider_message_id }}\",\"provider_response\":{{ JSON.stringify($('Send Email Resend MOCK').item.json.response_payload) }},\"error_message\":{{ $('Send Email Resend MOCK').item.json.error_message ? JSON.stringify($('Send Email Resend MOCK').item.json.error_message) : 'null' }}}",
+        "jsonBody": "={\"status\":\"{{ $json.id ? 'enviado' : 'fallido' }}\",\"sent_at\":{{ $json.id ? '\"' + $now.toISO() + '\"' : 'null' }},\"dispatch_provider\":\"resend\",\"provider_message_id\":{{ $json.id ? '\"' + $json.id + '\"' : 'null' }},\"provider_response\":{{ JSON.stringify($json) }},\"error_message\":{{ $json.id ? 'null' : JSON.stringify($json.message || $json.error || 'Resend error') }}}",
         "options": {}
       },
       "id": "cvdfp-0009-email-update",
@@ -350,17 +369,37 @@
     },
     {
       "parameters": {
-        "jsCode": "return $input.all().map(item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const requestPayload = { mock: true, provider: 'evolution', url: `${$env.EVOLUTION_API_URL || 'MISSING_EVOLUTION_API_URL'}/message/sendText/${$env.EVOLUTION_INSTANCE || 'MISSING_INSTANCE'}`, instance: $env.EVOLUTION_INSTANCE || null, to: row.destinatario, text: row.mensaje_resuelto || row.mensaje, headers: { apikey: $env.EVOLUTION_API_KEY ? '***configured***' : 'missing' } };\n  return { json: {\n    outbox: row,\n    provider: 'evolution_mock',\n    provider_message_id: `mock_evolution_${row.id}`,\n    request_payload: requestPayload,\n    response_payload: { ok: true, mock: true, provider: 'evolution', provider_message_id: `mock_evolution_${row.id}` }\n  }};\n});"
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ Array.isArray($json) ? $json[0].destinatario : $json.destinatario }}\",\n  \"text\": \"{{ Array.isArray($json) ? ($json[0].mensaje_resuelto || $json[0].mensaje) : ($json.mensaje_resuelto || $json.mensaje) }}\"\n}",
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "cvdfp-0013-evolution-mock",
-      "name": "Send WhatsApp Evolution MOCK",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "name": "Send WhatsApp Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         1700,
         420
       ],
-      "notes": "Replace with HTTP Request after approval."
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -448,7 +487,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_whatsapp_mock\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+        "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_evolution\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
         "options": {}
       },
       "id": "cvdfp-0017-whatsapp-attempt",
@@ -674,7 +713,7 @@
       "main": [
         [
           {
-            "node": "Send WhatsApp Evolution MOCK",
+            "node": "Send WhatsApp Evolution",
             "type": "main",
             "index": 0
           }
@@ -706,7 +745,7 @@
         ]
       ]
     },
-    "Send WhatsApp Evolution MOCK": {
+    "Send WhatsApp Evolution": {
       "main": [
         [
           {
@@ -816,7 +855,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets?limit=5",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/fn_get_cargo_vuelta_campaign_targets",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -938,17 +977,36 @@
       },
       {
         "parameters": {
-          "jsCode": "return await Promise.all($input.all().map(async item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const fromEmail = $env.RESEND_FROM_EMAIL || 'no-reply@flowsuite.app';\n  const fromName = row.from_name || 'Equipo de Resolucion CWG';\n  const body = {\n    from: `${fromName} <${fromEmail}>`,\n    to: [row.destinatario],\n    subject: row.asunto,\n    text: row.mensaje_resuelto || row.mensaje\n  };\n  if (row.cc_emails && Array.isArray(row.cc_emails) && row.cc_emails.length > 0) {\n    body.cc = row.cc_emails;\n  }\n  let responsePayload;\n  let providerMessageId = null;\n  let errorMessage = null;\n  try {\n    const resp = await fetch('https://api.resend.com/emails', {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${$env.RESEND_API_KEY}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify(body)\n    });\n    const data = await resp.json();\n    responsePayload = data;\n    providerMessageId = data.id || null;\n    if (!resp.ok) {\n      errorMessage = data.message || data.error || `HTTP ${resp.status}`;\n    }\n  } catch (e) {\n    responsePayload = { error: e.message };\n    errorMessage = e.message;\n  }\n  return { json: {\n    outbox: row,\n    provider: 'resend',\n    provider_message_id: providerMessageId,\n    request_payload: { to: row.destinatario, subject: row.asunto, from: body.from },\n    response_payload: responsePayload,\n    error_message: errorMessage\n  }};\n}));"
+          "method": "POST",
+          "url": "https://api.resend.com/emails",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.RESEND_API_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"from\": \"{{ $env.RESEND_FROM_EMAIL || 'cobranza@flowiadigital.com' }}\",\n  \"to\": \"{{ $('Insert Email Outbox').item.json.destinatario }}\",\n  \"subject\": \"{{ $('Insert Email Outbox').item.json.asunto }}\",\n  \"text\": \"{{ $('Insert Email Outbox').item.json.mensaje_resuelto || $('Insert Email Outbox').item.json.mensaje }}\"\n}",
+          "options": {}
         },
         "id": "cvdfp-0007-email-mock",
         "name": "Send Email Resend MOCK",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           1480,
           180
         ],
-        "notes": "MOCK only."
+        "notes": "Replaced Code node with HTTP Request to fix 'fetch is not defined' error.",
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
@@ -992,7 +1050,7 @@
       {
         "parameters": {
           "method": "PATCH",
-          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?id=eq.{{ $('Send Email Resend MOCK').item.json.outbox.id }}",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?id=eq.{{ $('Insert Email Outbox').item.json.id }}",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -1012,7 +1070,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={\"status\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? 'error' : 'enviado' }}\",\"sent_at\":\"{{ $('Send Email Resend MOCK').item.json.error_message ? null : $now.toISO() }}\",\"provider\":\"resend\",\"provider_message_id\":\"{{ $('Send Email Resend MOCK').item.json.provider_message_id }}\",\"provider_response\":{{ JSON.stringify($('Send Email Resend MOCK').item.json.response_payload) }},\"error_message\":{{ $('Send Email Resend MOCK').item.json.error_message ? JSON.stringify($('Send Email Resend MOCK').item.json.error_message) : 'null' }}}",
+          "jsonBody": "={\"status\":\"{{ $json.id ? 'enviado' : 'fallido' }}\",\"sent_at\":{{ $json.id ? '\"' + $now.toISO() + '\"' : 'null' }},\"dispatch_provider\":\"resend\",\"provider_message_id\":{{ $json.id ? '\"' + $json.id + '\"' : 'null' }},\"provider_response\":{{ JSON.stringify($json) }},\"error_message\":{{ $json.id ? 'null' : JSON.stringify($json.message || $json.error || 'Resend error') }}}",
           "options": {}
         },
         "id": "cvdfp-0009-email-update",
@@ -1117,17 +1175,37 @@
       },
       {
         "parameters": {
-          "jsCode": "return $input.all().map(item => {\n  const row = Array.isArray(item.json) ? item.json[0] : item.json;\n  const requestPayload = { mock: true, provider: 'evolution', url: `${$env.EVOLUTION_API_URL || 'MISSING_EVOLUTION_API_URL'}/message/sendText/${$env.EVOLUTION_INSTANCE || 'MISSING_INSTANCE'}`, instance: $env.EVOLUTION_INSTANCE || null, to: row.destinatario, text: row.mensaje_resuelto || row.mensaje, headers: { apikey: $env.EVOLUTION_API_KEY ? '***configured***' : 'missing' } };\n  return { json: {\n    outbox: row,\n    provider: 'evolution_mock',\n    provider_message_id: `mock_evolution_${row.id}`,\n    request_payload: requestPayload,\n    response_payload: { ok: true, mock: true, provider: 'evolution', provider_message_id: `mock_evolution_${row.id}` }\n  }};\n});"
+          "method": "POST",
+          "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.EVOLUTION_API_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"number\": \"{{ Array.isArray($json) ? $json[0].destinatario : $json.destinatario }}\",\n  \"text\": \"{{ Array.isArray($json) ? ($json[0].mensaje_resuelto || $json[0].mensaje) : ($json.mensaje_resuelto || $json.mensaje) }}\"\n}",
+          "options": {
+            "timeout": 15000
+          }
         },
         "id": "cvdfp-0013-evolution-mock",
-        "name": "Send WhatsApp Evolution MOCK",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
+        "name": "Send WhatsApp Evolution",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           1700,
           420
         ],
-        "notes": "Replace with HTTP Request after approval."
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
@@ -1215,7 +1293,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_whatsapp_mock\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+          "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_evolution\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
           "options": {}
         },
         "id": "cvdfp-0017-whatsapp-attempt",
@@ -1441,7 +1519,7 @@
         "main": [
           [
             {
-              "node": "Send WhatsApp Evolution MOCK",
+              "node": "Send WhatsApp Evolution",
               "type": "main",
               "index": 0
             }
@@ -1473,7 +1551,7 @@
           ]
         ]
       },
-      "Send WhatsApp Evolution MOCK": {
+      "Send WhatsApp Evolution": {
         "main": [
           [
             {
