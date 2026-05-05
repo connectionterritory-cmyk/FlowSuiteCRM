@@ -192,7 +192,7 @@
         "options": {}
       },
       "id": "cvdfp-0007-email-mock",
-      "name": "Send Email Resend MOCK",
+      "name": "Send Email Resend",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -657,14 +657,14 @@
       "main": [
         [
           {
-            "node": "Send Email Resend MOCK",
+            "node": "Send Email Resend",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Email Resend MOCK": {
+    "Send Email Resend": {
       "main": [
         [
           {
@@ -998,7 +998,7 @@
           "options": {}
         },
         "id": "cvdfp-0007-email-mock",
-        "name": "Send Email Resend MOCK",
+        "name": "Send Email Resend",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
@@ -1463,14 +1463,14 @@
         "main": [
           [
             {
-              "node": "Send Email Resend MOCK",
+              "node": "Send Email Resend",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Send Email Resend MOCK": {
+      "Send Email Resend": {
         "main": [
           [
             {
