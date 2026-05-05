@@ -122,6 +122,12 @@ type AgendaItem = {
   completado: boolean
 }
 
+type CobranzaActionRow = ClienteCobranzaRow & {
+  action_due: boolean
+  action_overdue: boolean
+  action_label: string
+}
+
 type CrmTaskRow = {
   id: string
   contacto_tipo: 'lead' | 'cliente'
@@ -290,6 +296,34 @@ export function HoyPage() {
     () => cobranzas.filter((c) => c.next_action_date && c.next_action_date <= todayIso),
     [cobranzas, todayIso]
   )
+
+  const cobranzasPrioritarias = useMemo<CobranzaActionRow[]>(
+    () =>
+      cobranzas
+        .map((c) => {
+          const action_due = Boolean(c.next_action_date && c.next_action_date <= todayIso)
+          return {
+            ...c,
+            action_due,
+            action_overdue: Boolean(c.next_action_date && c.next_action_date < todayIso),
+            action_label: c.next_action?.trim() || 'Gestionar cobranza',
+          }
+        })
+        .filter((c) => c.action_due)
+        .sort((a, b) => {
+          const dateCompare = (a.next_action_date ?? '').localeCompare(b.next_action_date ?? '')
+          if (dateCompare !== 0) return dateCompare
+          return (b.dias_atraso ?? 0) - (a.dias_atraso ?? 0)
+        }),
+    [cobranzas, todayIso]
+  )
+
+  const agendaHoyCount = useMemo(() => agenda.filter((item) => !item.completado).length, [agenda])
+  const crmTasksOverdueCount = useMemo(
+    () => crmTasks.filter((task) => task.fecha_vencimiento < todayIso).length,
+    [crmTasks, todayIso]
+  )
+  const totalActionCount = todayLeads.length + crmTasks.length + cobranzasPrioritarias.length
 
   const threeDaysAgo = useMemo(() => {
     const date = new Date(today)
@@ -683,7 +717,7 @@ export function HoyPage() {
       (() => {
         let citasQuery = supabase
           .from('citas')
-          .select('id, start_at, tipo, nombre, estado, assigned_to, owner_id')
+          .select('id, start_at, tipo, nombre, telefono, direccion, ciudad, estado_region, notas, estado, assigned_to, owner_id')
           .gte('start_at', `${todayIso}T00:00:00`)
           .lt('start_at', `${tomorrowIso}T00:00:00`)
           .order('start_at', { ascending: true })
@@ -789,7 +823,7 @@ export function HoyPage() {
     setMantenimientos(mantFilteredByVendedor)
 
     const serviciosAgenda = (agendaRes.data as AgendaItem[] | null) ?? []
-    const citasItems: AgendaItem[] = ((citasAgendaRes.data as { id: string; start_at: string | null; tipo: string | null; nombre: string | null; estado: string | null; assigned_to: string | null; owner_id: string | null }[] | null) ?? []).map((c) => ({
+    const citasItems: AgendaItem[] = ((citasAgendaRes.data as { id: string; start_at: string | null; tipo: string | null; nombre: string | null; telefono: string | null; direccion: string | null; ciudad: string | null; estado_region: string | null; notas: string | null; estado: string | null; assigned_to: string | null; owner_id: string | null }[] | null) ?? []).map((c) => ({
       agenda_id: c.id,
       vendedor_id: c.assigned_to || c.owner_id || '',
       fecha: todayIso,
@@ -797,11 +831,11 @@ export function HoyPage() {
       tipo: 'cita' as const,
       subtipo: c.tipo || '',
       cliente_nombre: c.nombre || 'Sin nombre',
-      cliente_telefono: null,
-      direccion: null,
-      ciudad: null,
-      estado_region: null,
-      notas: null,
+      cliente_telefono: c.telefono ?? null,
+      direccion: c.direccion ?? null,
+      ciudad: c.ciudad ?? null,
+      estado_region: c.estado_region ?? null,
+      notas: c.notas ?? null,
       completado: c.estado === 'completada',
     }))
     const mergedAgenda = [...serviciosAgenda, ...citasItems].sort((a, b) => {
@@ -958,6 +992,34 @@ export function HoyPage() {
       showToast('Tarea completada')
     },
     [getTaskTypeLabel, loadData, session?.user.id, showToast, syncTaskContactCache, t]
+  )
+
+  const handleCompleteCobranzaAction = useCallback(
+    async (cobranza: CobranzaActionRow) => {
+      const previous = cobranzas
+      setCobranzas((current) =>
+        current.map((item) =>
+          item.id === cobranza.id
+            ? { ...item, next_action: null, next_action_date: null }
+            : item,
+        ),
+      )
+
+      const { error } = await supabase
+        .from('clientes')
+        .update({ next_action: null, next_action_date: null })
+        .eq('id', cobranza.id)
+
+      if (error) {
+        setCobranzas(previous)
+        showToast(error.message, 'error')
+        return
+      }
+
+      showToast('Acción de cobranza completada')
+      await loadData()
+    },
+    [cobranzas, loadData, showToast],
   )
 
   const handleOpenEditAgenda = useCallback((item: AgendaItem) => {
@@ -1240,8 +1302,15 @@ export function HoyPage() {
           <div className="hoy-action-card-icon-wrapper">
             <span className="hoy-action-card-icon">📅</span>
           </div>
-          <span className="hoy-action-card-count">{todayLeads.length}</span>
+          <span className="hoy-action-card-count">{totalActionCount}</span>
           <span className="hoy-action-card-label">{t('hoy.statsActions') || 'Acciones'}</span>
+        </div>
+        <div className="hoy-action-card" onClick={() => setCobranzasOpen(true)} style={{ cursor: 'pointer', borderTop: '3px solid #ec4899' }}>
+          <div className="hoy-action-card-icon-wrapper">
+            <span className="hoy-action-card-icon">💸</span>
+          </div>
+          <span className="hoy-action-card-count">{cobranzasPrioritarias.length}</span>
+          <span className="hoy-action-card-label">Cobranzas hoy</span>
         </div>
         <div className="hoy-action-card green">
           <div className="hoy-action-card-icon-wrapper">
@@ -1254,8 +1323,8 @@ export function HoyPage() {
           <div className="hoy-action-card-icon-wrapper">
             <span className="hoy-action-card-icon">🚩</span>
           </div>
-          <span className="hoy-action-card-count">{closingOpps.length}</span>
-          <span className="hoy-action-card-label">{t('hoy.statsClosing') || 'Cierres'}</span>
+          <span className="hoy-action-card-count">{agendaHoyCount}</span>
+          <span className="hoy-action-card-label">Citas / agenda</span>
         </div>
       </div>
 
@@ -1367,6 +1436,59 @@ export function HoyPage() {
         </section>
       )}
 
+      {/* ── Prioridades de cobranza ───────────────────────── */}
+      {!loading && cobranzasPrioritarias.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>Cobranzas para hacer hoy</h3>
+            <span className={`seller-count ${cobranzasPrioritarias.some((c) => c.action_overdue) ? 'alert' : ''}`.trim()}>
+              {cobranzasPrioritarias.length}
+            </span>
+          </div>
+          <div className="seller-section-sub">Seguimientos, llamadas, citas y promesas vencidas o programadas para hoy</div>
+          <div className="seller-opps">
+            {cobranzasPrioritarias.slice(0, 6).map((c) => {
+              const name = getClientName(c)
+              return (
+                <div key={c.id} className={`seller-card seller-lead ${c.action_overdue ? 'overdue' : 'today'}`}>
+                  <div className="seller-lead-main">
+                    <div>
+                      <div className="seller-lead-name">{name}</div>
+                      <div className="seller-lead-meta">
+                        <span className={`seller-pill ${c.action_overdue ? 'variant-danger' : 'variant-warning'}`}>
+                          {c.action_overdue ? 'Vencida' : 'Hoy'}
+                        </span>
+                        <span className="seller-pill variant-info">{c.action_label}</span>
+                        {c.dias_atraso != null && c.dias_atraso > 0 && (
+                          <span className="seller-pill variant-danger">{getAtrasoBucket(c.dias_atraso)} atraso</span>
+                        )}
+                        {c.monto_moroso != null && c.monto_moroso > 0 && (
+                          <span>{formatCurrency(c.monto_moroso)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="seller-lead-actions">
+                    <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
+                      📞 {t('hoy.call')}
+                    </Button>
+                    <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>
+                      💬 {t('hoy.whatsapp')}
+                    </Button>
+                    <Button variant="ghost" onClick={() => navigate('/cartera')}>
+                      Ver cartera
+                    </Button>
+                    <Button type="button" onClick={() => handleCompleteCobranzaAction(c)}>
+                      ✅ Listo
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ── Cobranzas List Item ──────────────────────────── */}
       {!loading && cobranzas.length > 0 && (
         <div className="hoy-list-item" onClick={() => setCobranzasOpen(true)} style={{ marginTop: '16px' }}>
@@ -1401,7 +1523,14 @@ export function HoyPage() {
         <section className="hoy-list-section agenda-unificada">
           <div className="hoy-list-header">
             <h3>Mi Agenda de Hoy</h3>
-            <span className="hoy-view-all">{agenda.length} actividades</span>
+            <button
+              type="button"
+              className="hoy-view-all"
+              onClick={() => navigate('/citas')}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
+            >
+              {agenda.length} actividades ›
+            </button>
           </div>
           <div className="hoy-agenda-grid">
             {agenda.map((item) => {
@@ -1430,6 +1559,13 @@ export function HoyPage() {
                     {item.notas && <div className="item-notes">{item.notas}</div>}
                   </div>
                   <div className="hoy-agenda-actions">
+                    <button
+                      className="action-btn"
+                      onClick={() => handleCall(item.cliente_telefono)}
+                      title="Llamar"
+                    >
+                      📞 Llamar
+                    </button>
                     <button
                       className="action-btn wa"
                       onClick={() => handleWhatsAppQuick(item.cliente_telefono, routeMsg)}
@@ -1472,11 +1608,11 @@ export function HoyPage() {
         </section>
       )}
 
-      {!loading && agenda.length === 0 && todayLeads.length > 0 && (
+      {!loading && todayLeads.length > 0 && (
         <section className="hoy-list-section">
           <div className="hoy-list-header">
-            <h3>{t('hoy.upcomingCitas') || 'Próximas Citas'}</h3>
-            <span className="hoy-view-all">{t('common.viewAll') || 'Ver Todas'} ›</span>
+            <h3>Acciones de clientes y prospectos para hoy</h3>
+            <span className="hoy-view-all">{todayLeads.length}</span>
           </div>
           <div className="hoy-list-container">
             {todayLeads.map((lead) => renderLeadListItem(lead, '👤', 'blue'))}
@@ -1492,7 +1628,9 @@ export function HoyPage() {
               {crmTasks.length}
             </span>
           </div>
-          <div className="seller-section-sub">Asignadas para hoy o vencidas</div>
+          <div className="seller-section-sub">
+            Asignadas para hoy o vencidas{crmTasksOverdueCount > 0 ? ` · ${crmTasksOverdueCount} vencidas` : ''}
+          </div>
           <div className="seller-opps">
             {crmTasks.map(renderCrmTaskCard)}
           </div>
