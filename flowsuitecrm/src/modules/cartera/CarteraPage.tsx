@@ -1,29 +1,42 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
 import { Modal } from '../../components/Modal'
 import { INPUT_STYLE, LABEL_STYLE } from '../../components/formControlStyles'
 import { RegistrarGestionModal, type GestionContactoRef, type GestionDraft, type GestionRole } from '../../components/RegistrarGestionModal'
+import { useMessaging } from '../../hooks/useMessaging'
+import type { MessagingChannel, MessagingContact } from '../../types/messaging'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type EstadoCaso = 'Abierto' | 'En Negociación' | 'Acuerdo' | 'Cerrado'
+
+function parseMontoCargoVueltaInput(value: string): number | null {
+  const clean = value.replace(/[$,\s]/g, '').trim()
+  if (!clean) return null
+  const parsed = Number(clean)
+  return Number.isFinite(parsed) ? parsed : Number.NaN
+}
 
 type Case = {
   id: string
   org_id: string
   cliente_id: string
   monto_total: number
+  monto_devuelto: number | null
+  fecha_cargo_vuelta: string | null
   dias_vencido: number
   estado: EstadoCaso
   acuerdo_tipo: string | null
   fecha_apertura: string
   fecha_cierre: string | null
   updated_by: string | null
+  en_proceso_legal: boolean
   clientes: {
     nombre: string | null
     apellido: string | null
     telefono: string | null
+    email: string | null
     hycite_id: string | null
     saldo_actual: number | null
   } | null
@@ -84,6 +97,39 @@ type Cuota = {
   fecha_pago: string | null
   pago_id?: string | null
   estado: string
+}
+
+type DfpAccount = {
+  id: string
+  case_id: string
+  cliente_id: string
+  apr_anual: number
+  fecha_inicio: string
+  fecha_ultimo_devengo: string
+  saldo_principal_inicial: number
+  saldo_principal_actual: number
+  saldo_interes_actual: number
+  saldo_fees_actual: number
+  saldo_total_actual: number
+  estado: string
+}
+
+type LedgerEntry = {
+  id: string
+  revolving_account_id: string
+  case_id: string
+  entry_date: string
+  effective_date: string
+  entry_type: string
+  component_type: string
+  debit_credit: string
+  amount: number
+  description: string | null
+  balance_principal_after: number | null
+  balance_interest_after: number | null
+  balance_fees_after: number | null
+  balance_total_after: number | null
+  created_at: string
 }
 
 type HistorialEvent = {
@@ -183,7 +229,7 @@ function buildHistorial(gestiones: Gestion[], ptps: PTP[], pagos: Pago[], caso: 
     timestamp: caso.fecha_apertura,
     tipo: 'apertura',
     label: 'Caso abierto',
-    monto: caso.monto_total,
+    monto: caso.monto_devuelto ?? caso.monto_total,
     estado: caso.estado,
     notas: caso.acuerdo_tipo ?? null,
     actor: null,
@@ -331,13 +377,15 @@ type PagoModalProps = {
   caseId: string
   clienteId: string
   orgId: string
+  dfpAccount: DfpAccount | null
+  disabled: boolean
   ptps: PTP[]
   cuotas: Cuota[]
   onClose: () => void
   onSaved: () => void
 }
 
-function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSaved }: PagoModalProps) {
+function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps, cuotas, onClose, onSaved }: PagoModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState(todayYmd())
   const [metodo, setMetodo] = useState('efectivo')
@@ -350,6 +398,7 @@ function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSa
 
   const ptpsPendientes = useMemo(() => ptps.filter(p => p.estado === 'pendiente' || p.estado === 'vencido'), [ptps])
   const cuotasAbiertas = useMemo(() => cuotas.filter(c => c.estado === 'pendiente' || c.estado === 'vencida'), [cuotas])
+  const isDfp = Boolean(dfpAccount)
 
   useEffect(() => {
     if (open) { setMonto(''); setFecha(todayYmd()); setMetodo('efectivo'); setReferencia(''); setNotas(''); setPtpId(''); setSelectedCuotaIds([]); setError(null) }
@@ -360,21 +409,34 @@ function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSa
   }
 
   const handleSave = async () => {
+    if (disabled) { setError('Espera a que termine de cargar el caso antes de registrar el pago.'); return }
+    if (dfpAccount && dfpAccount.case_id !== caseId) { setError('La cuenta DFP no corresponde al caso activo. Recarga el detalle antes de registrar el pago.'); return }
     if (!monto || !fecha) { setError('Monto y fecha son obligatorios'); return }
     setSaving(true)
     setError(null)
-    const { error: err } = await supabase.rpc('fn_registrar_pago', {
-      p_org_id: orgId,
-      p_cliente_id: clienteId,
-      p_case_id: caseId,
-      p_monto: parseFloat(monto),
-      p_fecha_pago: fecha,
-      p_metodo_pago: metodo || null,
-      p_referencia: referencia || null,
-      p_notas: notas || null,
-      p_ptp_id: ptpId || null,
-      p_cuota_ids: selectedCuotaIds.length > 0 ? selectedCuotaIds : null,
-    })
+
+    const parsedMonto = parseFloat(monto)
+    const { error: err } = dfpAccount
+      ? await supabase.rpc('fn_registrar_pago_revolving', {
+        p_account_id: dfpAccount.id,
+        p_monto: parsedMonto,
+        p_fecha: fecha,
+        p_referencia: referencia || null,
+        p_notas: notas || null,
+      })
+      : await supabase.rpc('fn_registrar_pago', {
+        p_org_id: orgId,
+        p_cliente_id: clienteId,
+        p_case_id: caseId,
+        p_monto: parsedMonto,
+        p_fecha_pago: fecha,
+        p_metodo_pago: metodo || null,
+        p_referencia: referencia || null,
+        p_notas: notas || null,
+        p_ptp_id: ptpId || null,
+        p_cuota_ids: selectedCuotaIds.length > 0 ? selectedCuotaIds : null,
+      })
+
     if (err) { setSaving(false); setError(err.message); return }
 
     setSaving(false)
@@ -395,6 +457,11 @@ function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSa
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {isDfp && (
+          <p style={{ margin: 0, padding: '0.55rem 0.65rem', borderRadius: '0.45rem', background: '#0f766e14', border: '1px solid #0f766e33', color: 'var(--color-text-muted)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+            Pago DFP/revolving: se aplicará por waterfall a fees, interés y principal. No crea pago simple ni modifica el ledger directamente desde la UI.
+          </p>
+        )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Monto recibido *</span>
           <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
@@ -417,7 +484,7 @@ function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSa
           <span style={LABEL_STYLE}>Referencia / N° confirmación</span>
           <input type="text" value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Ej. TRF-123456" style={INPUT_STYLE} />
         </label>
-        {ptpsPendientes.length > 0 && (
+        {!isDfp && ptpsPendientes.length > 0 && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <span style={LABEL_STYLE}>Aplica a promesa de pago (opcional)</span>
             <select value={ptpId} onChange={e => setPtpId(e.target.value)} style={INPUT_STYLE}>
@@ -428,7 +495,7 @@ function PagoModal({ open, caseId, clienteId, orgId, ptps, cuotas, onClose, onSa
             </select>
           </label>
         )}
-        {cuotasAbiertas.length > 0 && (
+        {!isDfp && cuotasAbiertas.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
             <span style={LABEL_STYLE}>Aplicar a cuotas del plan (opcional)</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '180px', overflowY: 'auto', padding: '0.55rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
@@ -567,9 +634,92 @@ function PlanModal({ open, caseId, clienteId, orgId, onClose, onSaved }: PlanMod
   )
 }
 
+// ── Capturar Monto Cargo Vuelta Modal ─────────────────────────────────────────
+
+type CapturarMontoModalProps = {
+  open: boolean
+  caseId: string
+  clienteId: string
+  orgId: string
+  saldoHycite: number | null
+  onClose: () => void
+  onSaved: () => void
+}
+
+function CapturarMontoModal({ open, clienteId, saldoHycite, onClose, onSaved }: CapturarMontoModalProps) {
+  const [monto, setMonto] = useState('')
+  const [fecha, setFecha] = useState('')
+  const [dias, setDias] = useState('')
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) { setMonto(''); setFecha(''); setDias(''); setNotas(''); setError(null) }
+  }, [open])
+
+  const handleSave = async () => {
+    const parsedMonto = parseMontoCargoVueltaInput(monto)
+    if (parsedMonto === null || Number.isNaN(parsedMonto) || parsedMonto <= 0) { setError('El monto cargo de vuelta debe ser mayor a 0'); return }
+    setSaving(true)
+    setError(null)
+    const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
+      p_cliente_id: clienteId,
+      p_monto_cargo_vuelta: parsedMonto,
+      p_fecha_cargo_vuelta: fecha || null,
+      p_dias_vencido: dias ? parseInt(dias) : null,
+      p_numero_cuenta_hycite: null,
+      p_numero_orden_hycite: null,
+      p_notas: notas.trim() || null,
+    })
+    setSaving(false)
+    if (rpcErr) { setError(rpcErr.message); return }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title="Capturar Monto cargo de vuelta" onClose={onClose} size="sm"
+      actions={
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>Cancelar</button>
+          <button type="button" onClick={handleSave} disabled={saving} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Guardando…' : 'Guardar monto'}
+          </button>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {saldoHycite !== null && (
+          <p style={{ margin: 0, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+            Saldo Hy-Cite (referencia): <strong>${saldoHycite.toFixed(2)}</strong> — puede ser $0.00. El monto cargo de vuelta es el monto real que el cliente debe al distribuidor.
+          </p>
+        )}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Monto cargo de vuelta *</span>
+          <input type="text" inputMode="decimal" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box' }} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Fecha cargo de vuelta</span>
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box' }} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Días vencido</span>
+          <input type="number" min="0" step="1" value={dias} onChange={e => setDias(e.target.value)} placeholder="0" style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box' }} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notas</span>
+          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Observaciones…" style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box', resize: 'vertical', minHeight: '56px' }} />
+        </label>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Case Detail Panel ─────────────────────────────────────────────────────────
 
-type DetailTab = 'historial' | 'gestiones' | 'ptps' | 'pagos' | 'plan'
+type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan'
 
 type CaseDetailProps = {
   caso: Case
@@ -597,28 +747,47 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
 }
 
 function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated }: CaseDetailProps) {
+  const { openEmail, openWhatsapp, openSms } = useMessaging()
   const [tab, setTab] = useState<DetailTab>('historial')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
   const [ptps, setPtps] = useState<PTP[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
   const [planes, setPlanes] = useState<Plan[]>([])
+  const [dfpAccount, setDfpAccount] = useState<DfpAccount | null>(null)
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [ptpOpen, setPtpOpen] = useState(false)
   const [pagoOpen, setPagoOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [gestionOpen, setGestionOpen] = useState(false)
+  const [capturarMontoOpen, setCapturarMontoOpen] = useState(false)
+  const detailLoadSeq = useRef(0)
 
   const loadDetail = async () => {
+    const loadSeq = detailLoadSeq.current + 1
+    detailLoadSeq.current = loadSeq
     setLoading(true)
-    const [g, p, pg, pl] = await Promise.all([
+    setDfpAccount(null)
+    setLedgerEntries([])
+    const [g, p, pg, pl, dfp] = await Promise.all([
       supabase.from('cob_gestiones').select('id,tipo_gestion,resultado,monto_comprometido,fecha_compromiso,notas,gestionado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase.from('cob_ptps').select('id,monto,fecha_compromiso,estado,notas,creado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase.from('cob_pagos').select('id,monto,fecha_pago,metodo_pago,referencia,notas,creado_por,created_at').eq('case_id', caso.id).order('fecha_pago', { ascending: false }),
       supabase.from('cob_plan_pagos').select('id,monto_total,numero_cuotas,estado,notas,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
+      supabase
+        .from('cob_revolving_accounts')
+        .select('id,case_id,cliente_id,apr_anual,fecha_inicio,fecha_ultimo_devengo,saldo_principal_inicial,saldo_principal_actual,saldo_interes_actual,saldo_fees_actual,saldo_total_actual,estado')
+        .eq('case_id', caso.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ])
+    if (loadSeq !== detailLoadSeq.current) return
     setGestiones((g.data ?? []) as Gestion[])
     setPtps((p.data ?? []) as PTP[])
     setPagos((pg.data ?? []) as Pago[])
+    const loadedDfpAccount = (dfp.data ?? null) as DfpAccount | null
+    setDfpAccount(loadedDfpAccount)
 
     // load cuotas for each plan
     const rawPlanes = (pl.data ?? []) as Omit<Plan, 'cuotas'>[]
@@ -629,6 +798,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         .select('id,plan_id,numero_cuota,monto,fecha_vencimiento,fecha_pago,pago_id,estado')
         .in('plan_id', planIds)
         .order('numero_cuota')
+      if (loadSeq !== detailLoadSeq.current) return
       const cuotasByPlan: Record<string, Cuota[]> = {}
       for (const c of (cuotasData ?? []) as (Cuota & { plan_id: string })[]) {
         if (!cuotasByPlan[c.plan_id]) cuotasByPlan[c.plan_id] = []
@@ -637,6 +807,21 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       setPlanes(rawPlanes.map(rp => ({ ...rp, cuotas: cuotasByPlan[rp.id] ?? [] })))
     } else {
       setPlanes([])
+    }
+
+    if (loadedDfpAccount) {
+      const { data: ledgerData } = await supabase
+        .from('cob_financial_ledger')
+        .select('id,revolving_account_id,case_id,entry_date,effective_date,entry_type,component_type,debit_credit,amount,description,balance_principal_after,balance_interest_after,balance_fees_after,balance_total_after,created_at')
+        .eq('revolving_account_id', loadedDfpAccount.id)
+        .eq('case_id', caso.id)
+        .order('effective_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (loadSeq !== detailLoadSeq.current) return
+      setLedgerEntries((ledgerData ?? []) as LedgerEntry[])
+    } else {
+      setLedgerEntries([])
     }
     setLoading(false)
   }
@@ -693,13 +878,52 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   }
 
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + p.monto, 0), [pagos])
-  const saldo = caso.monto_total - totalPagado
+  const safeDfpAccount = dfpAccount?.case_id === caso.id ? dfpAccount : null
+  const isDfp = Boolean(safeDfpAccount)
+  const saldoBase = caso.monto_devuelto ?? caso.monto_total
+  const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
+  const cliente = caso.clientes
   const cuotasAbiertas = useMemo(
     () => planes.flatMap(plan => plan.cuotas.filter(c => c.estado === 'pendiente' || c.estado === 'vencida')),
     [planes],
   )
+  const contactName = nombreCliente(cliente)
+  const cartaContact = useMemo<MessagingContact>(() => ({
+    nombre: contactName,
+    telefono: cliente?.telefono ?? null,
+    email: cliente?.email ?? null,
+    cuentaHycite: cliente?.hycite_id ?? '',
+    saldoActual: cliente?.saldo_actual ?? 0,
+    montoCargoVuelta: caso.monto_devuelto ?? caso.monto_total ?? 0,
+    saldoOperativo: saldo,
+    fechaCargoVuelta: caso.fecha_cargo_vuelta ?? '',
+    diasAtraso: caso.dias_vencido,
+    clienteId: caso.cliente_id,
+  }), [caso.cliente_id, caso.dias_vencido, caso.fecha_cargo_vuelta, caso.monto_devuelto, caso.monto_total, cliente?.email, cliente?.hycite_id, cliente?.saldo_actual, cliente?.telefono, contactName, saldo])
 
-  const cliente = caso.clientes
+  const openCarta = (channel: MessagingChannel) => {
+    const contact = { ...cartaContact }
+    const montoCarta = contact.montoCargoVuelta ?? contact.saldoOperativo ?? 0
+    if (montoCarta <= 0) {
+      window.alert('Primero captura el Monto cargo de vuelta antes de enviar la carta.')
+      return
+    }
+    contact.montoCargoVuelta = montoCarta
+    if (channel === 'email') {
+      const email = window.prompt('Email del cliente para enviar la carta:', contact.email ?? '')
+      if (!email) return
+      contact.email = email.trim()
+      openEmail(contact, 'sys_email_cartera.cargo_vuelta_oficina_local', 'cobranza', ['patrospi@hotmail.com'])
+      return
+    }
+    if (!contact.telefono) {
+      window.alert('Este cliente no tiene teléfono registrado.')
+      return
+    }
+    if (channel === 'whatsapp') openWhatsapp(contact, 'sys_cartera.cargo_vuelta_oficina_local', 'cobranza')
+    else openSms(contact, 'sys_cartera.cargo_vuelta_oficina_local', 'cobranza')
+  }
+
   const gestionContacto: GestionContactoRef = {
     tipo: 'cliente',
     id: caso.cliente_id,
@@ -715,6 +939,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 
   const TABS: { key: DetailTab; label: string }[] = [
     { key: 'historial', label: 'Historial' },
+    { key: 'estado_cuenta', label: 'Estado de cuenta' },
     { key: 'gestiones', label: `Gestiones (${gestiones.length})` },
     { key: 'ptps', label: `PTPs (${ptps.length})` },
     { key: 'pagos', label: `Pagos (${pagos.length})` },
@@ -726,6 +951,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       {/* Header */}
       <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
         <p style={{ margin: '0 0 0.4rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>
+          {caso.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.4rem' }}>⚖️</span>}
           {nombreCliente(cliente)}
           {cliente?.hycite_id && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>#{cliente.hycite_id}</span>}
         </p>
@@ -734,19 +960,59 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
             <span key={ch.label} style={{ padding: '0.15rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: ch.color + '22', color: ch.color, border: `1px solid ${ch.color}44` }}>{ch.label}</span>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-          <span>Deuda: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(caso.monto_total)}</strong></span>
-          <span>Pagado: <strong style={{ color: '#10b981' }}>{fmtMonto(totalPagado)}</strong></span>
-          <span>Saldo: <strong style={{ color: saldo > 0 ? '#f87171' : '#10b981' }}>{fmtMonto(saldo)}</strong></span>
+        <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
+          {/* Saldo Hy-Cite siempre como referencia */}
+          {cliente?.saldo_actual !== undefined && cliente?.saldo_actual !== null && (
+            <span style={{ opacity: 0.65 }}>
+              Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text-muted)' }}>{fmtMonto(cliente.saldo_actual)}</strong>
+            </span>
+          )}
+          {/* Monto cargo de vuelta */}
+          {caso.monto_devuelto !== null && caso.monto_devuelto !== undefined && caso.monto_devuelto > 0 ? (
+            <span>Monto cargo de vuelta: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(caso.monto_devuelto)}</strong></span>
+          ) : (
+            <span style={{ color: '#d97706', fontWeight: 700 }}>⚠ Monto cargo de vuelta: pendiente de capturar</span>
+          )}
+          {!isDfp && <span>Pagado: <strong style={{ color: '#10b981' }}>{fmtMonto(totalPagado)}</strong></span>}
+          <span>Saldo operativo: <strong style={{ color: saldo > 0 ? '#f87171' : '#10b981' }}>{fmtMonto(saldo)}</strong></span>
         </div>
+        {safeDfpAccount && <DfpSummary account={safeDfpAccount} />}
       </div>
+
+      {/* CTA pendiente de monto */}
+      {(caso.monto_devuelto === null || caso.monto_devuelto === undefined || caso.monto_devuelto === 0) && (
+        <div style={{ padding: '0.55rem 1.25rem', background: 'rgba(217,119,6,0.08)', borderBottom: '1px solid rgba(217,119,6,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <span style={{ fontSize: '0.78rem', color: '#d97706', fontWeight: 600 }}>
+            ⚠ Monto cargo de vuelta pendiente — Hy-Cite reportó saldo 0 pero el cliente puede deber.
+          </span>
+          <button type="button" onClick={() => setCapturarMontoOpen(true)}
+            style={{ padding: '0.25rem 0.75rem', borderRadius: '0.4rem', border: '1px solid rgba(217,119,6,0.5)', background: 'rgba(217,119,6,0.12)', color: '#d97706', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            Capturar monto
+          </button>
+        </div>
+      )}
 
       {/* Action bar */}
       <div style={{ padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
         <ActionBtn label="+ Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
         <ActionBtn label="+ PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
-        <ActionBtn label="+ Pago" color="#10b981" onClick={() => setPagoOpen(true)} />
+        <ActionBtn label="+ Pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
         <ActionBtn label="+ Plan" color="#7c3aed" onClick={() => setPlanOpen(true)} />
+        <ActionBtn label="↩ Cargo de vuelta" color="#7c3aed" onClick={() => setCapturarMontoOpen(true)} />
+        <ActionBtn
+          label={caso.en_proceso_legal ? '⚖️ Legal activo' : '⚖️ Marcar legal'}
+          color={caso.en_proceso_legal ? '#dc2626' : '#6b7280'}
+          onClick={async () => {
+            await supabase
+              .from('cargo_vuelta_cases')
+              .update({ en_proceso_legal: !caso.en_proceso_legal })
+              .eq('id', caso.id)
+            onCaseUpdated()
+          }}
+        />
+        <ActionBtn label="Email carta" color="#2563eb" onClick={() => openCarta('email')} />
+        <ActionBtn label="WhatsApp carta" color="#16a34a" onClick={() => openCarta('whatsapp')} disabled={!cliente?.telefono} />
+        <ActionBtn label="SMS carta" color="#6b7280" onClick={() => openCarta('sms')} disabled={!cliente?.telefono} />
       </div>
 
       {/* Tabs */}
@@ -765,6 +1031,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Cargando…</p>
         ) : tab === 'historial' ? (
           <HistorialList events={buildHistorial(gestiones, ptps, pagos, caso)} usersById={usersById} />
+        ) : tab === 'estado_cuenta' ? (
+          <EstadoCuentaList account={safeDfpAccount} entries={ledgerEntries} />
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
         ) : tab === 'ptps' ? (
@@ -788,18 +1056,42 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         origenId={caso.id}
       />
       <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
-      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} ptps={ptps} cuotas={cuotasAbiertas} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
+      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} dfpAccount={safeDfpAccount} disabled={loading || Boolean(dfpAccount && dfpAccount.case_id !== caso.id)} ptps={ptps} cuotas={cuotasAbiertas} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
+      <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
     </div>
   )
 }
 
-function ActionBtn({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+function ActionBtn({ label, color, onClick, disabled = false }: { label: string; color: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick}
-      style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: `1px solid ${color}66`, background: color + '18', color, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+    <button type="button" onClick={onClick} disabled={disabled}
+      style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: `1px solid ${color}66`, background: color + '18', color, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontWeight: 700, opacity: disabled ? 0.55 : 1 }}>
       {label}
     </button>
+  )
+}
+
+function DfpSummary({ account }: { account: DfpAccount }) {
+  const aprPct = (account.apr_anual * 100).toLocaleString('es-MX', { maximumFractionDigits: 2 })
+  return (
+    <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+      <DfpMetric label="Principal" value={fmtMonto(account.saldo_principal_actual)} color="#2563eb" />
+      <DfpMetric label="Interés" value={fmtMonto(account.saldo_interes_actual)} color="#d97706" />
+      <DfpMetric label="Fees" value={fmtMonto(account.saldo_fees_actual)} color="#dc2626" />
+      <DfpMetric label="Saldo total" value={fmtMonto(account.saldo_total_actual)} color="#0f766e" />
+      <DfpMetric label="Último devengo" value={fmtFecha(account.fecha_ultimo_devengo)} color="#6b7280" />
+      <DfpMetric label="APR" value={`${aprPct}%`} color="#7c3aed" />
+    </div>
+  )
+}
+
+function DfpMetric({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: `1px solid ${color}33`, background: color + '0d', minWidth: 0 }}>
+      <p style={{ margin: '0 0 0.15rem', fontSize: '0.66rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>{label}</p>
+      <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 800, color, overflowWrap: 'anywhere' }}>{value}</p>
+    </div>
   )
 }
 
@@ -931,6 +1223,83 @@ function PlanesList({ planes }: { planes: Plan[] }) {
   )
 }
 
+function EstadoCuentaList({ account, entries }: { account: DfpAccount | null; entries: LedgerEntry[] }) {
+  if (!account) {
+    return <Empty label="Este caso todavía no tiene cuenta DFP/revolving asociada" />
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid #0f766e33', background: '#0f766e0d' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
+          <DfpMetric label="Principal" value={fmtMonto(account.saldo_principal_actual)} color="#2563eb" />
+          <DfpMetric label="Interés" value={fmtMonto(account.saldo_interes_actual)} color="#d97706" />
+          <DfpMetric label="Fees" value={fmtMonto(account.saldo_fees_actual)} color="#dc2626" />
+          <DfpMetric label="Total" value={fmtMonto(account.saldo_total_actual)} color="#0f766e" />
+        </div>
+      </div>
+      {entries.length === 0 ? (
+        <Empty label="La cuenta DFP no tiene movimientos de ledger visibles" />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          {entries.map(entry => {
+            const isCredit = entry.debit_credit === 'credit'
+            const color = isCredit ? '#10b981' : '#ef4444'
+            return (
+              <div key={entry.id} style={{ padding: '0.65rem 0.75rem', borderRadius: '0.5rem', border: `1px solid ${color}33`, background: color + '0a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-text)' }}>
+                      {formatLedgerType(entry.entry_type)} · {formatLedgerComponent(entry.component_type)}
+                    </p>
+                    <p style={{ margin: '0.18rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                      {fmtFecha(entry.effective_date)} · {isCredit ? 'Crédito' : 'Cargo'}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color, flexShrink: 0 }}>
+                    {isCredit ? '-' : '+'}{fmtMonto(entry.amount)}
+                  </span>
+                </div>
+                {entry.description && <p style={{ margin: '0.35rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{entry.description}</p>}
+                {entry.balance_total_after !== null && (
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                    Saldo después: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(entry.balance_total_after)}</strong>
+                    {entry.balance_principal_after !== null && ` · Principal ${fmtMonto(entry.balance_principal_after)}`}
+                    {entry.balance_interest_after !== null && ` · Interés ${fmtMonto(entry.balance_interest_after)}`}
+                    {entry.balance_fees_after !== null && ` · Fees ${fmtMonto(entry.balance_fees_after)}`}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatLedgerType(type: string) {
+  const map: Record<string, string> = {
+    principal_initial: 'Principal inicial',
+    finance_charge_accrual: 'Interés devengado',
+    late_fee_assessed: 'Late fee',
+    payment_applied: 'Pago aplicado',
+    adjustment: 'Ajuste',
+    writeoff: 'Write-off',
+    reversal: 'Reverso',
+  }
+  return map[type] ?? type
+}
+
+function formatLedgerComponent(component: string) {
+  const map: Record<string, string> = {
+    principal: 'Principal',
+    interest: 'Interés',
+    fee: 'Fee',
+  }
+  return map[component] ?? component
+}
+
 function Empty({ label }: { label: string }) {
   return <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>{label}</p>
 }
@@ -1007,7 +1376,7 @@ export function CarteraPage() {
 
     const { data, error: casesError } = await supabase
       .from('cargo_vuelta_cases')
-      .select('id,org_id,cliente_id,monto_total,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by')
+      .select('id,org_id,cliente_id,monto_total,monto_devuelto,fecha_cargo_vuelta,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,en_proceso_legal')
       .order('dias_vencido', { ascending: false })
 
     if (casesError) {
@@ -1026,18 +1395,20 @@ export function CarteraPage() {
 
     if (clienteIds.length === 0) {
       setCases(baseCases)
+      setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
     }
 
     const { data: clientesData, error: clientesError } = await supabase
       .from('clientes')
-      .select('id,nombre,apellido,telefono,hycite_id,saldo_actual')
+      .select('id,nombre,apellido,telefono,email,hycite_id,saldo_actual')
       .in('id', clienteIds)
 
     if (clientesError) {
       console.error('[CarteraPage] error cargando clientes de casos:', clientesError)
       setCases(baseCases)
+      setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
     }
@@ -1047,12 +1418,13 @@ export function CarteraPage() {
       clientesMap.set(cliente.id, cliente)
     })
 
-    setCases(
-      baseCases.map((row) => ({
-        ...row,
-        clientes: clientesMap.get(row.cliente_id) ?? null,
-      })),
-    )
+    const loadedCases = baseCases.map((row) => ({
+      ...row,
+      clientes: clientesMap.get(row.cliente_id) ?? null,
+    }))
+
+    setCases(loadedCases)
+    setSelectedCase((prev) => prev ? (loadedCases.find((row) => row.id === prev.id) ?? null) : null)
     setLoading(false)
   }
 
@@ -1153,12 +1525,21 @@ export function CarteraPage() {
             filtered.map(c => {
               const isSelected = selectedCase?.id === c.id
               const dColor = diasColor(c.dias_vencido)
+              const displayAmount = c.monto_devuelto ?? c.monto_total
+              const sinMonto = !c.monto_devuelto || c.monto_devuelto === 0
               return (
                 <button key={c.id} type="button" onClick={() => setSelectedCase(c)}
                   style={{ width: '100%', textAlign: 'left', padding: '0.7rem 1rem', border: 'none', borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-primary-subtle, rgba(59,130,246,0.08))' : 'transparent', cursor: 'pointer', borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3 }}>{nombreCliente(c.clientes)}</span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: dColor, flexShrink: 0 }}>{fmtMonto(c.monto_total)}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3 }}>
+                      {c.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.3rem' }}>⚖️</span>}
+                      {nombreCliente(c.clientes)}
+                    </span>
+                    {sinMonto ? (
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d97706', flexShrink: 0, padding: '0.1rem 0.4rem', borderRadius: '0.3rem', background: 'rgba(217,119,6,0.1)' }}>Sin monto</span>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: dColor, flexShrink: 0 }}>{fmtMonto(displayAmount)}</span>
+                    )}
                   </div>
                   <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
                     <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: dColor + '22', color: dColor }}>{c.dias_vencido}d</span>

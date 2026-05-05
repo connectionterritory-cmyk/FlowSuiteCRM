@@ -255,6 +255,32 @@ Entendemos que pueden surgir situaciones inesperadas. Por eso queremos contactar
 Responde este correo o contáctame directamente. Tu cuenta es importante para nosotros y queremos ayudarte a regularizarla.
 `,
   },
+  {
+    id: 'cartera.cargo_vuelta_oficina_local',
+    category: 'cartera',
+    label: 'Cuenta en cobro directo — oficina local',
+    subject: '⚖️ Aviso importante — Su cuenta Royal Prestige #{cuenta_hycite}',
+    message: `Estimado/a {nombre},
+
+Le contactamos desde la oficina del distribuidor de {organizacion} porque su cuenta Royal Prestige #{cuenta_hycite} tiene un balance pendiente de pago que requiere atención.
+
+Balance pendiente de pago: ${'{monto_cargo_vuelta}'}
+Fecha de referencia: {fecha_cargo_vuelta}
+
+Si no llegamos a un acuerdo de pago, esta cuenta será enviada al Departamento Legal ⚖️ para iniciar el proceso formal correspondiente.
+
+Para evitar que esto ocurra, comuníquese con nosotros a la brevedad:
+
+• Patricia Caicedo — (786) 291-3042
+• (818) 266-7038
+
+Estamos dispuestos a trabajar con usted para encontrar una solución antes de que el proceso avance.
+
+Atentamente,
+
+Departamento de Cobranza CWG
+`,
+  },
 
   // ── Cumpleaños ────────────────────────────────────────────────────────────
   {

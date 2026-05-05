@@ -72,6 +72,13 @@ type ClienteRecord = {
   fuente_import: string | null
 }
 
+function parseMontoCargoVueltaInput(value: string): number | null {
+  const clean = value.replace(/[$,\s]/g, '').trim()
+  if (!clean) return null
+  const parsed = Number(clean)
+  return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
 type ClienteNota = {
   id: string
   contenido: string | null
@@ -212,6 +219,16 @@ const getBirthMonth = (value: string | null): number | null => {
   return Number.isFinite(month) && month >= 1 && month <= 12 ? month : null
 }
 
+const isCargoVueltaCliente = (cliente: Pick<ClienteRecord, 'estado_cuenta_raw'>) => {
+  const estadoRaw = (cliente.estado_cuenta_raw ?? '').trim().toUpperCase()
+  return (
+    estadoRaw.includes('CARGO DE VUELTA') ||
+    estadoRaw.includes('CARGO VUELTA') ||
+    estadoRaw.includes('RECOMPRADA') ||
+    estadoRaw.includes('DFP')
+  )
+}
+
 // Segmento de atraso basado en dias_atraso
 function segmentoAtraso(dias: number | null, _moroso: number | null): string {
   if (!dias || dias <= 0) return 'Al día'
@@ -279,6 +296,101 @@ const getClientesPermissionError = (error: { code?: string | null; message?: str
   return null
 }
 
+// ── CargoVueltaModal ──────────────────────────────────────────────────────────
+
+type CargoVueltaModalProps = {
+  open: boolean
+  clienteId: string
+  saldoHycite: number | null
+  onClose: () => void
+  onSaved: () => void
+}
+
+function CargoVueltaModal({ open, clienteId, saldoHycite, onClose, onSaved }: CargoVueltaModalProps) {
+  const [monto, setMonto] = useState('')
+  const [fecha, setFecha] = useState('')
+  const [dias, setDias] = useState('')
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) { setMonto(''); setFecha(''); setDias(''); setNotas(''); setError(null) }
+  }, [open])
+
+  const handleSave = async () => {
+    const parsedMonto = parseMontoCargoVueltaInput(monto)
+    if (parsedMonto !== null && Number.isNaN(parsedMonto)) {
+      setError('Monto inválido'); return
+    }
+    setSaving(true)
+    setError(null)
+    const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
+      p_cliente_id: clienteId,
+      p_monto_cargo_vuelta: parsedMonto ?? null,
+      p_fecha_cargo_vuelta: fecha || null,
+      p_dias_vencido: dias ? parseInt(dias) : null,
+      p_numero_cuenta_hycite: null,
+      p_numero_orden_hycite: null,
+      p_notas: notas.trim() || null,
+    })
+    setSaving(false)
+    if (rpcErr) { setError(rpcErr.message); return }
+    onSaved()
+    onClose()
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem',
+    border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+    color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box',
+  }
+  const labelStyle: React.CSSProperties = {
+    fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '0.2rem',
+  }
+
+  return (
+    <Modal open={open} title="Abrir / Actualizar Cargo de Vuelta" onClose={onClose} size="sm"
+      actions={
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>Cancelar</button>
+          <button type="button" onClick={handleSave} disabled={saving} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+
+        {saldoHycite !== null && (
+          <p style={{ margin: 0, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+            Saldo Hy-Cite (referencia): <strong style={{ color: 'var(--color-text)' }}>${saldoHycite.toFixed(2)}</strong> — puede ser $0 aunque el cliente deba. El monto real se captura abajo.
+          </p>
+        )}
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={labelStyle}>Monto cargo de vuelta</span>
+          <input type="text" inputMode="decimal" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00 (dejar vacío si aún no se conoce)" style={inputStyle} />
+          <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Si no hay monto aún, deja en blanco — el caso quedará como pendiente.</span>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={labelStyle}>Fecha cargo de vuelta</span>
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inputStyle} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={labelStyle}>Días vencido</span>
+          <input type="number" min="0" step="1" value={dias} onChange={e => setDias(e.target.value)} placeholder="0" style={inputStyle} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={labelStyle}>Notas</span>
+          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Observaciones del cargo de vuelta…" style={{ ...inputStyle, resize: 'vertical', minHeight: '56px' }} />
+        </label>
+      </div>
+    </Modal>
+  )
+}
+
 export function ClientesPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
@@ -336,6 +448,7 @@ export function ClientesPage() {
   )
   const [filtroCodigoPostal, setFiltroCodigoPostal] = useState('')
   const [filtroEstadoOperativo, setFiltroEstadoOperativo] = useState('todos')
+  const [filtroCargoVuelta, setFiltroCargoVuelta] = useState<'todos' | 'cargo_vuelta' | 'no_cargo_vuelta'>('todos')
   const [filtroMesCumple, setFiltroMesCumple] = useState('todos')
   const [filtroCartuchos, setFiltroCartuchos] = useState<'todos' | 'vencidos' | 'proximos_30'>('todos')
   const [filtroFuenteImport, setFiltroFuenteImport] = useState('todos')
@@ -359,6 +472,7 @@ export function ClientesPage() {
   const [nextActionDraft, setNextActionDraft] = useState('')
   const [nextActionDateDraft, setNextActionDateDraft] = useState('')
   const [savingNextAction, setSavingNextAction] = useState(false)
+  const [cargoVueltaOpen, setCargoVueltaOpen] = useState(false)
 
   const loadClientes = useCallback(async () => {
     if (!configured || !sessionUserId || !currentRole) return
@@ -667,6 +781,12 @@ export function ClientesPage() {
       const matchEstadoOperativo =
         filtroEstadoOperativo === 'todos' || c.estado_operativo === filtroEstadoOperativo
 
+      const esCargoVuelta = isCargoVueltaCliente(c)
+      const matchCargoVuelta =
+        filtroCargoVuelta === 'todos' ||
+        (filtroCargoVuelta === 'cargo_vuelta' && esCargoVuelta) ||
+        (filtroCargoVuelta === 'no_cargo_vuelta' && !esCargoVuelta)
+
       const birthMonth = getBirthMonth(c.fecha_nacimiento)
       const matchCumple =
         filtroMesCumple === 'todos' ||
@@ -693,6 +813,7 @@ export function ClientesPage() {
         matchEstadoRegion &&
         matchCodigoPostal &&
         matchEstadoOperativo &&
+        matchCargoVuelta &&
         matchCumple &&
         matchCartuchos &&
         matchFuenteImport
@@ -709,6 +830,7 @@ export function ClientesPage() {
     estadoRegionExact,
     filtroCodigoPostal,
     filtroEstadoOperativo,
+    filtroCargoVuelta,
     filtroMesCumple,
     filtroCartuchos,
     filtroFuenteImport,
@@ -826,6 +948,7 @@ export function ClientesPage() {
       alDia: clientes.filter((c) => !isMoroso(c.dias_atraso)).length,
       conMoroso: clientes.filter((c) => isMoroso(c.dias_atraso)).length,
       cancelados: clientes.filter((c) => c.estado_cuenta === 'cancelacion_total').length,
+      cargoVuelta: clientes.filter(isCargoVueltaCliente).length,
       cumpleHoy: clientes.filter((c) => c.fecha_nacimiento && diasParaCumple(c.fecha_nacimiento) === 0).length,
       cartuchosVencidos: clientes.filter((c) => cartuchosVencidosIds.has(c.id)).length,
       cartuchosProximos: clientes.filter((c) => cartuchosProximosIds.has(c.id)).length,
@@ -1353,6 +1476,7 @@ export function ClientesPage() {
     setFiltroEstadoRegion('')
     setFiltroCodigoPostal('')
     setFiltroEstadoOperativo('todos')
+    setFiltroCargoVuelta('todos')
     setFiltroMesCumple('todos')
     setFiltroCartuchos('todos')
     setFiltroFuenteImport('todos')
@@ -1401,6 +1525,7 @@ export function ClientesPage() {
     filtroEstadoRegion ||
     filtroCodigoPostal ||
     filtroEstadoOperativo !== 'todos' ||
+    filtroCargoVuelta !== 'todos' ||
     filtroMesCumple !== 'todos' ||
     filtroCartuchos !== 'todos' ||
     filtroFuenteImport !== 'todos'
@@ -1414,6 +1539,7 @@ export function ClientesPage() {
     filtroEstadoRegion,
     filtroCodigoPostal,
     filtroEstadoOperativo !== 'todos' ? '1' : '',
+    filtroCargoVuelta !== 'todos' ? '1' : '',
     filtroMesCumple !== 'todos' ? '1' : '',
     filtroCartuchos !== 'todos' ? '1' : '',
     filtroFuenteImport !== 'todos' ? '1' : '',
@@ -1470,6 +1596,7 @@ export function ClientesPage() {
           { label: 'Al día', value: stats.alDia, color: '#10b981', active: filtroAtraso === 'al_dia', onClick: () => { limpiarFiltros(); setFiltroAtraso('al_dia') } },
           { label: 'Con morosidad', value: stats.conMoroso, color: '#f59e0b', active: filtroAtraso === 'con_moroso', onClick: () => { limpiarFiltros(); setFiltroAtraso('con_moroso') } },
           { label: 'Cancelados', value: stats.cancelados, color: '#6b7280', active: filtroEstado === 'cancelacion_total', onClick: () => { limpiarFiltros(); setFiltroEstado('cancelacion_total') } },
+          ...(stats.cargoVuelta > 0 ? [{ label: 'Cargo de Vuelta', value: stats.cargoVuelta, color: '#8b5cf6', active: filtroCargoVuelta === 'cargo_vuelta', onClick: () => { limpiarFiltros(); setFiltroCargoVuelta('cargo_vuelta') } }] : []),
           ...(stats.cumpleHoy > 0 ? [{ label: '🎂 Cumpleaños hoy', value: stats.cumpleHoy, color: '#8b5cf6', active: filtroMesCumple === 'hoy', onClick: () => { limpiarFiltros(); setFiltroMesCumple('hoy') } }] : []),
           ...(stats.cartuchosVencidos > 0 ? [{ label: '🔴 Filtros vencidos', value: stats.cartuchosVencidos, color: '#ef4444', active: filtroCartuchos === 'vencidos', onClick: () => { limpiarFiltros(); setFiltroCartuchos('vencidos') } }] : []),
           ...(stats.cartuchosProximos > 0 ? [{ label: '🟡 Filtros próximos', value: stats.cartuchosProximos, color: '#f97316', active: filtroCartuchos === 'proximos_30', onClick: () => { limpiarFiltros(); setFiltroCartuchos('proximos_30') } }] : []),
@@ -1644,6 +1771,19 @@ export function ClientesPage() {
                     <option value="recuperacion">Recuperación</option>
                     <option value="inactivo">Inactivo</option>
                     <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                {/* Cargo de Vuelta */}
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-muted, #6b7280)' }}>Cargo de Vuelta</div>
+                  <select
+                    value={filtroCargoVuelta}
+                    onChange={(e) => setFiltroCargoVuelta(e.target.value as 'todos' | 'cargo_vuelta' | 'no_cargo_vuelta')}
+                    style={{ padding: '0.5rem 0.625rem', borderRadius: '0.375rem', border: filtroCargoVuelta !== 'todos' ? '1.5px solid #2563eb' : '1px solid var(--color-border, #e5e7eb)', fontSize: '0.8rem', background: 'var(--color-input)', color: 'var(--color-text)' }}
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="cargo_vuelta">Solo Cargo de Vuelta</option>
+                    <option value="no_cargo_vuelta">Sin Cargo de Vuelta</option>
                   </select>
                 </div>
                 {/* Morosidad */}
@@ -2512,10 +2652,27 @@ export function ClientesPage() {
                   Ver perfil
                 </Button>
               )}
+              {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
+                <Button variant="ghost" type="button" onClick={() => setCargoVueltaOpen(true)} disabled={detailLoading}>
+                  ↩ Cargo de Vuelta
+                </Button>
+              )}
             </div>
           ) : null
         }
       />
+      {selectedClienteDetail && (
+        <CargoVueltaModal
+          open={cargoVueltaOpen}
+          clienteId={selectedClienteDetail.id}
+          saldoHycite={selectedClienteDetail.saldo_actual}
+          onClose={() => setCargoVueltaOpen(false)}
+          onSaved={() => {
+            setCargoVueltaOpen(false)
+            showToast('Caso cargo de vuelta guardado')
+          }}
+        />
+      )}
       <ModalRenderer />
 
       <PersonaPerfilPanel

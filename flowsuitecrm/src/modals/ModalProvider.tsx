@@ -146,12 +146,20 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
     <ModalHostContext.Provider value={value}>
       {children}
       <MessageModal
+        key={[
+          messageIntent?.channel ?? 'none',
+          messageIntent?.initialTemplateId ?? 'no-template',
+          messageIntent?.contact?.clienteId ?? messageIntent?.contact?.leadId ?? 'no-contact',
+          messageIntent?.contact?.montoCargoVuelta ?? 'no-cv-amount',
+          messageIntent?.contact?.saldoOperativo ?? 'no-operating-balance',
+        ].join(':')}
         open={Boolean(messageIntent)}
         channel={messageIntent?.channel ?? 'whatsapp'}
         contact={messageIntent?.contact ?? null}
         initialTemplateId={messageIntent?.initialTemplateId}
         contextType={messageIntent?.contextType}
         mkMessageId={messageIntent?.mkMessageId ?? null}
+        ccEmails={messageIntent?.ccEmails}
         onClose={closeMessageModal}
       />
       <CitaModal

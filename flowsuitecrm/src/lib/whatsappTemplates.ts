@@ -357,6 +357,13 @@ export const baseTemplates: WhatsappTemplate[] = [
     message:
       '{nombre}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {{vendedor_telefono|\"este número\"}} o responde aquí. Estoy disponible.',
   },
+  {
+    id: 'cartera.cargo_vuelta_oficina_local',
+    category: 'cartera',
+    label: 'Cuenta en cobro directo — oficina local',
+    message:
+      'Estimado/a {nombre}, le contactamos desde la oficina del distribuidor de *Connection Worldwide Group* respecto a su cuenta Royal Prestige #{cuenta_hycite}.\n\nSu cuenta tiene un *balance pendiente de ${monto_cargo_vuelta}*.\n\nSi no llegamos a un acuerdo de pago, esta cuenta será enviada al *Departamento Legal* ⚖️ para iniciar el proceso formal.\n\nPara evitar esto, comuníquese con nosotros:\n📞 *Patricia Caicedo* — (786) 291-3042\n📞 (818) 266-7038\n\nEstamos dispuestos a encontrar una solución antes de que el proceso avance.\n\n*Departamento de Cobranza CWG*',
+  },
 
   // ── Campaña FrescaFlow Abril ────────────────────────────────────────────────
   {

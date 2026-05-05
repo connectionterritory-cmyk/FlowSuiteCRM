@@ -13,6 +13,9 @@ export type MessagingContact = {
   cuentaHycite?: string | null
   saldoActual?: number | null
   montoMoroso?: number | null
+  montoCargoVuelta?: number | null
+  saldoOperativo?: number | null
+  fechaCargoVuelta?: string | null
   diasAtraso?: number | null
   estadoMorosidad?: string | null
   fuente?: string | null

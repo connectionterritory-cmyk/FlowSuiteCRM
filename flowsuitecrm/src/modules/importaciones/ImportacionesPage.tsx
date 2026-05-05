@@ -15,6 +15,24 @@ type ReportType = 'customer_list' | 'birthday_report'
 type SheetCell = string | number | boolean | Date | null | undefined
 type SheetRow = SheetCell[]
 
+// Estados Hy-Cite que indican Cargo de Vuelta / DFP
+const CARGO_VUELTA_ESTADOS = new Set([
+  'CARGO DE VUELTA', 'CARGOS DE VUELTA', 'CARGO VUELTA',
+  'RECOMPRADA', 'CUENTA RECOMPRADA', 'CUENTA DEVUELTA',
+  'DFP', 'DISTRIBUTOR FINANCE', 'DISTRIBUTOR FINANCE PROGRAM',
+  'DISTRIBUTOR FINANCING PROGRAM', 'DISTRIBUTOR FINANCING',
+])
+
+function isCargoVuelta(estadoRaw: string): boolean {
+  if (!estadoRaw) return false
+  const u = estadoRaw.trim().toUpperCase()
+  return CARGO_VUELTA_ESTADOS.has(u) ||
+    u.includes('CARGO DE VUELTA') ||
+    u.includes('CARGO VUELTA') ||
+    u.includes('RECOMPRADA') ||
+    (u.includes('DFP') && u.length <= 6)
+}
+
 interface ClienteImport {
   org_id: string | null
   hycite_id: string
@@ -43,6 +61,15 @@ interface ClienteImport {
   updated_at: string
   fecha_nacimiento?: string | null
   estado_operativo?: string | null
+  estado_cuenta_raw?: string | null
+  // Cargo de Vuelta
+  es_cargo_vuelta?: boolean
+  monto_cargo_vuelta?: number | null
+  fecha_cargo_vuelta_import?: string | null
+  dias_vencido_import?: number | null
+  numero_cuenta_hycite_import?: string | null
+  numero_orden_hycite_import?: string | null
+  notas_cargo_vuelta?: string | null
 }
 
 interface Importacion {
@@ -60,6 +87,8 @@ interface PreviewKpis {
   conFechaNac: number
   conMoroso: number
   sinTelefono: number
+  cargoVuelta: number
+  cargoVueltaConMonto: number
 }
 
 interface SystemFieldDef {
@@ -194,6 +223,64 @@ const SYSTEM_FIELDS_DEF: SystemFieldDef[] = [
       'FECHA NACIMIENTO', 'FECHA DE NACIMIENTO',
     ],
   },
+  {
+    key: 'monto_cargo_vuelta',
+    label: 'Monto cargo de vuelta',
+    required: false,
+    canonicalAlias: 'MONTO CARGO DE VUELTA',
+    aliases: [
+      'MONTO CARGO DE VUELTA', 'MONTO CARGO VUELTA', 'MONTO DEVUELTO', 'AMOUNT CHARGED BACK',
+      'CHARGEBACK AMOUNT', 'CARGO VUELTA MONTO', 'MONTO DFP',
+    ],
+  },
+  {
+    key: 'fecha_cargo_vuelta',
+    label: 'Fecha Cargo de Vuelta',
+    required: false,
+    canonicalAlias: 'FECHA CARGO DE VUELTA',
+    aliases: [
+      'FECHA CARGO DE VUELTA', 'FECHA CARGO VUELTA', 'FECHA DFP', 'CHARGEBACK DATE',
+      'FECHA DEVOLUCION', 'FECHA DEVOLUCION HYCITE',
+    ],
+  },
+  {
+    key: 'dias_vencido',
+    label: 'Días Vencido',
+    required: false,
+    canonicalAlias: 'DIAS VENCIDO',
+    aliases: [
+      'DIAS VENCIDO', 'DÍAS VENCIDO', 'DAYS OVERDUE', 'DAYS PAST DUE CARGO', 'DIAS VENCIDOS',
+    ],
+  },
+  {
+    key: 'numero_cuenta_hycite',
+    label: 'Número Cuenta Hy-Cite',
+    required: false,
+    canonicalAlias: 'NUMERO CUENTA HYCITE',
+    aliases: [
+      'NUMERO CUENTA HYCITE', 'NÚMERO CUENTA HYCITE', 'ACCOUNT NUMBER', 'CUENTA HYCITE',
+      'HYCITE ACCOUNT', 'HYCITE ACCOUNT NO', 'ACCOUNT NO',
+    ],
+  },
+  {
+    key: 'numero_orden_hycite',
+    label: 'Número Orden Hy-Cite',
+    required: false,
+    canonicalAlias: 'NUMERO ORDEN HYCITE',
+    aliases: [
+      'NUMERO ORDEN HYCITE', 'NÚMERO ORDEN HYCITE', 'ORDER NUMBER', 'ORDEN HYCITE',
+      'HYCITE ORDER', 'HYCITE ORDER NO', 'ORDER NO',
+    ],
+  },
+  {
+    key: 'notas_cargo_vuelta',
+    label: 'Notas (Cargo de Vuelta)',
+    required: false,
+    canonicalAlias: 'NOTAS',
+    aliases: [
+      'NOTAS', 'NOTES', 'NOTA', 'COMENTARIOS', 'OBSERVATIONS', 'OBSERVACIONES',
+    ],
+  },
 ]
 
 const ESTADO_OPERATIVO_MAP: Record<EstadoCuenta, string> = {
@@ -237,6 +324,8 @@ function parsearFecha(raw?: string): string | null {
   if (!raw) return null
   const s = raw.trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const isoWithTime = s.match(/^(\d{4})-(\d{2})-(\d{2})\s+\d{2}:\d{2}:\d{2}$/)
+  if (isoWithTime) return `${isoWithTime[1]}-${isoWithTime[2]}-${isoWithTime[3]}`
   const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (slash) {
     const [, m, d, y] = slash
@@ -493,6 +582,43 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     const telMovil = limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO MÓVIL', 'Celular', 'Mobile', 'Telefono']))
     const telCasa = limpiarTelefono(obtenerCampo(row, normalizedRow, ['TELÉFONO CASA', 'Home Phone', 'Tel Casa']))
 
+    // ── Cargo de Vuelta detection ──────────────────────────────────────────
+    const estadoRawCompleto = obtenerCampo(row, normalizedRow, [
+      'ESTADO CUENTA', 'ESTADO DE CUENTA', 'STATUS CUENTA', 'STATUS', 'ESTADO_CUENTA', 'ACCOUNT STATUS', 'ESTADO',
+    ]).trim()
+    const esCargoVuelta = isCargoVuelta(estadoRawCompleto)
+
+    const montoCargoVueltaRaw = obtenerCampo(row, normalizedRow, [
+      'MONTO CARGO DE VUELTA', 'MONTO CARGO VUELTA', 'MONTO DEVUELTO', 'AMOUNT CHARGED BACK',
+      'CHARGEBACK AMOUNT', 'CARGO VUELTA MONTO', 'MONTO DFP',
+    ]).trim()
+    const montoCargoVuelta = montoCargoVueltaRaw ? parsearMonto(montoCargoVueltaRaw) : null
+
+    const fechaCargoVueltaRaw = obtenerCampo(row, normalizedRow, [
+      'FECHA CARGO DE VUELTA', 'FECHA CARGO VUELTA', 'FECHA DFP', 'CHARGEBACK DATE',
+      'FECHA DEVOLUCION', 'FECHA DEVOLUCION HYCITE',
+    ]).trim()
+    const fechaCargoVuelta = fechaCargoVueltaRaw ? parsearFecha(fechaCargoVueltaRaw) : null
+
+    const diasVencidoRaw = obtenerCampo(row, normalizedRow, [
+      'DIAS VENCIDO', 'DÍAS VENCIDO', 'DAYS OVERDUE', 'DAYS PAST DUE CARGO', 'DIAS VENCIDOS',
+    ]).trim()
+    const diasVencido = diasVencidoRaw ? (parseInt(diasVencidoRaw) || null) : null
+
+    const numeroCuentaHycite = obtenerCampo(row, normalizedRow, [
+      'NUMERO CUENTA HYCITE', 'NÚMERO CUENTA HYCITE', 'ACCOUNT NUMBER', 'CUENTA HYCITE',
+      'HYCITE ACCOUNT', 'HYCITE ACCOUNT NO', 'ACCOUNT NO',
+    ]).trim() || null
+
+    const numeroOrdenHycite = obtenerCampo(row, normalizedRow, [
+      'NUMERO ORDEN HYCITE', 'NÚMERO ORDEN HYCITE', 'ORDER NUMBER', 'ORDEN HYCITE',
+      'HYCITE ORDER', 'HYCITE ORDER NO', 'ORDER NO',
+    ]).trim() || null
+
+    const notasCargoVuelta = obtenerCampo(row, normalizedRow, [
+      'NOTAS', 'NOTES', 'NOTA', 'COMENTARIOS', 'OBSERVATIONS', 'OBSERVACIONES',
+    ]).trim() || null
+
     return {
       org_id: null,
       hycite_id: hyciteId,
@@ -524,6 +650,14 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
     codigo_dist_hycite: obtenerCampo(row, normalizedRow, ['DISTRIBUIDOR']).trim() || null,
     updated_at: new Date().toISOString(),
     fecha_nacimiento: fechaNacimiento,
+    estado_cuenta_raw: estadoRawCompleto || null,
+    es_cargo_vuelta: esCargoVuelta,
+    monto_cargo_vuelta: montoCargoVuelta,
+    fecha_cargo_vuelta_import: fechaCargoVuelta,
+    dias_vencido_import: diasVencido,
+    numero_cuenta_hycite_import: numeroCuentaHycite,
+    numero_orden_hycite_import: numeroOrdenHycite,
+    notas_cargo_vuelta: notasCargoVuelta,
   }
 }
 
@@ -663,6 +797,9 @@ export function ImportacionesPage() {
   const [actualizados, setActualizados] = useState(0)
   const [errores, setErrores] = useState(0)
   const [errorRows, setErrorRows] = useState<Array<{ hycite_id: string; nombre: string; error: string }>>([])
+  const [cvDetectados, setCvDetectados] = useState(0)
+  const [cvCasosCreados, setCvCasosCreados] = useState(0)
+  const [cvPendientesMonto, setCvPendientesMonto] = useState(0)
 
   // Tab
   const [activeTab, setActiveTab] = useState<'hycite' | 'general' | 'revisiones'>('hycite')
@@ -735,55 +872,82 @@ export function ImportacionesPage() {
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target?.result, { type: 'binary', raw: false, cellDates: false })
-        const ws = wb.Sheets[wb.SheetNames[0]]
+        const worksheetRows = wb.SheetNames.map(sheetName =>
+          XLSX.utils.sheet_to_json<SheetRow>(wb.Sheets[sheetName], { header: 1, defval: '', raw: false }),
+        ).filter(rows => rows.length > 0)
 
-        const initialRaw = XLSX.utils.sheet_to_json<SheetRow>(ws, { header: 1, range: 0, defval: '', raw: false }).slice(0, 10)
+        const initialRaw = worksheetRows.flatMap(rows => rows.slice(0, 10))
         const isBirthdayReport = initialRaw.some(row =>
           row.some(cell => String(cell).toUpperCase().includes('CUSTOMER BIRTHDAYS')),
         )
         setReportType(isBirthdayReport ? 'birthday_report' : 'customer_list')
 
-        const allRows = XLSX.utils.sheet_to_json<SheetRow>(ws, { header: 1, defval: '', raw: false })
-        let headerIndex = -1
         const keywords = ['HYCITE', 'HYCITE ID', 'CLIENTE', 'N DE CLIENTE', 'CUSTOMER', 'NOMBRE', 'NAME', 'APELLIDO', 'LAST', 'FIRST', 'CORREO ELECTRONICO', 'ELECTRONICO', 'EMAIL', 'PHONE', 'TELEFONO', 'BIRTH', 'BIRTHDAY', 'DOB']
         const aliasSet = new Set(
           SYSTEM_FIELDS_DEF.flatMap(field => field.aliases.map(alias => normalizarHeader(alias)))
         )
-        let bestMatchCount = 0
-        let bestRowIndex = -1
 
-        for (let i = 0; i < Math.min(allRows.length, 25); i++) {
-          const row = allRows[i]
-          if (!row || row.length < 2) continue
-          const normalizedCells = row.map(cell => normalizarHeader(String(cell ?? '')))
-          const rowStr = normalizedCells.join('|')
-          if (keywords.some(k => rowStr.includes(k))) {
-            headerIndex = i
-            break
+        const parseWorksheetRows = (allRows: SheetRow[]) => {
+          let headerIndex = -1
+          let bestMatchCount = 0
+          let bestRowIndex = -1
+
+          for (let i = 0; i < Math.min(allRows.length, 25); i++) {
+            const row = allRows[i]
+            if (!row || row.length < 2) continue
+            const normalizedCells = row.map(cell => normalizarHeader(String(cell ?? '')))
+            const rowStr = normalizedCells.join('|')
+            if (keywords.some(k => rowStr.includes(k))) {
+              headerIndex = i
+              break
+            }
+            const matchCount = normalizedCells.filter(cell => aliasSet.has(cell)).length
+            if (matchCount > bestMatchCount) {
+              bestMatchCount = matchCount
+              bestRowIndex = i
+            }
           }
-          const matchCount = normalizedCells.filter(cell => aliasSet.has(cell)).length
-          if (matchCount > bestMatchCount) {
-            bestMatchCount = matchCount
-            bestRowIndex = i
-          }
+          if (headerIndex === -1 && bestMatchCount >= 2) headerIndex = bestRowIndex
+          if (headerIndex === -1 && isBirthdayReport) headerIndex = 7
+
+          const raw: SheetRow[] = headerIndex === -1 ? allRows : allRows.slice(headerIndex)
+          if (raw.length < 2) return { headers: [] as string[], rows: [] as Record<string, string>[] }
+
+          const seen = new Map<string, number>()
+          const headers = raw[0].map(headerCell => {
+            const s = String(headerCell || '').trim()
+            const c = seen.get(s) ?? 0; seen.set(s, c + 1)
+            return c === 0 ? s : `${s}_${c}`
+          })
+          const rows: Record<string, string>[] = raw.slice(1).map(row =>
+            Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? '').trim()]))
+          ).filter(row => Object.values(row).some(value => value.trim()))
+
+          return { headers, rows }
         }
-        if (headerIndex === -1 && bestMatchCount >= 2) headerIndex = bestRowIndex
-        if (headerIndex === -1 && isBirthdayReport) headerIndex = 7
 
-        const raw: SheetRow[] = headerIndex === -1 ? allRows : allRows.slice(headerIndex)
-        if (raw.length < 2) { setParseError('No se pudo detectar el formato de los datos.'); return }
+        const parsedSheets = worksheetRows.map(parseWorksheetRows).filter(sheet => sheet.rows.length > 0)
+        if (parsedSheets.length === 0) {
+          setParseError('No se pudo detectar el formato de los datos.')
+          return
+        }
 
-        const seen = new Map<string, number>()
-        const headers = raw[0].map(headerCell => {
-          const s = String(headerCell || '').trim()
-          const c = seen.get(s) ?? 0; seen.set(s, c + 1)
-          return c === 0 ? s : `${s}_${c}`
+        const headers: string[] = []
+        const seenHeaders = new Set<string>()
+        parsedSheets.forEach(sheet => {
+          sheet.headers.forEach(header => {
+            const normalized = normalizarHeader(header)
+            if (!header.trim() || seenHeaders.has(normalized)) return
+            headers.push(header)
+            seenHeaders.add(normalized)
+          })
         })
-        const rows: Record<string, string>[] = raw.slice(1).map(row =>
-          Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? '').trim()]))
-        )
+        const rows = parsedSheets.flatMap(sheet => sheet.rows)
 
-        if (rows.length === 0) { setParseError('No se encontraron filas de datos.'); return }
+        if (rows.length === 0) {
+          setParseError('No se encontraron filas de datos.')
+          return
+        }
 
         const visibleHeaders = headers.filter(h => h.trim())
         setRawHeaders(visibleHeaders)
@@ -834,12 +998,16 @@ export function ImportacionesPage() {
       const { data } = await supabase.from('clientes').select('hycite_id').in('hycite_id', batch)
       existentesCount += data?.length ?? 0
     }
+    const cvTotal = uniqueClientes.filter(c => c.es_cargo_vuelta).length
+    const cvConMonto = uniqueClientes.filter(c => c.es_cargo_vuelta && c.monto_cargo_vuelta && c.monto_cargo_vuelta > 0).length
     setPreviewKpis({
       existentes: existentesCount,
       nuevos: uniqueClientes.length - existentesCount,
       conFechaNac: uniqueClientes.filter(c => c.fecha_nacimiento).length,
       conMoroso: uniqueClientes.filter(c => c.monto_moroso > 0).length,
       sinTelefono: uniqueClientes.filter(c => !c.telefono).length,
+      cargoVuelta: cvTotal,
+      cargoVueltaConMonto: cvConMonto,
     })
     setKpisLoading(false)
   }, [rawRows, columnMapping, org_id, showToast])
@@ -850,6 +1018,7 @@ export function ImportacionesPage() {
     if (!session?.user.id || !org_id || clientes.length === 0) return
     setStep('importing')
     let imp = 0, up = 0, err = 0
+    let cvDet = 0, cvCre = 0, cvPend = 0
     const newErrorRows: Array<{ hycite_id: string; nombre: string; error: string }> = []
 
     for (let i = 0; i < clientes.length; i += 50) {
@@ -857,17 +1026,31 @@ export function ImportacionesPage() {
       const idsLote = lote.map(c => c.hycite_id)
       const cuentasLote = lote.map(c => c.hycite_id)
       const telsLote = lote.map(c => normalizarTelefono(c.telefono)).filter(Boolean) as string[]
+      const filtrosExistentes = [
+        `hycite_id.in.(${idsLote.join(',')})`,
+        `numero_cuenta_financiera.in.(${cuentasLote.join(',')})`,
+        ...(telsLote.length > 0 ? [`telefono.in.(${telsLote.join(',')})`] : []),
+      ]
 
       const { data: existentes } = await supabase
         .from('clientes')
-        .select('id, hycite_id, numero_cuenta_financiera, fecha_nacimiento, nombre, apellido, telefono, telefono_casa, email, direccion, ciudad, estado_region, codigo_postal, fecha_ultimo_pedido, ultima_fecha_pago, codigo_vendedor_hycite, codigo_dist_hycite, vendedor_id, estado_cuenta')
-        .or(`hycite_id.in.(${idsLote.join(',')}),numero_cuenta_financiera.in.(${cuentasLote.join(',')}),telefono.in.(${telsLote.join(',')})`)
+        .select('id, hycite_id, numero_cuenta_financiera, fecha_nacimiento, nombre, apellido, telefono, telefono_casa, email, direccion, ciudad, estado_region, codigo_postal, fecha_ultimo_pedido, ultima_fecha_pago, codigo_vendedor_hycite, codigo_dist_hycite, vendedor_id, estado_cuenta, estado_cuenta_raw')
+        .or(filtrosExistentes.join(','))
 
       const mapId = new Map(existentes?.filter(e => e.hycite_id).map(e => [e.hycite_id, e]) || [])
       const mapCuenta = new Map(existentes?.filter(e => e.numero_cuenta_financiera).map(e => [e.numero_cuenta_financiera, e]) || [])
       const mapTel = new Map(existentes?.filter(e => e.telefono).map(e => [normalizarTelefono(e.telefono), e]) || [])
 
       const buildPayload = (c: ClienteImport) => {
+        const clienteDbFields = { ...c }
+        delete clienteDbFields.es_cargo_vuelta
+        delete clienteDbFields.monto_cargo_vuelta
+        delete clienteDbFields.fecha_cargo_vuelta_import
+        delete clienteDbFields.dias_vencido_import
+        delete clienteDbFields.numero_cuenta_hycite_import
+        delete clienteDbFields.numero_orden_hycite_import
+        delete clienteDbFields.notas_cargo_vuelta
+
         const telMatch = c.telefono ? mapTel.get(normalizarTelefono(c.telefono)) : null
         const exById = mapId.get(c.hycite_id) || mapCuenta.get(c.hycite_id) || null
         const exByTel = telMatch && !telMatch.hycite_id ? telMatch : null
@@ -892,7 +1075,7 @@ export function ImportacionesPage() {
         }
 
         const base = ex ? {
-          ...c,
+          ...clienteDbFields,
           org_id,
           id: ex.id,
           // Preserve preferred fields
@@ -919,8 +1102,9 @@ export function ImportacionesPage() {
           ultima_fecha_pago: c.ultima_fecha_pago || ex.ultima_fecha_pago || null,
           codigo_vendedor_hycite: c.codigo_vendedor_hycite || ex.codigo_vendedor_hycite || null,
           codigo_dist_hycite: c.codigo_dist_hycite || ex.codigo_dist_hycite || null,
+          estado_cuenta_raw: c.estado_cuenta_raw || ex.estado_cuenta_raw || null,
         } : {
-          ...c,
+          ...clienteDbFields,
           org_id,
           vendedor_id: session!.user.id,
           numero_cuenta_financiera: c.hycite_id,
@@ -975,6 +1159,52 @@ export function ImportacionesPage() {
           if (matched) up += 1; else imp += 1
         })
       }
+
+      // ── Cargo de Vuelta: llamar RPC para clientes CV del lote ─────────────
+      // Solo si el upsert del lote no falló completamente (err parciales se manejan individualmente)
+      for (const c of lote) {
+        if (!c.es_cargo_vuelta) continue
+        cvDet += 1
+
+        // Buscar el cliente_id desde la DB (necesario para la RPC)
+        const { data: cData } = await supabase
+          .from('clientes')
+          .select('id')
+          .eq('hycite_id', c.hycite_id)
+          .eq('org_id', org_id)
+          .maybeSingle()
+
+        if (!cData?.id) continue
+
+        const montoCV = c.monto_cargo_vuelta && c.monto_cargo_vuelta > 0 ? c.monto_cargo_vuelta : null
+
+        if (montoCV === null) {
+          // Sin monto: no crear caso — dejar como pendiente
+          cvPend += 1
+          continue
+        }
+
+        const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
+          p_cliente_id: cData.id,
+          p_monto_cargo_vuelta: montoCV,
+          p_fecha_cargo_vuelta: c.fecha_cargo_vuelta_import ?? null,
+          p_dias_vencido: c.dias_vencido_import ?? null,
+          p_numero_cuenta_hycite: c.numero_cuenta_hycite_import ?? null,
+          p_numero_orden_hycite: c.numero_orden_hycite_import ?? null,
+          p_notas: c.notas_cargo_vuelta ?? null,
+        })
+
+        if (rpcErr) {
+          console.error('[CV RPC]', c.hycite_id, rpcErr.message)
+          newErrorRows.push({
+            hycite_id: c.hycite_id,
+            nombre: [c.nombre, c.apellido].filter(Boolean).join(' ') || '',
+            error: `Cargo vuelta: ${rpcErr.message}`,
+          })
+        } else {
+          cvCre += 1
+        }
+      }
     }
 
     await supabase.from('importaciones_hycite').insert({
@@ -991,6 +1221,9 @@ export function ImportacionesPage() {
     setImportados(imp)
     setActualizados(up)
     setErrores(err)
+    setCvDetectados(cvDet)
+    setCvCasosCreados(cvCre)
+    setCvPendientesMonto(cvPend)
     setStep('result')
     if (err === 0) showToast(`✅ ${imp} nuevos, ${up} actualizados`)
     else showToast(`⚠️ ${imp} nuevos, ${up} actualizados, ${err} errores`, 'error')
@@ -1007,6 +1240,9 @@ export function ImportacionesPage() {
     setColumnMapping({})
     setPreviewKpis(null)
     setErrorRows([])
+    setCvDetectados(0)
+    setCvCasosCreados(0)
+    setCvPendientesMonto(0)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1211,6 +1447,11 @@ export function ImportacionesPage() {
                       { label: 'Con nacimiento', value: previewKpis.conFechaNac, color: '#ec4899', icon: '🎂' },
                       { label: 'Con morosidad', value: previewKpis.conMoroso, color: '#f59e0b', icon: '⚠️' },
                       { label: 'Sin teléfono', value: previewKpis.sinTelefono, color: previewKpis.sinTelefono > 0 ? '#dc2626' : '#6b7280', icon: '📵' },
+                      ...(previewKpis.cargoVuelta > 0 ? [
+                        { label: 'Cargo de Vuelta', value: previewKpis.cargoVuelta, color: '#7c3aed', icon: '↩️' },
+                        { label: 'CV con monto', value: previewKpis.cargoVueltaConMonto, color: '#059669', icon: '💵' },
+                        { label: 'CV sin monto', value: previewKpis.cargoVuelta - previewKpis.cargoVueltaConMonto, color: previewKpis.cargoVuelta - previewKpis.cargoVueltaConMonto > 0 ? '#d97706' : '#6b7280', icon: '⏳' },
+                      ] : []),
                     ].map(s => (
                       <div key={s.label} style={{ padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '0.5rem', textAlign: 'center', border: '1px solid var(--color-border)' }}>
                         <div style={{ fontSize: '0.9rem', marginBottom: '0.15rem' }}>{s.icon}</div>
@@ -1348,6 +1589,29 @@ export function ImportacionesPage() {
                     </div>
                   ))}
                 </div>
+
+                {cvDetectados > 0 && (
+                  <div style={{ padding: '0.85rem 1rem', background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: '0.5rem' }}>
+                    <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', fontWeight: 700, color: '#7c3aed' }}>↩️ Resumen Cargo de Vuelta</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                      {[
+                        { label: 'Detectados', value: cvDetectados, color: '#7c3aed' },
+                        { label: 'Casos creados/actualizados', value: cvCasosCreados, color: '#059669' },
+                        { label: 'Pendientes de monto', value: cvPendientesMonto, color: cvPendientesMonto > 0 ? '#d97706' : '#6b7280' },
+                      ].map(s => (
+                        <div key={s.label} style={{ padding: '0.55rem 0.65rem', background: 'var(--color-surface)', borderRadius: '0.4rem', textAlign: 'center', border: '1px solid var(--color-border)' }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: s.color }}>{s.value}</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {cvPendientesMonto > 0 && (
+                      <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
+                        ⚠️ {cvPendientesMonto} cliente{cvPendientesMonto !== 1 ? 's' : ''} con estado Cargo de Vuelta importado{cvPendientesMonto !== 1 ? 's' : ''} sin "Monto cargo de vuelta". Captura el monto desde Clientes o Cartera.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {errores > 0 && errorRows.length > 0 && (
                   <div style={{ padding: '0.75rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>

@@ -8,18 +8,19 @@ type ActiveMessage = {
   contact: MessagingContact
   templateId?: string
   contextType?: MessagingContextType
+  ccEmails?: string[]
 }
 
 export function useMessaging() {
   const modalHost = useOptionalModalHost()
   const [activeMessage, setActiveMessage] = useState<ActiveMessage | null>(null)
 
-  const openChannel = useCallback((channel: MessagingChannel, contact: MessagingContact, templateId?: string, contextType?: MessagingContextType) => {
+  const openChannel = useCallback((channel: MessagingChannel, contact: MessagingContact, templateId?: string, contextType?: MessagingContextType, ccEmails?: string[]) => {
     if (modalHost) {
-      modalHost.openMessageModal({ channel, contact, initialTemplateId: templateId ?? null, contextType })
+      modalHost.openMessageModal({ channel, contact, initialTemplateId: templateId ?? null, contextType, ccEmails })
       return
     }
-    setActiveMessage({ channel, contact, templateId, contextType })
+    setActiveMessage({ channel, contact, templateId, contextType, ccEmails })
   }, [modalHost])
 
   const closeModal = useCallback(() => {
@@ -45,8 +46,8 @@ export function useMessaging() {
   )
 
   const openEmail = useCallback(
-    (contact: MessagingContact, templateId?: string, contextType?: MessagingContextType) => {
-      openChannel('email', contact, templateId, contextType)
+    (contact: MessagingContact, templateId?: string, contextType?: MessagingContextType, ccEmails?: string[]) => {
+      openChannel('email', contact, templateId, contextType, ccEmails)
     },
     [openChannel]
   )
@@ -65,6 +66,7 @@ export function useMessaging() {
           contact: activeMessage.contact,
           initialTemplateId: activeMessage.templateId,
           contextType: activeMessage.contextType,
+          ccEmails: activeMessage.ccEmails,
           onClose: closeModal,
         })
     }

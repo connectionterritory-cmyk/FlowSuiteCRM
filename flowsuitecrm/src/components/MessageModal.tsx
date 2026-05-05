@@ -19,6 +19,7 @@ type MessageModalProps = {
   initialTemplateId?: string | null
   contextType?: MessagingContextType
   mkMessageId?: string | null
+  ccEmails?: string[]
   onClose: () => void
 }
 
@@ -195,6 +196,7 @@ export function MessageModal(props: MessageModalProps) {
         initialTemplateId={props.initialTemplateId ?? null}
         contextType={props.contextType}
         mkMessageId={props.mkMessageId ?? null}
+        ccEmails={props.ccEmails}
         onClose={props.onClose}
       >
         <MessageModalContent onClose={props.onClose} />

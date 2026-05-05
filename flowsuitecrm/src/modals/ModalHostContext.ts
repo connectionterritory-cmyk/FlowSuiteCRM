@@ -14,6 +14,7 @@ export type MessageModalIntent = {
   initialTemplateId?: string | null
   contextType?: MessagingContextType
   mkMessageId?: string | null
+  ccEmails?: string[]
 }
 
 export type CitaModalIntent = {
