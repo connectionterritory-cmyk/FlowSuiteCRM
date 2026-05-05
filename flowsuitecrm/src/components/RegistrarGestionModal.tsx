@@ -147,6 +147,63 @@ const FIELD_GROUP_STYLE: React.CSSProperties = {
   gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
 }
 
+type FollowupTimeZone = 'local' | 'America/New_York'
+
+const FOLLOWUP_TIME_ZONE_OPTIONS: { value: FollowupTimeZone; label: string }[] = [
+  { value: 'local', label: 'Mi hora local' },
+  { value: 'America/New_York', label: 'Miami / Este' },
+]
+
+function pad2(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDateTimeLocal(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
+function getTimeZoneParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0)
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+    minute: get('minute'),
+    second: get('second'),
+  }
+}
+
+function convertZonedInputToLocalInput(value: string, timeZone: FollowupTimeZone) {
+  if (!value || timeZone === 'local') return value
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
+  if (!match) return value
+  const [, y, m, d, h, min] = match
+  const desired = {
+    year: Number(y),
+    month: Number(m),
+    day: Number(d),
+    hour: Number(h),
+    minute: Number(min),
+    second: 0,
+  }
+  const desiredUtc = Date.UTC(desired.year, desired.month - 1, desired.day, desired.hour, desired.minute)
+  const firstGuess = new Date(desiredUtc)
+  const actual = getTimeZoneParts(firstGuess, timeZone)
+  const actualUtc = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second)
+  return formatDateTimeLocal(new Date(firstGuess.getTime() + (desiredUtc - actualUtc)))
+}
+
 function createInitialDraft({
   contacto,
   role,
@@ -242,6 +299,7 @@ export function RegistrarGestionModal({
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<GestionContactoRef[]>([])
   const [showFollowup, setShowFollowup] = useState(false)
+  const [followupTimeZone, setFollowupTimeZone] = useState<FollowupTimeZone>('local')
   const [showCitaPrompt, setShowCitaPrompt] = useState(false)
   const [savedContacto, setSavedContacto] = useState<GestionContactoRef | null>(null)
   const [recentActividades, setRecentActividades] = useState<ActividadRow[]>([])
@@ -255,6 +313,7 @@ export function RegistrarGestionModal({
       setSearchQuery('')
       setSearchResults([])
       setShowFollowup(false)
+      setFollowupTimeZone('local')
       setShowCitaPrompt(false)
       setSavedContacto(null)
       setRecentActividades([])
@@ -537,6 +596,7 @@ export function RegistrarGestionModal({
       ...draft,
       resumen: draft.resumen.trim() || buildGestionAutoSummary(draft.tipo, draft.resultado),
       contenido: draft.contenido.trim(),
+      followupAt: convertZonedInputToLocalInput(draft.followupAt, followupTimeZone),
     }
     try {
       await onSubmit(nextDraft)
@@ -860,15 +920,36 @@ export function RegistrarGestionModal({
         </label>
 
         {showFollowup && (
-          <label style={{ display: 'grid', gap: '0.35rem' }}>
-            <span style={LABEL_STYLE}>Seguimiento</span>
-            <input
-              type="datetime-local"
-              value={draft.followupAt}
-              onChange={(event) => setDraft((current) => ({ ...current, followupAt: event.target.value }))}
-              style={INPUT_STYLE}
-            />
-          </label>
+          <div style={FIELD_GROUP_STYLE}>
+            <label style={{ display: 'grid', gap: '0.35rem' }}>
+              <span style={LABEL_STYLE}>Seguimiento</span>
+              <input
+                type="datetime-local"
+                value={draft.followupAt}
+                onChange={(event) => setDraft((current) => ({ ...current, followupAt: event.target.value }))}
+                style={INPUT_STYLE}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: '0.35rem' }}>
+              <span style={LABEL_STYLE}>La hora escrita es</span>
+              <select
+                value={followupTimeZone}
+                onChange={(event) => setFollowupTimeZone(event.target.value as FollowupTimeZone)}
+                style={INPUT_STYLE}
+              >
+                {FOLLOWUP_TIME_ZONE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {draft.followupAt && followupTimeZone !== 'local' && (
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>
+                  Se guardará como {convertZonedInputToLocalInput(draft.followupAt, followupTimeZone).replace('T', ' ')} en tu hora local.
+                </span>
+              )}
+            </label>
+          </div>
         )}
       </div>
     </Modal>
