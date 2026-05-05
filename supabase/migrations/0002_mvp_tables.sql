@@ -2,7 +2,6 @@
 -- Idempotent: safe to re-run
 
 begin;
-
 -- ============================================================================
 -- C) SERVICIO / POSTVENTA (multi-producto)
 -- ============================================================================
@@ -19,10 +18,8 @@ create table if not exists public.cliente_productos (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists cliente_productos_org_id_idx on public.cliente_productos (org_id);
 create index if not exists cliente_productos_cliente_id_idx on public.cliente_productos (cliente_id);
-
 create table if not exists public.servicios (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
@@ -38,11 +35,9 @@ create table if not exists public.servicios (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists servicios_org_id_idx on public.servicios (org_id);
 create index if not exists servicios_cliente_id_idx on public.servicios (cliente_id);
 create index if not exists servicios_estado_idx on public.servicios (estado);
-
 create table if not exists public.servicio_items (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
@@ -54,10 +49,8 @@ create table if not exists public.servicio_items (
   completado boolean not null default false,
   created_at timestamptz not null default now()
 );
-
 create index if not exists servicio_items_org_id_idx on public.servicio_items (org_id);
 create index if not exists servicio_items_servicio_id_idx on public.servicio_items (servicio_id);
-
 -- ============================================================================
 -- D) AGUA SCHEDULER (componentes + reglas)
 -- ============================================================================
@@ -71,7 +64,6 @@ create table if not exists public.agua_sistemas (
   descripcion text,
   created_at timestamptz not null default now()
 );
-
 insert into public.agua_sistemas (nombre, descripcion)
 values
   ('FrescaFlow', 'Sistema de filtración completo con RO y mineralización'),
@@ -79,14 +71,12 @@ values
   ('FrescaPure 5500', 'Sistema intermedio con carbón y prefiltro opcional'),
   ('Ducha', 'Sistema de filtración para ducha')
 on conflict (nombre) do nothing;
-
 create table if not exists public.agua_componentes (
   id uuid primary key default gen_random_uuid(),
   nombre text unique not null, -- 'Prefiltro', 'Carbon', 'Mineralizador', 'RO'
   descripcion text,
   created_at timestamptz not null default now()
 );
-
 insert into public.agua_componentes (nombre, descripcion)
 values
   ('Prefiltro', 'Filtro preliminar de sedimentos'),
@@ -94,7 +84,6 @@ values
   ('Mineralizador', 'Filtro mineralizador'),
   ('RO', 'Membrana de ósmosis inversa')
 on conflict (nombre) do nothing;
-
 create table if not exists public.agua_reglas (
   id uuid primary key default gen_random_uuid(),
   sistema text not null,
@@ -104,9 +93,7 @@ create table if not exists public.agua_reglas (
   created_at timestamptz not null default now(),
   unique (sistema, componente, intervalo_meses, aplica_si)
 );
-
 create index if not exists agua_reglas_sistema_idx on public.agua_reglas (sistema);
-
 create table if not exists public.cliente_sistemas (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
@@ -117,10 +104,8 @@ create table if not exists public.cliente_sistemas (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists cliente_sistemas_org_id_idx on public.cliente_sistemas (org_id);
 create index if not exists cliente_sistemas_cliente_id_idx on public.cliente_sistemas (cliente_id);
-
 create table if not exists public.cliente_componentes (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
@@ -132,10 +117,8 @@ create table if not exists public.cliente_componentes (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists cliente_componentes_org_id_idx on public.cliente_componentes (org_id);
 create index if not exists cliente_componentes_next_change_idx on public.cliente_componentes (next_change_at);
-
 -- ============================================================================
 -- E) CARTERA (Aging + Cargo de vuelta)
 -- ============================================================================
@@ -153,11 +136,9 @@ create table if not exists public.cob_gestiones (
   gestionado_por uuid, -- references auth.users(id)
   created_at timestamptz not null default now()
 );
-
 create index if not exists cob_gestiones_org_id_idx on public.cob_gestiones (org_id);
 create index if not exists cob_gestiones_cliente_id_idx on public.cob_gestiones (cliente_id);
 create index if not exists cob_gestiones_created_at_idx on public.cob_gestiones (created_at);
-
 create table if not exists public.cargo_vuelta_cases (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
@@ -173,11 +154,9 @@ create table if not exists public.cargo_vuelta_cases (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists cargo_vuelta_cases_org_id_idx on public.cargo_vuelta_cases (org_id);
 create index if not exists cargo_vuelta_cases_cliente_id_idx on public.cargo_vuelta_cases (cliente_id);
 create index if not exists cargo_vuelta_cases_estado_idx on public.cargo_vuelta_cases (estado);
-
 -- ============================================================================
 -- F) TEAM HUB (canales + anuncios)
 -- ============================================================================
@@ -193,9 +172,7 @@ create table if not exists public.canales (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists canales_org_id_idx on public.canales (org_id);
-
 create table if not exists public.anuncios (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
@@ -207,11 +184,9 @@ create table if not exists public.anuncios (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists anuncios_org_id_idx on public.anuncios (org_id);
 create index if not exists anuncios_canal_id_idx on public.anuncios (canal_id);
 create index if not exists anuncios_created_at_idx on public.anuncios (created_at desc);
-
 -- ============================================================================
 -- RLS POLICIES
 -- ============================================================================
@@ -228,7 +203,6 @@ alter table public.cob_gestiones enable row level security;
 alter table public.cargo_vuelta_cases enable row level security;
 alter table public.canales enable row level security;
 alter table public.anuncios enable row level security;
-
 -- Servicio policies
 do $$
 begin
@@ -340,5 +314,4 @@ begin
       with check (public.is_org_member(org_id));
   end if;
 end $$;
-
 commit;

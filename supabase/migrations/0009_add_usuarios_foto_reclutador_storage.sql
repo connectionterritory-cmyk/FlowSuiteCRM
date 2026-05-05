@@ -1,18 +1,14 @@
 alter table public.usuarios
   add column if not exists foto_url text,
   add column if not exists reclutador_codigo text;
-
 alter table public.productos
   add column if not exists foto_url text;
-
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do update set public = excluded.public;
-
 insert into storage.buckets (id, name, public)
 values ('productos', 'productos', true)
 on conflict (id) do update set public = excluded.public;
-
 do $$
 begin
   create policy "Public read avatars"
@@ -21,7 +17,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Authenticated upload avatars"
@@ -34,7 +29,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Authenticated update avatars"
@@ -52,7 +46,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Authenticated delete avatars"
@@ -65,7 +58,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Public read productos"
@@ -74,7 +66,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Admin distribuidor upload productos"
@@ -93,7 +84,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Admin distribuidor update productos"
@@ -123,7 +113,6 @@ begin
 exception when duplicate_object then
   null;
 end $$;
-
 do $$
 begin
   create policy "Admin distribuidor delete productos"

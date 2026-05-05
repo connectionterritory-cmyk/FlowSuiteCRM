@@ -9,11 +9,9 @@
 -- ============================================================
 
 begin;
-
 alter table public.leads
   add column if not exists direccion     text,
   add column if not exists ciudad        text,
   add column if not exists estado_region text,
   add column if not exists codigo_postal text;
-
 commit;

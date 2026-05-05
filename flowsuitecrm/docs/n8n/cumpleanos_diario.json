@@ -1,0 +1,166 @@
+{
+  "name": "Cumpleaños — Felicitación Diaria WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000001",
+      "name": "Trigger Diario 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const today = new Date();\nconst month = String(today.getMonth() + 1).padStart(2, '0');\nconst day = String(today.getDate()).padStart(2, '0');\nreturn [{ json: { dateFilter: `2000-${month}-${day}` } }];"
+      },
+      "id": "b1c2d3e4-0002-0002-0002-000000000002",
+      "name": "Fecha de Hoy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://rxiarmbosgivaplygqug.supabase.co/rest/v1/clientes?select=id,nombre,apellido,telefono,telefono_casa,email,fecha_nacimiento&fecha_nacimiento=eq.{{ $json.dateFilter }}&org_id=eq.00000000-0000-0000-0000-000000000001",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "REEMPLAZAR_CON_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer REEMPLAZAR_CON_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1c2d3e4-0003-0003-0003-000000000003",
+      "name": "Clientes de Cumpleaños Hoy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const clients = $input.first().json;\nconst result = [];\n\nif (!Array.isArray(clients) || clients.length === 0) {\n  console.log('Sin cumpleaños hoy');\n  return [];\n}\n\nfor (const c of clients) {\n  const telefono = c.telefono || c.telefono_casa;\n  const nombre = c.nombre || 'Cliente';\n\n  const mensaje = `🎂 ¡Hola ${nombre}! Hoy es tu día especial y queríamos ser los primeros en celebrarlo contigo. 🎉\\n\\nEn Connection Worldwide Group te tenemos un regalo de cumpleaños: un bono exclusivo de $200 para tu próximo equipo Royal Prestige, válido durante este mes.\\n\\nSolo comunícate con nosotros al (818) 266-7038 y te damos todos los detalles para que puedas reclamarlo.\\n\\n¡Que tengas un cumpleaños increíble rodeado de las personas que más quieres!\\n\\nCon cariño,\\nConnection Worldwide Group`;\n\n  if (telefono) {\n    result.push({\n      json: {\n        owner_id: '2e33a96f-1261-4df1-8fd2-89f3910c6558',\n        org_id: '00000000-0000-0000-0000-000000000001',\n        contact_tipo: 'cliente',\n        contact_id: c.id,\n        contexto_tipo: 'campana',\n        canal: 'whatsapp',\n        destinatario: telefono,\n        mensaje: mensaje,\n        mensaje_resuelto: mensaje,\n        status: 'programado',\n        scheduled_for: new Date(Date.now() - 1000).toISOString()\n      }\n    });\n  }\n\n  if (c.email && c.email.includes('@')) {\n    const emailSubject = `🎂 ¡Feliz cumpleaños ${nombre}! Un regalo especial para ti`;\n    const emailMsg = `Hola ${nombre},\\n\\n¡Hoy es tu día especial y queríamos ser los primeros en celebrarlo contigo! 🎉\\n\\nEn Connection Worldwide Group te tenemos un regalo de cumpleaños: un bono exclusivo de $200 para tu próximo equipo Royal Prestige, válido durante este mes.\\n\\nNo necesitas hacer nada complicado — solo comunícate con nosotros al (818) 266-7038 y coordinamos los detalles para que puedas reclamar tu regalo.\\n\\n¡Que tengas un cumpleaños increíble rodeado de las personas que más quieres!\\n\\nCon cariño,\\nConnection Worldwide Group`;\n\n    result.push({\n      json: {\n        owner_id: '2e33a96f-1261-4df1-8fd2-89f3910c6558',\n        org_id: '00000000-0000-0000-0000-000000000001',\n        contact_tipo: 'cliente',\n        contact_id: c.id,\n        contexto_tipo: 'campana',\n        canal: 'email',\n        destinatario: c.email,\n        asunto: emailSubject,\n        mensaje: emailMsg,\n        mensaje_resuelto: emailMsg,\n        from_name: 'Connection Worldwide Group',\n        status: 'programado',\n        scheduled_for: new Date(Date.now() - 1000).toISOString()\n      }\n    });\n  }\n}\n\nconsole.log(`Cumpleaños hoy: ${clients.length} clientes, ${result.length} mensajes`);\nreturn result;"
+      },
+      "id": "b1c2d3e4-0004-0004-0004-000000000004",
+      "name": "Preparar Mensajes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/rest/v1/outbox_messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "REEMPLAZAR_CON_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer REEMPLAZAR_CON_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b1c2d3e4-0005-0005-0005-000000000005",
+      "name": "Insertar en Outbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rxiarmbosgivaplygqug.supabase.co/functions/v1/process-outbox",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer REEMPLAZAR_CON_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1c2d3e4-0006-0006-0006-000000000006",
+      "name": "Despachar process-outbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Trigger Diario 9am": {
+      "main": [
+        [{ "node": "Fecha de Hoy", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fecha de Hoy": {
+      "main": [
+        [{ "node": "Clientes de Cumpleaños Hoy", "type": "main", "index": 0 }]
+      ]
+    },
+    "Clientes de Cumpleaños Hoy": {
+      "main": [
+        [{ "node": "Preparar Mensajes", "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Mensajes": {
+      "main": [
+        [{ "node": "Insertar en Outbox", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insertar en Outbox": {
+      "main": [
+        [{ "node": "Despachar process-outbox", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "flowsuitecrm"
+  }
+}

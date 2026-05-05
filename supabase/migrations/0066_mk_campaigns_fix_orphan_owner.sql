@@ -13,7 +13,6 @@
 --   4. Adds a trigger that blocks INSERT/UPDATE if owner_id is not in usuarios.
 
 begin;
-
 -- ── Step 1: Reassign orphaned campaigns to fallback admin ─────────────────────
 -- Finds campaigns whose owner_id has no matching row in public.usuarios,
 -- then sets owner_id to the first active admin user as a safe fallback.
@@ -40,7 +39,6 @@ begin
   raise notice 'Orphaned campaigns reassigned to %', v_fallback_id;
 end;
 $$;
-
 -- ── Step 2: Also fix mk_messages orphans (same root cause) ────────────────────
 do $$
 declare
@@ -63,28 +61,23 @@ begin
   raise notice 'Orphaned messages reassigned to %', v_fallback_id;
 end;
 $$;
-
 -- ── Step 3: Enforce FK with ON DELETE RESTRICT (idempotent) ──────────────────
 -- mk_campaigns
 alter table public.mk_campaigns
   drop constraint if exists mk_campaigns_owner_id_fkey;
-
 alter table public.mk_campaigns
   add constraint mk_campaigns_owner_id_fkey
   foreign key (owner_id)
   references public.usuarios(id)
   on delete restrict;
-
 -- mk_messages
 alter table public.mk_messages
   drop constraint if exists mk_messages_owner_id_fkey;
-
 alter table public.mk_messages
   add constraint mk_messages_owner_id_fkey
   foreign key (owner_id)
   references public.usuarios(id)
   on delete restrict;
-
 -- ── Step 4: Trigger to block orphan owner_id at INSERT/UPDATE ─────────────────
 -- Belt-and-suspenders: catches writes that bypass FK (e.g. service_role with
 -- session_replication_role = replica).
@@ -98,19 +91,15 @@ begin
   return NEW;
 end;
 $$;
-
 drop trigger if exists trg_mk_campaigns_owner_check on public.mk_campaigns;
 create trigger trg_mk_campaigns_owner_check
   before insert or update of owner_id on public.mk_campaigns
   for each row execute function public.fn_check_mk_owner_exists();
-
 drop trigger if exists trg_mk_messages_owner_check on public.mk_messages;
 create trigger trg_mk_messages_owner_check
   before insert or update of owner_id on public.mk_messages
   for each row execute function public.fn_check_mk_owner_exists();
-
 commit;
-
 -- ── Verification query (run separately to inspect before/after) ───────────────
 -- Find any remaining orphaned campaigns:
 --
@@ -136,4 +125,4 @@ commit;
 -- alter table public.mk_messages drop constraint if exists mk_messages_owner_id_fkey;
 -- alter table public.mk_messages add constraint mk_messages_owner_id_fkey
 --   foreign key (owner_id) references public.usuarios(id) on delete restrict;
--- commit;
+-- commit;;

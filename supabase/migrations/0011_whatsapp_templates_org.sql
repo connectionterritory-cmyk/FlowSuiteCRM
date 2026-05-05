@@ -1,5 +1,4 @@
 begin;
-
 create table if not exists public.whatsapp_templates_org (
   id uuid primary key default gen_random_uuid(),
   organizacion text not null,
@@ -12,20 +11,15 @@ create table if not exists public.whatsapp_templates_org (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create unique index if not exists whatsapp_templates_org_org_key_idx
   on public.whatsapp_templates_org (organizacion, template_key);
-
 create index if not exists whatsapp_templates_org_organizacion_idx
   on public.whatsapp_templates_org (organizacion);
-
 drop trigger if exists set_updated_at_whatsapp_templates_org on public.whatsapp_templates_org;
 create trigger set_updated_at_whatsapp_templates_org
   before update on public.whatsapp_templates_org
   for each row execute function public.set_updated_at();
-
 alter table public.whatsapp_templates_org enable row level security;
-
 drop policy if exists whatsapp_templates_org_select on public.whatsapp_templates_org;
 create policy whatsapp_templates_org_select on public.whatsapp_templates_org
   for select to authenticated
@@ -37,7 +31,6 @@ create policy whatsapp_templates_org_select on public.whatsapp_templates_org
         and u.organizacion is not distinct from whatsapp_templates_org.organizacion
     )
   );
-
 drop policy if exists whatsapp_templates_org_insert on public.whatsapp_templates_org;
 create policy whatsapp_templates_org_insert on public.whatsapp_templates_org
   for insert to authenticated
@@ -50,7 +43,6 @@ create policy whatsapp_templates_org_insert on public.whatsapp_templates_org
         and u.organizacion is not distinct from whatsapp_templates_org.organizacion
     )
   );
-
 drop policy if exists whatsapp_templates_org_update on public.whatsapp_templates_org;
 create policy whatsapp_templates_org_update on public.whatsapp_templates_org
   for update to authenticated
@@ -72,7 +64,6 @@ create policy whatsapp_templates_org_update on public.whatsapp_templates_org
         and u.organizacion is not distinct from whatsapp_templates_org.organizacion
     )
   );
-
 drop policy if exists whatsapp_templates_org_delete on public.whatsapp_templates_org;
 create policy whatsapp_templates_org_delete on public.whatsapp_templates_org
   for delete to authenticated
@@ -85,7 +76,6 @@ create policy whatsapp_templates_org_delete on public.whatsapp_templates_org
         and u.organizacion is not distinct from whatsapp_templates_org.organizacion
     )
   );
-
 create or replace function public.get_distributor_phone()
 returns text
 language plpgsql
@@ -116,7 +106,5 @@ begin
   return coalesce(_telefono, '');
 end;
 $$;
-
 grant execute on function public.get_distributor_phone() to authenticated;
-
 commit;

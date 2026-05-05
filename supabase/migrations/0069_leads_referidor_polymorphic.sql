@@ -27,13 +27,11 @@
 -- ============================================================
 
 begin;
-
 -- ── 1. Nuevas columnas ────────────────────────────────────────
 
 alter table public.leads
   add column if not exists referidor_tipo text,
   add column if not exists referidor_id   uuid;
-
 -- ── 2a. Check constraint — valores permitidos ─────────────────
 -- DO block para idempotencia (ADD CONSTRAINT falla si ya existe).
 
@@ -52,7 +50,6 @@ begin
       );
   end if;
 end $$;
-
 -- ── 2b. Check constraint — nullidad consistente ───────────────
 -- referidor_tipo y referidor_id deben ser ambos NULL o ambos NOT NULL.
 -- Expresión: (a IS NULL) = (b IS NULL) equivale a "ambos iguales en nulidad".
@@ -71,7 +68,6 @@ begin
       );
   end if;
 end $$;
-
 -- ── 3. Backfill de datos existentes ──────────────────────────
 --
 -- Prioridad documentada: embajador_id > referido_por_cliente_id.
@@ -91,14 +87,14 @@ set
   referidor_id = coalesce(embajador_id, referido_por_cliente_id)
 where
   (embajador_id is not null or referido_por_cliente_id is not null)
-  and referidor_id is null;   -- idempotente: no sobreescribe si ya fue migrado
+  and referidor_id is null;
+-- idempotente: no sobreescribe si ya fue migrado
 
 -- ── 4. Índice ─────────────────────────────────────────────────
 
 create index if not exists idx_leads_referidor
   on public.leads (referidor_tipo, referidor_id)
   where referidor_id is not null;
-
 -- ── 5. Función para trigger INSERT — bidireccional ────────────
 --
 -- Lógica de prioridad:
@@ -157,7 +153,6 @@ begin
   return NEW;
 end;
 $$;
-
 -- Recrear trigger INSERT (drop+create para que CREATE OR REPLACE de la
 -- función siempre quede ligado a la versión más reciente del trigger).
 drop trigger if exists trg_leads_sync_referidor_insert on public.leads;
@@ -165,7 +160,6 @@ create trigger trg_leads_sync_referidor_insert
   before insert on public.leads
   for each row
   execute function public.fn_leads_sync_referidor_insert();
-
 -- ── 6. Función para trigger UPDATE — bidireccional ────────────
 --
 -- Detección de qué lado cambió:
@@ -243,16 +237,13 @@ begin
   return NEW;
 end;
 $$;
-
 -- Recrear trigger UPDATE
 drop trigger if exists trg_leads_sync_referidor_update on public.leads;
 create trigger trg_leads_sync_referidor_update
   before update on public.leads
   for each row
   execute function public.fn_leads_sync_referidor_update();
-
 commit;
-
 -- ============================================================
 -- AUDIT QUERY — anomalías legacy (correr ANTES de aplicar migración)
 -- Detecta filas donde embajador_id y referido_por_cliente_id están
@@ -298,4 +289,4 @@ commit;
 -- drop index if exists public.idx_leads_referidor;
 --
 -- commit;
--- ============================================================
+-- ============================================================;

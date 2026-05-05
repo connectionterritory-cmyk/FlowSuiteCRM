@@ -6,7 +6,6 @@
 -- ============================================================
 
 begin;
-
 -- telemercadeo: ve citas donde el owner o asignado es uno de sus vendedores
 drop policy if exists citas_tele_read on public.citas;
 create policy citas_tele_read on public.citas
@@ -26,11 +25,9 @@ create policy citas_tele_read on public.citas
         )
     )
   );
-
 -- supervisor_telemercadeo: ve todas las citas (mismo scope que admin/distribuidor)
 drop policy if exists citas_supervisor_tele_read on public.citas;
 create policy citas_supervisor_tele_read on public.citas
   for select to authenticated
   using (public.is_supervisor_tele());
-
 commit;

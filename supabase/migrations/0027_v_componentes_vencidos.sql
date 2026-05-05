@@ -3,7 +3,6 @@
 -- El frontend agrupa por cliente_id para consolidar en un mensaje por cliente.
 -- security_invoker = true → RLS de clientes/equipos/componentes se aplica al caller.
 begin;
-
 create or replace view public.v_componentes_vencidos
   with (security_invoker = true)
 as
@@ -28,10 +27,8 @@ join public.clientes           c  on c.id    = e.cliente_id
 where comp.activo                = true
   and comp.fecha_proximo_cambio  is not null
   and comp.fecha_proximo_cambio  <= current_date;
-
 commit;
-
 -- ROLLBACK:
 -- begin;
 -- drop view if exists public.v_componentes_vencidos;
--- commit;
+-- commit;;

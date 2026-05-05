@@ -1,18 +1,14 @@
 -- Migration 0028: Clientes Geolocation & Unified Agenda View
 begin;
-
 -- 1. Add geolocation columns to clientes
 alter table public.clientes
   add column if not exists lat numeric,
   add column if not exists lng numeric;
-
 -- 2. Add time columns for agenda sorting
 alter table public.servicios
   add column if not exists hora_cita time without time zone;
-
 alter table public.programa_4en14_referidos
   add column if not exists hora_demo time without time zone;
-
 -- 3. Create Unified Agenda View
 -- Unifies 'servicios' and 'programa_4en14_referidos'
 create or replace view public.v_agenda_hoy as
@@ -55,8 +51,6 @@ select
   (r.estado_presentacion in ('show', 'demo_calificada', 'venta')) as completado
 from public.programa_4en14_referidos r
 join public.programa_4en14 p on r.programa_id = p.id;
-
 -- Grant access to the view
 grant select on public.v_agenda_hoy to authenticated;
-
 commit;

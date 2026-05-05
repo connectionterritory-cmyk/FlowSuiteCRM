@@ -32,7 +32,6 @@
 -- ============================================================
 
 begin;
-
 -- ── 1. Agregar lead_id ────────────────────────────────────────
 --
 -- ON DELETE SET NULL: si el lead es eliminado (o borrado lógico
@@ -42,7 +41,6 @@ begin;
 alter table public.embajadores
   add column if not exists lead_id uuid
     references public.leads(id) on delete set null;
-
 -- ── 2. Agregar cliente_id ─────────────────────────────────────
 --
 -- Mismo criterio que lead_id.
@@ -50,7 +48,6 @@ alter table public.embajadores
 alter table public.embajadores
   add column if not exists cliente_id uuid
     references public.clientes(id) on delete set null;
-
 -- ── 3. Constraint de exclusión mutua ─────────────────────────
 --
 -- El origen es lead O cliente, nunca ambos.
@@ -73,7 +70,6 @@ begin
       );
   end if;
 end $$;
-
 -- ── 4. Índices parciales por origen ──────────────────────────
 --
 -- Parciales (WHERE IS NOT NULL): la mayoría de filas en la
@@ -84,11 +80,9 @@ end $$;
 create index if not exists embajadores_lead_id_idx
   on public.embajadores (lead_id)
   where lead_id is not null;
-
 create index if not exists embajadores_cliente_id_idx
   on public.embajadores (cliente_id)
   where cliente_id is not null;
-
 -- ── 5. Documentar campos de identidad legacy ──────────────────
 --
 -- Los campos nombre, apellido, email, telefono, fecha_nacimiento
@@ -104,35 +98,27 @@ create index if not exists embajadores_cliente_id_idx
 comment on column public.embajadores.nombre is
   'LEGACY CACHE: fuente canónica es leads o clientes via lead_id/cliente_id. '
   'Se mantiene para registros históricos sin origen vinculado.';
-
 comment on column public.embajadores.apellido is
   'LEGACY CACHE: fuente canónica es leads o clientes via lead_id/cliente_id. '
   'Se mantiene para registros históricos sin origen vinculado.';
-
 comment on column public.embajadores.email is
   'LEGACY CACHE: fuente canónica es leads o clientes via lead_id/cliente_id. '
   'Se mantiene para registros históricos sin origen vinculado.';
-
 comment on column public.embajadores.telefono is
   'LEGACY CACHE: fuente canónica es leads o clientes via lead_id/cliente_id. '
   'Se mantiene para registros históricos sin origen vinculado.';
-
 comment on column public.embajadores.fecha_nacimiento is
   'LEGACY CACHE: fuente canónica es leads o clientes via lead_id/cliente_id. '
   'Se mantiene para registros históricos sin origen vinculado.';
-
 -- ── 6. Documentar las nuevas columnas de origen ───────────────
 
 comment on column public.embajadores.lead_id is
   'FK al lead de origen. Exclusivo con cliente_id (constraint embajador_origen_unico). '
   'NULL en registros históricos sin origen vinculado.';
-
 comment on column public.embajadores.cliente_id is
   'FK al cliente de origen. Exclusivo con lead_id (constraint embajador_origen_unico). '
   'NULL en registros históricos sin origen vinculado.';
-
 commit;
-
 -- ============================================================
 -- AUDIT QUERIES
 -- Ejecutar después de aplicar para verificar el estado de la BD.
@@ -195,4 +181,4 @@ commit;
 -- -- comment on column public.embajadores.fecha_nacimiento is null;
 --
 -- commit;
--- ============================================================
+-- ============================================================;

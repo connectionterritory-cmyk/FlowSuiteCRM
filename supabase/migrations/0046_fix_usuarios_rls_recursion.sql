@@ -7,7 +7,6 @@
 -- ============================================================
 
 begin;
-
 create or replace function public.current_user_is_not_tele()
 returns boolean
 language sql
@@ -21,11 +20,8 @@ as $$
       and rol not in ('telemercadeo', 'supervisor_telemercadeo')
   );
 $$;
-
 drop policy if exists usuarios_org_read on public.usuarios;
-
 create policy usuarios_org_read on public.usuarios
   for select to authenticated
   using (public.current_user_is_not_tele());
-
 commit;

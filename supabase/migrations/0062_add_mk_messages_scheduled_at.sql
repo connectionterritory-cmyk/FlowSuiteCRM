@@ -7,12 +7,9 @@
 -- ============================================================
 
 begin;
-
 alter table public.mk_messages
   add column if not exists scheduled_at timestamptz;
-
 create index if not exists mk_messages_scheduled_pending_idx
   on public.mk_messages (scheduled_at)
   where status = 'pendiente';
-
 commit;

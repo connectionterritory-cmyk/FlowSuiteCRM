@@ -204,7 +204,8 @@ function cleanEmail(value: unknown): string | null {
 function parseMoney(value: unknown): number | null {
   const raw = str(value)
   if (!raw) return null
-  const normalized = raw.replace(/[$,\s]/g, '')
+  const normalized = raw.replace(/[^0-9.-]/g, '')
+  if (!/[0-9]/.test(normalized)) return null
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : null
 }
@@ -233,6 +234,9 @@ function parseDate(raw: unknown): string | null {
   if (!value) return null
   const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (iso) return formatValidDate(iso[1], iso[2], iso[3])
+
+  const isoWithTime = value.match(/^(\d{4})-(\d{2})-(\d{2})\s+\d{2}:\d{2}:\d{2}$/)
+  if (isoWithTime) return formatValidDate(isoWithTime[1], isoWithTime[2], isoWithTime[3])
 
   const slash = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
   if (slash) {
@@ -264,8 +268,8 @@ function splitName(fullName: string | null): { nombre: string | null; apellido: 
 
 function deriveClassicEstado(status: unknown): EstadoCuenta {
   const s = str(status).toUpperCase()
-  if (s === 'PURGED') return 'cancelacion_total'
-  if (s === 'INACTIVE') return 'inactivo'
+  if (s === 'PURGED' || s === 'PURGADO' || s.includes('CANCEL')) return 'cancelacion_total'
+  if (s === 'INACTIVE' || s === 'INACTIVO') return 'inactivo'
   return 'actual'
 }
 
@@ -311,17 +315,38 @@ function calculateClassicDiasAtraso(row: ClassicHyciteRow): number {
   return 0
 }
 
+function calculateDiasAtrasoFromEstado(value: unknown): number {
+  const estado = normalizeHeader(str(value))
+  if (!estado || estado === 'ACTUAL') return 0
+  if (estado.includes('61 A 90') || estado.includes('61 90')) return 61
+  if (estado.includes('31 A 60') || estado.includes('31 60')) return 31
+  if (estado.includes('0 A 30') || estado.includes('0 30')) return 1
+  if (estado.includes('90')) return 91
+  return 0
+}
+
 function parseClassicRow(row: ClassicHyciteRow, orgId: string, lineNum: number): ClienteClassicPayload | null {
-  const hyciteId = str(row['# DE CLIENTE'])
+  const normalized = buildNormalizedRow(row)
+  const hyciteId = str(lookup(row, normalized, [
+    '# DE CLIENTE',
+    'N.° de cliente',
+    'N° de cliente',
+    'No de cliente',
+    'Numero de Cliente',
+    'Número de Cliente',
+    'Numero de Cuenta HyCite',
+    'Número de Cuenta HyCite',
+  ]))
   if (!hyciteId) {
     console.warn(`  ⚠️ Línea ${lineNum}: sin # DE CLIENTE, omitida`)
     return null
   }
 
-  let nombre = nullStr(row['NOMBRE_1'])
+  let nombre = nullStr(lookup(row, normalized, ['NOMBRE_1', 'Nombre', 'NOMBRE']))
   const apellidoPaterno = str(row['APELLIDO PATERNO'])
   const apellidoMaterno = str(row['APELLIDO MATERNO'])
-  let apellido = [apellidoPaterno, apellidoMaterno].filter(Boolean).join(' ') || null
+  const apellidoLegacy = [apellidoPaterno, apellidoMaterno].filter(Boolean).join(' ') || null
+  let apellido = nullStr(lookup(row, normalized, ['Apellido', 'APELLIDO'])) ?? apellidoLegacy
 
   if (!nombre && str(row['NOMBRE'])) {
     const parts = str(row['NOMBRE']).split(/\s+/).filter(Boolean)
@@ -329,42 +354,51 @@ function parseClassicRow(row: ClassicHyciteRow, orgId: string, lineNum: number):
     apellido = apellido || parts.slice(1).join(' ') || null
   }
 
-  const estadoCuenta = deriveClassicEstado(row['STATUS'])
-  const saldoActual = parseMoney(row['SALDO ACTUAL'])
-  const creditoDisponible = parseMoney(row['CRÉDITO DISPONIBLE'])
-  const pagoMinimoMensual = parseMoney(row['MENSUALIDAD'])
+  const estadoRaw = lookup(row, normalized, ['STATUS', 'Estado', 'ESTADO'])
+  const moroso = parseMoney(lookup(row, normalized, ['Moroso', 'MOROSO']))
+  const estadoCuenta = deriveClassicEstado(estadoRaw)
+  const saldoActual = parseMoney(lookup(row, normalized, ['SALDO ACTUAL', 'Saldo', 'Balance']))
+  const creditoDisponible = parseMoney(lookup(row, normalized, ['CRÉDITO DISPONIBLE', 'Credito Disponible']))
+  const pagoMinimoMensual = parseMoney(lookup(row, normalized, ['MENSUALIDAD', 'Mensualidad']))
   const hasMorosityBuckets = hasClassicMorosityBuckets(row)
+  const diasAtraso = hasMorosityBuckets
+    ? calculateClassicDiasAtraso(row)
+    : calculateDiasAtrasoFromEstado(estadoRaw)
 
   return {
     org_id: orgId,
     hycite_id: hyciteId,
     numero_cuenta_financiera: hyciteId,
-    tipo_cliente: str(row['CLIENTE']) || 'HC',
+    tipo_cliente: str(lookup(row, normalized, ['CLIENTE', 'Cliente', 'Financiera'])) || 'HC',
     nombre,
     apellido,
-    email: cleanEmail(row['CORREO ELECTRÓNICO']),
-    telefono: cleanPhone(row['TELÉFONO MÓVIL']),
-    telefono_casa: cleanPhone(row['TELÉFONO DE CASA']),
-    direccion: nullStr(str(row['DIRECCIÓN']).replace(/\n/g, ', ')),
-    ciudad: nullStr(row['CIUDAD']),
-    estado_region: nullStr(row['ESTADO']),
-    codigo_postal: nullStr(row['CÓDIGO POSTAL']),
+    email: cleanEmail(lookup(row, normalized, ['CORREO ELECTRÓNICO', 'Correo electrónico', 'Email', 'email'])),
+    telefono: cleanPhone(lookup(row, normalized, ['TELÉFONO MÓVIL', 'Teléfono móvil', 'Tel Móvil', 'Movil', 'Móvil'])),
+    telefono_casa: cleanPhone(lookup(row, normalized, ['TELÉFONO DE CASA', 'Teléfono de casa', 'Tel Casa', 'Unnamed: 5'])),
+    direccion: nullStr(str(lookup(row, normalized, ['DIRECCIÓN', 'Dirección', 'Direccion'])).replace(/\n/g, ', ')),
+    ciudad: nullStr(lookup(row, normalized, ['CIUDAD', 'Ciudad'])),
+    estado_region: nullStr(lookup(row, normalized, ['Estado Region', 'Estado Región'])),
+    codigo_postal: nullStr(lookup(row, normalized, ['CÓDIGO POSTAL', 'Código Postal', 'ZIP'])),
     ...(saldoActual !== null ? { saldo_actual: saldoActual } : {}),
-    ...(hasMorosityBuckets ? { monto_moroso: calculateClassicMoroso(row), dias_atraso: calculateClassicDiasAtraso(row) } : {}),
-    nivel: Math.min(Math.max(parseInt(str(row['NIVEL']) || '1', 10) || 1, 1), 9),
+    ...(hasMorosityBuckets
+      ? { monto_moroso: calculateClassicMoroso(row), dias_atraso: diasAtraso }
+      : moroso !== null
+        ? { monto_moroso: moroso, dias_atraso: diasAtraso }
+        : {}),
+    nivel: Math.min(Math.max(parseInt(str(lookup(row, normalized, ['NIVEL', 'Nivel'])) || '1', 10) || 1, 1), 9),
     estado_cuenta: estadoCuenta,
     estado_operativo: deriveEstadoOperativo(estadoCuenta) ?? 'activo',
-    estado_cuenta_raw: nullStr(row['STATUS']),
+    estado_cuenta_raw: nullStr(estadoRaw),
     ...(creditoDisponible !== null ? { credito_disponible: creditoDisponible } : {}),
     ...(pagoMinimoMensual !== null ? { pago_minimo_mensual: pagoMinimoMensual } : {}),
-    elegible_addon: true,
-    fecha_ultimo_pedido: parseDate(row['ÚLTIMA FECHA DE COMPRA']),
-    ultima_fecha_pago: parseDate(row['ÚLTIMA FECHA DE PAGO']),
-    fecha_orden: parseDate(row['FECHA DE ORDEN ORIGINAL']),
-    fecha_cierre: parseDate(row['FECHA DE CIERRE']),
+    elegible_addon: !['NO', 'FALSE', '0'].includes(normalizeHeader(str(lookup(row, normalized, ['IsEligibleForAddOn', 'Elegible para Agregado'])))),
+    fecha_ultimo_pedido: parseDate(lookup(row, normalized, ['ÚLTIMA FECHA DE COMPRA', 'Fecha del último pedido', 'Fecha del ultimo pedido'])),
+    ultima_fecha_pago: parseDate(lookup(row, normalized, ['ÚLTIMA FECHA DE PAGO'])),
+    fecha_orden: parseDate(lookup(row, normalized, ['FECHA DE ORDEN ORIGINAL'])),
+    fecha_cierre: parseDate(lookup(row, normalized, ['FECHA DE CIERRE'])),
     origen: 'hycite_import',
-    codigo_vendedor_hycite: nullStr(row['VENDEDOR']),
-    codigo_dist_hycite: nullStr(row['DISTRIBUIDOR']),
+    codigo_vendedor_hycite: nullStr(lookup(row, normalized, ['VENDEDOR', 'Vendedor', 'Emprendedores'])),
+    codigo_dist_hycite: nullStr(lookup(row, normalized, ['DISTRIBUIDOR', 'Distribuidor'])),
     updated_at: new Date().toISOString(),
   }
 }
@@ -505,7 +539,7 @@ function detectFormat(headers: string[]): InputFormat {
   const normalized = headers.map(normalizeHeader)
 
   const classicScore = normalized.filter((header) =>
-    ['# DE CLIENTE', 'STATUS', 'APELLIDO PATERNO', 'TELÉFONO MÓVIL', 'VENDEDOR', 'DISTRIBUIDOR']
+    ['# DE CLIENTE', 'N.° DE CLIENTE', 'NUMERO DE CUENTA HYCITE', 'STATUS', 'APELLIDO PATERNO', 'TELÉFONO MÓVIL', 'MOVIL', 'MOROSO', 'VENDEDOR', 'EMPRENDEDORES', 'DISTRIBUIDOR']
       .map(normalizeHeader)
       .includes(header)
   ).length
@@ -522,23 +556,50 @@ function detectFormat(headers: string[]): InputFormat {
 
 function readRows(filePath: string): { format: InputFormat; headers: string[]; rows: GenericRow[] } {
   const workbook = XLSX.readFile(filePath, { raw: false, cellDates: false })
-  const sheet = workbook.Sheets[workbook.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '', raw: false })
+  const parsedSheets = workbook.SheetNames.map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName]
+    const raw = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '', raw: false })
 
-  if (raw.length < 2) {
+    if (raw.length < 2) return null
+
+    const headers = uniqueHeaders((raw[0] as string[]).map((value) => str(value)))
+    const rows = raw
+      .slice(1)
+      .map((row) => Object.fromEntries(headers.map((header, index) => [header, str((row as string[])[index] ?? '')])))
+      .filter((row) => Object.values(row).some((value) => str(value).length > 0))
+
+    if (rows.length === 0) return null
+    return {
+      format: detectFormat(headers),
+      headers,
+      rows,
+    }
+  }).filter((sheet): sheet is { format: InputFormat; headers: string[]; rows: GenericRow[] } => sheet !== null)
+
+  if (parsedSheets.length === 0) {
     throw new Error('El archivo no tiene suficientes filas para importar.')
   }
 
-  const headers = uniqueHeaders((raw[0] as string[]).map((value) => str(value)))
-  const rows = raw
-    .slice(1)
-    .map((row) => Object.fromEntries(headers.map((header, index) => [header, str((row as string[])[index] ?? '')])))
-    .filter((row) => Object.values(row).some((value) => str(value).length > 0))
+  const formats = new Set(parsedSheets.map((sheet) => sheet.format))
+  if (formats.size > 1) {
+    throw new Error('El archivo mezcla formatos de importación distintos en varias hojas.')
+  }
+
+  const headers: string[] = []
+  const seenHeaders = new Set<string>()
+  parsedSheets.forEach((sheet) => {
+    sheet.headers.forEach((header) => {
+      const normalized = normalizeHeader(header)
+      if (!header || seenHeaders.has(normalized)) return
+      headers.push(header)
+      seenHeaders.add(normalized)
+    })
+  })
 
   return {
-    format: detectFormat(headers),
+    format: parsedSheets[0].format,
     headers,
-    rows,
+    rows: parsedSheets.flatMap((sheet) => sheet.rows),
   }
 }
 
@@ -777,17 +838,19 @@ export async function main() {
     const clientes = rows
       .map((row, index) => parseClassicRow(row as ClassicHyciteRow, orgId, index + 2))
       .filter((row): row is ClienteClassicPayload => row !== null)
+    const clientesUnicos = dedupeByKey(clientes, (row) => `hycite:${row.hycite_id}`)
 
     console.log(`📊 Filas leídas       : ${rows.length}`)
-    console.log(`✅ Clientes válidos   : ${clientes.length}`)
+    console.log(`✅ Clientes válidos   : ${clientesUnicos.length}`)
+    console.log(`🧹 Duplicados internos: ${clientes.length - clientesUnicos.length}`)
 
-    if (clientes.length === 0) {
+    if (clientesUnicos.length === 0) {
       console.error('❌ No hay registros válidos para importar.')
       process.exit(1)
     }
 
     console.log('\n📋 Preview clásico (primeros 3):')
-    clientes.slice(0, 3).forEach((cliente, index) => {
+    clientesUnicos.slice(0, 3).forEach((cliente, index) => {
       console.log(
         `  [${index + 1}] ${cliente.hycite_id} | ${cliente.nombre ?? '-'} ${cliente.apellido ?? ''} | ` +
         `${cliente.estado_cuenta} | Saldo: $${cliente.saldo_actual} | Moroso: $${cliente.monto_moroso}`,
@@ -799,7 +862,7 @@ export async function main() {
       return
     }
 
-    const result = await upsertClassicClientes(clientes)
+    const result = await upsertClassicClientes(clientesUnicos)
     await registrarLog({
       importado_por: userId,
       tipo_cuenta: 'customer_list',

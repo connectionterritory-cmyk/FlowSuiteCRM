@@ -10,7 +10,6 @@
 --   After:  authenticated user → caller permissions → RLS applies → only own leads visible
 
 begin;
-
 create or replace view public.v_lead_last_activity
   with (security_invoker = true)    -- caller's permissions; RLS on leads + lead_notas enforced
 as
@@ -24,11 +23,9 @@ from public.leads l
 left join public.lead_notas n on n.lead_id = l.id
 where l.deleted_at is null
 group by l.id, l.updated_at;
-
 -- Explicit grant as defense-in-depth.
 -- Supabase's default privileges already cover this, but migrations do NOT inherit them
 -- automatically for views, so we make it explicit and idempotent.
 grant select on public.v_lead_last_activity to authenticated;
 grant select on public.v_lead_last_activity to anon;
-
 commit;

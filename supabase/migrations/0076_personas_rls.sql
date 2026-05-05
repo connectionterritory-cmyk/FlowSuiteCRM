@@ -24,21 +24,17 @@
 -- ── 1. Policy: distribuidor — full access ────────────────────
 
 drop policy if exists personas_distribuidor_all on public.personas;
-
 create policy personas_distribuidor_all on public.personas
   for all
   to authenticated
   using  (public.is_distribuidor())
   with check (public.is_distribuidor());
-
-
 -- ── 2. Policy: vendedor — SELECT de personas propias ─────────
 -- Un vendedor puede ver una persona si tiene al menos un lead
 -- o cliente vinculado donde él es owner o vendedor asignado.
 -- Esto refleja el mismo scope que leads_select.
 
 drop policy if exists personas_vendedor_select on public.personas;
-
 create policy personas_vendedor_select on public.personas
   for select
   to authenticated
@@ -63,8 +59,6 @@ create policy personas_vendedor_select on public.personas
       )
     )
   );
-
-
 -- ── 3. Trigger functions con SECURITY DEFINER ────────────────
 -- Re-crear con el mismo cuerpo pero añadiendo SECURITY DEFINER
 -- y SET search_path para que el INSERT en personas no falle
@@ -124,8 +118,6 @@ begin
   return NEW;
 
 end $$;
-
-
 create or replace function public.trg_cliente_autolink_persona()
 returns trigger
 language plpgsql
@@ -187,8 +179,6 @@ begin
   return NEW;
 
 end $$;
-
-
 create or replace function public.trg_embajador_autolink_persona()
 returns trigger
 language plpgsql

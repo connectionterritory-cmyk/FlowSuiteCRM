@@ -6,12 +6,10 @@
 -- ============================================================
 
 begin;
-
 create policy leads_distribuidor_select on public.leads
   for select to authenticated
   using (
     public.is_distribuidor()
     and deleted_at is null
   );
-
 commit;

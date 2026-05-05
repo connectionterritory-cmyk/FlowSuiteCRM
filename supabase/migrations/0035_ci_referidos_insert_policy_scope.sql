@@ -1,5 +1,4 @@
 begin;
-
 -- Expand ci_referidos INSERT policy to allow admin and distribuidor (same scope as SELECT).
 -- No trigger: frontend always sends gestionado_por_usuario_id and modo_gestion explicitly.
 
@@ -33,5 +32,4 @@ with check (
       )
   )
 );
-
 commit;

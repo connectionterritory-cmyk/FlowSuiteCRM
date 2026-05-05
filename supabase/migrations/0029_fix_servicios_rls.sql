@@ -1,6 +1,5 @@
 -- Migración para corregir las políticas RLS de la tabla servicios
 begin;
-
 -- 1. Eliminar políticas antiguas si existen para evitar conflictos (Lista exhaustiva)
 drop policy if exists servicios_admin_all on public.servicios;
 drop policy if exists servicios_distribuidor_read on public.servicios;
@@ -11,13 +10,11 @@ drop policy if exists servicios_telemercadeo_insert on public.servicios;
 drop policy if exists servicios_org_member on public.servicios;
 drop policy if exists "Enable all for admins" on public.servicios;
 drop policy if exists "Enable read access for all users" on public.servicios;
-
 -- 2. Política de Admin (Acceso total)
 create policy servicios_admin_all on public.servicios
   for all to authenticated
   using (public.is_admin())
   with check (public.is_admin());
-
 -- 3. Política de Distribuidor (Acceso total a su equipo y clientes)
 create policy servicios_distribuidor_all on public.servicios
   for all to authenticated
@@ -50,7 +47,6 @@ create policy servicios_distribuidor_all on public.servicios
       )
     )
   );
-
 -- 4. Política de Vendedor (Acceso a sus propios servicios o a los de sus clientes)
 create policy servicios_vendedor_all on public.servicios
   for all to authenticated
@@ -64,10 +60,8 @@ create policy servicios_vendedor_all on public.servicios
   with check (
     vendedor_id = auth.uid()
   );
-
 -- 5. Limpieza de datos corruptos ("Actual" en dirección)
 update public.clientes
 set direccion = null, estado_region = null
 where direccion = 'Actual' or estado_region = 'Actual';
-
 commit;

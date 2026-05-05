@@ -8,11 +8,8 @@
 -- ============================================================
 
 begin;
-
 drop policy if exists servicios_supervisor_tele_read on public.servicios;
-
 create policy servicios_supervisor_tele_read on public.servicios
   for select to authenticated
   using (public.is_supervisor_tele());
-
 commit;

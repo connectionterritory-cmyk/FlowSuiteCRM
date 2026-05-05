@@ -4,7 +4,6 @@
 -- ============================================================
 
 begin;
-
 -- ── Helper: is_admin_or_distribuidor() ──────────────────────
 -- Reutilizable por otras tablas; idempotente.
 create or replace function public.is_admin_or_distribuidor()
@@ -20,7 +19,6 @@ as $$
       and rol in ('admin', 'distribuidor')
   );
 $$;
-
 -- ── Tabla: citas ─────────────────────────────────────────────
 create table if not exists public.citas (
   id              uuid        primary key default gen_random_uuid(),
@@ -65,30 +63,23 @@ create table if not exists public.citas (
   -- Garantizar que end_at > start_at
   constraint citas_time_order check (end_at > start_at)
 );
-
 -- ── Índices ──────────────────────────────────────────────────
 create index if not exists citas_assigned_to_start_idx
   on public.citas (assigned_to, start_at);
-
 create index if not exists citas_contacto_idx
   on public.citas (contacto_tipo, contacto_id);
-
 create index if not exists citas_campaign_idx
   on public.citas (campaign_id)
   where campaign_id is not null;
-
 create index if not exists citas_owner_idx
   on public.citas (owner_id);
-
 -- ── Trigger updated_at ───────────────────────────────────────
 -- set_updated_at() ya existe (migration 0001 / schema.sql)
 create trigger citas_set_updated_at
   before update on public.citas
   for each row execute function public.set_updated_at();
-
 -- ── RLS ──────────────────────────────────────────────────────
 alter table public.citas enable row level security;
-
 -- SELECT: propio o asignado o admin/distribuidor
 create policy citas_select on public.citas
   for select to authenticated
@@ -97,12 +88,10 @@ create policy citas_select on public.citas
     or assigned_to = auth.uid()
     or public.is_admin_or_distribuidor()
   );
-
 -- INSERT: solo el propio usuario como owner
 create policy citas_insert on public.citas
   for insert to authenticated
   with check (owner_id = auth.uid());
-
 -- UPDATE: owner, asignado, o admin/distribuidor
 create policy citas_update on public.citas
   for update to authenticated
@@ -116,10 +105,8 @@ create policy citas_update on public.citas
     or assigned_to = auth.uid()
     or public.is_admin_or_distribuidor()
   );
-
 -- DELETE: solo admin o distribuidor
 create policy citas_delete on public.citas
   for delete to authenticated
   using (public.is_admin_or_distribuidor());
-
 commit;

@@ -1,7 +1,6 @@
 -- Migration 0067: Allow owner/distribuidor to update mk_responses
 -- Ensures campaign owner and distribuidor can update responses within scope.
 begin;
-
 drop policy if exists mk_responses_owner_update on public.mk_responses;
 create policy mk_responses_owner_update on public.mk_responses
   for update to authenticated
@@ -19,7 +18,6 @@ create policy mk_responses_owner_update on public.mk_responses
         and m.owner_id = auth.uid()
     )
   );
-
 drop policy if exists mk_responses_distribuidor_update on public.mk_responses;
 create policy mk_responses_distribuidor_update on public.mk_responses
   for update to authenticated
@@ -37,11 +35,9 @@ create policy mk_responses_distribuidor_update on public.mk_responses
         and is_distribuidor_of(m.owner_id)
     )
   );
-
 commit;
-
 -- ROLLBACK:
 -- begin;
 -- drop policy if exists mk_responses_owner_update on public.mk_responses;
 -- drop policy if exists mk_responses_distribuidor_update on public.mk_responses;
--- commit;
+-- commit;;

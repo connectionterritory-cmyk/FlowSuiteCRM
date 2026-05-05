@@ -1,5 +1,4 @@
 begin;
-
 -- Clientes: permitir lectura a telemercadeo segun asignacion de vendedor/distribuidor
 drop policy if exists clientes_telemercadeo_read on public.clientes;
 create policy clientes_telemercadeo_read on public.clientes
@@ -17,7 +16,6 @@ create policy clientes_telemercadeo_read on public.clientes
         and (t.vendedor_id = clientes.vendedor_id or t.vendedor_id = clientes.distribuidor_id)
     )
   );
-
 -- Equipos instalados: lectura para telemercadeo
 drop policy if exists equipos_instalados_telemercadeo_read on public.equipos_instalados;
 create policy equipos_instalados_telemercadeo_read on public.equipos_instalados
@@ -36,7 +34,6 @@ create policy equipos_instalados_telemercadeo_read on public.equipos_instalados
         and (t.vendedor_id = c.vendedor_id or t.vendedor_id = c.distribuidor_id)
     )
   );
-
 -- Componentes de equipo: lectura para telemercadeo
 drop policy if exists componentes_equipo_telemercadeo_read on public.componentes_equipo;
 create policy componentes_equipo_telemercadeo_read on public.componentes_equipo
@@ -56,7 +53,6 @@ create policy componentes_equipo_telemercadeo_read on public.componentes_equipo
         and (t.vendedor_id = c.vendedor_id or t.vendedor_id = c.distribuidor_id)
     )
   );
-
 -- Servicios: lectura para telemercadeo
 drop policy if exists servicios_telemercadeo_read on public.servicios;
 create policy servicios_telemercadeo_read on public.servicios
@@ -75,7 +71,6 @@ create policy servicios_telemercadeo_read on public.servicios
         and (t.vendedor_id = c.vendedor_id or t.vendedor_id = c.distribuidor_id)
     )
   );
-
 -- Servicios: permitir insertar citas/servicios a telemercadeo
 drop policy if exists servicios_telemercadeo_insert on public.servicios;
 create policy servicios_telemercadeo_insert on public.servicios
@@ -100,7 +95,6 @@ create policy servicios_telemercadeo_insert on public.servicios
         )
     )
   );
-
 -- Notas RP: lectura e insercion para telemercadeo
 drop policy if exists notasrp_telemercadeo_read on public.notasrp;
 create policy notasrp_telemercadeo_read on public.notasrp
@@ -119,7 +113,6 @@ create policy notasrp_telemercadeo_read on public.notasrp
         and (t.vendedor_id = c.vendedor_id or t.vendedor_id = c.distribuidor_id)
     )
   );
-
 drop policy if exists notasrp_telemercadeo_insert on public.notasrp;
 create policy notasrp_telemercadeo_insert on public.notasrp
   for insert to authenticated
@@ -137,5 +130,4 @@ create policy notasrp_telemercadeo_insert on public.notasrp
         and (t.vendedor_id = c.vendedor_id or t.vendedor_id = c.distribuidor_id)
     )
   );
-
 commit;

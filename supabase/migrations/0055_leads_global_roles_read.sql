@@ -9,23 +9,19 @@
 -- ============================================================
 
 begin;
-
 -- admin: all leads
 drop policy if exists leads_admin_read on public.leads;
 create policy leads_admin_read on public.leads
   for select to authenticated
   using (public.is_admin());
-
 -- distribuidor: all leads
 drop policy if exists leads_distribuidor_read on public.leads;
 create policy leads_distribuidor_read on public.leads
   for select to authenticated
   using (public.is_distribuidor());
-
 -- supervisor_telemercadeo: all leads
 drop policy if exists leads_supervisor_tele_read on public.leads;
 create policy leads_supervisor_tele_read on public.leads
   for select to authenticated
   using (public.is_supervisor_tele());
-
 commit;

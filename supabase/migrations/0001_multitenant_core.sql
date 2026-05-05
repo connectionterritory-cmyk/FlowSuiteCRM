@@ -1,7 +1,5 @@
 begin;
-
 create extension if not exists "pgcrypto";
-
 create table if not exists public.plan_limits (
   plan text primary key,
   max_users integer not null default 3,
@@ -10,7 +8,6 @@ create table if not exists public.plan_limits (
   features jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -20,7 +17,6 @@ create table if not exists public.organizations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.org_branding (
   org_id uuid primary key references public.organizations(id) on delete cascade,
   org_name text,
@@ -29,7 +25,6 @@ create table if not exists public.org_branding (
   secondary_color text,
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.memberships (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -37,10 +32,8 @@ create table if not exists public.memberships (
   role text not null default 'member',
   created_at timestamptz not null default now()
 );
-
 create unique index if not exists memberships_org_user_idx on public.memberships (org_id, user_id);
 create index if not exists memberships_user_idx on public.memberships (user_id);
-
 insert into public.plan_limits (plan, max_users, max_storage_mb, max_records, features)
 values
   ('Free', 3, 1024, 5000, '{"branding": true, "reports": false, "dfp": false}'),
@@ -48,7 +41,6 @@ values
   ('Pro', 30, 20480, 100000, '{"branding": true, "reports": true, "dfp": true}'),
   ('Elite', 100, 102400, 500000, '{"branding": true, "reports": true, "dfp": true}')
 on conflict (plan) do nothing;
-
 alter table if exists public.clientes add column if not exists org_id uuid;
 alter table if exists public.contactos add column if not exists org_id uuid;
 alter table if exists public.oportunidades add column if not exists org_id uuid;
@@ -60,7 +52,6 @@ alter table if exists public.transaccionesrp add column if not exists org_id uui
 alter table if exists public.mensajescrm add column if not exists org_id uuid;
 alter table if exists public.notasrp add column if not exists org_id uuid;
 alter table if exists public.auditoriaacciones add column if not exists org_id uuid;
-
 do $$
 begin
   if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'clientes') then
@@ -97,7 +88,6 @@ begin
     execute 'create index if not exists auditoriaacciones_org_id_idx on public.auditoriaacciones (org_id)';
   end if;
 end $$;
-
 create or replace function public.is_org_member(check_org uuid)
 returns boolean
 language sql
@@ -110,7 +100,6 @@ as $$
       and m.user_id = auth.uid()
   );
 $$;
-
 create or replace function public.is_org_admin(check_org uuid)
 returns boolean
 language sql
@@ -124,7 +113,6 @@ as $$
       and m.role in ('owner', 'admin')
   );
 $$;
-
 do $$
 declare
   default_org uuid := '00000000-0000-0000-0000-000000000001';
@@ -181,12 +169,10 @@ begin
     update public.auditoriaacciones set org_id = default_org where org_id is null;
   end if;
 end $$;
-
 alter table if exists public.organizations enable row level security;
 alter table if exists public.memberships enable row level security;
 alter table if exists public.org_branding enable row level security;
 alter table if exists public.plan_limits enable row level security;
-
 alter table if exists public.clientes enable row level security;
 alter table if exists public.contactos enable row level security;
 alter table if exists public.oportunidades enable row level security;
@@ -198,7 +184,6 @@ alter table if exists public.transaccionesrp enable row level security;
 alter table if exists public.mensajescrm enable row level security;
 alter table if exists public.notasrp enable row level security;
 alter table if exists public.auditoriaacciones enable row level security;
-
 do $$
 begin
   if not exists (
@@ -358,12 +343,10 @@ begin
       with check (public.is_org_member(org_id));
   end if;
 end $$;
-
 do $$
 begin
   if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'contactos') then
     execute 'create or replace view public.contactos_canonical as select * from public.contactos';
   end if;
 end $$;
-
 commit;

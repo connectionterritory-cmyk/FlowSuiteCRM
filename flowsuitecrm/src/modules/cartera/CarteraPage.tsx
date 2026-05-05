@@ -717,6 +717,146 @@ function CapturarMontoModal({ open, clienteId, saldoHycite, onClose, onSaved }: 
   )
 }
 
+// ── Próximo paso recomendado ──────────────────────────────────────────────────
+
+type NextStepRec = {
+  action: string
+  motivo: string
+  riesgo: 'alto' | 'medio' | 'bajo'
+  fechaSugerida: string | null
+  btnLabel: string
+  btnColor: string
+}
+
+function computeNextStep(caso: Case, gestiones: Gestion[], ptps: PTP[]): NextStepRec {
+  const today = todayYmd()
+
+  if (caso.estado === 'Cerrado') {
+    return { action: 'Caso cerrado', motivo: 'No requiere acciones adicionales', riesgo: 'bajo', fechaSugerida: null, btnLabel: 'Ver historial', btnColor: '#6b7280' }
+  }
+
+  if (caso.en_proceso_legal) {
+    return { action: 'Coordinar con equipo legal', motivo: 'El caso está activo en proceso legal', riesgo: 'alto', fechaSugerida: today, btnLabel: '+ Gestión legal', btnColor: '#dc2626' }
+  }
+
+  const ptpVencido = ptps.find(p => p.estado === 'vencido' || (p.estado === 'pendiente' && p.fecha_compromiso < today))
+  const ptpPendiente = ptps.find(p => p.estado === 'pendiente' && p.fecha_compromiso >= today)
+
+  if (ptpVencido) {
+    return {
+      action: 'Seguimiento de PTP vencido',
+      motivo: `${fmtMonto(ptpVencido.monto)} — vencimiento ${fmtFecha(ptpVencido.fecha_compromiso)}`,
+      riesgo: 'alto',
+      fechaSugerida: today,
+      btnLabel: '+ Gestión',
+      btnColor: '#dc2626',
+    }
+  }
+
+  if (ptpPendiente) {
+    return {
+      action: 'Confirmar PTP próximo',
+      motivo: `${fmtMonto(ptpPendiente.monto)} comprometido para el ${fmtFecha(ptpPendiente.fecha_compromiso)}`,
+      riesgo: 'medio',
+      fechaSugerida: ptpPendiente.fecha_compromiso,
+      btnLabel: '+ Gestión',
+      btnColor: '#f59e0b',
+    }
+  }
+
+  if (gestiones.length === 0) {
+    return {
+      action: 'Primera gestión pendiente',
+      motivo: 'Este caso no tiene gestiones registradas',
+      riesgo: caso.dias_vencido >= 60 ? 'alto' : 'medio',
+      fechaSugerida: today,
+      btnLabel: '+ Gestión',
+      btnColor: '#3b82f6',
+    }
+  }
+
+  const lastGestion = gestiones[0]
+  const daysSinceLast = Math.floor(
+    (new Date(today).getTime() - new Date(lastGestion.created_at.slice(0, 10)).getTime()) / 86400000,
+  )
+
+  if (caso.dias_vencido >= 90) {
+    return {
+      action: 'Evaluar escalamiento urgente',
+      motivo: `${caso.dias_vencido} días vencido — considerar legal o cargo de vuelta`,
+      riesgo: 'alto',
+      fechaSugerida: today,
+      btnLabel: 'Escalar caso',
+      btnColor: '#7c3aed',
+    }
+  }
+
+  if (caso.dias_vencido >= 60 && daysSinceLast >= 3) {
+    return {
+      action: 'Gestión urgente requerida',
+      motivo: `${caso.dias_vencido}d vencido · sin gestión hace ${daysSinceLast} día${daysSinceLast === 1 ? '' : 's'}`,
+      riesgo: 'alto',
+      fechaSugerida: today,
+      btnLabel: '+ Gestión',
+      btnColor: '#ea580c',
+    }
+  }
+
+  if (daysSinceLast >= 7) {
+    return {
+      action: 'Seguimiento de rutina',
+      motivo: `Última gestión hace ${daysSinceLast} días`,
+      riesgo: 'medio',
+      fechaSugerida: today,
+      btnLabel: '+ Gestión',
+      btnColor: '#f59e0b',
+    }
+  }
+
+  return {
+    action: 'Caso bajo seguimiento',
+    motivo: `Última gestión hace ${daysSinceLast} día${daysSinceLast === 1 ? '' : 's'}`,
+    riesgo: 'bajo',
+    fechaSugerida: null,
+    btnLabel: '+ Gestión',
+    btnColor: '#6b7280',
+  }
+}
+
+function ProximoPasoSection({ rec, onPrimaryAction }: { rec: NextStepRec; onPrimaryAction: () => void }) {
+  const riesgoColor = rec.riesgo === 'alto' ? '#dc2626' : rec.riesgo === 'medio' ? '#f59e0b' : '#10b981'
+  const riesgoLabel = rec.riesgo === 'alto' ? 'Riesgo alto' : rec.riesgo === 'medio' ? 'Riesgo medio' : 'Bajo riesgo'
+  const riesgoIcon = rec.riesgo === 'alto' ? '🔴' : rec.riesgo === 'medio' ? '🟡' : '🟢'
+  return (
+    <div style={{ padding: '0.7rem 1.25rem', background: riesgoColor + '08', borderBottom: `2px solid ${riesgoColor}30` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+            <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>Próximo paso recomendado</span>
+            <span style={{ padding: '0.08rem 0.4rem', borderRadius: '999px', fontSize: '0.62rem', fontWeight: 700, background: riesgoColor + '20', color: riesgoColor }}>
+              {riesgoIcon} {riesgoLabel}
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.3 }}>{rec.action}</p>
+          <p style={{ margin: '0.15rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{rec.motivo}</p>
+          {rec.fechaSugerida && (
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.72rem', color: riesgoColor, fontWeight: 600 }}>
+              📅 Fecha sugerida: {fmtFecha(rec.fechaSugerida)}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onPrimaryAction}
+          style={{ padding: '0.45rem 1rem', borderRadius: '0.5rem', border: 'none', background: rec.btnColor, color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, boxShadow: `0 2px 8px ${rec.btnColor}44` }}
+        >
+          {rec.btnLabel}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Case Detail Panel ─────────────────────────────────────────────────────────
 
 type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan'
@@ -897,6 +1037,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   }
 
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + p.monto, 0), [pagos])
+  const nextStepRec = useMemo(() => computeNextStep(caso, gestiones, ptps), [caso, gestiones, ptps])
+  const handleNextStepAction = () => { setGestionOpen(true) }
   const safeDfpAccount = dfpAccount?.case_id === caso.id ? dfpAccount : null
   const isDfp = Boolean(safeDfpAccount)
   const saldoBase = caso.monto_devuelto ?? caso.monto_total
@@ -998,6 +1140,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         {safeDfpAccount && <DfpSummary account={safeDfpAccount} />}
       </div>
 
+      {/* Próximo paso recomendado */}
+      {!loading && <ProximoPasoSection rec={nextStepRec} onPrimaryAction={handleNextStepAction} />}
+
       {/* CTA pendiente de monto */}
       {(caso.monto_devuelto === null || caso.monto_devuelto === undefined || caso.monto_devuelto === 0) && (
         <div style={{ padding: '0.55rem 1.25rem', background: 'rgba(217,119,6,0.08)', borderBottom: '1px solid rgba(217,119,6,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
@@ -1011,29 +1156,46 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         </div>
       )}
 
-      {/* Action bar */}
-      <div style={{ padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <ActionBtn label="+ Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
-        <ActionBtn label="+ PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
-        <ActionBtn label="+ Pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
-        <ActionBtn label="+ Plan" color="#7c3aed" onClick={() => setPlanOpen(true)} />
-        <ActionBtn label="↩ Cargo de vuelta" color="#7c3aed" onClick={() => setCapturarMontoOpen(true)} />
-        <ActionBtn
-          label={caso.en_proceso_legal ? '⚖️ Legal activo' : '⚖️ Marcar legal'}
-          color={caso.en_proceso_legal ? '#dc2626' : '#6b7280'}
-          onClick={async () => {
-            await supabase
-              .from('cargo_vuelta_cases')
-              .update({ en_proceso_legal: !caso.en_proceso_legal })
-              .eq('id', caso.id)
-            onCaseUpdated()
-          }}
-        />
-        <ActionBtn label="Email carta" color="#2563eb" onClick={() => openCarta('email')} />
-        <ActionBtn label="WhatsApp carta" color="#16a34a" onClick={() => openCarta('whatsapp')} disabled={!cliente?.telefono} />
-        <ActionBtn label="SMS carta" color="#6b7280" onClick={() => openCarta('sms')} disabled={!cliente?.telefono} />
+      {/* Action bar — grouped */}
+      <div style={{ padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Registrar */}
+        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Registrar</span>
+          <ActionBtn label="Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
+          <ActionBtn label="PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
+          <ActionBtn label="Pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
+          <ActionBtn label="Plan" color="#7c3aed" onClick={() => setPlanOpen(true)} />
+        </div>
+        <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
+        {/* Enviar */}
+        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Enviar carta</span>
+          <ActionBtn label="Email" color="#2563eb" onClick={() => openCarta('email')} />
+          <ActionBtn label="WhatsApp" color="#16a34a" onClick={() => openCarta('whatsapp')} disabled={!cliente?.telefono} />
+          <ActionBtn label="SMS" color="#6b7280" onClick={() => openCarta('sms')} disabled={!cliente?.telefono} />
+        </div>
+        <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
+        {/* Escalar */}
+        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Escalar</span>
+          <ActionBtn label="↩ Cargo vuelta" color="#7c3aed" onClick={() => setCapturarMontoOpen(true)} />
+          <ActionBtn
+            label={caso.en_proceso_legal ? '⚖️ Legal activo' : '⚖️ Legal'}
+            color={caso.en_proceso_legal ? '#dc2626' : '#6b7280'}
+            onClick={async () => {
+              await supabase.from('cargo_vuelta_cases').update({ en_proceso_legal: !caso.en_proceso_legal }).eq('id', caso.id)
+              onCaseUpdated()
+            }}
+          />
+        </div>
         {caso.estado !== 'Cerrado' && (
-          <ActionBtn label="✓ Pago recibido / Cerrar caso" color="#059669" onClick={() => setCierreOpen(true)} />
+          <>
+            <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
+            <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Cerrar</span>
+              <ActionBtn label="✓ Pago recibido" color="#059669" onClick={() => setCierreOpen(true)} />
+            </div>
+          </>
         )}
       </div>
 
@@ -1150,7 +1312,7 @@ function DfpMetric({ label, value, color }: { label: string; value: string; colo
 // ── Gestiones list ────────────────────────────────────────────────────────────
 
 function GestionesList({ gestiones, usersById }: { gestiones: Gestion[]; usersById: Record<string, { nombre_completo?: string } | undefined> }) {
-  if (gestiones.length === 0) return <Empty label="No hay gestiones vinculadas a este caso" />
+  if (gestiones.length === 0) return <Empty label="No hay gestiones vinculadas a este caso" icon="📞" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {gestiones.map(g => (
@@ -1181,7 +1343,7 @@ function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string,
     onRefresh()
   }
 
-  if (ptps.length === 0) return <Empty label="No hay promesas de pago para este caso" />
+  if (ptps.length === 0) return <Empty label="No hay promesas de pago para este caso" icon="🤝" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {ptpError && <p style={{ color: '#f87171', fontSize: '0.78rem', margin: '0 0 0.25rem' }}>{ptpError}</p>}
@@ -1220,7 +1382,7 @@ function SmallBtn({ label, color, onClick }: { label: string; color: string; onC
 // ── Pagos list ────────────────────────────────────────────────────────────────
 
 function PagosList({ pagos }: { pagos: Pago[]; usersById: Record<string, { nombre_completo?: string } | undefined> }) {
-  if (pagos.length === 0) return <Empty label="No hay pagos registrados para este caso" />
+  if (pagos.length === 0) return <Empty label="No hay pagos registrados para este caso" icon="💳" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {pagos.map(p => (
@@ -1240,7 +1402,7 @@ function PagosList({ pagos }: { pagos: Pago[]; usersById: Record<string, { nombr
 // ── Planes list ───────────────────────────────────────────────────────────────
 
 function PlanesList({ planes }: { planes: Plan[] }) {
-  if (planes.length === 0) return <Empty label="No hay planes de pago para este caso" />
+  if (planes.length === 0) return <Empty label="No hay planes de pago para este caso" icon="📅" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {planes.map(plan => {
@@ -1352,28 +1514,43 @@ function formatLedgerComponent(component: string) {
   return map[component] ?? component
 }
 
-function Empty({ label }: { label: string }) {
-  return <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>{label}</p>
+function Empty({ label, icon = '📭' }: { label: string; icon?: string }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+      <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
+      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>{label}</p>
+    </div>
+  )
 }
 
 // ── Historial list ────────────────────────────────────────────────────────────
 
 function HistorialList({ events, usersById }: { events: HistorialEvent[]; usersById: Record<string, { nombre_completo?: string } | undefined> }) {
-  if (events.length === 0) return <Empty label="Sin eventos registrados en este caso" />
+  if (events.length === 0) return <Empty label="Sin eventos registrados en este caso" icon="📋" />
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {events.map(ev => {
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {events.map((ev, idx) => {
         const color = historialColor(ev.tipo)
+        const isLast = idx === events.length - 1
+        const TIPO_ICON: Record<HistorialEvent['tipo'], string> = { apertura: '🗂', gestion: '📞', ptp: '🤝', pago: '💳', cierre: '✅' }
         return (
-          <div key={ev.id} style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, marginTop: '0.38rem', flexShrink: 0 }} />
-            <div style={{ flex: 1, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', border: `1px solid ${color}33`, background: color + '0a' }}>
+          <div key={ev.id} style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start', paddingBottom: isLast ? 0 : '0.65rem' }}>
+            {/* Timeline track */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, paddingTop: '0.25rem', width: '20px' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: color, border: `2px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.55rem' }}>
+              </div>
+              {!isLast && <div style={{ width: '2px', flex: 1, minHeight: '16px', background: `linear-gradient(to bottom, ${color}66, var(--color-border))`, marginTop: '2px' }} />}
+            </div>
+            {/* Event card */}
+            <div style={{ flex: 1, padding: '0.5rem 0.65rem', borderRadius: '0.45rem', border: `1px solid ${color}33`, background: color + '0a', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text)' }}>{ev.label}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text)' }}>
+                  <span style={{ marginRight: '0.3rem' }}>{TIPO_ICON[ev.tipo]}</span>{ev.label}
+                </span>
                 <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>{fmtFecha(ev.timestamp)}</span>
               </div>
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.2rem', alignItems: 'center' }}>
-                {ev.monto !== null && <span style={{ fontSize: '0.75rem', fontWeight: 600, color }}>{fmtMonto(ev.monto)}</span>}
+                {ev.monto !== null && <span style={{ fontSize: '0.75rem', fontWeight: 700, color }}>{fmtMonto(ev.monto)}</span>}
                 {ev.estado && <span style={{ fontSize: '0.68rem', padding: '0.08rem 0.35rem', borderRadius: '999px', background: color + '22', color, border: `1px solid ${color}44` }}>{ev.estado}</span>}
                 {ev.actor && <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>{usersById[ev.actor]?.nombre_completo ?? ev.actor.slice(0, 8)}</span>}
               </div>
@@ -1388,15 +1565,28 @@ function HistorialList({ events, usersById }: { events: HistorialEvent[]; usersB
 
 // ── Main CarteraPage ──────────────────────────────────────────────────────────
 
-const ESTADO_TABS = [
-  { key: 'all', label: 'Todos' },
-  { key: 'Abierto', label: 'Abierto' },
-  { key: 'En Negociación', label: 'En Negociación' },
-  { key: 'Acuerdo', label: 'Acuerdo' },
-  { key: 'Cerrado', label: 'Cerrado' },
-] as const
+type QuickFilterKey =
+  | 'para_llamar_hoy'
+  | 'sin_gestion'
+  | 'ptp_vencido'
+  | 'en_negociacion'
+  | 'acuerdo_activo'
+  | '90_mas'
+  | 'alto_monto'
+  | 'cerrado'
 
-type EstadoTab = (typeof ESTADO_TABS)[number]['key']
+const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: string }[] = [
+  { key: 'para_llamar_hoy', label: 'Para llamar hoy', color: '#3b82f6', icon: '📞' },
+  { key: 'sin_gestion', label: 'Sin gestión', color: '#f59e0b', icon: '⚠️' },
+  { key: 'ptp_vencido', label: 'PTP vencido', color: '#dc2626', icon: '🔴' },
+  { key: 'en_negociacion', label: 'En negociación', color: '#f59e0b', icon: '💬' },
+  { key: 'acuerdo_activo', label: 'Acuerdo activo', color: '#10b981', icon: '✅' },
+  { key: '90_mas', label: '90+ días', color: '#7c3aed', icon: '🚨' },
+  { key: 'alto_monto', label: 'Alto monto', color: '#ea580c', icon: '💰' },
+  { key: 'cerrado', label: 'Cerrado', color: '#6b7280', icon: '🔒' },
+]
+
+type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: string | null }
 
 export function CarteraPage() {
   const { usersById } = useUsers()
@@ -1406,10 +1596,11 @@ export function CarteraPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [currentRole, setCurrentRole] = useState<GestionRole>('telemercadeo')
   const [busqueda, setBusqueda] = useState('')
-  const [estadoTab, setEstadoTab] = useState<EstadoTab>('all')
-  const [diasRango, setDiasRango] = useState<string>('all')
   const [responsableFiltro, setResponsableFiltro] = useState<string>('all')
   const [selectedCase, setSelectedCase] = useState<Case | null>(null)
+  const [quickFilter, setQuickFilter] = useState<QuickFilterKey | null>(null)
+  const [lastGestionByCase, setLastGestionByCase] = useState<Record<string, LastGestionInfo>>({})
+  const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
 
   const loadCases = async () => {
     setLoading(true)
@@ -1477,16 +1668,41 @@ export function CarteraPage() {
 
     setCases(loadedCases)
     setSelectedCase((prev) => prev ? (loadedCases.find((row) => row.id === prev.id) ?? null) : null)
+
+    // Batch load last gestión and PTP status per case
+    const allCaseIds = loadedCases.map(c => c.id)
+    if (allCaseIds.length > 0) {
+      const todayStr = todayYmd()
+      const [gRes, ptpRes] = await Promise.all([
+        supabase.from('cob_gestiones')
+          .select('case_id,created_at,tipo_gestion,resultado')
+          .in('case_id', allCaseIds)
+          .order('created_at', { ascending: false }),
+        supabase.from('cob_ptps')
+          .select('case_id,estado,fecha_compromiso')
+          .in('case_id', allCaseIds)
+          .in('estado', ['pendiente', 'vencido']),
+      ])
+      const newLastGestion: Record<string, LastGestionInfo> = {}
+      for (const g of ((gRes.data ?? []) as { case_id: string; created_at: string; tipo_gestion: string; resultado: string | null }[])) {
+        if (!newLastGestion[g.case_id]) {
+          newLastGestion[g.case_id] = { created_at: g.created_at, tipo_gestion: g.tipo_gestion, resultado: g.resultado }
+        }
+      }
+      setLastGestionByCase(newLastGestion)
+      const newVencidoSet = new Set<string>()
+      for (const p of ((ptpRes.data ?? []) as { case_id: string; estado: string; fecha_compromiso: string }[])) {
+        if (p.estado === 'vencido' || (p.estado === 'pendiente' && p.fecha_compromiso < todayStr)) {
+          newVencidoSet.add(p.case_id)
+        }
+      }
+      setPtpVencidoSet(newVencidoSet)
+    }
+
     setLoading(false)
   }
 
   useEffect(() => { void loadCases() }, [])
-
-  const estadoCounts = useMemo(() => {
-    const m: Record<string, number> = { all: cases.length }
-    for (const c of cases) { m[c.estado] = (m[c.estado] ?? 0) + 1 }
-    return m
-  }, [cases])
 
   const responsableOptions = useMemo(() => {
     const seen = new Set<string>()
@@ -1500,104 +1716,184 @@ export function CarteraPage() {
     return opts.sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [cases, usersById])
 
+  const matchesQuickFilter = (c: Case, key: QuickFilterKey): boolean => {
+    const todayStr = todayYmd()
+    switch (key) {
+      case 'para_llamar_hoy': {
+        if (c.estado === 'Cerrado') return false
+        const lastG = lastGestionByCase[c.id]
+        if (lastG) {
+          const daysSince = Math.floor((new Date(todayStr).getTime() - new Date(lastG.created_at.slice(0, 10)).getTime()) / 86400000)
+          if (daysSince < 2) return false
+        }
+        return true
+      }
+      case 'sin_gestion': return !lastGestionByCase[c.id]
+      case 'ptp_vencido': return ptpVencidoSet.has(c.id)
+      case 'en_negociacion': return c.estado === 'En Negociación'
+      case 'acuerdo_activo': return c.estado === 'Acuerdo'
+      case '90_mas': return c.dias_vencido >= 90
+      case 'alto_monto': return (c.monto_devuelto ?? c.monto_total) >= 500
+      case 'cerrado': return c.estado === 'Cerrado'
+    }
+  }
+
+  const quickFilterCounts = useMemo(() => {
+    const counts: Partial<Record<QuickFilterKey, number>> = {}
+    for (const f of QUICK_FILTERS) {
+      counts[f.key] = cases.filter(c => matchesQuickFilter(c, f.key)).length
+    }
+    return counts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cases, lastGestionByCase, ptpVencidoSet])
+
   const filtered = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     return cases.filter(c => {
-      if (estadoTab !== 'all' && c.estado !== estadoTab) return false
-      if (diasRango !== 'all') {
-        const d = c.dias_vencido
-        if (diasRango === '1-30' && !(d >= 1 && d <= 30)) return false
-        if (diasRango === '31-60' && !(d >= 31 && d <= 60)) return false
-        if (diasRango === '61-90' && !(d >= 61 && d <= 90)) return false
-        if (diasRango === '90+' && d <= 90) return false
-      }
-      if (responsableFiltro !== 'all' && c.updated_by !== responsableFiltro) return false
       if (q) {
         const nombre = nombreCliente(c.clientes).toLowerCase()
         const hid = (c.clientes?.hycite_id ?? '').toLowerCase()
         if (!nombre.includes(q) && !hid.includes(q)) return false
       }
+      if (responsableFiltro !== 'all' && c.updated_by !== responsableFiltro) return false
+      if (quickFilter) return matchesQuickFilter(c, quickFilter)
       return true
     })
-  }, [cases, estadoTab, busqueda, diasRango, responsableFiltro])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cases, busqueda, responsableFiltro, quickFilter, lastGestionByCase, ptpVencidoSet])
 
   const handleCaseUpdated = () => void loadCases()
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden', gap: 0 }}>
       {/* Left: cases list */}
-      <div style={{ width: '340px', minWidth: '280px', maxWidth: '380px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border)', height: '100%', overflow: 'hidden', flexShrink: 0 }}>
-        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>
-          <h2 style={{ margin: '0 0 0.6rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Cartera</h2>
-          <input type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar cliente o #ID…"
-            style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 0.65rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.82rem' }} />
-          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.69rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>Días:</span>
-            {(['all', '1-30', '31-60', '61-90', '90+'] as const).map(r => {
-              const active = diasRango === r
-              return (
-                <button key={r} type="button" onClick={() => setDiasRango(r)}
-                  style={{ padding: '0.15rem 0.45rem', borderRadius: '0.35rem', border: `1px solid ${active ? '#6b7280' : 'var(--color-border)'}`, cursor: 'pointer', fontSize: '0.69rem', fontWeight: 600, background: active ? '#6b728022' : 'transparent', color: active ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
-                  {r === 'all' ? 'Todos' : r}
-                </button>
-              )
-            })}
+      <div style={{ width: '360px', minWidth: '300px', maxWidth: '400px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border)', height: '100%', overflow: 'hidden', flexShrink: 0 }}>
+
+        {/* Search + responsable */}
+        <div style={{ padding: '0.75rem 1rem 0.6rem', borderBottom: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Cartera</h2>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              {loading ? '…' : `${filtered.length} de ${cases.length}`}
+            </span>
           </div>
+          <input
+            type="search"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar cliente o #ID…"
+            style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 0.65rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.82rem' }}
+          />
           {responsableOptions.length > 0 && (
-            <select value={responsableFiltro} onChange={e => setResponsableFiltro(e.target.value)}
-              style={{ marginTop: '0.4rem', width: '100%', height: '30px', padding: '0 0.5rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.78rem', boxSizing: 'border-box' }}>
-              <option value="all">Último responsable: Todos</option>
+            <select
+              value={responsableFiltro}
+              onChange={e => setResponsableFiltro(e.target.value)}
+              style={{ marginTop: '0.4rem', width: '100%', height: '30px', padding: '0 0.5rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.78rem', boxSizing: 'border-box' }}
+            >
+              <option value="all">Responsable: Todos</option>
               {responsableOptions.map(u => (
                 <option key={u.id} value={u.id}>{u.nombre}</option>
               ))}
             </select>
           )}
         </div>
-        {/* Estado tabs */}
-        <div style={{ padding: '0.4rem 0.75rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-          {ESTADO_TABS.map(t => {
-            const count = estadoCounts[t.key] ?? 0
-            const active = estadoTab === t.key
-            const color = t.key === 'all' ? '#6b7280' : estadoColor(t.key)
-            return (
-              <button key={t.key} type="button" onClick={() => setEstadoTab(t.key)}
-                style={{ padding: '0.2rem 0.55rem', borderRadius: '0.35rem', border: `1px solid ${active ? color : 'var(--color-border)'}`, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, background: active ? color + '22' : 'transparent', color: active ? color : 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                {t.label}
-                {count > 0 && <span style={{ fontSize: '0.67rem', fontWeight: 700 }}>{count}</span>}
+
+        {/* Quick filters */}
+        <div style={{ padding: '0.5rem 0.75rem 0.55rem', borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+          <p style={{ margin: '0 0 0.35rem', fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Filtros rápidos</p>
+          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+            {quickFilter !== null && (
+              <button
+                type="button"
+                onClick={() => setQuickFilter(null)}
+                style={{ padding: '0.18rem 0.5rem', borderRadius: '0.35rem', border: '1px solid var(--color-border)', cursor: 'pointer', fontSize: '0.69rem', fontWeight: 600, background: 'transparent', color: 'var(--color-text-muted)' }}
+              >
+                ✕ Todos
               </button>
-            )
-          })}
+            )}
+            {QUICK_FILTERS.map(f => {
+              const active = quickFilter === f.key
+              const count = quickFilterCounts[f.key] ?? 0
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setQuickFilter(active ? null : f.key)}
+                  style={{ padding: '0.18rem 0.5rem', borderRadius: '0.35rem', border: `1px solid ${active ? f.color : 'var(--color-border)'}`, cursor: 'pointer', fontSize: '0.69rem', fontWeight: 600, background: active ? f.color + '22' : 'transparent', color: active ? f.color : count > 0 ? 'var(--color-text-muted)' : 'var(--color-border)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                >
+                  <span>{f.icon}</span>
+                  <span>{f.label}</span>
+                  {count > 0 && <span style={{ fontSize: '0.65rem', fontWeight: 800, background: active ? f.color + '33' : 'var(--color-border)', borderRadius: '999px', padding: '0 0.3rem' }}>{count}</span>}
+                </button>
+              )
+            })}
+          </div>
         </div>
+
+        {/* Cases list */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? (
-            <p style={{ padding: '1rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Cargando…</p>
+            <div style={{ padding: '2rem 1rem', textAlign: 'center' }}>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>Cargando casos…</p>
+            </div>
           ) : filtered.length === 0 ? (
-            <p style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Sin casos en este filtro</p>
+            <div style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', marginBottom: '0.4rem' }}>🔍</div>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>
+                {quickFilter ? 'Sin casos con este filtro' : 'Sin casos en este filtro'}
+              </p>
+              {quickFilter && (
+                <button
+                  type="button"
+                  onClick={() => setQuickFilter(null)}
+                  style={{ marginTop: '0.5rem', padding: '0.25rem 0.75rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}
+                >
+                  Ver todos
+                </button>
+              )}
+            </div>
           ) : (
             filtered.map(c => {
               const isSelected = selectedCase?.id === c.id
               const dColor = diasColor(c.dias_vencido)
               const displayAmount = c.monto_devuelto ?? c.monto_total
               const sinMonto = !c.monto_devuelto || c.monto_devuelto === 0
+              const lastG = lastGestionByCase[c.id]
+              const hasPtpVencido = ptpVencidoSet.has(c.id)
               return (
-                <button key={c.id} type="button" onClick={() => setSelectedCase(c)}
-                  style={{ width: '100%', textAlign: 'left', padding: '0.7rem 1rem', border: 'none', borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-primary-subtle, rgba(59,130,246,0.08))' : 'transparent', cursor: 'pointer', borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent' }}>
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedCase(c)}
+                  style={{ width: '100%', textAlign: 'left', padding: '0.65rem 1rem', border: 'none', borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-primary-subtle, rgba(59,130,246,0.08))' : 'transparent', cursor: 'pointer', borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent' }}
+                >
+                  {/* Row 1: nombre + monto */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3 }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                       {c.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.3rem' }}>⚖️</span>}
                       {nombreCliente(c.clientes)}
                     </span>
                     {sinMonto ? (
                       <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d97706', flexShrink: 0, padding: '0.1rem 0.4rem', borderRadius: '0.3rem', background: 'rgba(217,119,6,0.1)' }}>Sin monto</span>
                     ) : (
-                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: dColor, flexShrink: 0 }}>{fmtMonto(displayAmount)}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: dColor, flexShrink: 0 }}>{fmtMonto(displayAmount)}</span>
                     )}
                   </div>
-                  <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                    <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: dColor + '22', color: dColor }}>{c.dias_vencido}d</span>
-                    <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 600, background: estadoColor(c.estado) + '22', color: estadoColor(c.estado) }}>{c.estado}</span>
-                    {c.clientes?.hycite_id && <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>#{c.clientes.hycite_id}</span>}
+                  {/* Row 2: estado + días + PTP badge */}
+                  <div style={{ marginTop: '0.22rem', display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 700, background: dColor + '22', color: dColor }}>{c.dias_vencido}d</span>
+                    <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 600, background: estadoColor(c.estado) + '22', color: estadoColor(c.estado) }}>{c.estado}</span>
+                    {hasPtpVencido && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, background: '#dc262622', color: '#dc2626' }}>PTP vencido</span>}
+                    {c.clientes?.hycite_id && <span style={{ fontSize: '0.67rem', color: 'var(--color-text-muted)' }}>#{c.clientes.hycite_id}</span>}
                   </div>
+                  {/* Row 3: última gestión */}
+                  {lastG ? (
+                    <p style={{ margin: '0.18rem 0 0', fontSize: '0.69rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      📞 {lastG.tipo_gestion}{lastG.resultado ? ` · ${lastG.resultado}` : ''} · {fmtFecha(lastG.created_at)}
+                    </p>
+                  ) : (
+                    <p style={{ margin: '0.18rem 0 0', fontSize: '0.69rem', color: '#f59e0b', fontWeight: 600 }}>⚠️ Sin gestiones registradas</p>
+                  )}
                 </button>
               )
             })
@@ -1618,8 +1914,9 @@ export function CarteraPage() {
             onCaseUpdated={handleCaseUpdated}
           />
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-            Selecciona un caso para ver el detalle
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '0.5rem' }}>
+            <div style={{ fontSize: '2.5rem' }}>👈</div>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>Selecciona un caso para ver el detalle</p>
           </div>
         )}
       </div>

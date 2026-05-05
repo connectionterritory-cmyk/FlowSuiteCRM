@@ -19,7 +19,6 @@
 -- ============================================================
 
 begin;
-
 -- ── 1. SELECT policies para roles de solo lectura ────────────
 -- Sin esta política la vista productos_sin_costo devuelve 0 filas
 -- para esos roles porque el acceso a la tabla base falla por RLS.
@@ -27,7 +26,6 @@ begin;
 drop policy if exists productos_vendedor_select           on public.productos;
 drop policy if exists productos_supervisor_tele_select    on public.productos;
 drop policy if exists productos_telemercadeo_select       on public.productos;
-
 create policy productos_vendedor_select on public.productos
   for select to authenticated
   using (
@@ -36,7 +34,6 @@ create policy productos_vendedor_select on public.productos
       where id = auth.uid() and rol = 'vendedor'
     )
   );
-
 create policy productos_supervisor_tele_select on public.productos
   for select to authenticated
   using (
@@ -45,7 +42,6 @@ create policy productos_supervisor_tele_select on public.productos
       where id = auth.uid() and rol = 'supervisor_telemercadeo'
     )
   );
-
 create policy productos_telemercadeo_select on public.productos
   for select to authenticated
   using (
@@ -54,7 +50,6 @@ create policy productos_telemercadeo_select on public.productos
       where id = auth.uid() and rol = 'telemercadeo'
     )
   );
-
 -- ── 2. Vista productos_sin_costo ─────────────────────────────
 -- Expone productos sin columnas de costo:
 --   excluye: costo_n1, costo_n2, costo_n3, costo_n4, recargo_arancelario
@@ -75,9 +70,7 @@ create or replace view public.productos_sin_costo as
     foto_url,
     created_at
   from public.productos;
-
 grant select on public.productos_sin_costo to authenticated;
-
 -- ── Nota: tele_vendedor_assignments ──────────────────────────
 -- Política completa ya implementada en 0044:
 --   admin / distribuidor  → CRUD completo

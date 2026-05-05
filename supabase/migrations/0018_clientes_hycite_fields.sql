@@ -1,5 +1,4 @@
 begin;
-
 -- 1. Add missing columns to clientes (safe — skips if already exists)
 alter table public.clientes
   add column if not exists hycite_id              text,
@@ -17,13 +16,11 @@ alter table public.clientes
   add column if not exists codigo_vendedor_hycite text,
   add column if not exists codigo_dist_hycite     text,
   add column if not exists nivel                  integer       default 1;
-
 -- 2. Partial unique index on hycite_id (NULL-safe — avoids constraint failures
 --    on existing rows that have no hycite_id yet)
 create unique index if not exists clientes_hycite_id_uidx
   on public.clientes (hycite_id)
   where hycite_id is not null;
-
 -- 3. Create import history table
 create table if not exists public.importaciones_hycite (
   id                      uuid        primary key default gen_random_uuid(),
@@ -37,12 +34,9 @@ create table if not exists public.importaciones_hycite (
   registros_error         integer not null default 0,
   created_at              timestamptz not null default now()
 );
-
 alter table public.importaciones_hycite enable row level security;
-
 drop policy if exists importaciones_hycite_select on public.importaciones_hycite;
 drop policy if exists importaciones_hycite_insert on public.importaciones_hycite;
-
 -- Only admin/distribuidor can read import history
 create policy importaciones_hycite_select on public.importaciones_hycite
   for select to authenticated
@@ -53,10 +47,8 @@ create policy importaciones_hycite_select on public.importaciones_hycite
         and u.rol in ('admin', 'distribuidor')
     )
   );
-
 -- Any authenticated user can insert their own import run
 create policy importaciones_hycite_insert on public.importaciones_hycite
   for insert to authenticated
   with check (importado_por = auth.uid());
-
 commit;

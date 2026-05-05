@@ -4,11 +4,8 @@
 -- The existing policies (admin_all, dist_team_select, usuarios_self_read)
 -- remain in place; this adds a broader SELECT for the authenticated role.
 begin;
-
 drop policy if exists usuarios_read_all on public.usuarios;
-
 create policy usuarios_read_all on public.usuarios
   for select to authenticated
   using (true);
-
 commit;

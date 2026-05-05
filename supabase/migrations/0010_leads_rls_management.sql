@@ -1,5 +1,4 @@
 begin;
-
 do $$
 begin
   if not exists (
@@ -15,7 +14,6 @@ begin
       with check (public.is_admin());
   end if;
 end $$;
-
 do $$
 begin
   if not exists (
@@ -31,7 +29,6 @@ begin
       with check (public.is_distribuidor() and public.is_distribuidor_of(owner_id));
   end if;
 end $$;
-
 do $$
 begin
   if not exists (
@@ -47,5 +44,4 @@ begin
       with check (owner_id = auth.uid());
   end if;
 end $$;
-
 commit;

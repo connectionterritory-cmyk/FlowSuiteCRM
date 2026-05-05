@@ -4,7 +4,6 @@
 -- ============================================================
 
 begin;
-
 create or replace function public.get_conversion_kpis(
   p_user_ids uuid[] default null,
   p_range text default 'semana'
@@ -250,22 +249,16 @@ begin
   );
 end;
 $$;
-
 grant execute on function public.get_conversion_kpis(uuid[], text) to authenticated;
-
 create index if not exists citas_start_estado_idx
   on public.citas (start_at, estado)
   where estado in ('completada', 'no_show', 'cancelada');
-
 create index if not exists citas_start_resultado_idx
   on public.citas (start_at, resultado)
   where resultado is not null;
-
 create index if not exists leads_vendedor_idx
   on public.leads (vendedor_id)
   where deleted_at is null;
-
 create index if not exists ventas_vendedor_fecha_idx
   on public.ventas (vendedor_id, fecha_venta);
-
 commit;

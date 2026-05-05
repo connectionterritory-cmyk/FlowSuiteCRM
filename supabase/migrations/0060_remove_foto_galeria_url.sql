@@ -4,10 +4,8 @@
 -- ============================================================
 
 begin;
-
 -- Redefine the view without the redundant field
 drop view if exists public.v_catalogo_vendedor;
-
 create view public.v_catalogo_vendedor
   with (security_invoker = true)
 as
@@ -35,7 +33,5 @@ as
   from public.productos p
   left join public.productos r on r.id = p.reemplazado_por_id
   where p.activo = true;
-
 grant select on public.v_catalogo_vendedor to authenticated;
-
 commit;

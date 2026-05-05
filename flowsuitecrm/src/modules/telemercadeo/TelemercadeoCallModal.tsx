@@ -15,6 +15,7 @@ import {
   segmentoColor,
   segmentoLabel,
 } from './telemercadeoSharedUtils'
+import { PaymentAgreementService, type NextStepRecommendation } from '../../lib/PaymentAgreementService'
 
 type LlamadaHistorial = {
   id: string
@@ -128,6 +129,9 @@ export function TelemercadeoCallModal({
   const [guionAbierto, setGuionAbierto] = useState(false)
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set())
 
+  const [recommendation, setRecommendation] = useState<NextStepRecommendation | null>(null)
+  const [loadingRec, setLoadingRec] = useState(false)
+
   // Reset form fields when modal opens for a new client
   useEffect(() => {
     if (!open) return
@@ -138,7 +142,30 @@ export function TelemercadeoCallModal({
       setMontoProme('')
       setGuionAbierto(false)
       setExpandedHistoryIds(new Set())
+      setRecommendation(null)
     })
+  }, [open, cliente?.id])
+
+  // Load recommendation if case exists
+  useEffect(() => {
+    if (!open || !cliente?.id) return
+
+    const loadRec = async () => {
+      setLoadingRec(true)
+      try {
+        const caseId = await PaymentAgreementService.findActiveCaseForClient(cliente.id)
+        if (caseId) {
+          const rec = await PaymentAgreementService.getNextStepRecommendation(caseId)
+          setRecommendation(rec)
+        }
+      } catch (err) {
+        console.error('Error loading recommendation:', err)
+      } finally {
+        setLoadingRec(false)
+      }
+    }
+
+    void loadRec()
   }, [open, cliente?.id])
 
   // Load call history when modal opens
@@ -402,6 +429,101 @@ export function TelemercadeoCallModal({
           </span>
         )}
       </div>
+
+      {/* Sugerencia del Sistema (RPC 0142) */}
+      {(loadingRec || recommendation) && (
+        <div
+          style={{
+            marginBottom: '1rem',
+            padding: '0.85rem',
+            borderRadius: '0.6rem',
+            background: 'rgba(30, 41, 59, 0.4)',
+            border: '1px solid var(--color-border, #2b3244)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {loadingRec ? (
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+              Analizando caso...
+            </div>
+          ) : recommendation ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '4px',
+                    background:
+                      recommendation.risk_level === 'high'
+                        ? '#ef444422'
+                        : recommendation.risk_level === 'medium'
+                        ? '#f59e0b22'
+                        : '#3b82f622',
+                    color:
+                      recommendation.risk_level === 'high'
+                        ? '#ef4444'
+                        : recommendation.risk_level === 'medium'
+                        ? '#f59e0b'
+                        : '#3b82f6',
+                    border: `1px solid ${
+                      recommendation.risk_level === 'high' ? '#ef444444' : recommendation.risk_level === 'medium' ? '#f59e0b44' : '#3b82f644'
+                    }`,
+                  }}
+                >
+                  Sugerencia: {recommendation.recommended_action.replace(/_/g, ' ')}
+                </span>
+                {recommendation.has_overdue_ptp && (
+                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#ef4444' }}>
+                    ⚠️ PTP INCUMPLIDO
+                  </span>
+                )}
+              </div>
+
+              <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--color-text)', lineHeight: '1.4' }}>
+                {recommendation.reason}
+              </p>
+
+              {recommendation.missing_data.length > 0 && (
+                <div style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: '#f59e0b' }}>
+                  <strong>Datos pendientes:</strong> {recommendation.missing_data.join(', ')}
+                </div>
+              )}
+
+              {recommendation.warnings.length > 0 && (
+                <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                  {recommendation.warnings.map((w, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        fontSize: '0.68rem',
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '4px',
+                        background: '#dc262611',
+                        color: '#dc2626',
+                        border: '1px solid #dc262633',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {w.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {recommendation.suggested_followup_date && (
+                <div style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  📅 Seguimiento sugerido: <strong>{recommendation.suggested_followup_date}</strong>
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
 
       {/* Guión contextual por segmento */}
       {guion && (

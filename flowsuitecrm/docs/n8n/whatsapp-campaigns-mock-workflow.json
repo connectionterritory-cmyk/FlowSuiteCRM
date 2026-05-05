@@ -1,0 +1,140 @@
+{
+  "name": "FlowSuiteCRM - WhatsApp Campaign Dispatch (MOCK)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.fn_claim_outbox_messages_for_n8n(5);",
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "Claim Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.outbox_delivery_attempts (\n  outbox_message_id,\n  dispatcher,\n  attempt_number,\n  status,\n  request_payload,\n  response_payload,\n  error_message\n)\nVALUES (\n  '{{ $json.id }}',\n  'n8n',\n  {{ $json.attempt_count }},\n  'sent',\n  jsonb_build_object('mock', true, 'to', '{{ $json.destinatario }}', 'provider', 'mock_whatsapp'),\n  jsonb_build_object('ok', true, 'mock', true, 'provider_message_id', 'mock_' || '{{ $json.id }}'),\n  NULL\n);",
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "Insert Attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.outbox_messages\nSET\n  status = 'enviado',\n  sent_at = NOW(),\n  provider = 'mock_whatsapp',\n  provider_message_id = 'mock_' || '{{ $json.id }}',\n  provider_response = jsonb_build_object('ok', true, 'mock', true),\n  locked_at = NULL,\n  locked_by = NULL,\n  error_message = NULL,\n  updated_at = NOW()\nWHERE id = '{{ $json.id }}'\n  AND status = 'en_proceso';",
+        "options": {}
+      },
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "name": "Update Outbox",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.mk_messages\nSET status = 'enviado'\nWHERE outbox_message_id = '{{ $json.id }}';",
+        "options": {}
+      },
+      "id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+      "name": "Sync MK Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Claim Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Messages": {
+      "main": [
+        [
+          {
+            "node": "Insert Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Attempt": {
+      "main": [
+        [
+          {
+            "node": "Update Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Outbox": {
+      "main": [
+        [
+          {
+            "node": "Sync MK Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+  "id": "flowsuite-whatsapp-mock-v1",
+  "meta": {
+    "instanceId": "flowsuite-n8n-instance"
+  }
+}

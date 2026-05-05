@@ -1,9 +1,7 @@
 begin;
-
 alter table public.ci_referidos
   add column if not exists prioridad_top boolean default false,
   add column if not exists asignado_a uuid;
-
 create or replace function public.ci_referidos_enforce_prioridad_top()
 returns trigger
 language plpgsql
@@ -36,12 +34,9 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists ci_referidos_prioridad_top_guard on public.ci_referidos;
-
 create trigger ci_referidos_prioridad_top_guard
 before insert or update on public.ci_referidos
 for each row
 execute function public.ci_referidos_enforce_prioridad_top();
-
 commit;

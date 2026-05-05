@@ -13,17 +13,14 @@
 -- ============================================================
 
 begin;
-
 -- 1. Eliminar políticas antiguas
 drop policy if exists clientes_org_member        on public.clientes;
 drop policy if exists clientes_telemercadeo_read on public.clientes;
-
 -- 2. Admin: acceso total
 create policy clientes_admin on public.clientes
   for all to authenticated
   using      (public.is_admin())
   with check (public.is_admin());
-
 -- 3. Distribuidor: clientes propios + clientes del equipo
 --    distribuidor_id = auth.uid()  → cliente asignado directamente al distribuidor
 --    is_distribuidor_of(vendedor_id) → el vendedor pertenece a este distribuidor
@@ -43,7 +40,6 @@ create policy clientes_distribuidor on public.clientes
       or public.is_distribuidor_of(vendedor_id)
     )
   );
-
 -- 4. Vendedor: solo sus propios clientes
 create policy clientes_vendedor on public.clientes
   for all to authenticated
@@ -61,7 +57,6 @@ create policy clientes_vendedor on public.clientes
     )
     and vendedor_id = auth.uid()
   );
-
 -- 5. Telemercadeo: SELECT solo de clientes del vendedor asignado
 create policy clientes_telemercadeo_read on public.clientes
   for select to authenticated
@@ -76,5 +71,4 @@ create policy clientes_telemercadeo_read on public.clientes
         and t.vendedor_id = clientes.vendedor_id
     )
   );
-
 commit;

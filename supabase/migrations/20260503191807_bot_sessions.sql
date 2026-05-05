@@ -45,6 +45,7 @@ create index if not exists bot_sessions_expires_idx
   on public.bot_sessions (expires_at)
   where activa = true;
 
+drop trigger if exists bot_sessions_set_updated_at on public.bot_sessions;
 create trigger bot_sessions_set_updated_at
   before update on public.bot_sessions
   for each row execute function public.set_updated_at();
@@ -52,6 +53,7 @@ create trigger bot_sessions_set_updated_at
 -- RLS: solo service_role accede (el bot corre con service key)
 alter table public.bot_sessions enable row level security;
 
+drop policy if exists bot_sessions_service_all on public.bot_sessions;
 create policy bot_sessions_service_all on public.bot_sessions
   for all
   using (true)

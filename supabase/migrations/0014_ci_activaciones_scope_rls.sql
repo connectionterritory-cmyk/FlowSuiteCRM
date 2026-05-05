@@ -1,5 +1,4 @@
 begin;
-
 drop policy if exists ci_activaciones_select on public.ci_activaciones;
 create policy ci_activaciones_select on public.ci_activaciones
 for select to authenticated
@@ -24,7 +23,6 @@ using (
       )
   )
 );
-
 drop policy if exists ci_referidos_select on public.ci_referidos;
 create policy ci_referidos_select on public.ci_referidos
 for select to authenticated
@@ -56,5 +54,4 @@ using (
       )
   )
 );
-
 commit;

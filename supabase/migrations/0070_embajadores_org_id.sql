@@ -28,7 +28,6 @@
 -- ============================================================
 
 begin;
-
 -- ── 1. Agregar org_id a embajadores ──────────────────────────
 
 -- FK a organizations eliminado: public.organizations no existe en este
@@ -37,12 +36,10 @@ begin;
 -- cuando se resuelva el estado de la tabla organizations.
 alter table public.embajadores
   add column if not exists org_id uuid;
-
 -- ── 2. Agregar org_id a embajador_programas ───────────────────
 
 alter table public.embajador_programas
   add column if not exists org_id uuid;
-
 -- ── 3. Backfill con la organización default ───────────────────
 -- Mismo UUID que usa migration 0001 para el backfill de clientes,
 -- contactos y demás tablas retro-aplicadas.
@@ -59,15 +56,12 @@ begin
   set    org_id = v_default_org
   where  org_id is null;
 end $$;
-
 -- ── 4. Índices ────────────────────────────────────────────────
 
 create index if not exists embajadores_org_id_idx
   on public.embajadores (org_id);
-
 create index if not exists embajador_programas_org_id_idx
   on public.embajador_programas (org_id);
-
 -- ── 5. Hardening: policy distribuidor en embajadores ─────────
 --
 -- Antes:
@@ -84,7 +78,6 @@ create index if not exists embajador_programas_org_id_idx
 -- no se modifican: su scope ya es suficientemente estricto.
 
 drop policy if exists embajadores_distribuidor_read on public.embajadores;
-
 -- NOTA: rama is_org_member eliminada — public.memberships no existe en producción.
 -- La policy queda con is_distribuidor_of como único criterio distribuidor.
 create policy embajadores_distribuidor_read on public.embajadores
@@ -93,20 +86,16 @@ create policy embajadores_distribuidor_read on public.embajadores
     public.is_distribuidor()
     and public.is_distribuidor_of(owner_id)
   );
-
 -- ── 6. Hardening: policy distribuidor en embajador_programas ─
 
 drop policy if exists embajador_programas_distribuidor_read on public.embajador_programas;
-
 create policy embajador_programas_distribuidor_read on public.embajador_programas
   for select to authenticated
   using (
     public.is_distribuidor()
     and public.is_distribuidor_of(owner_id)
   );
-
 commit;
-
 -- ============================================================
 -- AUDIT QUERIES (ejecutar ANTES de aplicar para verificar)
 -- ============================================================
@@ -155,4 +144,4 @@ commit;
 -- drop index if exists public.embajador_programas_org_id_idx;
 --
 -- commit;
--- ============================================================
+-- ============================================================;

@@ -31,8 +31,6 @@ language sql immutable strict parallel safe
 as $$
   select regexp_replace(p, '[^0-9]', '', 'g')
 $$;
-
-
 -- ── 2. Trigger function: leads ────────────────────────────────
 
 create or replace function public.trg_lead_autolink_persona()
@@ -93,8 +91,6 @@ begin
   return NEW;
 
 end $$;
-
-
 -- ── 3. Trigger function: clientes ─────────────────────────────
 
 create or replace function public.trg_cliente_autolink_persona()
@@ -161,8 +157,6 @@ begin
   return NEW;
 
 end $$;
-
-
 -- ── 4. Trigger function: embajadores ─────────────────────────
 -- El embajador es un ROL, no una identidad nueva.
 -- Su persona_id se propaga desde el lead o cliente de origen.
@@ -201,44 +195,35 @@ begin
   return NEW;
 
 end $$;
-
-
 -- ── 5. Attach triggers ────────────────────────────────────────
 
 drop trigger if exists trg_lead_autolink_persona      on public.leads;
 drop trigger if exists trg_cliente_autolink_persona   on public.clientes;
 drop trigger if exists trg_embajador_autolink_persona on public.embajadores;
-
 -- leads: INSERT nuevo o cambio de teléfono/owner (que cambia el org scope)
 create trigger trg_lead_autolink_persona
   before insert or update of telefono, owner_id, persona_id
   on public.leads
   for each row
   execute function public.trg_lead_autolink_persona();
-
 -- clientes: INSERT nuevo o cambio de teléfono/org
 create trigger trg_cliente_autolink_persona
   before insert or update of telefono, org_id, distribuidor_id, persona_id
   on public.clientes
   for each row
   execute function public.trg_cliente_autolink_persona();
-
 -- embajadores: INSERT o cuando se vincula el origen (lead/cliente)
 create trigger trg_embajador_autolink_persona
   before insert or update of lead_id, cliente_id, persona_id
   on public.embajadores
   for each row
   execute function public.trg_embajador_autolink_persona();
-
-
 -- ── 6. Índice funcional en personas.telefono ─────────────────
 -- Hace la búsqueda O(log n) en vez de seq scan.
 
 create index if not exists idx_personas_telefono_norm
   on public.personas (public.normalizar_telefono(telefono))
   where telefono is not null;
-
-
 -- ── Notas de operación ────────────────────────────────────────
 --
 -- • El trigger de embajadores NO crea personas nuevas. Si se inscribe
@@ -254,4 +239,4 @@ create index if not exists idx_personas_telefono_norm
 --
 --   Esto disparará el trigger BEFORE UPDATE. Evaluar primero con un
 --   SELECT COUNT(*) para estimar el volumen antes de ejecutar.
--- ============================================================
+-- ============================================================;

@@ -6,7 +6,6 @@
 -- ============================================================
 
 begin;
-
 -- Helper: is current user a supervisor_telemercadeo?
 create or replace function public.is_supervisor_tele()
 returns boolean
@@ -21,19 +20,16 @@ as $$
       and rol = 'supervisor_telemercadeo'
   );
 $$;
-
 -- Leads: supervisor can update (reassign vendedor_id)
 drop policy if exists leads_supervisor_tele_update on public.leads;
 create policy leads_supervisor_tele_update on public.leads
   for update to authenticated
   using (public.is_supervisor_tele() and deleted_at is null)
   with check (public.is_supervisor_tele());
-
 -- Clientes: supervisor can update (reassign vendedor_id)
 drop policy if exists clientes_supervisor_tele_update on public.clientes;
 create policy clientes_supervisor_tele_update on public.clientes
   for update to authenticated
   using (public.is_supervisor_tele())
   with check (public.is_supervisor_tele());
-
 commit;

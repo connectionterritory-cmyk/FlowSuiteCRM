@@ -6,7 +6,6 @@
 -- ============================================================
 
 begin;
-
 -- ── 1. is_admin() ───────────────────────────────────────────
 create or replace function public.is_admin()
 returns boolean
@@ -20,7 +19,6 @@ as $$
     where id = auth.uid() and rol = 'admin'
   );
 $$;
-
 -- ── 2. is_distribuidor() ────────────────────────────────────
 create or replace function public.is_distribuidor()
 returns boolean
@@ -34,7 +32,6 @@ as $$
     where id = auth.uid() and rol = 'distribuidor'
   );
 $$;
-
 -- ── 3. is_distribuidor_of(uuid) ─────────────────────────────
 -- Was missing search_path
 create or replace function public.is_distribuidor_of(vendor_id uuid)
@@ -49,7 +46,6 @@ as $$
       and u.distribuidor_padre_id = auth.uid()
   );
 $$;
-
 -- ── 4. is_vendedor() ────────────────────────────────────────
 -- Was missing search_path
 create or replace function public.is_vendedor()
@@ -64,7 +60,6 @@ as $$
       and rol in ('vendedor', 'telemercadeo')
   );
 $$;
-
 -- ── 5. get_distributor_phone() ──────────────────────────────
 -- Already had search_path = 'public' — add 'extensions'
 create or replace function public.get_distributor_phone()
@@ -97,15 +92,12 @@ begin
   return coalesce(_tel, '');
 end;
 $$;
-
 grant execute on function public.get_distributor_phone() to authenticated;
-
 -- ── 8. Programas INSERT policy ──────────────────────────────
 -- The linter flagged "programas_insert_auth" with WITH CHECK (true).
 -- Drop the overly permissive policy and rely on programas_admin_all
 -- for inserts (which already restricts to admin).
 drop policy if exists programas_insert_auth on public.programas;
-
 -- Ensure the admin-only insert path is clean:
 -- programas_admin_all covers INSERT for admins already.
 -- If it doesn't exist, create it narrowly:
@@ -136,5 +128,4 @@ begin
   end if;
 end;
 $$;
-
 commit;

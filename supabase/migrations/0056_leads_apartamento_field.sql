@@ -8,8 +8,6 @@
 -- ============================================================
 
 begin;
-
 alter table public.leads
   add column if not exists apartamento text;
-
 commit;

@@ -12,7 +12,6 @@
 -- ============================================================
 
 begin;
-
 -- -----------------------------
 -- Clientes policies
 -- -----------------------------
@@ -25,17 +24,14 @@ drop policy if exists clientes_admin_all on public.clientes;
 drop policy if exists clientes_distribuidor_all on public.clientes;
 drop policy if exists clientes_vendedor_read on public.clientes;
 drop policy if exists clientes_supervisor_telemercadeo_read on public.clientes;
-
 create policy clientes_admin_all on public.clientes
   for all to authenticated
   using (public.is_admin() and public.is_org_member(org_id))
   with check (public.is_admin() and public.is_org_member(org_id));
-
 create policy clientes_distribuidor_all on public.clientes
   for all to authenticated
   using (public.is_distribuidor() and public.is_org_member(org_id))
   with check (public.is_distribuidor() and public.is_org_member(org_id));
-
 create policy clientes_vendedor_read on public.clientes
   for select to authenticated
   using (
@@ -46,7 +42,6 @@ create policy clientes_vendedor_read on public.clientes
     and vendedor_id = auth.uid()
     and public.is_org_member(org_id)
   );
-
 create policy clientes_supervisor_telemercadeo_read on public.clientes
   for select to authenticated
   using (
@@ -56,7 +51,6 @@ create policy clientes_supervisor_telemercadeo_read on public.clientes
     )
     and public.is_org_member(org_id)
   );
-
 create policy clientes_telemercadeo_read on public.clientes
   for select to authenticated
   using (
@@ -71,18 +65,15 @@ create policy clientes_telemercadeo_read on public.clientes
     )
     and public.is_org_member(org_id)
   );
-
 -- -----------------------------
 -- Usuarios policies
 -- -----------------------------
 drop policy if exists usuarios_read_all on public.usuarios;
 drop policy if exists usuarios_self_read on public.usuarios;
 drop policy if exists usuarios_org_read on public.usuarios;
-
 create policy usuarios_self_read on public.usuarios
   for select to authenticated
   using (id = auth.uid());
-
 create policy usuarios_org_read on public.usuarios
   for select to authenticated
   using (
@@ -93,5 +84,4 @@ create policy usuarios_org_read on public.usuarios
         and u.rol not in ('telemercadeo', 'supervisor_telemercadeo')
     )
   );
-
 commit;

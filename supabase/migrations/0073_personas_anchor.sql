@@ -39,7 +39,6 @@
 -- ============================================================
 
 begin;
-
 -- ── 1. Tabla personas ─────────────────────────────────────────
 
 create table if not exists public.personas (
@@ -55,33 +54,26 @@ create table if not exists public.personas (
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
-
 comment on table public.personas is
   'Ancla de identidad que unifica leads, clientes y embajadores bajo un mismo registro de persona física. '
   'Tabla de infraestructura interna: el frontend accede a identidad siempre vía JOIN desde las entidades.';
-
 comment on column public.personas.org_id is
   'Organización propietaria del registro. uuid sin FK (public.organizations no existe en prod). '
   'FK se puede agregar en migración posterior.';
-
 -- ── 2. Índices en personas ────────────────────────────────────
 
 create index if not exists personas_org_id_idx
   on public.personas (org_id);
-
 create index if not exists personas_email_idx
   on public.personas (email)
   where email is not null;
-
 create index if not exists personas_telefono_idx
   on public.personas (telefono)
   where telefono is not null;
-
 -- ── 3. persona_id en leads ────────────────────────────────────
 
 alter table public.leads
   add column if not exists persona_id uuid;
-
 do $$
 begin
   if not exists (
@@ -95,21 +87,17 @@ begin
       on delete set null;
   end if;
 end $$;
-
 create index if not exists leads_persona_id_idx
   on public.leads (persona_id)
   where persona_id is not null;
-
 comment on column public.leads.persona_id is
   'FK al registro de persona física en public.personas. '
   'NULL en registros históricos sin persona vinculada. '
   'Exclusivo de uso con clientes.persona_id y embajadores.persona_id para el mismo individuo.';
-
 -- ── 4. persona_id en clientes ─────────────────────────────────
 
 alter table public.clientes
   add column if not exists persona_id uuid;
-
 do $$
 begin
   if not exists (
@@ -123,20 +111,16 @@ begin
       on delete set null;
   end if;
 end $$;
-
 create index if not exists clientes_persona_id_idx
   on public.clientes (persona_id)
   where persona_id is not null;
-
 comment on column public.clientes.persona_id is
   'FK al registro de persona física en public.personas. '
   'NULL en registros históricos sin persona vinculada.';
-
 -- ── 5. persona_id en embajadores ──────────────────────────────
 
 alter table public.embajadores
   add column if not exists persona_id uuid;
-
 do $$
 begin
   if not exists (
@@ -150,15 +134,12 @@ begin
       on delete set null;
   end if;
 end $$;
-
 create index if not exists embajadores_persona_id_idx
   on public.embajadores (persona_id)
   where persona_id is not null;
-
 comment on column public.embajadores.persona_id is
   'FK al registro de persona física en public.personas. '
   'NULL en registros históricos sin persona vinculada.';
-
 -- ── 6. RLS en personas (Opción C: solo admin) ─────────────────
 --
 -- personas es tabla de infraestructura interna.
@@ -167,16 +148,12 @@ comment on column public.embajadores.persona_id is
 -- No se exponen personas directamente a vendedores ni distribuidores.
 
 alter table public.personas enable row level security;
-
 drop policy if exists personas_admin_all on public.personas;
-
 create policy personas_admin_all on public.personas
   for all to authenticated
   using (public.is_admin())
   with check (public.is_admin());
-
 commit;
-
 -- ============================================================
 -- AUDIT QUERIES (ejecutar DESPUÉS de aplicar)
 -- ============================================================
@@ -236,4 +213,4 @@ commit;
 -- drop table if exists public.personas;
 --
 -- commit;
--- ============================================================
+-- ============================================================;
