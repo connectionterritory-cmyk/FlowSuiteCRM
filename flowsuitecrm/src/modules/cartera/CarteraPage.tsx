@@ -138,6 +138,12 @@ function dateOnly(value: string) {
   return trimmed.slice(0, 10)
 }
 
+function timeOnly(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed || !trimmed.includes('T')) return null
+  return trimmed.slice(11, 16)
+}
+
 function diasColor(d: number) {
   if (d >= 91) return '#7c3aed'
   if (d >= 61) return '#dc2626'
@@ -507,6 +513,8 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
 }
 
 function buildCobranzaNextAction(draft: GestionDraft) {
+  const text = `${draft.resumen} ${draft.contenido}`.toLowerCase()
+  if (text.includes('llam')) return 'Llamar cliente'
   if (draft.resultado === 'cita_agendada') return 'Cita agendada'
   if (draft.resultado === 'promesa_pago') return 'Cobrar promesa de pago'
   if (draft.resultado === 'pago_realizado') return 'Verificar pago de cobranza'
@@ -576,6 +584,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     const notas = draft.contenido.trim() || draft.resumen.trim() || null
     const resultado = draft.resultado ?? (draft.resumen.trim() || null)
     const fechaCompromiso = dateOnly(draft.followupAt)
+    const horaCompromiso = timeOnly(draft.followupAt)
+    const nextAction = buildCobranzaNextAction(draft)
 
     setGestionSaving(true)
     setGestionError(null)
@@ -627,13 +637,30 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         const { error: clienteError } = await supabase
           .from('clientes')
           .update({
-            next_action: buildCobranzaNextAction(draft),
+            next_action: nextAction,
             next_action_date: fechaCompromiso,
           })
           .eq('id', caso.cliente_id)
 
         if (clienteError) {
           console.warn('[CarteraPage] gestión guardada sin actualizar próxima acción:', clienteError.message)
+        }
+
+        const { error: tareaError } = await supabase.from('crm_tareas').insert({
+          contacto_tipo: 'cliente',
+          contacto_id: caso.cliente_id,
+          tipo: nextAction.toLowerCase().includes('llamar') ? 'llamada' : 'cobro',
+          descripcion: notas || nextAction,
+          asignado_a: currentUserId,
+          created_by: currentUserId,
+          fecha_vencimiento: fechaCompromiso,
+          hora_vencimiento: horaCompromiso,
+          prioridad: draft.resultado === 'promesa_pago' ? 'alta' : 'media',
+          estado: 'pendiente',
+        })
+
+        if (tareaError) {
+          console.warn('[CarteraPage] gestión guardada sin crear tarea para Hoy:', tareaError.message)
         }
       }
 
