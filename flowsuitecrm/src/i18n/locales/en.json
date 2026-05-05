@@ -66,6 +66,26 @@
     "phoneMissing": "Add a phone number to send.",
     "emailMissing": "Add an email to send.",
     "emailSubject": "Royal Prestige message",
+    "sender": {
+      "actualLabel": "Sender",
+      "templateLabel": "Variable {vendedor}",
+      "phoneLabel": "Variable {vendedor_telefono}",
+      "organizationLabel": "Organization",
+      "checklist": {
+        "name": "Name",
+        "phone": "Phone",
+        "organization": "Organization"
+      },
+      "roles": {
+        "distribuidor": "Distributor",
+        "vendedor": "Seller",
+        "usuario": "User"
+      }
+    },
+    "missingData": {
+      "title": "Data is missing for this template",
+      "hint": "Complete the user profile or remove those variables from the template."
+    },
     "imagenLabel": "Image link (optional)",
     "imagenPlaceholder": "Paste your Google Drive or Dropbox link...",
     "templates": {

@@ -66,6 +66,26 @@
     "phoneMissing": "Agrega un telefono para enviar.",
     "emailMissing": "Agrega un email para enviar.",
     "emailSubject": "Mensaje de Royal Prestige",
+    "sender": {
+      "actualLabel": "Quien envia",
+      "templateLabel": "Variable {vendedor_nombre}",
+      "phoneLabel": "Variable {vendedor_telefono}",
+      "organizationLabel": "Organizacion",
+      "checklist": {
+        "name": "Nombre",
+        "phone": "Telefono",
+        "organization": "Organizacion"
+      },
+      "roles": {
+        "distribuidor": "Distribuidor",
+        "vendedor": "Vendedor",
+        "usuario": "Usuario"
+      }
+    },
+    "missingData": {
+      "title": "Faltan datos para completar esta plantilla",
+      "hint": "Completa el perfil del usuario o ajusta la plantilla para quitar esas variables."
+    },
     "imagenLabel": "Link de imagen (opcional)",
     "imagenPlaceholder": "Pega el link de Google Drive o Dropbox...",
     "templates": {

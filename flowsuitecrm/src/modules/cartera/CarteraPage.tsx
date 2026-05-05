@@ -506,6 +506,18 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
   return map[tipo] ?? tipo
 }
 
+function buildCobranzaNextAction(draft: GestionDraft) {
+  if (draft.resultado === 'cita_agendada') return 'Cita agendada'
+  if (draft.resultado === 'promesa_pago') return 'Cobrar promesa de pago'
+  if (draft.resultado === 'pago_realizado') return 'Verificar pago de cobranza'
+  if (draft.resultado === 'no_contesta' || draft.resultado === 'ocupado' || draft.resultado === 'buzon_voz') {
+    return 'Llamar de nuevo'
+  }
+  if (draft.tipo === 'whatsapp') return 'Seguimiento por WhatsApp'
+  if (draft.tipo === 'email') return 'Seguimiento por email'
+  return `Seguimiento cobranza: ${formatGestionTipo(draft.tipo)}`
+}
+
 function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated }: CaseDetailProps) {
   const [tab, setTab] = useState<DetailTab>('gestiones')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
@@ -609,6 +621,20 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 
       if (actividadError) {
         console.warn('[CarteraPage] gestión guardada sin actividad de timeline:', actividadError.message)
+      }
+
+      if (fechaCompromiso) {
+        const { error: clienteError } = await supabase
+          .from('clientes')
+          .update({
+            next_action: buildCobranzaNextAction(draft),
+            next_action_date: fechaCompromiso,
+          })
+          .eq('id', caso.cliente_id)
+
+        if (clienteError) {
+          console.warn('[CarteraPage] gestión guardada sin actualizar próxima acción:', clienteError.message)
+        }
       }
 
       handleRefresh()

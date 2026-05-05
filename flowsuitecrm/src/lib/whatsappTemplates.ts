@@ -222,7 +222,7 @@ export const baseTemplates: WhatsappTemplate[] = [
     category: 'client',
     label: 'Cumpleaños',
     message:
-      '🎉 ¡Feliz cumpleaños {nombre}! 🎂\n\nTe saluda {vendedor_nombre}, tu distribuidor de Royal Prestige.\n\nQueremos celebrar contigo: tienes un *BONO especial de $200* para tu próximo equipo y un detalle sorpresa que te entregaremos personalmente 🥳\n\n¡Que tengas un día increíble! Escríbeme hoy para reclamar tu regalo.',
+      'Hola {nombre} 🎉\n\nTe saluda {vendedor_nombre} de Royal Prestige.\n\nTenemos para ti un regalo especial 🎁 y un bono de $200 disponible por tiempo limitado.\n\nPara reclamarlo, comunícate directamente con Patricia Caicedo por este enlace:\nhttps://wa.link/ghu91u\n\n⏳ Válido por 30 días.',
   },
   {
     id: 'client.morosa',

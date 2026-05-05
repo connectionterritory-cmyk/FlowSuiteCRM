@@ -776,7 +776,6 @@ export function Programa4en14Page() {
                         nombre: referido.nombre ?? '',
                         telefono: referido.telefono ?? '',
                         email: emailValue,
-                        vendedor: vendedorName === '-' ? '' : vendedorName,
                         leadId: lead?.id ?? null,
                       }
                       const hasPhone = phoneDigits.length > 0
@@ -1309,7 +1308,6 @@ export function Programa4en14Page() {
               nombre: row.nombre.trim() || t('common.noData'),
               telefono: row.telefono,
               email: row.email,
-              vendedor: vendedorName === '-' ? '' : vendedorName,
             }
             return (
               <div key={`referral-${index}`} className="referral-row">

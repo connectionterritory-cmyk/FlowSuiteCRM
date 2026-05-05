@@ -128,10 +128,18 @@ export function MessagingProvider({
     const currentUserName = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ').trim()
     const organizacion = currentUser?.organizacion || 'Connection Worldwide Group'
     
+    // Improved fallback for vendedor_nombre (matching stash logic)
+    const vendedorNombre = 
+      currentUserName || 
+      initialContact?.responsableNombre || 
+      initialContact?.vendedorNombre || 
+      initialContact?.vendedor || 
+      ''
+
     const vars: Record<string, string> = {
       cliente: nombre,
       nombre,
-      vendedor_nombre: currentUserName,
+      vendedor_nombre: vendedorNombre,
       vendedor_telefono: currentUser?.telefono || '',
       organizacion,
       email: initialContact?.email || '',

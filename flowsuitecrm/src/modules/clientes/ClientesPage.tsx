@@ -834,8 +834,47 @@ export function ClientesPage() {
       const saldoDisplay = cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-'
       const montoMorosoDisplay = (cliente.monto_moroso ?? 0) > 0 ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-'
 
+      const whatsappAction = (
+        <button
+          type="button"
+          className="whatsapp-button"
+          aria-label="WhatsApp"
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '4px',
+            color: '#25d366',
+            display: 'inline-flex',
+            alignItems: 'center'
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            openWhatsapp({
+              nombre: fullName,
+              telefono: cliente.telefono ?? '',
+              email: cliente.email ?? '',
+              cuentaHycite: cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '',
+              saldoActual: cliente.saldo_actual,
+              montoMoroso: cliente.monto_moroso,
+              diasAtraso: cliente.dias_atraso,
+              estadoMorosidad: cliente.estado_morosidad,
+              clienteId: cliente.id,
+            })
+          }}
+        >
+          <IconWhatsapp width={16} height={16} />
+        </button>
+      )
+
       const cellMap: Record<string, React.ReactNode> = {
-        cliente: fullName,
+        cliente: (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            {fullName}
+            {whatsappAction}
+          </div>
+        ),
         telefono: telefonoDisplay,
         cuenta,
         saldo: saldoDisplay,
@@ -1874,7 +1913,6 @@ export function ClientesPage() {
                           nombre: fullName,
                           telefono: cliente.telefono ?? '',
                           email: cliente.email ?? '',
-                          vendedor: cardVendedor === 'Sin asignar' ? '' : cardVendedor,
                           cuentaHycite: cliente.hycite_id ?? cliente.numero_cuenta_financiera ?? '',
                           saldoActual: cliente.saldo_actual,
                           montoMoroso: cliente.monto_moroso,
@@ -2391,6 +2429,29 @@ export function ClientesPage() {
                 disabled={detailLoading}
               >
                 Agendar cita
+              </Button>
+
+              <Button
+                variant="ghost"
+                type="button"
+                style={{ color: '#25d366', borderColor: 'rgba(37,211,102,0.3)' }}
+                onClick={() =>
+                  openWhatsapp({
+                    nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' '),
+                    telefono: selectedClienteDetail.telefono ?? '',
+                    email: selectedClienteDetail.email ?? '',
+                    cuentaHycite:
+                      selectedClienteDetail.hycite_id ?? selectedClienteDetail.numero_cuenta_financiera ?? '',
+                    saldoActual: selectedClienteDetail.saldo_actual,
+                    montoMoroso: selectedClienteDetail.monto_moroso,
+                    diasAtraso: selectedClienteDetail.dias_atraso,
+                    estadoMorosidad: selectedClienteDetail.estado_morosidad,
+                    clienteId: selectedClienteDetail.id,
+                  })
+                }
+                disabled={detailLoading}
+              >
+                WhatsApp
               </Button>
 
               <Button

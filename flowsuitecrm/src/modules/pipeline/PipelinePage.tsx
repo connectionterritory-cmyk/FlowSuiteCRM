@@ -519,7 +519,6 @@ export function PipelinePage() {
               nombre: fullName,
               telefono: lead.telefono ?? '',
               email: lead.email ?? '',
-              vendedor: ownerName ?? '',
               leadId: lead.id,
             })
           }}

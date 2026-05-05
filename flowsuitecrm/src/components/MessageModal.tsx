@@ -44,6 +44,8 @@ function MessageModalContent({ onClose }: { onClose: () => void }) {
     position: 'relative'
   }
 
+
+
   const headerStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',

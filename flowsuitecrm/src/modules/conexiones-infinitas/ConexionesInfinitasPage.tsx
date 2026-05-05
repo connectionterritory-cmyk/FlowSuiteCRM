@@ -2130,7 +2130,6 @@ export function ConexionesActivacionesTabLegacy() {
                                   openWhatsapp({
                                     nombre: referido.nombre ?? '',
                                     telefono: referido.telefono ?? '',
-                                    vendedor: representante?.nombre ?? '',
                                     recomendadoPor: selectedActivationOwnerName,
                                     leadId: referido.lead_id,
                                   })
@@ -5100,7 +5099,6 @@ function ConexionesEmbajadoresTab() {
               nombre: row.nombre.trim() || t('common.noData'),
               telefono: row.telefono,
               email: row.email,
-              vendedor: vendedorName === '-' ? '' : vendedorName,
               recomendadoPor: embajadorName,
             }
             return (

@@ -1161,12 +1161,10 @@ export function LeadsPage() {
           aria-label={t('whatsapp.open')}
           onClick={(event) => {
             event.stopPropagation()
-            const ownerName = getVendedorLabel(getLeadVendedorId(lead))
             openWhatsapp({
               nombre: fullName,
               telefono: lead.telefono ?? '',
               email: lead.email ?? '',
-              vendedor: ownerName === '-' ? '' : ownerName,
               recomendadoPor: getRecomendadoPor(lead),
               leadId: lead.id,
             })
@@ -2115,7 +2113,6 @@ export function LeadsPage() {
                           nombre: fullName,
                           telefono: lead.telefono ?? '',
                           email: lead.email ?? '',
-                          vendedor: ownerLabel === '-' ? '' : ownerLabel,
                           recomendadoPor: getRecomendadoPor(lead),
                           leadId: lead.id,
                         })

@@ -31,6 +31,14 @@ type TelemercadeoCallModalProps = {
   onClose: () => void
 }
 
+function buildCobranzaNextAction(resultado: ResultadoLlamada) {
+  if (resultado === 'cita_agendada') return 'Cita agendada'
+  if (resultado === 'pago_prometido') return 'Cobrar promesa de pago'
+  if (resultado === 'pago_realizado') return 'Verificar pago de cobranza'
+  if (resultado === 'no_contesta') return 'Llamar de nuevo'
+  return `Seguimiento cobranza: ${resultadoLabel(resultado)}`
+}
+
 function guionContextual(dias: number | null, moroso: number | null) {
   if (!moroso || moroso === 0) return null
   if (!dias || dias < 1) return null
@@ -189,18 +197,18 @@ export function TelemercadeoCallModal({
       showToast(`Gestión registrada, pero no se pudo loguear actividad: ${actividadError.message}`, 'error')
     }
 
-    // 2. Si es cita agendada, actualizar el cliente para que aparezca en el Dashboard
-    if (resultado === 'cita_agendada' && fechaFollowup) {
+    // 3. Guardar la próxima acción para que aparezca en Hoy.
+    if (fechaFollowup) {
       const { error: errorCliente } = await supabase
         .from('clientes')
         .update({
           next_action_date: fechaFollowup,
-          next_action: 'Cita agendada',
+          next_action: buildCobranzaNextAction(resultado),
         })
         .eq('id', cliente.id)
 
       if (errorCliente) {
-        showToast('Llamada guardada, pero no se pudo agendar la cita: ' + errorCliente.message, 'error')
+        showToast('Gestión guardada, pero no se pudo actualizar la próxima acción: ' + errorCliente.message, 'error')
       }
     }
 

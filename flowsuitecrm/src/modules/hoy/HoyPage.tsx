@@ -57,6 +57,8 @@ type ClienteCobranzaRow = {
   monto_moroso: number | null
   dias_atraso: number | null
   estado_morosidad: string | null
+  next_action: string | null
+  next_action_date: string | null
 }
 
 type ClienteBirthdayRow = {
@@ -282,6 +284,11 @@ export function HoyPage() {
   const totalMoroso = useMemo(
     () => cobranzas.reduce((sum, c) => sum + (c.monto_moroso ?? 0), 0),
     [cobranzas]
+  )
+
+  const cobranzasConAccionHoy = useMemo(
+    () => cobranzas.filter((c) => c.next_action_date && c.next_action_date <= todayIso),
+    [cobranzas, todayIso]
   )
 
   const threeDaysAgo = useMemo(() => {
@@ -604,9 +611,10 @@ export function HoyPage() {
       // ── Clients ───────────────────────────────────────────
       supabase
         .from('clientes')
-        .select('id, nombre, apellido, telefono, monto_moroso, dias_atraso, estado_morosidad, vendedor_id')
+        .select('id, nombre, apellido, telefono, monto_moroso, dias_atraso, estado_morosidad, next_action, next_action_date, vendedor_id')
         .eq('vendedor_id', vendedorId)
         .or('monto_moroso.gt.0,dias_atraso.gt.0')
+        .order('next_action_date', { ascending: true, nullsFirst: false })
         .order('dias_atraso', { ascending: false, nullsFirst: false })
         .limit(10),
       supabase
@@ -1367,9 +1375,10 @@ export function HoyPage() {
             <div className="hoy-item-title">{t('hoy.cobranzas')}</div>
             <div className="hoy-item-subtitle">
               {cobranzas.length} {t('hoy.statsCobranzas')} · {formatCurrency(totalMoroso || 0)}
+              {cobranzasConAccionHoy.length > 0 ? ` · ${cobranzasConAccionHoy.length} por hacer hoy` : ''}
             </div>
           </div>
-          <div className="hoy-item-badge pink">{cobranzas.length}</div>
+          <div className="hoy-item-badge pink">{cobranzasConAccionHoy.length || cobranzas.length}</div>
           <div className="hoy-item-chevron">›</div>
         </div>
       )}
@@ -1614,11 +1623,18 @@ export function HoyPage() {
         <div className="hoy-modal-list">
           {cobranzas.map((c) => {
             const name = getClientName(c)
+            const actionDue = Boolean(c.next_action_date && c.next_action_date <= todayIso)
+            const actionLabel = c.next_action?.trim() || 'Gestionar cobranza'
             return (
               <div key={c.id} className="hoy-modal-row cobranza">
                 <div className="hoy-modal-row-info">
                   <div className="hoy-modal-row-name">{name}</div>
                   <div className="hoy-modal-row-meta">
+                    {actionDue && (
+                      <span className="seller-pill variant-warning">
+                        {c.next_action_date && c.next_action_date < todayIso ? 'Vencida' : 'Hoy'}: {actionLabel}
+                      </span>
+                    )}
                     {c.dias_atraso != null && c.dias_atraso > 0 && (
                       <span className="seller-pill variant-danger">
                         {`${getAtrasoBucket(c.dias_atraso)} de atraso`}
