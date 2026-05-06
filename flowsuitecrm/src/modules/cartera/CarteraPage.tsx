@@ -1520,7 +1520,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         {/* Registrar */}
         <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Registrar</span>
-          <ActionBtn label="Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
+          <ActionBtn label="Llamada" color="#3b82f6" onClick={() => setGestionOpen(true)} />
           <ActionBtn label="PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
           <ActionBtn label="Pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
           <ActionBtn label="Refinanciar" color="#7c3aed" onClick={() => setPlanOpen(true)} />
