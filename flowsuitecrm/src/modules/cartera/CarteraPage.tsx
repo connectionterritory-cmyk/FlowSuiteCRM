@@ -62,8 +62,12 @@ type PTP = {
   monto: number
   fecha_compromiso: string
   estado: string
+  canal: string | null
   notas: string | null
   creado_por: string | null
+  fecha_cumplimiento: string | null
+  cumplido_at: string | null
+  incumplido_at: string | null
   created_at: string
 }
 
@@ -72,9 +76,13 @@ type Pago = {
   monto: number
   fecha_pago: string
   metodo_pago: string | null
-  referencia: string | null
+  referencia_externa: string | null
+  comprobante_url: string | null
+  estado: string
+  source: string
   notas: string | null
-  creado_por: string | null
+  created_by: string | null
+  ptp_id: string | null
   created_at: string
 }
 
@@ -282,8 +290,8 @@ function buildHistorial(gestiones: Gestion[], ptps: PTP[], pagos: Pago[], caso: 
       label: 'Pago registrado',
       monto: p.monto,
       estado: null,
-      notas: [p.metodo_pago, p.referencia, p.notas].filter(Boolean).join(' · ') || null,
-      actor: p.creado_por,
+      notas: [p.metodo_pago, p.referencia_externa, p.notas].filter(Boolean).join(' · ') || null,
+      actor: p.created_by,
     })
   }
 
@@ -313,24 +321,33 @@ type PTPModalProps = {
 function PTPModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PTPModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState('')
+  const [canal, setCanal] = useState('telefono')
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) { setMonto(''); setFecha(''); setNotas(''); setError(null) }
+    if (open) { setMonto(''); setFecha(''); setCanal('telefono'); setNotas(''); setError(null) }
   }, [open])
 
   const handleSave = async () => {
-    if (!monto || !fecha) { setError('Monto y fecha son obligatorios'); return }
+    const parsedMonto = Number(monto)
+    if (!Number.isFinite(parsedMonto) || parsedMonto <= 0) { setError('El monto debe ser mayor a 0'); return }
+    if (!fecha) { setError('La fecha compromiso es obligatoria'); return }
+    if (!['telefono', 'whatsapp', 'email', 'sms', 'presencial', 'otro'].includes(canal)) {
+      setError('Canal inválido')
+      return
+    }
     setSaving(true)
     setError(null)
     const { error: err } = await supabase.from('cob_ptps').insert({
       org_id: orgId,
       cliente_id: clienteId,
       case_id: caseId,
-      monto: parseFloat(monto),
+      monto: parsedMonto,
       fecha_compromiso: fecha,
+      estado: 'pendiente',
+      canal,
       notas: notas || null,
       creado_por: currentUserId ?? null,
     })
@@ -362,6 +379,17 @@ function PTPModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSa
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Canal *</span>
+          <select value={canal} onChange={e => setCanal(e.target.value)} style={INPUT_STYLE}>
+            <option value="telefono">Teléfono</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+            <option value="presencial">Presencial</option>
+            <option value="otro">Otro</option>
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Notas</span>
           <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3} placeholder="Observaciones del acuerdo…" style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: '72px' }} />
         </label>
@@ -377,71 +405,59 @@ type PagoModalProps = {
   caseId: string
   clienteId: string
   orgId: string
-  dfpAccount: DfpAccount | null
-  disabled: boolean
+  currentUserId: string | null
   ptps: PTP[]
-  cuotas: Cuota[]
   onClose: () => void
   onSaved: () => void
 }
 
-function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps, cuotas, onClose, onSaved }: PagoModalProps) {
+function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, onClose, onSaved }: PagoModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState(todayYmd())
-  const [metodo, setMetodo] = useState('efectivo')
-  const [referencia, setReferencia] = useState('')
+  const [metodo, setMetodo] = useState('cash')
+  const [referenciaExterna, setReferenciaExterna] = useState('')
+  const [comprobanteUrl, setComprobanteUrl] = useState('')
   const [notas, setNotas] = useState('')
   const [ptpId, setPtpId] = useState('')
-  const [selectedCuotaIds, setSelectedCuotaIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const ptpsPendientes = useMemo(() => ptps.filter(p => p.estado === 'pendiente' || p.estado === 'vencido'), [ptps])
-  const cuotasAbiertas = useMemo(() => cuotas.filter(c => c.estado === 'pendiente' || c.estado === 'vencida'), [cuotas])
-  const isDfp = Boolean(dfpAccount)
 
   useEffect(() => {
     if (open) {
-      setMonto(''); setFecha(todayYmd()); setMetodo('efectivo'); setReferencia(''); setNotas('')
-      setSelectedCuotaIds([]); setError(null)
+      setMonto(''); setFecha(todayYmd()); setMetodo('cash'); setReferenciaExterna(''); setComprobanteUrl(''); setNotas(''); setError(null)
       // Auto-seleccionar el único PTP pendiente para que operación lo vea pre-marcado
       setPtpId(ptpsPendientes.length === 1 ? ptpsPendientes[0].id : '')
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleCuota = (cuotaId: string) => {
-    setSelectedCuotaIds(prev => (prev.includes(cuotaId) ? prev.filter(id => id !== cuotaId) : [...prev, cuotaId]))
-  }
-
   const handleSave = async () => {
-    if (disabled) { setError('Espera a que termine de cargar el caso antes de registrar el pago.'); return }
-    if (dfpAccount && dfpAccount.case_id !== caseId) { setError('La cuenta DFP no corresponde al caso activo. Recarga el detalle antes de registrar el pago.'); return }
-    if (!monto || !fecha) { setError('Monto y fecha son obligatorios'); return }
+    const parsedMonto = Number(monto)
+    if (!Number.isFinite(parsedMonto) || parsedMonto <= 0) { setError('El monto debe ser mayor a 0'); return }
+    if (!fecha) { setError('La fecha de pago es obligatoria'); return }
+    if (!['cash', 'check', 'zelle', 'ach', 'card', 'hycite', 'wire', 'otro'].includes(metodo)) {
+      setError('Método de pago inválido')
+      return
+    }
     setSaving(true)
     setError(null)
-
-    const parsedMonto = parseFloat(monto)
-    const { error: err } = dfpAccount
-      ? await supabase.rpc('fn_registrar_pago_revolving', {
-        p_account_id: dfpAccount.id,
-        p_monto: parsedMonto,
-        p_fecha: fecha,
-        p_referencia: referencia || null,
-        p_notas: notas || null,
-      })
-      : await supabase.rpc('fn_registrar_pago', {
-        p_org_id: orgId,
-        p_cliente_id: clienteId,
-        p_case_id: caseId,
-        p_monto: parsedMonto,
-        p_fecha_pago: fecha,
-        p_metodo_pago: metodo || null,
-        p_referencia: referencia || null,
-        p_notas: notas || null,
-        p_ptp_id: ptpId || null,
-        p_cuota_ids: selectedCuotaIds.length > 0 ? selectedCuotaIds : null,
-      })
-
+    const { error: err } = await supabase.from('cob_pagos').insert({
+      org_id: orgId,
+      cliente_id: clienteId,
+      cargo_vuelta_case_id: caseId,
+      ptp_id: ptpId || null,
+      monto: parsedMonto,
+      moneda: 'USD',
+      fecha_pago: fecha,
+      metodo_pago: metodo,
+      referencia_externa: referenciaExterna.trim() || null,
+      comprobante_url: comprobanteUrl.trim() || null,
+      notas: notas.trim() || null,
+      estado: 'registrado',
+      source: 'manual',
+      created_by: currentUserId ?? null,
+    })
     if (err) { setSaving(false); setError(err.message); return }
 
     setSaving(false)
@@ -462,11 +478,6 @@ function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps,
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
-        {isDfp && (
-          <p style={{ margin: 0, padding: '0.55rem 0.65rem', borderRadius: '0.45rem', background: '#0f766e14', border: '1px solid #0f766e33', color: 'var(--color-text-muted)', fontSize: '0.78rem', lineHeight: 1.45 }}>
-            Pago DFP/revolving: se aplicará por waterfall a fees, interés y principal. No crea pago simple ni modifica el ledger directamente desde la UI.
-          </p>
-        )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Monto recibido *</span>
           <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
@@ -478,18 +489,25 @@ function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps,
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Método de pago</span>
           <select value={metodo} onChange={e => setMetodo(e.target.value)} style={INPUT_STYLE}>
-            <option value="efectivo">Efectivo</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="cheque">Cheque</option>
-            <option value="tarjeta">Tarjeta</option>
+            <option value="cash">Cash</option>
+            <option value="check">Check</option>
+            <option value="zelle">Zelle</option>
+            <option value="ach">ACH</option>
+            <option value="card">Card</option>
+            <option value="hycite">Hycite</option>
+            <option value="wire">Wire</option>
             <option value="otro">Otro</option>
           </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Referencia / N° confirmación</span>
-          <input type="text" value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Ej. TRF-123456" style={INPUT_STYLE} />
+          <input type="text" value={referenciaExterna} onChange={e => setReferenciaExterna(e.target.value)} placeholder="Ej. TRF-123456" style={INPUT_STYLE} />
         </label>
-        {!isDfp && ptpsPendientes.length === 1 && (
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Comprobante URL (opcional)</span>
+          <input type="url" value={comprobanteUrl} onChange={e => setComprobanteUrl(e.target.value)} placeholder="https://..." style={INPUT_STYLE} />
+        </label>
+        {ptpsPendientes.length === 1 && (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer', padding: '0.6rem 0.65rem', borderRadius: '0.45rem', border: `1px solid ${ptpId ? '#10b98155' : 'var(--color-border)'}`, background: ptpId ? '#10b98108' : 'transparent' }}>
             <input
               type="checkbox"
@@ -507,7 +525,7 @@ function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps,
             </div>
           </label>
         )}
-        {!isDfp && ptpsPendientes.length > 1 && (
+        {ptpsPendientes.length > 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <span style={LABEL_STYLE}>Cerrar promesa de pago (opcional)</span>
             <select value={ptpId} onChange={e => setPtpId(e.target.value)} style={INPUT_STYLE}>
@@ -517,28 +535,6 @@ function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps,
               ))}
             </select>
             {ptpId && <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>✓ Este PTP se marcará como cumplido al guardar</span>}
-          </div>
-        )}
-        {!isDfp && cuotasAbiertas.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-            <span style={LABEL_STYLE}>Aplicar a cuotas del plan (opcional)</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '180px', overflowY: 'auto', padding: '0.55rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
-              {cuotasAbiertas.map(c => {
-                const checked = selectedCuotaIds.includes(c.id)
-                const color = c.estado === 'vencida' ? '#dc2626' : '#6b7280'
-                return (
-                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={checked} onChange={() => toggleCuota(c.id)} />
-                    <span style={{ fontSize: '0.78rem', color: 'var(--color-text)' }}>
-                      Cuota {c.numero_cuota} · {fmtMonto(c.monto)} · {fmtFecha(c.fecha_vencimiento)}
-                    </span>
-                    <span style={{ marginLeft: 'auto', padding: '0.08rem 0.35rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 700, background: color + '22', color }}>
-                      {c.estado}
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
           </div>
         )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
@@ -938,8 +934,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     setLedgerEntries([])
     const [g, p, pg, pl, dfp] = await Promise.all([
       supabase.from('cob_gestiones').select('id,tipo_gestion,resultado,monto_comprometido,fecha_compromiso,notas,gestionado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
-      supabase.from('cob_ptps').select('id,monto,fecha_compromiso,estado,notas,creado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
-      supabase.from('cob_pagos').select('id,monto,fecha_pago,metodo_pago,referencia,notas,creado_por,created_at').eq('case_id', caso.id).order('fecha_pago', { ascending: false }),
+      supabase.from('cob_ptps').select('id,monto,fecha_compromiso,estado,canal,notas,creado_por,fecha_cumplimiento,cumplido_at,incumplido_at,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
+      supabase.from('cob_pagos').select('id,monto,fecha_pago,metodo_pago,referencia_externa,comprobante_url,estado,source,notas,created_by,ptp_id,created_at').eq('cargo_vuelta_case_id', caso.id).order('fecha_pago', { ascending: false }),
       supabase.from('cob_plan_pagos').select('id,monto_total,numero_cuotas,estado,notas,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase
         .from('cob_revolving_accounts')
@@ -1020,7 +1016,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     const notas = draft.contenido.trim() || draft.resumen.trim() || null
     const resultado = draft.resultado ?? (draft.resumen.trim() || null)
 
-    const { error: gestionError } = await supabase.from('cob_gestiones').insert({
+    const { data: gestionData, error: gestionError } = await supabase.from('cob_gestiones').insert({
       org_id: orgId,
       cliente_id: caso.cliente_id,
       case_id: caso.id,
@@ -1030,9 +1026,41 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       fecha_compromiso: draft.followupAt || null,
       notas,
       gestionado_por: currentUserId,
-    })
+    }).select('id').single()
 
     if (gestionError) throw gestionError
+    if (!gestionData?.id) throw new Error('No se pudo crear la gestión.')
+
+    if (draft.resultado === 'promesa_pago' && Number.isFinite(montoComprometido ?? NaN) && montoComprometido && draft.followupAt) {
+      const canal = draft.canal === 'telefono' || draft.canal === 'whatsapp' || draft.canal === 'email' || draft.canal === 'presencial'
+        ? draft.canal
+        : draft.canal === 'sistema'
+          ? 'otro'
+          : 'otro'
+
+      const { data: ptpData, error: ptpError } = await supabase
+        .from('cob_ptps')
+        .insert({
+          org_id: orgId,
+          cliente_id: caso.cliente_id,
+          case_id: caso.id,
+          gestion_id: gestionData.id,
+          monto: montoComprometido,
+          fecha_compromiso: draft.followupAt,
+          estado: 'pendiente',
+          canal,
+          notas: notas ?? null,
+          creado_por: currentUserId,
+        })
+        .select('id')
+        .single()
+      if (ptpError) throw ptpError
+
+      if (ptpData?.id) {
+        const { error: vinculoError } = await supabase.from('cob_gestiones').update({ ptp_id: ptpData.id }).eq('id', gestionData.id)
+        if (vinculoError) throw vinculoError
+      }
+    }
 
     const { error: actividadError } = await supabase.from('contacto_actividades').insert({
       org_id: orgId,
@@ -1068,10 +1096,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const saldoBase = caso.monto_devuelto ?? caso.monto_total
   const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
   const cliente = caso.clientes
-  const cuotasAbiertas = useMemo(
-    () => planes.flatMap(plan => plan.cuotas.filter(c => c.estado === 'pendiente' || c.estado === 'vencida')),
-    [planes],
-  )
   const contactName = nombreCliente(cliente)
   const cartaContact = useMemo<MessagingContact>(() => ({
     nombre: contactName,
@@ -1273,7 +1297,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
         ) : tab === 'ptps' ? (
-          <PTPsList ptps={ptps} usersById={usersById} onRefresh={handleRefresh} />
+          <PTPsList ptps={ptps} usersById={usersById} onRefresh={handleRefresh} currentUserId={currentUserId} />
         ) : tab === 'pagos' ? (
           <PagosList pagos={pagos} usersById={usersById} />
         ) : (
@@ -1293,7 +1317,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         origenId={caso.id}
       />
       <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
-      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} dfpAccount={safeDfpAccount} disabled={loading || Boolean(dfpAccount && dfpAccount.case_id !== caso.id)} ptps={ptps} cuotas={cuotasAbiertas} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
+      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} ptps={ptps} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
 
@@ -1386,7 +1410,16 @@ function GestionesList({ gestiones, usersById }: { gestiones: Gestion[]; usersBy
 
 // ── PTPs list ─────────────────────────────────────────────────────────────────
 
-function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string, { nombre_completo?: string } | undefined>; onRefresh: () => void }) {
+function PTPsList({
+  ptps,
+  onRefresh,
+  currentUserId,
+}: {
+  ptps: PTP[]
+  usersById?: Record<string, { nombre_completo?: string } | undefined>
+  onRefresh: () => void
+  currentUserId: string | null
+}) {
   const [ptpError, setPtpError] = useState<string | null>(null)
 
   const handlePtpUpdate = async (id: string, payload: Record<string, unknown>) => {
@@ -1408,12 +1441,17 @@ function PTPsList({ ptps, onRefresh }: { ptps: PTP[]; usersById?: Record<string,
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text)' }}>{fmtMonto(p.monto)}</span>
               <span style={{ padding: '0.12rem 0.45rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, background: color + '22', color }}>{p.estado}</span>
             </div>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vence: {fmtFecha(p.fecha_compromiso)}</p>
+            <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+              Vence: {fmtFecha(p.fecha_compromiso)}
+              {p.canal ? ` · canal ${p.canal}` : ''}
+            </p>
             {p.notas && <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{p.notas}</p>}
+            {p.fecha_cumplimiento && <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: '#10b981' }}>Fecha cumplimiento: {fmtFecha(p.fecha_cumplimiento)}</p>}
             {(p.estado === 'pendiente' || p.estado === 'vencido') && (
               <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.4rem' }}>
-                <SmallBtn label="Cumplido" color="#10b981" onClick={() => handlePtpUpdate(p.id, { estado: 'cumplido', fecha_cumplimiento: todayYmd() })} />
-                <SmallBtn label="Incumplido" color="#ea580c" onClick={() => handlePtpUpdate(p.id, { estado: 'incumplido' })} />
+                <SmallBtn label="Cumplido" color="#10b981" onClick={() => handlePtpUpdate(p.id, { estado: 'cumplido', fecha_cumplimiento: todayYmd(), cumplido_at: new Date().toISOString(), updated_by: currentUserId })} />
+                <SmallBtn label="Incumplido" color="#ea580c" onClick={() => handlePtpUpdate(p.id, { estado: 'incumplido', incumplido_at: new Date().toISOString(), updated_by: currentUserId })} />
+                <SmallBtn label="Cancelar" color="#6b7280" onClick={() => handlePtpUpdate(p.id, { estado: 'cancelado', updated_by: currentUserId })} />
               </div>
             )}
           </div>
@@ -1444,7 +1482,15 @@ function PagosList({ pagos }: { pagos: Pago[]; usersById: Record<string, { nombr
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>{fmtMonto(p.monto)}</span>
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{fmtFecha(p.fecha_pago)}</span>
           </div>
-          {p.metodo_pago && <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{p.metodo_pago}{p.referencia ? ` · ${p.referencia}` : ''}</p>}
+          <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
+            {p.metodo_pago ?? 'otro'}
+            {p.referencia_externa ? ` · ${p.referencia_externa}` : ''}
+            {p.ptp_id ? ' · vinculado a PTP' : ''}
+          </p>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '0.71rem', color: 'var(--color-text-muted)' }}>
+            Estado: {p.estado} · Source: {p.source}
+          </p>
+          {p.comprobante_url && <p style={{ margin: '0.2rem 0 0', fontSize: '0.71rem' }}><a href={p.comprobante_url} target="_blank" rel="noreferrer">Ver comprobante</a></p>}
           {p.notas && <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{p.notas}</p>}
         </div>
       ))}
