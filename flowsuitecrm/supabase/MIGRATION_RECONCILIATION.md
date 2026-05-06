@@ -1,6 +1,6 @@
 # Supabase Migration Reconciliation
 
-Fecha de revision: 2026-04-29
+Fecha de revision: 2026-05-06
 
 ## Decision Canonica
 
@@ -13,6 +13,7 @@ Fecha de revision: 2026-04-29
 El MCP de Supabase esta sano y opera en modo read-only real contra el proyecto remoto `rxiarmbosgivaplygqug`.
 
 Las migraciones `0126` a `0129` estan en HOLD. No deben pasar a preflight ni aplicarse hasta cerrar esta reconciliacion.
+El 2026-05-06 se ejecuto `supabase migration fetch --linked` y se incorporaron en `flowsuitecrm/supabase/migrations` los archivos timestamped reales del historial remoto, incluyendo `20260506030247_0146_cob_statements_and_lines.sql`.
 
 Reglas actuales:
 
@@ -31,10 +32,10 @@ Reglas actuales:
 | `0074` | `personas_autolink` | No equivalente. Colisiona con `flowsuitecrm/supabase/migrations/0074_message_templates.sql`. | `supabase/migrations/0074_personas_autolink.sql` | Alto. Colision historica por version. | Documentar equivalencia remota a legacy. Mantener HOLD. |
 | `0075` | `personas_autolink_lead_fallback` | No equivalente. Colisiona con `flowsuitecrm/supabase/migrations/0075_outbox_messages.sql`. | `supabase/migrations/0075_personas_autolink_lead_fallback.sql` | Alto. Colision historica por version. | Documentar equivalencia remota a legacy. Mantener HOLD. |
 | `0076` | `personas_rls` | No equivalente. Colisiona con `flowsuitecrm/supabase/migrations/0076_fix_actividades_naming.sql`. | `supabase/migrations/0076_personas_rls.sql` | Alto. Colision historica por version. | Documentar equivalencia remota a legacy. Mantener HOLD. |
-| `0109` | `backfill_gestiones_from_llamadas` | No encontrado. | No encontrado. | Alto. El remoto tiene una migracion aplicada que el repo no puede reproducir. | Recuperar el SQL desde backup, autor, dashboard, historial externo o evidencia suficiente antes de avanzar. |
+| `0109` | `backfill_gestiones_from_llamadas` | `flowsuitecrm/supabase/migrations/0109_backfill_gestiones_from_llamadas.sql` | `supabase/migrations/0109_backfill_gestiones_from_llamadas.sql` | Bajo. El SQL existe en canonico y legacy. | Mantener documentado; opcionalmente completar trazabilidad historica de autoria. |
 | `0114` | `cartera_case_opening_core` | No exacto. Existe `flowsuitecrm/supabase/migrations/0114_rpc_ventas_subtotal_desde_payload.sql`. | No encontrado. | Medio/alto. Nombre remoto y archivo canonico no corresponden. | Confirmar SQL real aplicado y mapear contra `0115_cartera_case_opening_core.sql`. |
 | `0115` | `cartera_case_opening_core` | `flowsuitecrm/supabase/migrations/0115_cartera_case_opening_core.sql` | No encontrado. | Medio. El remoto muestra `0114` y `0115` relacionados con cartera. | Verificar si `0114` fue un nombre remoto incorrecto, duplicado o reparacion historica. |
-| `20260426232649` | `0112_rpc_ventas_completas` | `flowsuitecrm/supabase/migrations/20260426232649_remote_history_alignment.sql` | No encontrado. | Medio. Archivo canonico es un no-op intencional, no el SQL funcional. | Mantener como bridge/no-op y documentar que existe para alinear una version ya presente en remoto. |
+| `20260426232649` | `0112_rpc_ventas_completas` | `flowsuitecrm/supabase/migrations/20260426232649_0112_rpc_ventas_completas.sql` | `supabase/migrations/20260426232649_0112_rpc_ventas_completas.sql` | Bajo/medio. Version timestamped real ya importada localmente. | Mantener como fuente de reconciliacion remota para esa version. |
 | `20260427163925` | `0121_cob_dfp_terminologia_comments` | `flowsuitecrm/supabase/migrations/0121_cob_dfp_terminologia_comments.sql` | No encontrado. | Bajo/medio. Version remota timestamped con archivo local numerado. | Aceptar equivalencia documentada. |
 | `20260427170307` | `0122_cob_revolving_security_definer_functions` | `flowsuitecrm/supabase/migrations/0122_cob_revolving_security_definer_functions.sql` | No encontrado. | Bajo/medio. Version remota timestamped con archivo local numerado. | Aceptar equivalencia documentada. |
 | `20260427180143` | `0123_v_dfp_caso_resumen` | `flowsuitecrm/supabase/migrations/0123_v_dfp_caso_resumen.sql` | No encontrado. | Bajo/medio. Version remota timestamped con archivo local numerado. | Aceptar equivalencia documentada. |
@@ -61,17 +62,15 @@ La carpeta canonica actual usa esas mismas versiones para otros cambios:
 
 Los archivos `personas_*` existen en `supabase/migrations`, que queda clasificada como legacy. Esta es una colision historica fuerte y no debe resolverse con `migration repair` sin un plan explicito.
 
-### Faltante Critico `0109`
+### Estado `0109`
 
 El remoto registra `0109_backfill_gestiones_from_llamadas`.
+Actualmente existe archivo local en:
 
-No se encontro archivo equivalente en:
+- `flowsuitecrm/supabase/migrations/0109_backfill_gestiones_from_llamadas.sql`
+- `supabase/migrations/0109_backfill_gestiones_from_llamadas.sql`
 
-- `flowsuitecrm/supabase/migrations`
-- `supabase/migrations`
-- historial git local por nombre
-
-Este es el hueco mas serio: la base remota tiene una migracion aplicada que el repo no puede reproducir.
+Este punto queda cerrado como gap de archivo. Falta solo confirmar autoria/historial si se requiere trazabilidad adicional.
 
 ### Desalineacion `0114` y `0115`
 
@@ -97,19 +96,11 @@ El remoto registra `0121` a `0125` con versiones timestamped:
 - `20260427224918 0124_cob_dfp_rls_hardening`
 - `20260427235627 0125_fn_registrar_pago_revolving`
 
-La carpeta canonica contiene archivos numerados equivalentes `0121` a `0125`. Esta equivalencia se considera aceptable, pero debe permanecer documentada porque las versiones remotas no son los numeros humanos del archivo local.
+La carpeta canonica contiene archivos numerados equivalentes `0121` a `0125` y ahora tambien los archivos timestamped remotos (`20260427163925_...` a `20260427235627_...`) obtenidos por fetch. Esta equivalencia queda documentada y reproducible.
 
-### Bridge `20260426232649`
+### Estado de Alineacion Verificado
 
-`flowsuitecrm/supabase/migrations/20260426232649_remote_history_alignment.sql` es un no-op intencional:
-
-```sql
-BEGIN;
-SELECT 1;
-COMMIT;
-```
-
-Su proposito documentado es alinear una version ya presente en remoto y evitar reparar historial sin contexto adicional.
+Con `supabase migration list` validado el 2026-05-06, la serie timestamped remota hasta `20260506030247` aparece alineada local/remoto sin faltantes remotos.
 
 ## Criterios Para Liberar `0126` a `0129`
 
