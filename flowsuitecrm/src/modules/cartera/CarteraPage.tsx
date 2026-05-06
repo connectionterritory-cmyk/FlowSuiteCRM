@@ -697,6 +697,20 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
     }
   }, [modoCalculo, pagoMinimo, numeroCuotasCalculado, planInput])
 
+  const amortizationRows = useMemo(() => {
+    if (!preview.summary) return []
+    let remaining = Number(balanceInicial)
+    if (!Number.isFinite(remaining) || remaining < 0) remaining = 0
+    return preview.cuotas.map((c) => {
+      const principal = Number(c.principal_programado || 0)
+      remaining = Math.max(0, Math.round((remaining - principal) * 100) / 100)
+      return {
+        ...c,
+        balance_restante: remaining,
+      }
+    })
+  }, [preview.summary, preview.cuotas, balanceInicial])
+
   const handleSave = async () => {
     if (!currentUserId) { setError('No se pudo identificar el usuario actual.'); return }
     if (preview.error || !preview.summary || preview.cuotas.length === 0) {
@@ -818,6 +832,9 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
             <span style={LABEL_STYLE}>Pago mínimo mensual *</span>
             <input type="number" min="0.01" step="0.01" value={pagoMinimo} onChange={e => setPagoMinimo(e.target.value)} style={INPUT_STYLE} />
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              Sobre el saldo + interés, sin incluir cargos adicionales.
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
               Cuotas estimadas: {numeroCuotasCalculado ?? '—'}
             </span>
           </label>
@@ -868,21 +885,47 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
           <div style={{ border: '1px solid var(--color-border)', borderRadius: '0.55rem', padding: '0.65rem', background: 'var(--color-card)' }}>
             <p style={{ margin: '0 0 0.35rem', fontSize: '0.78rem', fontWeight: 700 }}>Previsualización</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 0.8rem', fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>
+              <span>Balance inicial:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(Number(balanceInicial) || 0)}</strong>
+              <span>Tasa anual APR:</span><strong style={{ color: 'var(--color-text)' }}>{Number(tasaAnual || 0).toFixed(3)}%</strong>
+              <span>Número de cuotas:</span><strong style={{ color: 'var(--color-text)' }}>{modoCalculo === 'pago_minimo' ? (numeroCuotasCalculado ?? '—') : (Number(numeroCuotas) || 0)}</strong>
               <span>Cuota estimada:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.monto_cuota_estimado)}</strong>
+              <span>Fecha primer pago:</span><strong style={{ color: 'var(--color-text)' }}>{fechaPrimerPago ? fmtFecha(fechaPrimerPago) : '—'}</strong>
+              <span>Fecha fin estimada:</span><strong style={{ color: 'var(--color-text)' }}>{fmtFecha(preview.summary.fecha_fin_estimada)}</strong>
               <span>Total principal:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_principal)}</strong>
               <span>Total interés:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_interes)}</strong>
               <span>Total fees:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_fees)}</strong>
               <span>Total a pagar:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_programado)}</strong>
-              <span>Fin estimado:</span><strong style={{ color: 'var(--color-text)' }}>{fmtFecha(preview.summary.fecha_fin_estimada)}</strong>
             </div>
-            <div style={{ marginTop: '0.45rem', maxHeight: '160px', overflowY: 'auto', borderTop: '1px solid var(--color-border)', paddingTop: '0.35rem' }}>
-              {preview.cuotas.map((c) => (
-                <div key={c.numero_cuota} style={{ display: 'grid', gridTemplateColumns: '58px 88px 1fr', gap: '0.45rem', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
-                  <span>#{c.numero_cuota}</span>
-                  <span>{fmtFecha(c.fecha_vencimiento)}</span>
-                  <span>{fmtMonto(c.monto_programado)} (P {fmtMonto(c.principal_programado)} / I {fmtMonto(c.interes_programado)})</span>
-                </div>
-              ))}
+            <div style={{ marginTop: '0.55rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.4rem' }}>
+              <p style={{ margin: '0 0 0.35rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text)' }}>Tabla de amortización</p>
+              <div style={{ overflowX: 'auto', maxHeight: '220px', overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
+                  <thead>
+                    <tr style={{ color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.25rem' }}>#</th>
+                      <th style={{ textAlign: 'left', padding: '0.25rem' }}>Fecha programada</th>
+                      <th style={{ textAlign: 'right', padding: '0.25rem' }}>Principal</th>
+                      <th style={{ textAlign: 'right', padding: '0.25rem' }}>Interés</th>
+                      <th style={{ textAlign: 'right', padding: '0.25rem' }}>Fees</th>
+                      <th style={{ textAlign: 'right', padding: '0.25rem' }}>Total cuota</th>
+                      <th style={{ textAlign: 'right', padding: '0.25rem' }}>Balance restante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {amortizationRows.map((c) => (
+                      <tr key={c.numero_cuota} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <td style={{ padding: '0.25rem' }}>{c.numero_cuota}</td>
+                        <td style={{ padding: '0.25rem' }}>{fmtFecha(c.fecha_vencimiento)}</td>
+                        <td style={{ padding: '0.25rem', textAlign: 'right' }}>{fmtMonto(c.principal_programado)}</td>
+                        <td style={{ padding: '0.25rem', textAlign: 'right' }}>{fmtMonto(c.interes_programado)}</td>
+                        <td style={{ padding: '0.25rem', textAlign: 'right' }}>{fmtMonto(c.fees_programados)}</td>
+                        <td style={{ padding: '0.25rem', textAlign: 'right' }}>{fmtMonto(c.monto_programado)}</td>
+                        <td style={{ padding: '0.25rem', textAlign: 'right' }}>{fmtMonto(c.balance_restante)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
