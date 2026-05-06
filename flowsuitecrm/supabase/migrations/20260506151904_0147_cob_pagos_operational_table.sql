@@ -100,6 +100,9 @@ update public.cob_pagos
 set source = coalesce(source, 'manual')
 where source is null;
 
+-- Drop constraint legacy antes de normalizar valores (el constraint original solo permite valores en español).
+alter table public.cob_pagos drop constraint if exists cob_pagos_metodo_pago_check;
+
 -- Normalización de método de pago legacy -> catálogo operativo.
 update public.cob_pagos set metodo_pago = 'cash' where metodo_pago = 'efectivo';
 update public.cob_pagos set metodo_pago = 'ach' where metodo_pago = 'transferencia';
