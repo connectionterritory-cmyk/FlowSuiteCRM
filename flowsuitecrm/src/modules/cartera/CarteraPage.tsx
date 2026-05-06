@@ -1424,8 +1424,13 @@ function PTPsList({
 
   const handlePtpUpdate = async (id: string, payload: Record<string, unknown>) => {
     setPtpError(null)
-    const { error } = await supabase.from('cob_ptps').update(payload).eq('id', id)
+    const { count, error } = await supabase
+      .from('cob_ptps')
+      .update(payload, { count: 'exact' })
+      .eq('id', id)
+      .in('estado', ['pendiente', 'renegociada'])
     if (error) { setPtpError(error.message); return }
+    if (count === 0) { setPtpError('Esta promesa ya cambió de estado. Recarga el caso.'); return }
     onRefresh()
   }
 
@@ -1447,11 +1452,11 @@ function PTPsList({
             </p>
             {p.notas && <p style={{ margin: '0.2rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{p.notas}</p>}
             {p.fecha_cumplimiento && <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: '#10b981' }}>Fecha cumplimiento: {fmtFecha(p.fecha_cumplimiento)}</p>}
-            {(p.estado === 'pendiente' || p.estado === 'vencido') && (
+            {(p.estado === 'pendiente' || p.estado === 'renegociada') && (
               <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.4rem' }}>
-                <SmallBtn label="Cumplido" color="#10b981" onClick={() => handlePtpUpdate(p.id, { estado: 'cumplido', fecha_cumplimiento: todayYmd(), cumplido_at: new Date().toISOString(), updated_by: currentUserId })} />
-                <SmallBtn label="Incumplido" color="#ea580c" onClick={() => handlePtpUpdate(p.id, { estado: 'incumplido', incumplido_at: new Date().toISOString(), updated_by: currentUserId })} />
-                <SmallBtn label="Cancelar" color="#6b7280" onClick={() => handlePtpUpdate(p.id, { estado: 'cancelado', updated_by: currentUserId })} />
+                <SmallBtn label="Cumplido" color="#10b981" onClick={() => handlePtpUpdate(p.id, { estado: 'cumplido', fecha_cumplimiento: todayYmd(), cumplido_at: new Date().toISOString(), incumplido_at: null, updated_by: currentUserId })} />
+                <SmallBtn label="Incumplido" color="#ea580c" onClick={() => handlePtpUpdate(p.id, { estado: 'incumplido', fecha_cumplimiento: null, cumplido_at: null, incumplido_at: new Date().toISOString(), updated_by: currentUserId })} />
+                <SmallBtn label="Cancelar" color="#6b7280" onClick={() => handlePtpUpdate(p.id, { estado: 'cancelado', fecha_cumplimiento: null, cumplido_at: null, incumplido_at: null, updated_by: currentUserId })} />
               </div>
             )}
           </div>
