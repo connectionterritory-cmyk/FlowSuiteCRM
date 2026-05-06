@@ -1063,7 +1063,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     }
 
     const { error: actividadError } = await supabase.from('contacto_actividades').insert({
-      org_id: orgId,
       contacto_tipo: 'cliente',
       contacto_id: caso.cliente_id,
       tipo: draft.tipo,
