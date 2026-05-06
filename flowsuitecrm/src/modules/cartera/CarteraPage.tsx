@@ -1161,6 +1161,35 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           {!isDfp && <span>Pagado: <strong style={{ color: '#10b981' }}>{fmtMonto(totalPagado)}</strong></span>}
           <span>Saldo operativo: <strong style={{ color: saldo > 0 ? '#f87171' : '#10b981' }}>{fmtMonto(saldo)}</strong></span>
         </div>
+        {/* Plan activo — resumen compacto */}
+        {(() => {
+          const planActivo = planes.find(p => p.estado === 'activo')
+          if (!planActivo) return null
+          const cuotasPendientes = planActivo.cuotas.filter(c => c.estado === 'pendiente' || c.estado === 'vencida')
+          const proxima = cuotasPendientes.sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0]
+          const hayVencidas = cuotasPendientes.some(c => c.estado === 'vencida')
+          const cuotasPagadas = planActivo.cuotas.filter(c => c.estado === 'pagada').length
+          const total = planActivo.numero_cuotas
+          return (
+            <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.75rem' }}>
+              <span style={{ padding: '0.1rem 0.45rem', borderRadius: '999px', fontWeight: 700, fontSize: '0.68rem', background: hayVencidas ? '#dc262622' : '#7c3aed22', color: hayVencidas ? '#dc2626' : '#7c3aed', border: `1px solid ${hayVencidas ? '#dc262644' : '#7c3aed44'}` }}>
+                Plan activo
+              </span>
+              <span style={{ color: 'var(--color-text-muted)' }}>
+                {cuotasPagadas}/{total} cuotas pagadas
+              </span>
+              {proxima && (
+                <span style={{ color: hayVencidas ? '#dc2626' : 'var(--color-text-muted)' }}>
+                  · próxima: <strong style={{ color: hayVencidas ? '#dc2626' : 'var(--color-text)' }}>{fmtFecha(proxima.fecha_vencimiento)} · {fmtMonto(proxima.monto)}</strong>
+                  {proxima.estado === 'vencida' && <span style={{ marginLeft: '0.3rem', fontWeight: 700, color: '#dc2626' }}>VENCIDA</span>}
+                </span>
+              )}
+              {cuotasPendientes.length === 0 && (
+                <span style={{ color: '#10b981', fontWeight: 600 }}>· Todas las cuotas pagadas</span>
+              )}
+            </div>
+          )
+        })()}
         {safeDfpAccount && <DfpSummary account={safeDfpAccount} />}
       </div>
 
