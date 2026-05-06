@@ -588,9 +588,11 @@ type PlanModalProps = {
 }
 
 function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PlanModalProps) {
+  const [modoCalculo, setModoCalculo] = useState<'cuotas' | 'pago_minimo'>('cuotas')
   const [balanceInicial, setBalanceInicial] = useState('')
   const [tasaAnual, setTasaAnual] = useState('0')
   const [numeroCuotas, setNumeroCuotas] = useState('6')
+  const [pagoMinimo, setPagoMinimo] = useState('')
   const [diaDebito, setDiaDebito] = useState('15')
   const [fechaPrimerPago, setFechaPrimerPago] = useState('')
   const [feeSetup, setFeeSetup] = useState('0')
@@ -607,6 +609,8 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
     setBalanceInicial('')
     setTasaAnual('0')
     setNumeroCuotas('6')
+    setPagoMinimo('')
+    setModoCalculo('cuotas')
     setDiaDebito('15')
     setFechaPrimerPago('')
     setFeeSetup('0')
@@ -637,19 +641,47 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
     void loadMetodos()
   }, [open, orgId, clienteId])
 
+  const numeroCuotasCalculado = useMemo(() => {
+    const balance = Number(balanceInicial)
+    const tasaAnualNum = Number(tasaAnual)
+    const pagoMinimoNum = Number(pagoMinimo)
+    if (modoCalculo !== 'pago_minimo') return null
+    if (!Number.isFinite(balance) || balance <= 0) return null
+    if (!Number.isFinite(pagoMinimoNum) || pagoMinimoNum <= 0) return null
+
+    const r = tasaAnualNum / 100 / 12
+    if (r === 0) return Math.min(120, Math.max(1, Math.ceil(balance / pagoMinimoNum)))
+
+    const interesPrimerPeriodo = balance * r
+    if (pagoMinimoNum <= interesPrimerPeriodo) return null
+
+    const n = -Math.log(1 - (r * balance) / pagoMinimoNum) / Math.log(1 + r)
+    if (!Number.isFinite(n) || n <= 0) return null
+    return Math.min(120, Math.max(1, Math.ceil(n)))
+  }, [modoCalculo, balanceInicial, tasaAnual, pagoMinimo])
+
   const planInput = useMemo(() => ({
     balance: Number(balanceInicial),
     tasa_anual_pct: Number(tasaAnual),
-    numero_cuotas: Number(numeroCuotas),
+    numero_cuotas: modoCalculo === 'pago_minimo' ? Number(numeroCuotasCalculado ?? 0) : Number(numeroCuotas),
     fecha_primer_pago: fechaPrimerPago,
     dia_debito: Number(diaDebito),
     fee_setup: Number(feeSetup || 0),
     fee_late: Number(feeLate || 0),
     estadoCuotaInicial: 'pendiente' as const,
-  }), [balanceInicial, tasaAnual, numeroCuotas, fechaPrimerPago, diaDebito, feeSetup, feeLate])
+  }), [balanceInicial, tasaAnual, numeroCuotas, modoCalculo, numeroCuotasCalculado, fechaPrimerPago, diaDebito, feeSetup, feeLate])
 
   const preview = useMemo(() => {
     try {
+      if (modoCalculo === 'pago_minimo') {
+        const pagoMinimoNum = Number(pagoMinimo)
+        if (!Number.isFinite(pagoMinimoNum) || pagoMinimoNum <= 0) {
+          throw new Error('pago_minimo debe ser mayor que 0')
+        }
+        if (!numeroCuotasCalculado) {
+          throw new Error('El pago mínimo no cubre el interés del período o es inválido')
+        }
+      }
       validatePaymentPlanInput(planInput)
       return {
         summary: calculatePaymentPlanSummary(planInput),
@@ -663,7 +695,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
         error: e instanceof Error ? e.message : 'Datos inválidos',
       }
     }
-  }, [planInput])
+  }, [modoCalculo, pagoMinimo, numeroCuotasCalculado, planInput])
 
   const handleSave = async () => {
     if (!currentUserId) { setError('No se pudo identificar el usuario actual.'); return }
@@ -676,7 +708,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
 
     const balance = Number(balanceInicial)
     const tasaAnualNum = Number(tasaAnual)
-    const numeroCuotasNum = Number(numeroCuotas)
+    const numeroCuotasNum = modoCalculo === 'pago_minimo' ? Number(numeroCuotasCalculado ?? 0) : Number(numeroCuotas)
     const diaDebitoNum = Number(diaDebito)
     const feeSetupNum = Number(feeSetup || 0)
     const feeLateNum = Number(feeLate || 0)
@@ -770,12 +802,29 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
           <input type="number" min="0" step="0.01" value={balanceInicial} onChange={e => setBalanceInicial(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Modo de cálculo *</span>
+          <select value={modoCalculo} onChange={e => setModoCalculo(e.target.value as 'cuotas' | 'pago_minimo')} style={INPUT_STYLE}>
+            <option value="cuotas">Por número de cuotas</option>
+            <option value="pago_minimo">Por pago mínimo</option>
+          </select>
+        </label>
+        {modoCalculo === 'cuotas' ? (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Número de cuotas *</span>
+            <input type="number" min="1" max="120" value={numeroCuotas} onChange={e => setNumeroCuotas(e.target.value)} style={INPUT_STYLE} />
+          </label>
+        ) : (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Pago mínimo mensual *</span>
+            <input type="number" min="0.01" step="0.01" value={pagoMinimo} onChange={e => setPagoMinimo(e.target.value)} style={INPUT_STYLE} />
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              Cuotas estimadas: {numeroCuotasCalculado ?? '—'}
+            </span>
+          </label>
+        )}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Tasa anual (%) *</span>
           <input type="number" min="0" max="36" step="0.001" value={tasaAnual} onChange={e => setTasaAnual(e.target.value)} style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Número de cuotas *</span>
-          <input type="number" min="1" max="120" value={numeroCuotas} onChange={e => setNumeroCuotas(e.target.value)} style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Día de débito *</span>
