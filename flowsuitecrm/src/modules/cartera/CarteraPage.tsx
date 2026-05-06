@@ -401,8 +401,13 @@ function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps,
   const isDfp = Boolean(dfpAccount)
 
   useEffect(() => {
-    if (open) { setMonto(''); setFecha(todayYmd()); setMetodo('efectivo'); setReferencia(''); setNotas(''); setPtpId(''); setSelectedCuotaIds([]); setError(null) }
-  }, [open])
+    if (open) {
+      setMonto(''); setFecha(todayYmd()); setMetodo('efectivo'); setReferencia(''); setNotas('')
+      setSelectedCuotaIds([]); setError(null)
+      // Auto-seleccionar el único PTP pendiente para que operación lo vea pre-marcado
+      setPtpId(ptpsPendientes.length === 1 ? ptpsPendientes[0].id : '')
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleCuota = (cuotaId: string) => {
     setSelectedCuotaIds(prev => (prev.includes(cuotaId) ? prev.filter(id => id !== cuotaId) : [...prev, cuotaId]))
@@ -484,16 +489,35 @@ function PagoModal({ open, caseId, clienteId, orgId, dfpAccount, disabled, ptps,
           <span style={LABEL_STYLE}>Referencia / N° confirmación</span>
           <input type="text" value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Ej. TRF-123456" style={INPUT_STYLE} />
         </label>
-        {!isDfp && ptpsPendientes.length > 0 && (
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <span style={LABEL_STYLE}>Aplica a promesa de pago (opcional)</span>
+        {!isDfp && ptpsPendientes.length === 1 && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer', padding: '0.6rem 0.65rem', borderRadius: '0.45rem', border: `1px solid ${ptpId ? '#10b98155' : 'var(--color-border)'}`, background: ptpId ? '#10b98108' : 'transparent' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(ptpId)}
+              onChange={e => setPtpId(e.target.checked ? ptpsPendientes[0].id : '')}
+              style={{ marginTop: '0.15rem', accentColor: '#10b981', flexShrink: 0 }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text)' }}>Cerrar PTP asociado</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                {fmtFecha(ptpsPendientes[0].fecha_compromiso)} · {fmtMonto(ptpsPendientes[0].monto)}
+                {ptpsPendientes[0].estado === 'vencido' && <span style={{ marginLeft: '0.4rem', color: '#dc2626', fontWeight: 600 }}>vencido</span>}
+              </span>
+              {ptpId && <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>Se marcará como cumplido al guardar</span>}
+            </div>
+          </label>
+        )}
+        {!isDfp && ptpsPendientes.length > 1 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Cerrar promesa de pago (opcional)</span>
             <select value={ptpId} onChange={e => setPtpId(e.target.value)} style={INPUT_STYLE}>
-              <option value="">— Sin PTP —</option>
+              <option value="">— No cerrar ningún PTP —</option>
               {ptpsPendientes.map(p => (
-                <option key={p.id} value={p.id}>{fmtFecha(p.fecha_compromiso)} · {fmtMonto(p.monto)}</option>
+                <option key={p.id} value={p.id}>{fmtFecha(p.fecha_compromiso)} · {fmtMonto(p.monto)}{p.estado === 'vencido' ? ' · vencido' : ''}</option>
               ))}
             </select>
-          </label>
+            {ptpId && <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>✓ Este PTP se marcará como cumplido al guardar</span>}
+          </div>
         )}
         {!isDfp && cuotasAbiertas.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
