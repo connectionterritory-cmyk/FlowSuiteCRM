@@ -1137,7 +1137,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     id: caso.cliente_id,
     nombre: nombreCliente(cliente),
     telefono: cliente?.telefono ?? null,
-    subtitle: caso.acuerdo_tipo ? `Caso de cartera · ${caso.acuerdo_tipo}` : 'Caso de cartera',
+    subtitle: caso.acuerdo_tipo ? `Financiamiento del Distribuidor · ${caso.acuerdo_tipo}` : 'Financiamiento del Distribuidor',
   }
   const chips = [
     { label: `${caso.dias_vencido}d vencido`, color: diasColor(caso.dias_vencido) },

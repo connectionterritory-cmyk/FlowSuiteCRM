@@ -16,7 +16,7 @@ export const EMAIL_SENDERS: EmailSender[] = [
   },
   {
     id: 'cartera',
-    label: 'Cartera / Cobranza',
+    label: 'Financiamiento del Distribuidor',
     fromName: 'Connection Worldwide Group',
     fromEmail: 'cobranza@flowiadigital.com',
     replyTo: 'info@connectionworldwidegroup.com',

@@ -111,21 +111,21 @@ export const DEFAULT_SYSTEM_TEMPLATES: SystemTemplateSeed[] = [
   },
   {
     key: 'cartera_0_30',
-    label: 'Cartera 0-30 días',
+    label: 'Financiamiento 0-30 días',
     category: 'cartera',
     message:
       'Hola {nombre}, soy {vendedor_nombre} de Connection Worldwide Group.\n\nTe escribo por tu cuenta Royal Prestige #{cuenta_hycite}. Tienes un saldo pendiente de *${saldo_actual}*.\n\nSi ya realizaste tu pago ignora este mensaje. Si necesitas apoyo para coordinarlo, escríbeme aquí o al {vendedor_telefono} 😊',
   },
   {
     key: 'cartera_31_60',
-    label: 'Cartera 31-60 días',
+    label: 'Financiamiento 31-60 días',
     category: 'cartera',
     message:
       'Hola {nombre}, soy {vendedor_nombre} de Connection Worldwide Group.\n\nTu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso* con un monto de *${monto_moroso}*.\n\nQuiero ayudarte a regularizarla antes de que avance el proceso. ¿Podemos hablar hoy? Estoy al {vendedor_telefono}.',
   },
   {
     key: 'cartera_60_mas',
-    label: 'Cartera 60+ días',
+    label: 'Financiamiento 60+ días',
     category: 'cartera',
     message:
       '{nombre}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso* — monto moroso: *${monto_moroso}*.\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {vendedor_telefono} o responde aquí. Estoy disponible.',
@@ -339,21 +339,21 @@ export const baseTemplates: WhatsappTemplate[] = [
   {
     id: 'cartera.0_30',
     category: 'cartera',
-    label: 'Cartera 0-30 días',
+    label: 'Financiamiento 0-30 días',
     message:
       'Hola {nombre}, soy {vendedor_nombre} de Connection Worldwide Group.\n\nTe escribo por tu cuenta Royal Prestige #{cuenta_hycite}.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nSi ya realizaste tu pago ignora este mensaje. Si necesitas apoyo para coordinarlo, escríbeme aquí o al {{vendedor_telefono|\"este número\"}} 😊',
   },
   {
     id: 'cartera.31_60',
     category: 'cartera',
-    label: 'Cartera 31-60 días',
+    label: 'Financiamiento 31-60 días',
     message:
       'Hola {nombre}, soy {vendedor_nombre} de Connection Worldwide Group.\n\nTu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nQuiero ayudarte a regularizarla antes de que avance el proceso. ¿Podemos hablar hoy? Estoy al {{vendedor_telefono|\"este número\"}}.',
   },
   {
     id: 'cartera.60_mas',
     category: 'cartera',
-    label: 'Cartera 60+ días',
+    label: 'Financiamiento 60+ días',
     message:
       '{nombre}, tu cuenta Royal Prestige #{cuenta_hycite} tiene *{dias_atraso} días de atraso*.\n• Saldo actual: *${saldo_actual}*\n• Monto moroso: *${monto_moroso}*\n\nEs importante que hablemos hoy para encontrar una solución antes de que el proceso avance y afecte tu historial crediticio.\n\nContáctame al {{vendedor_telefono|\"este número\"}} o responde aquí. Estoy disponible.',
   },

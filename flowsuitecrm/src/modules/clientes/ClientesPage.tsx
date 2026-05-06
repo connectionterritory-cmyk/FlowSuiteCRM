@@ -2578,7 +2578,7 @@ export function ClientesPage() {
           { key: 'info', label: 'Información' },
           { key: 'historial', label: 'Historial' },
           { key: 'notas', label: 'Notas' },
-          { key: 'cartera', label: 'Cartera' },
+          { key: 'cartera', label: 'Financiamiento del Distribuidor' },
           { key: 'servicios', label: 'Servicios' },
         ] : undefined}
         activeTab={selectedClienteDetail ? detailTab : undefined}

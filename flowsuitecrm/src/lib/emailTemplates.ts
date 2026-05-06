@@ -20,7 +20,7 @@ export const EMAIL_CATEGORY_LABELS: Record<EmailTemplateCategory, string> = {
   negocio: 'Oportunidad de negocio',
   servicio: 'Servicio al cliente',
   oferta: 'Oferta del mes',
-  cartera: 'Cartera',
+  cartera: 'Financiamiento del Distribuidor',
   cumpleanos: 'Cumpleaños',
 }
 

@@ -32,11 +32,11 @@ export const PLACEHOLDER_OPTIONS: PlaceholderOption[] = [
   { group: 'Origen', label: 'Programa', token: '{programa}' },
   { group: 'Origen', label: 'Ciudad', token: '{ciudad}' },
 
-  { group: 'Cartera', label: 'Cuenta Hycite', token: '{cuenta_hycite}' },
-  { group: 'Cartera', label: 'Saldo actual', token: '{saldo_actual}' },
-  { group: 'Cartera', label: 'Monto moroso', token: '{monto_moroso}' },
-  { group: 'Cartera', label: 'Dias atraso', token: '{dias_atraso}' },
-  { group: 'Cartera', label: 'Estado morosidad', token: '{estado_morosidad}' },
+  { group: 'Financiamiento', label: 'Cuenta Hycite', token: '{cuenta_hycite}' },
+  { group: 'Financiamiento', label: 'Saldo actual', token: '{saldo_actual}' },
+  { group: 'Financiamiento', label: 'Monto moroso', token: '{monto_moroso}' },
+  { group: 'Financiamiento', label: 'Dias atraso', token: '{dias_atraso}' },
+  { group: 'Financiamiento', label: 'Estado morosidad', token: '{estado_morosidad}' },
   
   { group: 'Citas', label: 'Fecha de cita', token: '{cita_fecha}' },
   { group: 'Citas', label: 'Hora de cita', token: '{cita_hora}' },
