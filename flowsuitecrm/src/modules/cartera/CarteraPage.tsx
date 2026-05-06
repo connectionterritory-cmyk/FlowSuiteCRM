@@ -202,16 +202,6 @@ function formatYmdLocal(date: Date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
 
-function addMonthsClamped(ymd: string, monthsToAdd: number) {
-  const base = parseYmdLocal(ymd)
-  const baseDay = base.getDate()
-  const targetYear = base.getFullYear()
-  const targetMonthIndex = base.getMonth() + monthsToAdd
-  const targetMonthStart = new Date(targetYear, targetMonthIndex, 1)
-  const lastDayOfTargetMonth = new Date(targetMonthStart.getFullYear(), targetMonthStart.getMonth() + 1, 0).getDate()
-  return formatYmdLocal(new Date(targetMonthStart.getFullYear(), targetMonthStart.getMonth(), Math.min(baseDay, lastDayOfTargetMonth)))
-}
-
 function nombreCliente(c: Case['clientes']) {
   if (!c) return '—'
   return [c.nombre, c.apellido].filter(Boolean).join(' ') || '—'
