@@ -6,6 +6,11 @@ import { INPUT_STYLE, LABEL_STYLE } from '../../components/formControlStyles'
 import { RegistrarGestionModal, type GestionContactoRef, type GestionDraft, type GestionRole } from '../../components/RegistrarGestionModal'
 import { useMessaging } from '../../hooks/useMessaging'
 import type { MessagingChannel, MessagingContact } from '../../types/messaging'
+import {
+  calculatePaymentPlanSummary,
+  generateInstallmentSchedule,
+  validatePaymentPlanInput,
+} from './services/PaymentPlanService'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,6 +96,12 @@ type Plan = {
   monto_total: number
   numero_cuotas: number
   estado: string
+  tipo_plan: string | null
+  balance_inicial: number | null
+  tasa_anual_pct: number | null
+  monto_cuota: number | null
+  fecha_primer_pago: string | null
+  metodo_pago_id: string | null
   notas: string | null
   created_at: string
   cuotas: Cuota[]
@@ -99,11 +110,29 @@ type Plan = {
 type Cuota = {
   id: string
   plan_id?: string
+  plan_pago_id?: string
   numero_cuota: number
   monto: number
+  monto_programado?: number
+  principal_programado?: number
+  interes_programado?: number
+  fees_programados?: number
+  monto_pagado?: number
+  saldo_cuota?: number
   fecha_vencimiento: string
   fecha_pago: string | null
   pago_id?: string | null
+  cob_pago_id?: string | null
+  paid_at?: string | null
+  estado: string
+}
+
+type MetodoPagoOption = {
+  id: string
+  provider: string | null
+  brand: string | null
+  last4: string | null
+  is_default: boolean
   estado: string
 }
 
@@ -553,102 +582,261 @@ type PlanModalProps = {
   caseId: string
   clienteId: string
   orgId: string
+  currentUserId: string | null
   onClose: () => void
   onSaved: () => void
 }
 
-function PlanModal({ open, caseId, clienteId, orgId, onClose, onSaved }: PlanModalProps) {
-  const [montoTotal, setMontoTotal] = useState('')
-  const [numeroCuotas, setNumeroCuotas] = useState('3')
-  const [primerVencimiento, setPrimerVencimiento] = useState('')
+function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PlanModalProps) {
+  const [balanceInicial, setBalanceInicial] = useState('')
+  const [tasaAnual, setTasaAnual] = useState('0')
+  const [numeroCuotas, setNumeroCuotas] = useState('6')
+  const [diaDebito, setDiaDebito] = useState('15')
+  const [fechaPrimerPago, setFechaPrimerPago] = useState('')
+  const [feeSetup, setFeeSetup] = useState('0')
+  const [feeLate, setFeeLate] = useState('0')
+  const [metodoPagoId, setMetodoPagoId] = useState('')
+  const [estadoPlan, setEstadoPlan] = useState<'borrador' | 'activo'>('borrador')
+  const [metodosPago, setMetodosPago] = useState<MetodoPagoOption[]>([])
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) { setMontoTotal(''); setNumeroCuotas('3'); setPrimerVencimiento(''); setNotas(''); setError(null) }
-  }, [open])
+    if (!open) return
+    setBalanceInicial('')
+    setTasaAnual('0')
+    setNumeroCuotas('6')
+    setDiaDebito('15')
+    setFechaPrimerPago('')
+    setFeeSetup('0')
+    setFeeLate('0')
+    setMetodoPagoId('')
+    setEstadoPlan('borrador')
+    setNotas('')
+    setError(null)
+    setMetodosPago([])
 
-  const montoCuota = useMemo(() => {
-    const total = parseFloat(montoTotal)
-    const n = parseInt(numeroCuotas)
-    if (!total || !n || n < 1) return null
-    return total / n
-  }, [montoTotal, numeroCuotas])
+    const loadMetodos = async () => {
+      const { data } = await supabase
+        .from('cob_metodos_pago')
+        .select('id,provider,brand,last4,is_default,estado')
+        .eq('org_id', orgId)
+        .eq('cliente_id', clienteId)
+        .eq('estado', 'activo')
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false })
+      const rows = (data ?? []) as MetodoPagoOption[]
+      setMetodosPago(rows)
+      if (rows.length === 1) setMetodoPagoId(rows[0].id)
+      if (rows.length > 1) {
+        const defaultRow = rows.find((r) => r.is_default)
+        if (defaultRow) setMetodoPagoId(defaultRow.id)
+      }
+    }
+    void loadMetodos()
+  }, [open, orgId, clienteId])
+
+  const planInput = useMemo(() => ({
+    balance: Number(balanceInicial),
+    tasa_anual_pct: Number(tasaAnual),
+    numero_cuotas: Number(numeroCuotas),
+    fecha_primer_pago: fechaPrimerPago,
+    dia_debito: Number(diaDebito),
+    fee_setup: Number(feeSetup || 0),
+    fee_late: Number(feeLate || 0),
+    estadoCuotaInicial: 'pendiente' as const,
+  }), [balanceInicial, tasaAnual, numeroCuotas, fechaPrimerPago, diaDebito, feeSetup, feeLate])
+
+  const preview = useMemo(() => {
+    try {
+      validatePaymentPlanInput(planInput)
+      return {
+        summary: calculatePaymentPlanSummary(planInput),
+        cuotas: generateInstallmentSchedule(planInput),
+        error: null as string | null,
+      }
+    } catch (e) {
+      return {
+        summary: null,
+        cuotas: [] as ReturnType<typeof generateInstallmentSchedule>,
+        error: e instanceof Error ? e.message : 'Datos inválidos',
+      }
+    }
+  }, [planInput])
 
   const handleSave = async () => {
-    const total = parseFloat(montoTotal)
-    const n = parseInt(numeroCuotas)
-    if (!total || !n || !primerVencimiento) { setError('Monto, cuotas y primer vencimiento son obligatorios'); return }
+    if (!currentUserId) { setError('No se pudo identificar el usuario actual.'); return }
+    if (preview.error || !preview.summary || preview.cuotas.length === 0) {
+      setError(preview.error ?? 'Corrige los datos del plan antes de guardar.')
+      return
+    }
     setSaving(true)
     setError(null)
+
+    const balance = Number(balanceInicial)
+    const tasaAnualNum = Number(tasaAnual)
+    const numeroCuotasNum = Number(numeroCuotas)
+    const diaDebitoNum = Number(diaDebito)
+    const feeSetupNum = Number(feeSetup || 0)
+    const feeLateNum = Number(feeLate || 0)
+    const tasaMensualPct = Number((tasaAnualNum / 12).toFixed(3))
+    const montoCuota = preview.summary.monto_cuota_estimado
+    const totalProgramado = preview.summary.total_programado
 
     const { data: planData, error: planErr } = await supabase.from('cob_plan_pagos').insert({
       org_id: orgId,
       cliente_id: clienteId,
       case_id: caseId,
-      monto_total: total,
-      numero_cuotas: n,
-      notas: notas || null,
+      cargo_vuelta_case_id: caseId,
+      metodo_pago_id: metodoPagoId || null,
+      tipo_plan: 'refinanciamiento',
+      estado: estadoPlan,
+      principal_original: balance,
+      balance_inicial: balance,
+      tasa_anual_pct: tasaAnualNum,
+      tasa_mensual_pct: tasaMensualPct,
+      monto_cuota: montoCuota,
+      dia_debito: diaDebitoNum,
+      fecha_primer_pago: fechaPrimerPago,
+      fecha_fin_estimada: preview.summary.fecha_fin_estimada,
+      fee_setup: feeSetupNum,
+      fee_late: feeLateNum,
+      moneda: 'USD',
+      created_by: currentUserId,
+      updated_by: currentUserId,
+      creado_por: currentUserId,
+      monto_total: totalProgramado,
+      numero_cuotas: numeroCuotasNum,
+      notas: notas.trim() || null,
     }).select('id').single()
 
     if (planErr || !planData) { setSaving(false); setError(planErr?.message ?? 'Error al crear plan'); return }
 
-    const totalCentavos = Math.round(total * 100)
-    const baseCuotaCentavos = Math.floor(totalCentavos / n)
-    const remainder = totalCentavos - (baseCuotaCentavos * n)
-    const cuotas = Array.from({ length: n }, (_, i) => {
-      return {
+    const cuotas = preview.cuotas.map((c) => ({
         org_id: orgId,
         plan_id: planData.id,
-        numero_cuota: i + 1,
-        monto: (baseCuotaCentavos + (i === n - 1 ? remainder : 0)) / 100,
-        fecha_vencimiento: addMonthsClamped(primerVencimiento, i),
-      }
-    })
+        plan_pago_id: planData.id,
+        cargo_vuelta_case_id: caseId,
+        cliente_id: clienteId,
+        numero_cuota: c.numero_cuota,
+        monto: c.monto_programado,
+        fecha_vencimiento: c.fecha_vencimiento,
+        estado: 'programada',
+        monto_programado: c.monto_programado,
+        principal_programado: c.principal_programado,
+        interes_programado: c.interes_programado,
+        fees_programados: c.fees_programados,
+        monto_pagado: 0,
+        saldo_cuota: c.monto_programado,
+      }))
 
     const { error: cuotasErr } = await supabase.from('cob_plan_cuotas').insert(cuotas)
-    setSaving(false)
-    if (cuotasErr) { setError(cuotasErr.message); return }
+    if (cuotasErr) {
+      await supabase
+        .from('cob_plan_pagos')
+        .update({
+          estado: 'cancelado',
+          updated_by: currentUserId,
+          notas: `${notas.trim() || ''}\n[ERROR_CUOTAS] ${cuotasErr.message}`.trim(),
+        })
+        .eq('id', planData.id)
+      setSaving(false)
+      setError(`Plan creado pero falló la programación de cuotas. El plan se marcó como cancelado para revisión: ${cuotasErr.message}`)
+      return
+    }
 
+    setSaving(false)
     onSaved()
     onClose()
   }
 
   return (
-    <Modal open={open} title="Crear Plan de Pagos" onClose={onClose} size="sm"
+    <Modal open={open} title="Crear acuerdo de pago (Refinanciar)" onClose={onClose} size="sm"
       actions={
         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
           <button type="button" onClick={onClose} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>Cancelar</button>
-          <button type="button" onClick={handleSave} disabled={saving} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Guardando…' : 'Crear plan'}
+          <button type="button" onClick={handleSave} disabled={saving || Boolean(preview.error)} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Guardando…' : 'Crear acuerdo'}
           </button>
         </div>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {preview.error && <p style={{ color: '#f59e0b', fontSize: '0.78rem', margin: 0 }}>{preview.error}</p>}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Monto total a financiar *</span>
-          <input type="number" min="0" step="0.01" value={montoTotal} onChange={e => setMontoTotal(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
+          <span style={LABEL_STYLE}>Balance inicial *</span>
+          <input type="number" min="0" step="0.01" value={balanceInicial} onChange={e => setBalanceInicial(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Tasa anual (%) *</span>
+          <input type="number" min="0" max="36" step="0.001" value={tasaAnual} onChange={e => setTasaAnual(e.target.value)} style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Número de cuotas *</span>
-          <input type="number" min="1" max="60" value={numeroCuotas} onChange={e => setNumeroCuotas(e.target.value)} style={INPUT_STYLE} />
+          <input type="number" min="1" max="120" value={numeroCuotas} onChange={e => setNumeroCuotas(e.target.value)} style={INPUT_STYLE} />
         </label>
-        {montoCuota !== null && (
-          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-            Cuota mensual estimada: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(montoCuota)}</strong>
-          </p>
-        )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Vencimiento primera cuota *</span>
-          <input type="date" value={primerVencimiento} onChange={e => setPrimerVencimiento(e.target.value)} style={INPUT_STYLE} />
+          <span style={LABEL_STYLE}>Día de débito *</span>
+          <input type="number" min="1" max="31" value={diaDebito} onChange={e => setDiaDebito(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Fecha primer pago *</span>
+          <input type="date" value={fechaPrimerPago} onChange={e => setFechaPrimerPago(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Fee setup</span>
+          <input type="number" min="0" step="0.01" value={feeSetup} onChange={e => setFeeSetup(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Fee late</span>
+          <input type="number" min="0" step="0.01" value={feeLate} onChange={e => setFeeLate(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Método de pago (opcional)</span>
+          <select value={metodoPagoId} onChange={(e) => setMetodoPagoId(e.target.value)} style={INPUT_STYLE}>
+            <option value="">— Sin método asociado —</option>
+            {metodosPago.map((m) => (
+              <option key={m.id} value={m.id}>
+                {(m.provider ?? 'manual')} · {(m.brand ?? 'other')} {m.last4 ? `****${m.last4}` : ''}{m.is_default ? ' · default' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Estado inicial del acuerdo</span>
+          <select value={estadoPlan} onChange={(e) => setEstadoPlan(e.target.value as 'borrador' | 'activo')} style={INPUT_STYLE}>
+            <option value="borrador">borrador</option>
+            <option value="activo">activo</option>
+          </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Notas</span>
           <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Condiciones del acuerdo…" style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: '56px' }} />
         </label>
+        {preview.summary && (
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: '0.55rem', padding: '0.65rem', background: 'var(--color-card)' }}>
+            <p style={{ margin: '0 0 0.35rem', fontSize: '0.78rem', fontWeight: 700 }}>Previsualización</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 0.8rem', fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>
+              <span>Cuota estimada:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.monto_cuota_estimado)}</strong>
+              <span>Total principal:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_principal)}</strong>
+              <span>Total interés:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_interes)}</strong>
+              <span>Total fees:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_fees)}</strong>
+              <span>Total a pagar:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_programado)}</strong>
+              <span>Fin estimado:</span><strong style={{ color: 'var(--color-text)' }}>{fmtFecha(preview.summary.fecha_fin_estimada)}</strong>
+            </div>
+            <div style={{ marginTop: '0.45rem', maxHeight: '160px', overflowY: 'auto', borderTop: '1px solid var(--color-border)', paddingTop: '0.35rem' }}>
+              {preview.cuotas.map((c) => (
+                <div key={c.numero_cuota} style={{ display: 'grid', gridTemplateColumns: '58px 88px 1fr', gap: '0.45rem', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
+                  <span>#{c.numero_cuota}</span>
+                  <span>{fmtFecha(c.fecha_vencimiento)}</span>
+                  <span>{fmtMonto(c.monto_programado)} (P {fmtMonto(c.principal_programado)} / I {fmtMonto(c.interes_programado)})</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   )
@@ -936,7 +1124,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       supabase.from('cob_gestiones').select('id,tipo_gestion,resultado,monto_comprometido,fecha_compromiso,notas,gestionado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase.from('cob_ptps').select('id,monto,fecha_compromiso,estado,canal,notas,creado_por,fecha_cumplimiento,cumplido_at,incumplido_at,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase.from('cob_pagos').select('id,monto,fecha_pago,metodo_pago,referencia_externa,comprobante_url,estado,source,notas,created_by,ptp_id,created_at').eq('cargo_vuelta_case_id', caso.id).order('fecha_pago', { ascending: false }),
-      supabase.from('cob_plan_pagos').select('id,monto_total,numero_cuotas,estado,notas,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
+      supabase.from('cob_plan_pagos').select('id,monto_total,numero_cuotas,estado,tipo_plan,balance_inicial,tasa_anual_pct,monto_cuota,fecha_primer_pago,metodo_pago_id,notas,created_at').or(`case_id.eq.${caso.id},cargo_vuelta_case_id.eq.${caso.id}`).order('created_at', { ascending: false }),
       supabase
         .from('cob_revolving_accounts')
         .select('id,case_id,cliente_id,apr_anual,fecha_inicio,fecha_ultimo_devengo,saldo_principal_inicial,saldo_principal_actual,saldo_interes_actual,saldo_fees_actual,saldo_total_actual,estado')
@@ -956,16 +1144,19 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     const rawPlanes = (pl.data ?? []) as Omit<Plan, 'cuotas'>[]
     if (rawPlanes.length > 0) {
       const planIds = rawPlanes.map(rp => rp.id)
+      const planIdsCsv = planIds.join(',')
       const { data: cuotasData } = await supabase
         .from('cob_plan_cuotas')
-        .select('id,plan_id,numero_cuota,monto,fecha_vencimiento,fecha_pago,pago_id,estado')
-        .in('plan_id', planIds)
+        .select('id,plan_id,plan_pago_id,numero_cuota,monto,monto_programado,principal_programado,interes_programado,fees_programados,monto_pagado,saldo_cuota,fecha_vencimiento,fecha_pago,pago_id,cob_pago_id,paid_at,estado,cargo_vuelta_case_id,cliente_id')
+        .or(`cargo_vuelta_case_id.eq.${caso.id},plan_id.in.(${planIdsCsv}),plan_pago_id.in.(${planIdsCsv})`)
         .order('numero_cuota')
       if (loadSeq !== detailLoadSeq.current) return
       const cuotasByPlan: Record<string, Cuota[]> = {}
-      for (const c of (cuotasData ?? []) as (Cuota & { plan_id: string })[]) {
-        if (!cuotasByPlan[c.plan_id]) cuotasByPlan[c.plan_id] = []
-        cuotasByPlan[c.plan_id].push(c)
+      for (const c of (cuotasData ?? []) as (Cuota & { plan_id?: string; plan_pago_id?: string })[]) {
+        const ownerPlanId = c.plan_pago_id ?? c.plan_id
+        if (!ownerPlanId) continue
+        if (!cuotasByPlan[ownerPlanId]) cuotasByPlan[ownerPlanId] = []
+        cuotasByPlan[ownerPlanId].push(c)
       }
       setPlanes(rawPlanes.map(rp => ({ ...rp, cuotas: cuotasByPlan[rp.id] ?? [] })))
     } else {
@@ -1240,7 +1431,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           <ActionBtn label="Gestión" color="#3b82f6" onClick={() => setGestionOpen(true)} />
           <ActionBtn label="PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
           <ActionBtn label="Pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
-          <ActionBtn label="Plan" color="#7c3aed" onClick={() => setPlanOpen(true)} />
+          <ActionBtn label="Refinanciar" color="#7c3aed" onClick={() => setPlanOpen(true)} />
         </div>
         <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
         {/* Enviar */}
@@ -1317,7 +1508,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       />
       <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
       <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} ptps={ptps} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
-      <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
+      <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
 
       {/* Confirmación cierre de caso */}
