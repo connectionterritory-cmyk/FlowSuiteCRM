@@ -198,10 +198,6 @@ function parseYmdLocal(ymd: string) {
   return new Date(Number(year), Number(month) - 1, Number(day))
 }
 
-function formatYmdLocal(date: Date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-}
-
 function nombreCliente(c: Case['clientes']) {
   if (!c) return '—'
   return [c.nombre, c.apellido].filter(Boolean).join(' ') || '—'
