@@ -2169,7 +2169,7 @@ export function ClientesPage() {
             <input value={formValues.ciudad} onChange={handleChange('ciudad')} onBlur={handleFormatText('ciudad')} />
           </label>
           <label className="form-field">
-            <span>Estado</span>
+            <span>Estado / Prov</span>
             <input value={formValues.estado_region} onChange={handleChange('estado_region')} onBlur={handleFormatState} />
           </label>
           <label className="form-field">
@@ -2322,7 +2322,7 @@ export function ClientesPage() {
                   : '-',
               },
               { label: 'Tipo cuenta Hy-Cite', value: selectedClienteDetail.tipo_cuenta_hycite ?? '-' },
-              { label: 'Estado cuenta raw', value: selectedClienteDetail.estado_cuenta_raw ?? '-' },
+              { label: 'Estado Hy-Cite', value: selectedClienteDetail.estado_cuenta_raw ?? '-' },
               { label: 'Fecha orden', value: formatDateValue(selectedClienteDetail.fecha_orden) },
               { label: 'Fecha cierre', value: formatDateValue(selectedClienteDetail.fecha_cierre) },
               { label: 'Método pago', value: selectedClienteDetail.metodo_pago ?? '-' },
@@ -2453,7 +2453,7 @@ export function ClientesPage() {
                         <span style={fieldVal}>{c.ciudad ?? noReg}</span>
                       </div>
                       <div>
-                        <label style={fieldLbl}>Estado</label>
+                        <label style={fieldLbl}>Estado / Prov</label>
                         <span style={fieldVal}>{c.estado_region ?? noReg}</span>
                       </div>
                       <div>

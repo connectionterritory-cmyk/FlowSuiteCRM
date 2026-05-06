@@ -535,7 +535,8 @@ function parsearFila(row: Record<string, string>): ClienteImport | null {
 
   // Dirección y Componentes
   const ciudad = obtenerCampo(row, normalizedRow, ['CIUDAD', 'Ciudad', 'City']).trim() || null
-  const estadoRegion = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia']).trim() || obtenerEstadoRegion(row, normalizedRow)
+  const estadoRegionRaw = obtenerCampo(row, normalizedRow, ['ESTADO / PROVINCIA', 'Estado / Provincia']).trim()
+  const estadoRegion = (estadoRegionRaw && isLikelyEstadoRegion(estadoRegionRaw) ? estadoRegionRaw : null) || obtenerEstadoRegion(row, normalizedRow)
   const codigoPostal = obtenerCampo(row, normalizedRow, ['CÓDIGO POSTAL', 'Codigo Postal', 'Zip Code', 'Zip']).trim() || null
   const direccionRaw = obtenerCampo(row, normalizedRow, ['DIRECCIÓN', 'Direccion', 'Address']).replace(/\n/g, ', ').trim()
 
