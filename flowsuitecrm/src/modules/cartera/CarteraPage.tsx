@@ -1088,7 +1088,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     setGestionOpen(false)
   }
 
-  const totalPagado = useMemo(() => pagos.reduce((s, p) => s + p.monto, 0), [pagos])
+  const totalPagado = useMemo(() => pagos.filter(p => p.estado !== 'reversado' && p.estado !== 'rechazado').reduce((s, p) => s + p.monto, 0), [pagos])
   const nextStepRec = useMemo(() => computeNextStep(caso, gestiones, ptps), [caso, gestiones, ptps])
   const handleNextStepAction = () => { setGestionOpen(true) }
   const safeDfpAccount = dfpAccount?.case_id === caso.id ? dfpAccount : null
