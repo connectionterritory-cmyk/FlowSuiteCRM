@@ -1810,6 +1810,115 @@ function PlanesList({ planes }: { planes: Plan[] }) {
   )
 }
 
+function lastCompleteMonth(): { inicio: string; fin: string } {
+  const now = new Date()
+  const y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+  const m = now.getMonth() === 0 ? 12 : now.getMonth()
+  const lastDay = new Date(y, m, 0).getDate()
+  const mm = String(m).padStart(2, '0')
+  return {
+    inicio: `${y}-${mm}-01`,
+    fin: `${y}-${mm}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
+
+function GenerarStatementButton({ account }: { account: DfpAccount }) {
+  const defaults = lastCompleteMonth()
+  const [open, setOpen] = useState(false)
+  const [periodoInicio, setPeriodoInicio] = useState(defaults.inicio)
+  const [periodoFin, setPeriodoFin] = useState(defaults.fin)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [successId, setSuccessId] = useState<string | null>(null)
+
+  function handleOpen() {
+    setOpen(true)
+    setError(null)
+    setSuccessId(null)
+  }
+
+  async function handleGenerar() {
+    setLoading(true)
+    setError(null)
+    setSuccessId(null)
+    const { data, error: rpcErr } = await supabase.rpc('fn_cob_statement_generar', {
+      p_revolving_account_id: account.id,
+      p_periodo_inicio: periodoInicio,
+      p_periodo_fin: periodoFin,
+      p_fecha_corte: periodoFin,
+    })
+    setLoading(false)
+    if (rpcErr) {
+      setError(rpcErr.message)
+      return
+    }
+    setSuccessId(data as string)
+    setOpen(false)
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={handleOpen}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb18', color: '#2563eb', cursor: 'pointer' }}
+      >
+        Generar statement
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text)' }}>Generar estado de cuenta</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+        <div>
+          <label style={LABEL_STYLE}>Período inicio</label>
+          <input
+            type="date"
+            value={periodoInicio}
+            onChange={e => setPeriodoInicio(e.target.value)}
+            style={INPUT_STYLE}
+          />
+        </div>
+        <div>
+          <label style={LABEL_STYLE}>Período fin (= fecha corte)</label>
+          <input
+            type="date"
+            value={periodoFin}
+            onChange={e => setPeriodoFin(e.target.value)}
+            style={INPUT_STYLE}
+          />
+        </div>
+      </div>
+      {error && (
+        <p style={{ margin: 0, fontSize: '0.72rem', color: '#dc2626', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+          {error}
+        </p>
+      )}
+      {successId && (
+        <p style={{ margin: 0, fontSize: '0.72rem', color: '#10b981', fontWeight: 700 }}>
+          Statement generado: {successId}
+        </p>
+      )}
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button
+          onClick={handleGenerar}
+          disabled={loading}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb', color: '#fff', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}
+        >
+          {loading ? 'Generando...' : 'Confirmar'}
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer' }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function EstadoCuentaList({ account, entries }: { account: DfpAccount | null; entries: LedgerEntry[] }) {
   if (!account) {
     return <Empty label="Este caso todavía no tiene cuenta DFP/revolving asociada" />
@@ -1818,6 +1927,9 @@ function EstadoCuentaList({ account, entries }: { account: DfpAccount | null; en
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid #0f766e33', background: '#0f766e0d' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+          <GenerarStatementButton account={account} />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
           <DfpMetric label="Principal" value={fmtMonto(account.saldo_principal_actual)} color="#2563eb" />
           <DfpMetric label="Interés" value={fmtMonto(account.saldo_interes_actual)} color="#d97706" />
