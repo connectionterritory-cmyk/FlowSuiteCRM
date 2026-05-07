@@ -704,6 +704,17 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
       setError(preview.error ?? 'Corrige los datos del plan antes de guardar.')
       return
     }
+
+    const fechaPrimerPagoRaw = fechaPrimerPago.trim()
+    if (!fechaPrimerPagoRaw) {
+      setError('Fecha primer pago es obligatoria y debe estar en formato YYYY-MM-DD.')
+      return
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaPrimerPagoRaw)) {
+      setError('Fecha primer pago inválida. Usa formato YYYY-MM-DD (ejemplo: 2026-06-05).')
+      return
+    }
+
     setSaving(true)
     setError(null)
 
@@ -731,7 +742,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
       tasa_mensual_pct: tasaMensualPct,
       monto_cuota: montoCuota,
       dia_debito: diaDebitoNum,
-      fecha_primer_pago: fechaPrimerPago,
+      fecha_primer_pago: fechaPrimerPagoRaw,
       fecha_fin_estimada: preview.summary.fecha_fin_estimada,
       fee_setup: feeSetupNum,
       fee_late: feeLateNum,
