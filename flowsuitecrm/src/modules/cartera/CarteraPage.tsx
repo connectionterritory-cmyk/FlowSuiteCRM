@@ -222,9 +222,16 @@ function fmtFechaUsaFromIso(iso: string) {
 function normalizeFechaYmdOrUsa(value: string): string | null {
   const raw = value.trim()
   if (!raw) return null
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
-  if (iso) return raw
-  const usa = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw)
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw)
+  if (iso) {
+    const yyyy = Number(iso[1])
+    const mm = Number(iso[2])
+    const dd = Number(iso[3])
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31 && yyyy >= 1900) {
+      return `${String(yyyy).padStart(4, '0')}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
+    }
+  }
+  const usa = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw)
   if (usa) {
     const mm = Number(usa[1])
     const dd = Number(usa[2])
