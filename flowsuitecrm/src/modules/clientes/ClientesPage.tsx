@@ -472,10 +472,14 @@ export function ClientesPage() {
   const [nextActionDraft, setNextActionDraft] = useState('')
   const [nextActionDateDraft, setNextActionDateDraft] = useState('')
   const [savingNextAction, setSavingNextAction] = useState(false)
-  const [cargoVueltaOpen, setCargoVueltaOpen] = useState(false)
   const [abrirCasoOpen, setAbrirCasoOpen] = useState(false)
   const [tipoCasoSeleccionado, setTipoCasoSeleccionado] = useState<'cargo_vuelta' | 'dfp'>('cargo_vuelta')
   const [abriendoCaso, setAbriendoCaso] = useState(false)
+  const [casoMonto, setCasoMonto] = useState('')
+  const [casoFecha, setCasoFecha] = useState('')
+  const [casoDias, setCasoDias] = useState('')
+  const [casoNotas, setCasoNotas] = useState('')
+  const [casoError, setCasoError] = useState<string | null>(null)
 
   const loadClientes = useCallback(async () => {
     if (!configured || !sessionUserId || !currentRole) return
@@ -1211,19 +1215,25 @@ export function ClientesPage() {
 
   const handleAbrirCasoCliente = useCallback(async () => {
     if (!selectedClienteDetail || abriendoCaso) return
+    const parsedMonto = parseMontoCargoVueltaInput(casoMonto)
+    if (parsedMonto !== null && Number.isNaN(parsedMonto)) {
+      setCasoError('Monto inválido'); return
+    }
     setAbriendoCaso(true)
+    setCasoError(null)
     const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
       p_cliente_id: selectedClienteDetail.id,
       p_tipo_caso: tipoCasoSeleccionado,
+      p_monto_cargo_vuelta: parsedMonto ?? null,
+      p_fecha_cargo_vuelta: casoFecha || null,
+      p_dias_vencido: casoDias ? parseInt(casoDias) : null,
+      p_notas: casoNotas.trim() || null,
     })
     setAbriendoCaso(false)
-    if (rpcErr) {
-      showToast(`Error al abrir caso: ${rpcErr.message}`, 'error')
-      return
-    }
-    showToast(tipoCasoSeleccionado === 'dfp' ? 'Caso DFP abierto correctamente.' : 'Caso abierto correctamente.')
+    if (rpcErr) { setCasoError(rpcErr.message); return }
+    showToast(tipoCasoSeleccionado === 'dfp' ? 'Caso DFP abierto.' : 'Caso abierto.')
     setAbrirCasoOpen(false)
-  }, [abriendoCaso, selectedClienteDetail, showToast, tipoCasoSeleccionado])
+  }, [abriendoCaso, casoFecha, casoDias, casoMonto, casoNotas, selectedClienteDetail, showToast, tipoCasoSeleccionado])
 
   const riskChip = (diasAtraso: number | null, montoMoroso: number | null) => {
     if (!montoMoroso || montoMoroso === 0) return { color: '#10b981', bg: '#d1fae5', label: 'Al día' }
@@ -2677,6 +2687,7 @@ export function ClientesPage() {
                   type="button"
                   onClick={() => {
                     setTipoCasoSeleccionado('cargo_vuelta')
+                    setCasoMonto(''); setCasoFecha(''); setCasoDias(''); setCasoNotas(''); setCasoError(null)
                     setAbrirCasoOpen(true)
                   }}
                   disabled={detailLoading}
@@ -2684,55 +2695,65 @@ export function ClientesPage() {
                   Abrir caso
                 </Button>
               )}
-              {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
-                <Button variant="ghost" type="button" onClick={() => setCargoVueltaOpen(true)} disabled={detailLoading}>
-                  ↩ Cargo de Vuelta
-                </Button>
-              )}
             </div>
           ) : null
         }
       />
-      {selectedClienteDetail && (
-        <CargoVueltaModal
-          open={cargoVueltaOpen}
-          clienteId={selectedClienteDetail.id}
-          saldoHycite={selectedClienteDetail.saldo_actual}
-          onClose={() => setCargoVueltaOpen(false)}
-          onSaved={() => {
-            setCargoVueltaOpen(false)
-            showToast('Caso cargo de vuelta guardado')
-          }}
-        />
-      )}
       <Modal
         open={abrirCasoOpen}
         title="Abrir caso"
-        onClose={() => setAbrirCasoOpen(false)}
+        onClose={() => { setAbrirCasoOpen(false); setCasoError(null) }}
         size="sm"
         actions={
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-            <Button variant="ghost" type="button" onClick={() => setAbrirCasoOpen(false)} disabled={abriendoCaso}>
+            <Button variant="ghost" type="button" onClick={() => { setAbrirCasoOpen(false); setCasoError(null) }} disabled={abriendoCaso}>
               Cancelar
             </Button>
             <Button type="button" onClick={() => void handleAbrirCasoCliente()} disabled={abriendoCaso}>
-              {abriendoCaso ? 'Abriendo…' : 'Confirmar'}
+              {abriendoCaso ? 'Abriendo…' : 'Abrir caso'}
             </Button>
           </div>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <label className="form-field">
-            <span>Tipo de caso</span>
-            <select
-              value={tipoCasoSeleccionado}
-              onChange={(e) => setTipoCasoSeleccionado(e.target.value as 'cargo_vuelta' | 'dfp')}
-            >
-              <option value="cargo_vuelta">Cargo de vuelta</option>
-              <option value="dfp">Financiamiento directo (DFP)</option>
-            </select>
-          </label>
-        </div>
+        {(() => {
+          const inp: React.CSSProperties = { width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box' }
+          const lbl: React.CSSProperties = { fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '0.2rem' }
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {casoError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{casoError}</p>}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Tipo de caso</span>
+                <select value={tipoCasoSeleccionado} onChange={(e) => setTipoCasoSeleccionado(e.target.value as 'cargo_vuelta' | 'dfp')} style={inp}>
+                  <option value="cargo_vuelta">Cargo de vuelta</option>
+                  <option value="dfp">Financiamiento directo (DFP)</option>
+                </select>
+              </label>
+              {selectedClienteDetail?.saldo_actual != null && tipoCasoSeleccionado === 'cargo_vuelta' && (
+                <p style={{ margin: 0, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                  Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text)' }}>${selectedClienteDetail.saldo_actual.toFixed(2)}</strong>
+                </p>
+              )}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Monto {tipoCasoSeleccionado === 'dfp' ? 'financiado' : 'cargo de vuelta'}</span>
+                <input type="text" inputMode="decimal" value={casoMonto} onChange={e => setCasoMonto(e.target.value)} placeholder="0.00 (dejar vacío si aún no se conoce)" style={inp} />
+              </label>
+              {tipoCasoSeleccionado === 'cargo_vuelta' && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={lbl}>Fecha cargo de vuelta</span>
+                  <input type="date" value={casoFecha} onChange={e => setCasoFecha(e.target.value)} style={inp} />
+                </label>
+              )}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Días vencido</span>
+                <input type="number" min="0" step="1" value={casoDias} onChange={e => setCasoDias(e.target.value)} placeholder="0" style={inp} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Notas</span>
+                <textarea value={casoNotas} onChange={e => setCasoNotas(e.target.value)} rows={2} placeholder="Observaciones iniciales…" style={{ ...inp, resize: 'vertical', minHeight: '56px' }} />
+              </label>
+            </div>
+          )
+        })()}
       </Modal>
       <ModalRenderer />
 
