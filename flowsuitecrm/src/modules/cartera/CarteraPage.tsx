@@ -213,6 +213,29 @@ function fmtFecha(s: string) {
   return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function fmtFechaUsaFromIso(iso: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!m) return iso
+  return `${m[2]}/${m[3]}/${m[1]}`
+}
+
+function normalizeFechaYmdOrUsa(value: string): string | null {
+  const raw = value.trim()
+  if (!raw) return null
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (iso) return raw
+  const usa = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw)
+  if (usa) {
+    const mm = Number(usa[1])
+    const dd = Number(usa[2])
+    const yyyy = Number(usa[3])
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31 && yyyy >= 1900) {
+      return `${String(yyyy).padStart(4, '0')}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
+    }
+  }
+  return null
+}
+
 function diasColor(d: number) {
   if (d >= 91) return '#7c3aed'
   if (d >= 61) return '#dc2626'
@@ -587,6 +610,8 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
   const [metodoPagoId, setMetodoPagoId] = useState('')
   const [estadoPlan, setEstadoPlan] = useState<'borrador' | 'activo'>('borrador')
   const [metodosPago, setMetodosPago] = useState<MetodoPagoOption[]>([])
+  const [loadingMetodosPago, setLoadingMetodosPago] = useState(false)
+  const [metodosPagoError, setMetodosPagoError] = useState<string | null>(null)
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -606,10 +631,13 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
     setEstadoPlan('borrador')
     setNotas('')
     setError(null)
+    setMetodosPagoError(null)
+    setLoadingMetodosPago(false)
     setMetodosPago([])
 
     const loadMetodos = async () => {
-      const { data } = await supabase
+      setLoadingMetodosPago(true)
+      const { data, error: loadErr } = await supabase
         .from('cob_metodos_pago')
         .select('id,provider,brand,last4,is_default,estado')
         .eq('org_id', orgId)
@@ -617,6 +645,12 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
         .eq('estado', 'activo')
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: false })
+      setLoadingMetodosPago(false)
+      if (loadErr) {
+        setMetodosPago([])
+        setMetodosPagoError('No se pudieron cargar los métodos de pago del cliente.')
+        return
+      }
       const rows = (data ?? []) as MetodoPagoOption[]
       setMetodosPago(rows)
       if (rows.length === 1) setMetodoPagoId(rows[0].id)
@@ -647,16 +681,18 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
     return Math.min(120, Math.max(1, Math.ceil(n)))
   }, [modoCalculo, balanceInicial, tasaAnual, pagoMinimo])
 
+  const fechaPrimerPagoIso = useMemo(() => normalizeFechaYmdOrUsa(fechaPrimerPago), [fechaPrimerPago])
+
   const planInput = useMemo(() => ({
     balance: Number(balanceInicial),
     tasa_anual_pct: Number(tasaAnual),
     numero_cuotas: modoCalculo === 'pago_minimo' ? Number(numeroCuotasCalculado ?? 0) : Number(numeroCuotas),
-    fecha_primer_pago: fechaPrimerPago,
+    fecha_primer_pago: fechaPrimerPagoIso ?? fechaPrimerPago.trim(),
     dia_debito: Number(diaDebito),
     fee_setup: Number(feeSetup || 0),
     fee_late: Number(feeLate || 0),
     estadoCuotaInicial: 'pendiente' as const,
-  }), [balanceInicial, tasaAnual, numeroCuotas, modoCalculo, numeroCuotasCalculado, fechaPrimerPago, diaDebito, feeSetup, feeLate])
+  }), [balanceInicial, tasaAnual, numeroCuotas, modoCalculo, numeroCuotasCalculado, fechaPrimerPagoIso, fechaPrimerPago, diaDebito, feeSetup, feeLate])
 
   const preview = useMemo(() => {
     try {
@@ -705,13 +741,12 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
       return
     }
 
-    const fechaPrimerPagoRaw = fechaPrimerPago.trim()
-    if (!fechaPrimerPagoRaw) {
+    if (!fechaPrimerPago.trim()) {
       setError('Fecha primer pago es obligatoria y debe estar en formato YYYY-MM-DD.')
       return
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaPrimerPagoRaw)) {
-      setError('Fecha primer pago inválida. Usa formato YYYY-MM-DD (ejemplo: 2026-06-05).')
+    if (!fechaPrimerPagoIso) {
+      setError('Fecha primer pago inválida. Usa YYYY-MM-DD (2026-06-05) o MM/DD/YYYY (06/05/2026).')
       return
     }
 
@@ -742,7 +777,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
       tasa_mensual_pct: tasaMensualPct,
       monto_cuota: montoCuota,
       dia_debito: diaDebitoNum,
-      fecha_primer_pago: fechaPrimerPagoRaw,
+      fecha_primer_pago: fechaPrimerPagoIso,
       fecha_fin_estimada: preview.summary.fecha_fin_estimada,
       fee_setup: feeSetupNum,
       fee_late: feeLateNum,
@@ -859,7 +894,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Método de pago (opcional)</span>
-          <select value={metodoPagoId} onChange={(e) => setMetodoPagoId(e.target.value)} style={INPUT_STYLE}>
+          <select value={metodoPagoId} onChange={(e) => setMetodoPagoId(e.target.value)} style={INPUT_STYLE} disabled={loadingMetodosPago}>
             <option value="">— Sin método asociado —</option>
             {metodosPago.map((m) => (
               <option key={m.id} value={m.id}>
@@ -867,6 +902,21 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
               </option>
             ))}
           </select>
+          {loadingMetodosPago && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              Cargando métodos de pago…
+            </span>
+          )}
+          {!loadingMetodosPago && metodosPagoError && (
+            <span style={{ fontSize: '0.72rem', color: '#dc2626' }}>
+              {metodosPagoError}
+            </span>
+          )}
+          {!loadingMetodosPago && !metodosPagoError && metodosPago.length === 0 && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              Este cliente no tiene método de pago guardado. Puedes crear el acuerdo sin método asociado y registrarlo después.
+            </span>
+          )}
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Estado inicial del acuerdo</span>
@@ -887,7 +937,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
               <span>Tasa anual APR:</span><strong style={{ color: 'var(--color-text)' }}>{Number(tasaAnual || 0).toFixed(3)}%</strong>
               <span>Número de cuotas:</span><strong style={{ color: 'var(--color-text)' }}>{modoCalculo === 'pago_minimo' ? (numeroCuotasCalculado ?? '—') : (Number(numeroCuotas) || 0)}</strong>
               <span>Cuota estimada:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.monto_cuota_estimado)}</strong>
-              <span>Fecha primer pago:</span><strong style={{ color: 'var(--color-text)' }}>{fechaPrimerPago ? fmtFecha(fechaPrimerPago) : '—'}</strong>
+              <span>Fecha primer pago:</span><strong style={{ color: 'var(--color-text)' }}>{fechaPrimerPago ? fmtFechaUsaFromIso(fechaPrimerPago) : '—'}</strong>
               <span>Fecha fin estimada:</span><strong style={{ color: 'var(--color-text)' }}>{fmtFecha(preview.summary.fecha_fin_estimada)}</strong>
               <span>Total principal:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_principal)}</strong>
               <span>Total interés:</span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(preview.summary.total_interes)}</strong>
