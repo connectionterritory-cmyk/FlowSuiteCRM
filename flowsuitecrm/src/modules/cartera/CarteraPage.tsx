@@ -27,6 +27,7 @@ type Case = {
   id: string
   org_id: string
   cliente_id: string
+  tipo_caso: 'cargo_vuelta' | 'dfp' | null
   monto_total: number
   monto_devuelto: number | null
   fecha_cargo_vuelta: string | null
@@ -1991,7 +1992,7 @@ export function CarteraPage() {
 
     const { data, error: casesError } = await supabase
       .from('cargo_vuelta_cases')
-      .select('id,org_id,cliente_id,monto_total,monto_devuelto,fecha_cargo_vuelta,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,en_proceso_legal')
+      .select('id,org_id,cliente_id,tipo_caso,monto_total,monto_devuelto,fecha_cargo_vuelta,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,en_proceso_legal')
       .order('dias_vencido', { ascending: false })
 
     if (casesError) {
@@ -2255,6 +2256,18 @@ export function CarteraPage() {
                   <div style={{ marginTop: '0.22rem', display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 700, background: dColor + '22', color: dColor }}>{c.dias_vencido}d</span>
                     <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 600, background: estadoColor(c.estado) + '22', color: estadoColor(c.estado) }}>{c.estado}</span>
+                    <span
+                      style={{
+                        padding: '0.08rem 0.38rem',
+                        borderRadius: '999px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        background: c.tipo_caso === 'dfp' ? 'rgba(59,130,246,0.16)' : 'rgba(100,116,139,0.2)',
+                        color: c.tipo_caso === 'dfp' ? '#2563eb' : '#475569',
+                      }}
+                    >
+                      {c.tipo_caso === 'dfp' ? 'DFP' : 'Cargo de vuelta'}
+                    </span>
                     {hasPtpVencido && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, background: '#dc262622', color: '#dc2626' }}>PTP vencido</span>}
                     {c.clientes?.hycite_id && <span style={{ fontSize: '0.67rem', color: 'var(--color-text-muted)' }}>#{c.clientes.hycite_id}</span>}
                   </div>

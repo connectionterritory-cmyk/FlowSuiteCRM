@@ -473,6 +473,9 @@ export function ClientesPage() {
   const [nextActionDateDraft, setNextActionDateDraft] = useState('')
   const [savingNextAction, setSavingNextAction] = useState(false)
   const [cargoVueltaOpen, setCargoVueltaOpen] = useState(false)
+  const [abrirCasoOpen, setAbrirCasoOpen] = useState(false)
+  const [tipoCasoSeleccionado, setTipoCasoSeleccionado] = useState<'cargo_vuelta' | 'dfp'>('cargo_vuelta')
+  const [abriendoCaso, setAbriendoCaso] = useState(false)
 
   const loadClientes = useCallback(async () => {
     if (!configured || !sessionUserId || !currentRole) return
@@ -1205,6 +1208,22 @@ export function ClientesPage() {
     setEditingNextAction(false)
     showToast('Próxima acción actualizada')
   }, [nextActionDraft, nextActionDateDraft, savingNextAction, selectedClienteDetail, showToast])
+
+  const handleAbrirCasoCliente = useCallback(async () => {
+    if (!selectedClienteDetail || abriendoCaso) return
+    setAbriendoCaso(true)
+    const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
+      p_cliente_id: selectedClienteDetail.id,
+      p_tipo_caso: tipoCasoSeleccionado,
+    })
+    setAbriendoCaso(false)
+    if (rpcErr) {
+      showToast(`Error al abrir caso: ${rpcErr.message}`, 'error')
+      return
+    }
+    showToast(tipoCasoSeleccionado === 'dfp' ? 'Caso DFP abierto correctamente.' : 'Caso abierto correctamente.')
+    setAbrirCasoOpen(false)
+  }, [abriendoCaso, selectedClienteDetail, showToast, tipoCasoSeleccionado])
 
   const riskChip = (diasAtraso: number | null, montoMoroso: number | null) => {
     if (!montoMoroso || montoMoroso === 0) return { color: '#10b981', bg: '#d1fae5', label: 'Al día' }
@@ -2653,6 +2672,19 @@ export function ClientesPage() {
                 </Button>
               )}
               {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    setTipoCasoSeleccionado('cargo_vuelta')
+                    setAbrirCasoOpen(true)
+                  }}
+                  disabled={detailLoading}
+                >
+                  Abrir caso
+                </Button>
+              )}
+              {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
                 <Button variant="ghost" type="button" onClick={() => setCargoVueltaOpen(true)} disabled={detailLoading}>
                   ↩ Cargo de Vuelta
                 </Button>
@@ -2673,6 +2705,35 @@ export function ClientesPage() {
           }}
         />
       )}
+      <Modal
+        open={abrirCasoOpen}
+        title="Abrir caso"
+        onClose={() => setAbrirCasoOpen(false)}
+        size="sm"
+        actions={
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <Button variant="ghost" type="button" onClick={() => setAbrirCasoOpen(false)} disabled={abriendoCaso}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => void handleAbrirCasoCliente()} disabled={abriendoCaso}>
+              {abriendoCaso ? 'Abriendo…' : 'Confirmar'}
+            </Button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <label className="form-field">
+            <span>Tipo de caso</span>
+            <select
+              value={tipoCasoSeleccionado}
+              onChange={(e) => setTipoCasoSeleccionado(e.target.value as 'cargo_vuelta' | 'dfp')}
+            >
+              <option value="cargo_vuelta">Cargo de vuelta</option>
+              <option value="dfp">Financiamiento directo (DFP)</option>
+            </select>
+          </label>
+        </div>
+      </Modal>
       <ModalRenderer />
 
       <PersonaPerfilPanel
