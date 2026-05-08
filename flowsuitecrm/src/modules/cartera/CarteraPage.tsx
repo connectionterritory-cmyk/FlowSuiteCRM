@@ -1214,6 +1214,33 @@ function ProximoPasoSection({ rec, onPrimaryAction }: { rec: NextStepRec; onPrim
 
 // ── Case Detail Panel ─────────────────────────────────────────────────────────
 
+function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; label: string; disabled: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: '28px',
+        height: '28px',
+        borderRadius: '0.4rem',
+        border: '1px solid var(--color-border)',
+        background: disabled ? 'var(--color-surface-strong)' : 'var(--color-card)',
+        color: disabled ? 'var(--color-text-muted)' : 'var(--color-text)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        fontSize: '0.85rem'
+      }}
+    >
+      {icon}
+    </button>
+  )
+}
+
 type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan'
 
 type CaseDetailProps = {
@@ -1223,6 +1250,10 @@ type CaseDetailProps = {
   currentUserId: string | null
   usersById: Record<string, { nombre_completo?: string; email?: string } | undefined>
   onCaseUpdated: () => void
+  hasPrevious: boolean
+  hasNext: boolean
+  onPrevious: () => void
+  onNext: () => void
 }
 
 function formatGestionTipo(tipo: GestionDraft['tipo']) {
@@ -1241,7 +1272,7 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
   return map[tipo] ?? tipo
 }
 
-function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated }: CaseDetailProps) {
+function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated, hasPrevious, hasNext, onPrevious, onNext }: CaseDetailProps) {
   const { openEmail, openWhatsapp, openSms } = useMessaging()
   const [tab, setTab] = useState<DetailTab>('historial')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
@@ -1495,19 +1526,20 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
-        <p style={{ margin: '0 0 0.4rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>
-          {caso.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.4rem' }}>⚖️</span>}
-          {nombreCliente(cliente)}
-          {cliente?.hycite_id && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>#{cliente.hycite_id}</span>}
-        </p>
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
-          {chips.map(ch => (
-            <span key={ch.label} style={{ padding: '0.15rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: ch.color + '22', color: ch.color, border: `1px solid ${ch.color}44` }}>{ch.label}</span>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
-          {/* Saldo Hy-Cite siempre como referencia */}
+      <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: '0 0 0.4rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>
+            {caso.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.4rem' }}>⚖️</span>}
+            {nombreCliente(cliente)}
+            {cliente?.hycite_id && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>#{cliente.hycite_id}</span>}
+          </p>
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+            {chips.map(ch => (
+              <span key={ch.label} style={{ padding: '0.15rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: ch.color + '22', color: ch.color, border: `1px solid ${ch.color}44` }}>{ch.label}</span>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
+            {/* Saldo Hy-Cite siempre como referencia */}
           {cliente?.saldo_actual !== undefined && cliente?.saldo_actual !== null && (
             <span style={{ opacity: 0.65 }}>
               Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text-muted)' }}>{fmtMonto(cliente.saldo_actual)}</strong>
@@ -1552,6 +1584,16 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           )
         })()}
         {safeDfpAccount && <DfpSummary account={safeDfpAccount} />}
+        </div>
+        {/* Navigation */}
+        <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+          <button type="button" onClick={onPrevious} disabled={!hasPrevious} title="Anterior" style={{ padding: '0.4rem 0.7rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: hasPrevious ? 'var(--color-card)' : 'transparent', color: hasPrevious ? 'var(--color-text)' : 'var(--color-text-muted)', cursor: hasPrevious ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 600, opacity: hasPrevious ? 1 : 0.5 }}>
+            ← Anterior
+          </button>
+          <button type="button" onClick={onNext} disabled={!hasNext} title="Siguiente" style={{ padding: '0.4rem 0.7rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: hasNext ? 'var(--color-card)' : 'transparent', color: hasNext ? 'var(--color-text)' : 'var(--color-text-muted)', cursor: hasNext ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 600, opacity: hasNext ? 1 : 0.5 }}>
+            Siguiente →
+          </button>
+        </div>
       </div>
 
       {/* Próximo paso recomendado */}
@@ -2143,6 +2185,7 @@ type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: st
 
 export function CarteraPage() {
   const { usersById } = useUsers()
+  const { openWhatsapp, openSms, openEmail } = useMessaging()
   const [cases, setCases] = useState<Case[]>([])
   const [loading, setLoading] = useState(true)
   const [orgId, setOrgId] = useState<string | null>(null)
@@ -2317,6 +2360,17 @@ export function CarteraPage() {
 
   const handleCaseUpdated = () => void loadCases()
 
+  const currentIndex = selectedCase ? filtered.findIndex(c => c.id === selectedCase.id) : -1
+  const hasPrevious = currentIndex > 0
+  const hasNext = currentIndex !== -1 && currentIndex < filtered.length - 1
+
+  const handlePrevious = () => {
+    if (hasPrevious) setSelectedCase(filtered[currentIndex - 1])
+  }
+  const handleNext = () => {
+    if (hasNext) setSelectedCase(filtered[currentIndex + 1])
+  }
+
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden', gap: 0 }}>
       {/* Left: cases list */}
@@ -2451,6 +2505,77 @@ export function CarteraPage() {
                     {hasPtpVencido && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, background: '#dc262622', color: '#dc2626' }}>PTP vencido</span>}
                     {c.clientes?.hycite_id && <span style={{ fontSize: '0.67rem', color: 'var(--color-text-muted)' }}>#{c.clientes.hycite_id}</span>}
                   </div>
+                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem' }}>
+                    <QuickActionBtn
+                      icon="📞"
+                      label="Llamar"
+                      disabled={!c.clientes?.telefono}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (c.clientes?.telefono) window.location.href = `tel:${c.clientes.telefono}`
+                      }}
+                    />
+                    <QuickActionBtn
+                      icon="💬"
+                      label="WhatsApp"
+                      disabled={!c.clientes?.telefono}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (c.clientes?.telefono) {
+                          openWhatsapp({
+                            nombre: nombreCliente(c.clientes),
+                            telefono: c.clientes.telefono,
+                            clienteId: c.cliente_id,
+                            cuentaHycite: c.clientes.hycite_id ?? undefined,
+                            saldoActual: c.clientes.saldo_actual ?? undefined,
+                            montoMoroso: c.monto_total,
+                            diasAtraso: c.dias_vencido,
+                            estadoMorosidad: c.estado
+                          }, undefined, 'cobranza')
+                        }
+                      }}
+                    />
+                    <QuickActionBtn
+                      icon="📱"
+                      label="SMS"
+                      disabled={!c.clientes?.telefono}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (c.clientes?.telefono) {
+                          openSms({
+                            nombre: nombreCliente(c.clientes),
+                            telefono: c.clientes.telefono,
+                            clienteId: c.cliente_id,
+                            cuentaHycite: c.clientes.hycite_id ?? undefined,
+                            saldoActual: c.clientes.saldo_actual ?? undefined,
+                            montoMoroso: c.monto_total,
+                            diasAtraso: c.dias_vencido,
+                            estadoMorosidad: c.estado
+                          }, undefined, 'cobranza')
+                        }
+                      }}
+                    />
+                    <QuickActionBtn
+                      icon="✉️"
+                      label="Email"
+                      disabled={!c.clientes?.email}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (c.clientes?.email) {
+                          if (openEmail) {
+                            openEmail({
+                              nombre: nombreCliente(c.clientes),
+                              email: c.clientes.email,
+                              clienteId: c.cliente_id,
+                              cuentaHycite: c.clientes.hycite_id ?? undefined
+                            }, undefined, 'cobranza')
+                          } else {
+                            window.location.href = `mailto:${c.clientes.email}`
+                          }
+                        }
+                      }}
+                    />
+                  </div>
                   {/* Row 3: última gestión */}
                   {lastG ? (
                     <p style={{ margin: '0.18rem 0 0', fontSize: '0.69rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2477,6 +2602,10 @@ export function CarteraPage() {
             currentUserId={currentUserId}
             usersById={usersById as Record<string, { nombre_completo?: string } | undefined>}
             onCaseUpdated={handleCaseUpdated}
+            hasPrevious={hasPrevious}
+            hasNext={hasNext}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
           />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '0.5rem' }}>
