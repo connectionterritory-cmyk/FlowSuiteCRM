@@ -884,12 +884,26 @@ export function HoyPage() {
   }
 
   const handleWhatsappCliente = useCallback(
-    (cliente: { id: string; nombre: string; telefono: string | null }) => {
+    (cliente: { 
+      id: string; 
+      nombre: string; 
+      telefono: string | null;
+      monto_moroso?: number | null;
+      dias_atraso?: number | null;
+      estado_morosidad?: string | null;
+    }) => {
       if (!cliente.telefono) {
         showToast(t('messaging.phoneMissing'), 'error')
         return
       }
-      openWhatsapp({ nombre: cliente.nombre, telefono: cliente.telefono, clienteId: cliente.id })
+      openWhatsapp({ 
+        nombre: cliente.nombre, 
+        telefono: cliente.telefono, 
+        clienteId: cliente.id,
+        montoMoroso: cliente.monto_moroso,
+        diasAtraso: cliente.dias_atraso,
+        estadoMorosidad: cliente.estado_morosidad
+      })
     },
     [openWhatsapp, showToast, t]
   )
@@ -1472,7 +1486,14 @@ export function HoyPage() {
                     <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
                       📞 {t('hoy.call')}
                     </Button>
-                    <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>
+                    <Button variant="ghost" onClick={() => handleWhatsappCliente({ 
+                      id: c.id, 
+                      nombre: name, 
+                      telefono: c.telefono,
+                      monto_moroso: c.monto_moroso,
+                      dias_atraso: c.dias_atraso,
+                      estado_morosidad: c.estado_morosidad
+                    })}>
                       💬 {t('hoy.whatsapp')}
                     </Button>
                     <Button variant="ghost" onClick={() => navigate('/cartera')}>
@@ -1785,7 +1806,14 @@ export function HoyPage() {
                 </div>
                 <div className="hoy-modal-row-actions">
                   <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>💬</Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ 
+                    id: c.id, 
+                    nombre: name, 
+                    telefono: c.telefono,
+                    monto_moroso: c.monto_moroso,
+                    dias_atraso: c.dias_atraso,
+                    estado_morosidad: c.estado_morosidad
+                  })}>💬</Button>
                 </div>
               </div>
             )
