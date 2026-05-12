@@ -1701,7 +1701,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         ) : tab === 'historial' ? (
           <HistorialList events={buildHistorial(gestiones, ptps, pagos, caso)} usersById={usersById} />
         ) : tab === 'cliente' ? (
-          <ClienteTab cliente={caso.clientes} />
+          <ClienteTab cliente={caso.clientes} clienteId={caso.cliente_id} onSaved={handleRefresh} />
         ) : tab === 'estado_cuenta' ? (
           <EstadoCuentaList account={safeDfpAccount} entries={ledgerEntries} />
         ) : tab === 'gestiones' ? (
@@ -2151,24 +2151,115 @@ function Empty({ label, icon = '📭' }: { label: string; icon?: string }) {
 
 // ── Cliente tab ───────────────────────────────────────────────────────────────
 
-function ClienteTab({ cliente }: { cliente: Case['clientes'] }) {
-  if (!cliente) return <Empty label="Sin datos del cliente" />
+function ClienteTab({ cliente, clienteId, onSaved }: { cliente: Case['clientes']; clienteId: string; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const [draft, setDraft] = useState({
+    telefono: '',
+    telefono_casa: '',
+    email: '',
+    direccion: '',
+    ciudad: '',
+    estado_region: '',
+    codigo_postal: '',
+    fecha_nacimiento: '',
+  })
+
+  const startEdit = () => {
+    setDraft({
+      telefono: cliente?.telefono ?? '',
+      telefono_casa: cliente?.telefono_casa ?? '',
+      email: cliente?.email ?? '',
+      direccion: cliente?.direccion ?? '',
+      ciudad: cliente?.ciudad ?? '',
+      estado_region: cliente?.estado_region ?? '',
+      codigo_postal: cliente?.codigo_postal ?? '',
+      fecha_nacimiento: cliente?.fecha_nacimiento ?? '',
+    })
+    setSaveError(null)
+    setEditing(true)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveError(null)
+    const { error } = await supabase.from('clientes').update({
+      telefono: draft.telefono.trim() || null,
+      telefono_casa: draft.telefono_casa.trim() || null,
+      email: draft.email.trim() || null,
+      direccion: draft.direccion.trim() || null,
+      ciudad: draft.ciudad.trim() || null,
+      estado_region: draft.estado_region.trim() || null,
+      codigo_postal: draft.codigo_postal.trim() || null,
+      fecha_nacimiento: draft.fecha_nacimiento || null,
+    }).eq('id', clienteId)
+    setSaving(false)
+    if (error) { setSaveError(error.message); return }
+    setEditing(false)
+    onSaved()
+  }
+
+  const set = (field: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setDraft(prev => ({ ...prev, [field]: e.target.value }))
+
+  const SECTION = (label: string) => (
+    <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>{label}</p>
+  )
 
   const ROW = (label: string, value: string | number | null | undefined) => {
-    if (value === null || value === undefined || value === '') return null
+    if (!editing && (value === null || value === undefined || value === '')) return null
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
         <span style={{ fontSize: '0.67rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
-        <span style={{ fontSize: '0.875rem', color: 'var(--color-text)' }}>{value}</span>
+        <span style={{ fontSize: '0.875rem', color: 'var(--color-text)' }}>{value ?? '—'}</span>
       </div>
     )
   }
 
+  const FIELD = (label: string, field: keyof typeof draft, type: string = 'text') => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+      <span style={{ fontSize: '0.67rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
+      <input type={type} value={draft[field]} onChange={set(field)} style={INPUT_STYLE} />
+    </label>
+  )
+
+  if (!cliente) return <Empty label="Sin datos del cliente" />
+
   const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
-  const fullAddress = [cliente.direccion, cliente.ciudad, cliente.estado_region, cliente.codigo_postal].filter(Boolean).join(', ')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* Header con botón editar/guardar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+          {editing ? 'Editando datos del cliente' : 'Datos del cliente'}
+        </span>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          {editing ? (
+            <>
+              <button type="button" onClick={() => setEditing(false)} disabled={saving}
+                style={{ padding: '0.3rem 0.75rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={handleSave} disabled={saving}
+                style={{ padding: '0.3rem 0.75rem', borderRadius: '0.4rem', border: 'none', background: '#3b82f6', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+                {saving ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={startEdit}
+              style={{ padding: '0.3rem 0.75rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+              Editar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {saveError && <p style={{ margin: 0, color: '#f87171', fontSize: '0.8rem' }}>{saveError}</p>}
+
+      {/* Identificación — solo lectura siempre */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
         {ROW('Nombre completo', fullName)}
         {ROW('Cuenta Hy-Cite', cliente.hycite_id)}
@@ -2176,36 +2267,56 @@ function ClienteTab({ cliente }: { cliente: Case['clientes'] }) {
         {ROW('Origen', cliente.origen)}
       </div>
 
+      {/* Contacto */}
       <div>
-        <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>Contacto</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
-          {ROW('Teléfono', cliente.telefono)}
-          {ROW('Teléfono casa', cliente.telefono_casa)}
-          {ROW('Email', cliente.email)}
-        </div>
-      </div>
-
-      <div>
-        <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>Dirección</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
-          {ROW('Dirección', cliente.direccion)}
-          {ROW('Ciudad', cliente.ciudad)}
-          {ROW('Estado / Región', cliente.estado_region)}
-          {ROW('Código postal', cliente.codigo_postal)}
-        </div>
-        {fullAddress && (
-          <p style={{ margin: '0.6rem 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{fullAddress}</p>
+        {SECTION('Contacto')}
+        {editing ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+            {FIELD('Teléfono', 'telefono', 'tel')}
+            {FIELD('Teléfono casa', 'telefono_casa', 'tel')}
+            {FIELD('Email', 'email', 'email')}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+            {ROW('Teléfono', cliente.telefono)}
+            {ROW('Teléfono casa', cliente.telefono_casa)}
+            {ROW('Email', cliente.email)}
+          </div>
         )}
       </div>
 
+      {/* Dirección */}
       <div>
-        <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>Financiero</p>
+        {SECTION('Dirección')}
+        {editing ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+            {FIELD('Dirección', 'direccion')}
+            {FIELD('Ciudad', 'ciudad')}
+            {FIELD('Estado / Región', 'estado_region')}
+            {FIELD('Código postal', 'codigo_postal')}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+            {ROW('Dirección', cliente.direccion)}
+            {ROW('Ciudad', cliente.ciudad)}
+            {ROW('Estado / Región', cliente.estado_region)}
+            {ROW('Código postal', cliente.codigo_postal)}
+          </div>
+        )}
+      </div>
+
+      {/* Financiero — solo lectura siempre */}
+      <div>
+        {SECTION('Financiero')}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
           {ROW('Saldo Hy-Cite', cliente.saldo_actual !== null ? fmtMonto(cliente.saldo_actual ?? 0) : null)}
           {ROW('Monto moroso', cliente.monto_moroso !== null ? fmtMonto(cliente.monto_moroso ?? 0) : null)}
           {ROW('Días atraso', cliente.dias_atraso !== null ? `${cliente.dias_atraso} días` : null)}
           {ROW('Último pago', cliente.ultima_fecha_pago ? fmtFecha(cliente.ultima_fecha_pago) : null)}
-          {ROW('Fecha nacimiento', cliente.fecha_nacimiento ? fmtFecha(cliente.fecha_nacimiento) : null)}
+          {editing
+            ? FIELD('Fecha nacimiento', 'fecha_nacimiento', 'date')
+            : ROW('Fecha nacimiento', cliente.fecha_nacimiento ? fmtFecha(cliente.fecha_nacimiento) : null)
+          }
         </div>
       </div>
     </div>
