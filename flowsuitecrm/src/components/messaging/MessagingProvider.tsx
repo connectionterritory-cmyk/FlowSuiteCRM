@@ -166,7 +166,15 @@ export function MessagingProvider({
       email: initialContact?.email || '',
       telefono: initialContact?.telefono || '',
       cuenta_hycite: initialContact?.cuentaHycite || '',
-      saldo_actual: initialContact?.saldoActual?.toFixed(2) || '0.00',
+      saldo_actual: (() => {
+        const s = initialContact?.saldoActual
+        if (typeof s === 'number' && s > 0) return s.toFixed(2)
+        const cv = initialContact?.montoCargoVuelta
+        if (typeof cv === 'number' && cv > 0) return cv.toFixed(2)
+        const mm = initialContact?.montoMoroso
+        if (typeof mm === 'number' && mm > 0) return mm.toFixed(2)
+        return '0.00'
+      })(),
       monto_moroso: initialContact?.montoMoroso?.toFixed(2) || '0.00',
       monto_cargo_vuelta: montoCargoVueltaDisplay || '0.00',
       saldo_operativo: formatMoney(saldoOperativo) || montoCargoVueltaDisplay || '0.00',
