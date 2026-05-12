@@ -42,9 +42,20 @@ type Case = {
     nombre: string | null
     apellido: string | null
     telefono: string | null
+    telefono_casa: string | null
     email: string | null
     hycite_id: string | null
     saldo_actual: number | null
+    monto_moroso: number | null
+    dias_atraso: number | null
+    direccion: string | null
+    ciudad: string | null
+    estado_region: string | null
+    codigo_postal: string | null
+    fecha_nacimiento: string | null
+    ultima_fecha_pago: string | null
+    estado_cuenta: string | null
+    origen: string | null
   } | null
 }
 
@@ -453,11 +464,12 @@ type PagoModalProps = {
   orgId: string
   currentUserId: string | null
   ptps: PTP[]
+  dfpAccountId?: string | null
   onClose: () => void
   onSaved: () => void
 }
 
-function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, onClose, onSaved }: PagoModalProps) {
+function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, dfpAccountId, onClose, onSaved }: PagoModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState(todayYmd())
   const [metodo, setMetodo] = useState('cash')
@@ -488,6 +500,22 @@ function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, onClos
     }
     setSaving(true)
     setError(null)
+
+    if (dfpAccountId) {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('fn_registrar_pago_revolving', {
+        p_account_id: dfpAccountId,
+        p_monto: parsedMonto,
+        p_fecha: fecha,
+        p_referencia: referenciaExterna.trim() || null,
+        p_notas: notas.trim() || null,
+      })
+      setSaving(false)
+      if (rpcErr) { setError(rpcErr.message); return }
+      const result = rpcData as { ok?: boolean; error?: string } | null
+      if (result && !result.ok && result.error) { setError(result.error); return }
+      onSaved(); onClose(); return
+    }
+
     const { error: err } = await supabase.from('cob_pagos').insert({
       org_id: orgId,
       cliente_id: clienteId,
@@ -512,7 +540,7 @@ function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, onClos
   }
 
   return (
-    <Modal open={open} title="Registrar Pago" onClose={onClose} size="sm"
+    <Modal open={open} title={dfpAccountId ? 'Registrar Pago DFP' : 'Registrar Pago'} onClose={onClose} size="sm"
       actions={
         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
           <button type="button" onClick={onClose} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>Cancelar</button>
@@ -1241,7 +1269,7 @@ function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; labe
   )
 }
 
-type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan'
+type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan' | 'cliente'
 
 type CaseDetailProps = {
   caso: Case
@@ -1516,6 +1544,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 
   const TABS: { key: DetailTab; label: string }[] = [
     { key: 'historial', label: 'Historial' },
+    { key: 'cliente', label: 'Cliente' },
     { key: 'estado_cuenta', label: 'Estado de cuenta' },
     { key: 'gestiones', label: `Gestiones (${gestiones.length})` },
     { key: 'ptps', label: `PTPs (${ptps.length})` },
@@ -1671,6 +1700,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Cargando…</p>
         ) : tab === 'historial' ? (
           <HistorialList events={buildHistorial(gestiones, ptps, pagos, caso)} usersById={usersById} />
+        ) : tab === 'cliente' ? (
+          <ClienteTab cliente={caso.clientes} />
         ) : tab === 'estado_cuenta' ? (
           <EstadoCuentaList account={safeDfpAccount} entries={ledgerEntries} />
         ) : tab === 'gestiones' ? (
@@ -1696,7 +1727,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         origenId={caso.id}
       />
       <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
-      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} ptps={ptps} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
+      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} ptps={ptps} dfpAccountId={safeDfpAccount?.id ?? null} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
 
@@ -2118,6 +2149,69 @@ function Empty({ label, icon = '📭' }: { label: string; icon?: string }) {
   )
 }
 
+// ── Cliente tab ───────────────────────────────────────────────────────────────
+
+function ClienteTab({ cliente }: { cliente: Case['clientes'] }) {
+  if (!cliente) return <Empty label="Sin datos del cliente" />
+
+  const ROW = (label: string, value: string | number | null | undefined) => {
+    if (value === null || value === undefined || value === '') return null
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+        <span style={{ fontSize: '0.67rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
+        <span style={{ fontSize: '0.875rem', color: 'var(--color-text)' }}>{value}</span>
+      </div>
+    )
+  }
+
+  const fullName = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
+  const fullAddress = [cliente.direccion, cliente.ciudad, cliente.estado_region, cliente.codigo_postal].filter(Boolean).join(', ')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+        {ROW('Nombre completo', fullName)}
+        {ROW('Cuenta Hy-Cite', cliente.hycite_id)}
+        {ROW('Estado cuenta', cliente.estado_cuenta)}
+        {ROW('Origen', cliente.origen)}
+      </div>
+
+      <div>
+        <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>Contacto</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+          {ROW('Teléfono', cliente.telefono)}
+          {ROW('Teléfono casa', cliente.telefono_casa)}
+          {ROW('Email', cliente.email)}
+        </div>
+      </div>
+
+      <div>
+        <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>Dirección</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+          {ROW('Dirección', cliente.direccion)}
+          {ROW('Ciudad', cliente.ciudad)}
+          {ROW('Estado / Región', cliente.estado_region)}
+          {ROW('Código postal', cliente.codigo_postal)}
+        </div>
+        {fullAddress && (
+          <p style={{ margin: '0.6rem 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{fullAddress}</p>
+        )}
+      </div>
+
+      <div>
+        <p style={{ margin: '0 0 0.6rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>Financiero</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+          {ROW('Saldo Hy-Cite', cliente.saldo_actual !== null ? fmtMonto(cliente.saldo_actual ?? 0) : null)}
+          {ROW('Monto moroso', cliente.monto_moroso !== null ? fmtMonto(cliente.monto_moroso ?? 0) : null)}
+          {ROW('Días atraso', cliente.dias_atraso !== null ? `${cliente.dias_atraso} días` : null)}
+          {ROW('Último pago', cliente.ultima_fecha_pago ? fmtFecha(cliente.ultima_fecha_pago) : null)}
+          {ROW('Fecha nacimiento', cliente.fecha_nacimiento ? fmtFecha(cliente.fecha_nacimiento) : null)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Historial list ────────────────────────────────────────────────────────────
 
 function HistorialList({ events, usersById }: { events: HistorialEvent[]; usersById: Record<string, { nombre_completo?: string } | undefined> }) {
@@ -2195,6 +2289,7 @@ export function CarteraPage() {
   const [responsableFiltro, setResponsableFiltro] = useState<string>('all')
   const [selectedCase, setSelectedCase] = useState<Case | null>(null)
   const [quickFilter, setQuickFilter] = useState<QuickFilterKey | null>(null)
+  const [tipoCasoFiltro, setTipoCasoFiltro] = useState<'todos' | 'dfp' | 'cargo_vuelta'>('todos')
   const [lastGestionByCase, setLastGestionByCase] = useState<Record<string, LastGestionInfo>>({})
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
 
@@ -2241,7 +2336,7 @@ export function CarteraPage() {
 
     const { data: clientesData, error: clientesError } = await supabase
       .from('clientes')
-      .select('id,nombre,apellido,telefono,email,hycite_id,saldo_actual')
+      .select('id,nombre,apellido,telefono,telefono_casa,email,hycite_id,saldo_actual,monto_moroso,dias_atraso,direccion,ciudad,estado_region,codigo_postal,fecha_nacimiento,ultima_fecha_pago,estado_cuenta,origen')
       .in('id', clienteIds)
 
     if (clientesError) {
@@ -2352,11 +2447,13 @@ export function CarteraPage() {
         if (!nombre.includes(q) && !hid.includes(q)) return false
       }
       if (responsableFiltro !== 'all' && c.updated_by !== responsableFiltro) return false
+      if (tipoCasoFiltro === 'dfp' && c.tipo_caso !== 'dfp') return false
+      if (tipoCasoFiltro === 'cargo_vuelta' && c.tipo_caso !== 'cargo_vuelta') return false
       if (quickFilter) return matchesQuickFilter(c, quickFilter)
       return true
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, busqueda, responsableFiltro, quickFilter, lastGestionByCase, ptpVencidoSet])
+  }, [cases, busqueda, responsableFiltro, quickFilter, tipoCasoFiltro, lastGestionByCase, ptpVencidoSet])
 
   const handleCaseUpdated = () => void loadCases()
 
@@ -2403,6 +2500,19 @@ export function CarteraPage() {
               ))}
             </select>
           )}
+          <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.4rem' }}>
+            {(['todos', 'dfp', 'cargo_vuelta'] as const).map(t => {
+              const labels = { todos: 'Todos', dfp: 'DFP', cargo_vuelta: 'Cargo vuelta' }
+              const colors = { todos: '#6b7280', dfp: '#2563eb', cargo_vuelta: '#475569' }
+              const active = tipoCasoFiltro === t
+              return (
+                <button key={t} type="button" onClick={() => setTipoCasoFiltro(t)}
+                  style={{ flex: 1, padding: '0.2rem 0.3rem', borderRadius: '0.35rem', border: `1px solid ${active ? colors[t] : 'var(--color-border)'}`, background: active ? colors[t] + '22' : 'transparent', color: active ? colors[t] : 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700 }}>
+                  {labels[t]}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* Quick filters */}
