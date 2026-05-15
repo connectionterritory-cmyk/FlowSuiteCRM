@@ -2160,6 +2160,8 @@ type EquipoInstalado = {
   fecha_instalacion: string | null
   intervalo_meses: number
   proxima_revision: string | null
+  intervalo_cambio_meses: number | null
+  proxima_cambio: string | null
   ultimo_servicio: string | null
   activo: boolean
   notas: string | null
@@ -2222,6 +2224,7 @@ function ServicioModal({
   const [repuestosNotas, setRepuestosNotas] = useState('')
   const [monto, setMonto] = useState('')
   const [proximaRevision, setProximaRevision] = useState('')
+  const [proximaCambio, setProximaCambio] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [repuestosBusqueda, setRepuestosBusqueda] = useState('')
@@ -2235,13 +2238,19 @@ function ServicioModal({
       .then(({ data }) => setRepuestosCatalogo((data ?? []) as ProductoCatalogo[]))
   }, [open])
 
-  // Auto-calcular próxima revisión al seleccionar equipo + fecha
+  // Auto-calcular próxima revisión y próximo cambio al seleccionar equipo + fecha
   useEffect(() => {
     const eq = equipos.find(e => e.id === equipoId)
     if (!eq || !fecha) return
-    const d = new Date(fecha + 'T00:00:00')
-    d.setMonth(d.getMonth() + (eq.intervalo_meses ?? 12))
-    setProximaRevision(d.toISOString().slice(0, 10))
+    const base = new Date(fecha + 'T00:00:00')
+    const rev = new Date(base); rev.setMonth(rev.getMonth() + (eq.intervalo_meses ?? 6))
+    setProximaRevision(rev.toISOString().slice(0, 10))
+    if (eq.intervalo_cambio_meses && eq.intervalo_cambio_meses !== eq.intervalo_meses) {
+      const cam = new Date(base); cam.setMonth(cam.getMonth() + eq.intervalo_cambio_meses)
+      setProximaCambio(cam.toISOString().slice(0, 10))
+    } else {
+      setProximaCambio('')
+    }
   }, [equipoId, fecha, equipos])
 
   // Reset al abrir
@@ -2253,6 +2262,8 @@ function ServicioModal({
       setObservaciones('')
       setRepuestosNotas('')
       setMonto('')
+      setProximaRevision('')
+      setProximaCambio('')
       setRepuestosSeleccionados([])
       setError(null)
     }
@@ -2291,10 +2302,11 @@ function ServicioModal({
     })
     if (svcErr) { setSaving(false); setError(svcErr.message); return }
 
-    // Actualizar equipo: ultimo_servicio y proxima_revision
+    // Actualizar equipo: ultimo_servicio, proxima_revision y proxima_cambio
     await supabase.from('equipos_instalados').update({
       ultimo_servicio: fecha,
       ...(proximaRevision ? { proxima_revision: proximaRevision } : {}),
+      ...(proximaCambio ? { proxima_cambio: proximaCambio } : {}),
     }).eq('id', equipoId)
 
     setSaving(false)
@@ -2391,17 +2403,26 @@ function ServicioModal({
               style={{ ...INP, resize: 'vertical' }} />
           </label>
 
-          {/* Monto + Próxima revisión */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          {/* Monto */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={LBL}>Monto cobrado ($)</span>
+            <input type="number" step="0.01" min="0" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INP} />
+          </label>
+
+          {/* Próximas fechas */}
+          <div style={{ display: 'grid', gridTemplateColumns: equipo?.intervalo_cambio_meses && equipo.intervalo_cambio_meses !== equipo.intervalo_meses ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={LBL}>Monto cobrado ($)</span>
-              <input type="number" step="0.01" min="0" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INP} />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={LBL}>Próxima revisión</span>
+              <span style={LBL}>🔍 Próxima revisión</span>
               <input type="date" value={proximaRevision} onChange={e => setProximaRevision(e.target.value)} style={INP} />
               {equipo && <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>Auto: cada {equipo.intervalo_meses} meses</span>}
             </label>
+            {equipo?.intervalo_cambio_meses && equipo.intervalo_cambio_meses !== equipo.intervalo_meses && (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={LBL}>🔄 Próximo cambio de filtro</span>
+                <input type="date" value={proximaCambio} onChange={e => setProximaCambio(e.target.value)} style={INP} />
+                <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>Auto: cada {equipo.intervalo_cambio_meses} meses</span>
+              </label>
+            )}
           </div>
 
           {error && <p style={{ margin: 0, color: '#f87171', fontSize: '0.8rem' }}>{error}</p>}
@@ -2437,7 +2458,7 @@ function EquiposTab({ clienteId }: { clienteId: string }) {
     const [eqRes, svcRes] = await Promise.all([
       supabase
         .from('equipos_instalados')
-        .select('id,producto_id,fecha_instalacion,intervalo_meses,proxima_revision,ultimo_servicio,activo,notas,productos(codigo,nombre,categoria)')
+        .select('id,producto_id,fecha_instalacion,intervalo_meses,proxima_revision,intervalo_cambio_meses,proxima_cambio,ultimo_servicio,activo,notas,productos(codigo,nombre,categoria)')
         .eq('cliente_id', clienteId)
         .eq('activo', true)
         .order('proxima_revision', { ascending: true, nullsFirst: false }),
@@ -2511,11 +2532,16 @@ function EquiposTab({ clienteId }: { clienteId: string }) {
                   )}
                   {eq.proxima_revision && (
                     <span style={{ fontSize: '0.7rem', color, fontWeight: 600 }}>
-                      Próx. revisión: {new Date(eq.proxima_revision + 'T00:00:00').toLocaleDateString('es')}
+                      🔍 Revisión: {new Date(eq.proxima_revision + 'T00:00:00').toLocaleDateString('es')}
+                    </span>
+                  )}
+                  {eq.proxima_cambio && eq.intervalo_cambio_meses !== eq.intervalo_meses && (
+                    <span style={{ fontSize: '0.7rem', color: STATUS_COLOR[revisionStatus(eq.proxima_cambio)], fontWeight: 600 }}>
+                      🔄 Cambio: {new Date(eq.proxima_cambio + 'T00:00:00').toLocaleDateString('es')}
                     </span>
                   )}
                   <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                    Intervalo: {eq.intervalo_meses} meses
+                    Rev. {eq.intervalo_meses}m{eq.intervalo_cambio_meses && eq.intervalo_cambio_meses !== eq.intervalo_meses ? ` · Cambio ${eq.intervalo_cambio_meses}m` : ''}
                   </span>
                 </div>
                 {eq.notas && (
