@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
 import { Modal } from '../../components/Modal'
@@ -1269,7 +1269,7 @@ function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; labe
   )
 }
 
-type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan' | 'cliente'
+type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan' | 'cliente' | 'equipos'
 
 type CaseDetailProps = {
   caso: Case
@@ -1550,6 +1550,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     { key: 'ptps', label: `PTPs (${ptps.length})` },
     { key: 'pagos', label: `Pagos (${pagos.length})` },
     { key: 'plan', label: `Plan (${planes.length})` },
+    { key: 'equipos', label: 'Equipos & Servicio' },
   ]
 
   return (
@@ -1710,6 +1711,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           <PTPsList ptps={ptps} usersById={usersById} onRefresh={handleRefresh} currentUserId={currentUserId} />
         ) : tab === 'pagos' ? (
           <PagosList pagos={pagos} usersById={usersById} />
+        ) : tab === 'equipos' ? (
+          <EquiposTab clienteId={caso.cliente_id} />
         ) : (
           <PlanesList planes={planes} />
         )}
@@ -2145,6 +2148,445 @@ function Empty({ label, icon = '📭' }: { label: string; icon?: string }) {
     <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
       <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>{label}</p>
+    </div>
+  )
+}
+
+// ── Equipos & Servicio ────────────────────────────────────────────────────────
+
+type EquipoInstalado = {
+  id: string
+  producto_id: string
+  fecha_instalacion: string | null
+  intervalo_meses: number
+  proxima_revision: string | null
+  ultimo_servicio: string | null
+  activo: boolean
+  notas: string | null
+  productos: { codigo: string; nombre: string; categoria: string | null } | null
+}
+
+type ServicioHistorial = {
+  id: string
+  equipo_instalado_id: string | null
+  fecha_servicio: string | null
+  hora_cita: string | null
+  tipo_servicio: string | null
+  observaciones: string | null
+  proxima_revision: string | null
+  monto_servicio: number | null
+  repuestos_notas: string | null
+}
+
+type ProductoCatalogo = { id: string; codigo: string; nombre: string }
+
+function revisionStatus(proxima: string | null): 'vencido' | 'proximo' | 'ok' | 'sin-datos' {
+  if (!proxima) return 'sin-datos'
+  const hoy = new Date(); hoy.setHours(0,0,0,0)
+  const rev = new Date(proxima + 'T00:00:00')
+  const dias = Math.floor((rev.getTime() - hoy.getTime()) / 86400000)
+  if (dias < 0) return 'vencido'
+  if (dias <= 45) return 'proximo'
+  return 'ok'
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  vencido: '#ef4444',
+  proximo: '#f59e0b',
+  ok: '#10b981',
+  'sin-datos': '#6b7280',
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  vencido: 'Vencido',
+  proximo: 'Próximo',
+  ok: 'Al día',
+  'sin-datos': 'Sin fecha',
+}
+
+// ── Modal registrar servicio ──────────────────────────────────────────────────
+
+function ServicioModal({
+  open, clienteId, equipos, onClose, onSaved,
+}: {
+  open: boolean
+  clienteId: string
+  equipos: EquipoInstalado[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [equipoId, setEquipoId] = useState('')
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [tipoServicio, setTipoServicio] = useState('mantenimiento')
+  const [observaciones, setObservaciones] = useState('')
+  const [repuestosNotas, setRepuestosNotas] = useState('')
+  const [monto, setMonto] = useState('')
+  const [proximaRevision, setProximaRevision] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [repuestosBusqueda, setRepuestosBusqueda] = useState('')
+  const [repuestosCatalogo, setRepuestosCatalogo] = useState<ProductoCatalogo[]>([])
+  const [repuestosSeleccionados, setRepuestosSeleccionados] = useState<ProductoCatalogo[]>([])
+
+  // Cargar catálogo de repuestos (filtración)
+  useEffect(() => {
+    if (!open) return
+    supabase.from('productos').select('id,codigo,nombre').eq('categoria', 'Filtracion').eq('activo', true).order('codigo')
+      .then(({ data }) => setRepuestosCatalogo((data ?? []) as ProductoCatalogo[]))
+  }, [open])
+
+  // Auto-calcular próxima revisión al seleccionar equipo + fecha
+  useEffect(() => {
+    const eq = equipos.find(e => e.id === equipoId)
+    if (!eq || !fecha) return
+    const d = new Date(fecha + 'T00:00:00')
+    d.setMonth(d.getMonth() + (eq.intervalo_meses ?? 12))
+    setProximaRevision(d.toISOString().slice(0, 10))
+  }, [equipoId, fecha, equipos])
+
+  // Reset al abrir
+  useEffect(() => {
+    if (open) {
+      setEquipoId(equipos.length === 1 ? equipos[0].id : '')
+      setFecha(new Date().toISOString().slice(0, 10))
+      setTipoServicio('mantenimiento')
+      setObservaciones('')
+      setRepuestosNotas('')
+      setMonto('')
+      setRepuestosSeleccionados([])
+      setError(null)
+    }
+  }, [open, equipos])
+
+  const toggleRepuesto = (p: ProductoCatalogo) => {
+    setRepuestosSeleccionados(prev =>
+      prev.some(r => r.id === p.id) ? prev.filter(r => r.id !== p.id) : [...prev, p]
+    )
+  }
+
+  const repuestosFiltrados = repuestosCatalogo.filter(p =>
+    !repuestosBusqueda ||
+    p.codigo.toLowerCase().includes(repuestosBusqueda.toLowerCase()) ||
+    p.nombre.toLowerCase().includes(repuestosBusqueda.toLowerCase())
+  )
+
+  const handleSave = async () => {
+    if (!equipoId) { setError('Selecciona el equipo'); return }
+    if (!fecha) { setError('Indica la fecha del servicio'); return }
+    setSaving(true); setError(null)
+
+    const repNotas = repuestosSeleccionados.length > 0
+      ? repuestosSeleccionados.map(r => `${r.codigo} - ${r.nombre}`).join(' | ')
+      : repuestosNotas.trim() || null
+
+    const { error: svcErr } = await supabase.from('servicios').insert({
+      cliente_id: clienteId,
+      equipo_instalado_id: equipoId,
+      fecha_servicio: fecha,
+      tipo_servicio: tipoServicio,
+      observaciones: observaciones.trim() || null,
+      repuestos_notas: repNotas,
+      monto_servicio: parseFloat(monto) || 0,
+      proxima_revision: proximaRevision || null,
+    })
+    if (svcErr) { setSaving(false); setError(svcErr.message); return }
+
+    // Actualizar equipo: ultimo_servicio y proxima_revision
+    await supabase.from('equipos_instalados').update({
+      ultimo_servicio: fecha,
+      ...(proximaRevision ? { proxima_revision: proximaRevision } : {}),
+    }).eq('id', equipoId)
+
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  if (!open) return null
+
+  const INP: React.CSSProperties = { ...INPUT_STYLE }
+  const LBL: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '0.25rem', display: 'block' }
+  const equipo = equipos.find(e => e.id === equipoId)
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: 'var(--color-bg)', borderRadius: '0.75rem', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+        {/* Header */}
+        <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>🔧 Registrar Servicio</h3>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+
+          {/* Equipo */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={LBL}>Equipo *</span>
+            <select value={equipoId} onChange={e => setEquipoId(e.target.value)} style={INP}>
+              <option value="">— Seleccionar equipo —</option>
+              {equipos.map(eq => (
+                <option key={eq.id} value={eq.id}>
+                  {eq.productos?.codigo} — {eq.productos?.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {/* Fecha + Tipo */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={LBL}>Fecha del servicio *</span>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={INP} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={LBL}>Tipo de servicio</span>
+              <select value={tipoServicio} onChange={e => setTipoServicio(e.target.value)} style={INP}>
+                <option value="mantenimiento">Mantenimiento</option>
+                <option value="cambio_repuesto">Cambio de repuesto</option>
+                <option value="revision">Revisión</option>
+                <option value="venta_repuesto">Venta de repuesto</option>
+                <option value="instalacion">Instalación nueva</option>
+              </select>
+            </label>
+          </div>
+
+          {/* Repuestos — catálogo */}
+          <div>
+            <span style={LBL}>Repuestos utilizados / vendidos</span>
+            <input
+              type="text" placeholder="Buscar por código o nombre…" value={repuestosBusqueda}
+              onChange={e => setRepuestosBusqueda(e.target.value)}
+              style={{ ...INP, marginBottom: '0.4rem' }}
+            />
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: '0.4rem', maxHeight: '130px', overflowY: 'auto', background: 'var(--color-card)' }}>
+              {repuestosFiltrados.length === 0 ? (
+                <p style={{ margin: '0.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Sin resultados</p>
+              ) : repuestosFiltrados.map(p => {
+                const sel = repuestosSeleccionados.some(r => r.id === p.id)
+                return (
+                  <div key={p.id} onClick={() => toggleRepuesto(p)}
+                    style={{ padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: sel ? 'rgba(59,130,246,0.1)' : 'transparent', borderBottom: '1px solid var(--color-border)' }}>
+                    <span style={{ width: '14px', height: '14px', borderRadius: '3px', border: `2px solid ${sel ? '#3b82f6' : 'var(--color-border)'}`, background: sel ? '#3b82f6' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {sel && <span style={{ color: '#fff', fontSize: '10px', lineHeight: 1 }}>✓</span>}
+                    </span>
+                    <span style={{ color: 'var(--color-text-muted)', minWidth: '60px', fontFamily: 'monospace' }}>{p.codigo}</span>
+                    <span style={{ flex: 1 }}>{p.nombre}</span>
+                  </div>
+                )
+              })}
+            </div>
+            {repuestosSeleccionados.length > 0 && (
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.72rem', color: '#3b82f6' }}>
+                Seleccionados: {repuestosSeleccionados.map(r => r.codigo).join(', ')}
+              </p>
+            )}
+          </div>
+
+          {/* Notas adicionales */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={LBL}>Notas del servicio</span>
+            <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} rows={2}
+              placeholder="Descripción del trabajo realizado, observaciones del equipo…"
+              style={{ ...INP, resize: 'vertical' }} />
+          </label>
+
+          {/* Monto + Próxima revisión */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={LBL}>Monto cobrado ($)</span>
+              <input type="number" step="0.01" min="0" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INP} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={LBL}>Próxima revisión</span>
+              <input type="date" value={proximaRevision} onChange={e => setProximaRevision(e.target.value)} style={INP} />
+              {equipo && <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>Auto: cada {equipo.intervalo_meses} meses</span>}
+            </label>
+          </div>
+
+          {error && <p style={{ margin: 0, color: '#f87171', fontSize: '0.8rem' }}>{error}</p>}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+          <button type="button" onClick={onClose} disabled={saving}
+            style={{ padding: '0.4rem 1rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)', cursor: 'pointer', fontSize: '0.85rem' }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} disabled={saving}
+            style={{ padding: '0.4rem 1.2rem', borderRadius: '0.4rem', border: 'none', background: '#10b981', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Guardando…' : '✓ Registrar servicio'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── EquiposTab ────────────────────────────────────────────────────────────────
+
+function EquiposTab({ clienteId }: { clienteId: string }) {
+  const [equipos, setEquipos] = useState<EquipoInstalado[]>([])
+  const [historial, setHistorial] = useState<ServicioHistorial[]>([])
+  const [loading, setLoading] = useState(true)
+  const [servicioOpen, setServicioOpen] = useState(false)
+  const [equipoFiltro, setEquipoFiltro] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [eqRes, svcRes] = await Promise.all([
+      supabase
+        .from('equipos_instalados')
+        .select('id,producto_id,fecha_instalacion,intervalo_meses,proxima_revision,ultimo_servicio,activo,notas,productos(codigo,nombre,categoria)')
+        .eq('cliente_id', clienteId)
+        .eq('activo', true)
+        .order('proxima_revision', { ascending: true, nullsFirst: false }),
+      supabase
+        .from('servicios')
+        .select('id,equipo_instalado_id,fecha_servicio,hora_cita,tipo_servicio,observaciones,proxima_revision,monto_servicio,repuestos_notas')
+        .eq('cliente_id', clienteId)
+        .order('fecha_servicio', { ascending: false })
+        .limit(30),
+    ])
+    setEquipos((eqRes.data ?? []) as unknown as EquipoInstalado[])
+    setHistorial((svcRes.data ?? []) as ServicioHistorial[])
+    setLoading(false)
+  }, [clienteId])
+
+  useEffect(() => { void load() }, [load])
+
+  if (loading) return <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Cargando equipos…</p>
+  if (equipos.length === 0) return <Empty label="Sin equipos instalados" icon="🔧" />
+
+  const historialFiltrado = equipoFiltro
+    ? historial.filter(s => s.equipo_instalado_id === equipoFiltro)
+    : historial
+
+  const SECTION = (label: string) => (
+    <p style={{ margin: '0 0 0.75rem', fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.3rem' }}>{label}</p>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      {/* Botón registrar */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={() => setServicioOpen(true)}
+          style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#10b981', color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+          + Registrar servicio
+        </button>
+      </div>
+
+      {/* Equipos instalados */}
+      <div>
+        {SECTION('Equipos instalados')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {equipos.map(eq => {
+            const st = revisionStatus(eq.proxima_revision)
+            const color = STATUS_COLOR[st]
+            const activo = equipoFiltro === eq.id
+            return (
+              <div key={eq.id}
+                onClick={() => setEquipoFiltro(activo ? null : eq.id)}
+                style={{ border: `1px solid ${activo ? '#3b82f6' : 'rgba(148,163,184,0.2)'}`, borderLeft: `4px solid ${color}`, borderRadius: '0.5rem', padding: '0.6rem 0.75rem', cursor: 'pointer', background: activo ? 'rgba(59,130,246,0.06)' : 'rgba(15,23,42,0.03)', transition: 'all 0.15s' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text)', fontFamily: 'monospace' }}>{eq.productos?.codigo}</span>
+                    <span style={{ marginLeft: '0.5rem', fontSize: '0.82rem', color: 'var(--color-text)' }}>{eq.productos?.nombre}</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color, background: `${color}22`, borderRadius: '9999px', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {STATUS_LABEL[st]}
+                  </span>
+                </div>
+                <div style={{ marginTop: '0.35rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  {eq.fecha_instalacion && (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                      Instalado: {new Date(eq.fecha_instalacion + 'T00:00:00').toLocaleDateString('es')}
+                    </span>
+                  )}
+                  {eq.ultimo_servicio && (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                      Último servicio: {new Date(eq.ultimo_servicio + 'T00:00:00').toLocaleDateString('es')}
+                    </span>
+                  )}
+                  {eq.proxima_revision && (
+                    <span style={{ fontSize: '0.7rem', color, fontWeight: 600 }}>
+                      Próx. revisión: {new Date(eq.proxima_revision + 'T00:00:00').toLocaleDateString('es')}
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                    Intervalo: {eq.intervalo_meses} meses
+                  </span>
+                </div>
+                {eq.notas && (
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>{eq.notas}</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {equipoFiltro && (
+          <button type="button" onClick={() => setEquipoFiltro(null)}
+            style={{ marginTop: '0.5rem', padding: '0.2rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}>
+            × Limpiar filtro
+          </button>
+        )}
+      </div>
+
+      {/* Historial de servicios */}
+      <div>
+        {SECTION(`Historial de servicios${equipoFiltro ? ' (equipo seleccionado)' : ''}`)}
+        {historialFiltrado.length === 0 ? (
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>Sin servicios registrados.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {historialFiltrado.map(sv => {
+              const eq = equipos.find(e => e.id === sv.equipo_instalado_id)
+              return (
+                <div key={sv.id} style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: '0.5rem', padding: '0.55rem 0.75rem', background: 'rgba(15,23,42,0.03)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                        {sv.fecha_servicio ? new Date(sv.fecha_servicio + 'T00:00:00').toLocaleDateString('es') : '—'}
+                      </span>
+                      {sv.hora_cita && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{sv.hora_cita.slice(0,5)}</span>}
+                      <span style={{ fontSize: '0.72rem', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', borderRadius: '9999px', padding: '0.1rem 0.4rem', fontWeight: 600 }}>
+                        {sv.tipo_servicio?.replace(/_/g, ' ') ?? 'Servicio'}
+                      </span>
+                      {eq && <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>{eq.productos?.codigo}</span>}
+                    </div>
+                    {sv.monto_servicio != null && sv.monto_servicio > 0 && (
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981' }}>${sv.monto_servicio.toFixed(2)}</span>
+                    )}
+                  </div>
+                  {sv.observaciones && (
+                    <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: 'var(--color-text)' }}>{sv.observaciones}</p>
+                  )}
+                  {sv.repuestos_notas && (
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                      🔩 {sv.repuestos_notas}
+                    </p>
+                  )}
+                  {sv.proxima_revision && (
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.7rem', color: '#f59e0b' }}>
+                      Próx. revisión: {new Date(sv.proxima_revision + 'T00:00:00').toLocaleDateString('es')}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      <ServicioModal
+        open={servicioOpen}
+        clienteId={clienteId}
+        equipos={equipos}
+        onClose={() => setServicioOpen(false)}
+        onSaved={() => { setServicioOpen(false); void load() }}
+      />
     </div>
   )
 }

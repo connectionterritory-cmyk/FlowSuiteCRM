@@ -71,6 +71,10 @@ const metaAccessToken = Deno.env.get('META_ACCESS_TOKEN') ?? Deno.env.get('META_
 const metaPhoneNumberId = Deno.env.get('META_PHONE_NUMBER_ID') ?? ''
 const metaApiVersion = Deno.env.get('META_API_VERSION') ?? 'v25.0'
 
+const evolutionUrl = Deno.env.get('EVOLUTION_API_URL') ?? ''
+const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') ?? ''
+const evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') ?? ''
+
 const telegramToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
@@ -505,6 +509,10 @@ async function sendWhatsAppText(destinatario: string, message: string, attachmen
   const responses: unknown[] = []
 
   const trimmed = String(message ?? '').trim()
+  if (!metaAccessToken || !metaPhoneNumberId) {
+    return sendEvolutionWhatsAppText(to, trimmed, attachments)
+  }
+
   if (trimmed) {
     const request = {
       messaging_product: 'whatsapp',
@@ -544,6 +552,71 @@ async function sendWhatsAppText(destinatario: string, message: string, attachmen
     requestPayload: { provider: 'meta', requests },
     responsePayload: { responses },
   }
+}
+
+async function sendEvolutionWhatsAppText(to: string, message: string, attachments?: string[] | null): Promise<DeliveryResult> {
+  if (!evolutionUrl || !evolutionApiKey || !evolutionInstance) {
+    throw new Error('Missing WhatsApp provider configuration')
+  }
+
+  if (!message && attachments && attachments.length > 0) {
+    throw new Error('Evolution WhatsApp media attachments are not supported by process-outbox yet')
+  }
+
+  if (!message) {
+    throw new Error('Missing WhatsApp content (text/template/media)')
+  }
+
+  const baseUrl = evolutionUrl.replace(/\/+$/, '')
+  const candidates = to.startsWith('1') && to.length === 11 ? [to, to.slice(1)] : [to]
+  let lastStatus = 0
+  let lastResponseBody: unknown = null
+  let lastRequest: Record<string, unknown> | null = null
+
+  for (const number of candidates) {
+    const request = { number, text: message }
+    lastRequest = request
+    const res = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(evolutionInstance)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': evolutionApiKey,
+        'bypass-tunnel-reminder': 'true',
+      },
+      body: JSON.stringify(request),
+    })
+
+    const responseText = await res.text()
+    let responseBody: unknown = responseText
+    try {
+      responseBody = responseText ? JSON.parse(responseText) : null
+    } catch {
+      responseBody = responseText
+    }
+
+    lastStatus = res.status
+    lastResponseBody = responseBody
+
+    if (!res.ok) {
+      continue
+    }
+
+    const body = responseBody as { key?: { id?: string }; messageId?: string; id?: string } | null
+    return {
+      providerMessageId: body?.key?.id ?? body?.messageId ?? body?.id ?? null,
+      requestPayload: { provider: 'evolution', request },
+      responsePayload: responseBody,
+    }
+  }
+
+  const retryable = lastStatus === 408 || lastStatus === 429 || lastStatus >= 500
+  const err = asProviderError(`Evolution WhatsApp error (${lastStatus})`, retryable)
+  ;(err as Error & { responseBody?: unknown; requestPayload?: unknown }).responseBody = lastResponseBody
+  ;(err as Error & { responseBody?: unknown; requestPayload?: unknown }).requestPayload = {
+    provider: 'evolution',
+    request: lastRequest,
+  }
+  throw err
 }
 
 async function sendWhatsAppTemplate(destinatario: string, templateName: string, templateParams: unknown): Promise<DeliveryResult> {
@@ -768,8 +841,9 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
     let provider: string | null = null
 
     if (lockedRow.canal === 'whatsapp') {
-      provider = 'meta'
+      provider = metaAccessToken && metaPhoneNumberId ? 'meta' : 'evolution'
       if (tipoEnvio === 'template') {
+        provider = 'meta'
         delivery = await sendWhatsAppTemplate(destinatario, lockedRow.template_name ?? '', lockedRow.template_params)
         if (attachments && attachments.length > 0) {
           const mediaDelivery = await sendWhatsAppText(destinatario, '', attachments)
@@ -845,7 +919,12 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
     return fetchOutboxResult(row.id, true)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Error enviando'
-    const provider = lockedRow.canal === 'whatsapp' ? 'meta' : lockedRow.canal === 'email' ? 'resend' : lockedRow.canal
+    const provider = lockedRow.canal === 'whatsapp'
+      ? (metaAccessToken && metaPhoneNumberId ? 'meta' : 'evolution')
+      : lockedRow.canal === 'email'
+        ? 'resend'
+        : lockedRow.canal
+    const providerError = err as Error & { responseBody?: unknown; requestPayload?: Record<string, unknown> }
 
     if (lockedRow.canal === 'whatsapp') {
       await insertAttempt({
@@ -853,8 +932,8 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
         attemptNumber,
         provider,
         status: 'failed',
-        requestPayload: { canal: lockedRow.canal, destinatario, tipo_envio: tipoEnvio },
-        responsePayload: { ok: false },
+        requestPayload: providerError.requestPayload ?? { canal: lockedRow.canal, destinatario, tipo_envio: tipoEnvio },
+        responsePayload: providerError.responseBody ?? { ok: false },
         errorMessage: errorMsg,
       })
       await updateOutbox(row.id, {
@@ -862,6 +941,7 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
         failed_at: nowIso,
         error_message: errorMsg,
         provider,
+        provider_response: providerError.responseBody ?? null,
         locked_at: null,
         locked_by: null,
       })
