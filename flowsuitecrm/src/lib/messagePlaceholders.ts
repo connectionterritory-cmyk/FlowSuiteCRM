@@ -44,6 +44,7 @@ export const PLACEHOLDER_OPTIONS: PlaceholderOption[] = [
 
   { group: 'Equipo', label: 'Nombre Equipo', token: '{equipo_nombre}' },
   { group: 'Equipo', label: 'Serie Equipo', token: '{equipo_serie}' },
+  { group: 'Equipo', label: 'Días vencido', token: '{dias_vencido}' },
 ]
 
 const removeAccents = (value: string) =>

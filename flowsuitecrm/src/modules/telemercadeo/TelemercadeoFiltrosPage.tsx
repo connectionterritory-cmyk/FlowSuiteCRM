@@ -98,8 +98,9 @@ export function TelemercadeoFiltrosPage() {
     }
   }
 
-  const buildContact = (eq: EquipoInstalado) => {
+  const buildContact = (eq: EquipoInstalado & { semaforo: Semaforo }) => {
     const c = eq.cliente!
+    const dias = diasRestantes(eq.proxima_revision)
     return {
       nombre: nombreCompleto(c),
       telefono: c.telefono ?? c.telefono_casa ?? '',
@@ -107,6 +108,7 @@ export function TelemercadeoFiltrosPage() {
       clienteId: c.id,
       equipo_nombre: eq.productos?.nombre ?? undefined,
       equipo_serie: eq.numero_serie ?? undefined,
+      dias_vencido: dias !== null && dias < 0 ? Math.abs(dias) : null,
     }
   }
 

@@ -189,6 +189,7 @@ export function MessagingProvider({
       cita_direccion: initialContact?.cita_direccion || '',
       equipo_nombre: initialContact?.equipo_nombre || '',
       equipo_serie: initialContact?.equipo_serie || '',
+      dias_vencido: initialContact?.dias_vencido != null ? String(Math.abs(initialContact.dias_vencido)) : '',
     }
 
     return vars

@@ -32,6 +32,7 @@ export type MessagingContact = {
   // Campos de equipo/producto
   equipo_nombre?: string | null
   equipo_serie?: string | null
+  dias_vencido?: number | null
 }
 
 export type MessagingChannel = 'whatsapp' | 'sms' | 'email' | 'telegram'
