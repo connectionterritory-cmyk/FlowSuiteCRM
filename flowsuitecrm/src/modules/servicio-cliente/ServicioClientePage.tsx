@@ -1,7 +1,7 @@
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { EmptyState } from '../../components/EmptyState'
@@ -402,6 +402,32 @@ export function ServicioClientePage() {
     })
   }, [canDeleteServicios, canEditServicios, clienteMap, handleOpenDeleteConfirm, handleOpenEditForm, serviciosFiltrados, t, ventasMap])
 
+  const equiposColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('servicio.equipos.columns.cliente'), priority: 1 },
+    { label: t('servicio.equipos.columns.producto'), priority: 2 },
+    { label: t('servicio.equipos.columns.instalacion'), priority: 3 },
+    { label: t('servicio.equipos.columns.numeroSerie'), hideOnMobile: true, hideOnTablet: true, priority: 5 },
+    { label: t('servicio.equipos.columns.activo'), priority: 4 },
+  ], [t])
+
+  const componentesColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('servicio.componentes.columns.equipo'), priority: 1 },
+    { label: t('servicio.componentes.columns.componente'), priority: 2 },
+    { label: t('servicio.componentes.columns.ciclo'), priority: 4 },
+    { label: t('servicio.componentes.columns.proximo'), priority: 3 },
+    { label: t('servicio.componentes.columns.activo'), priority: 5 },
+  ], [t])
+
+  const serviciosColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('servicio.servicios.columns.cliente'), priority: 1 },
+    { label: t('servicio.servicios.columns.fecha'), priority: 2 },
+    { label: t('servicio.servicios.columns.hora'), priority: 4 },
+    { label: t('servicio.servicios.columns.tipo'), priority: 3 },
+    { label: t('servicio.servicios.columns.observaciones'), hideOnMobile: true, hideOnTablet: true, priority: 6 },
+    { label: t('servicio.servicios.columns.venta'), hideOnMobile: true, hideOnTablet: true, priority: 7 },
+    { label: t('servicio.servicios.columns.acciones'), priority: 8 },
+  ], [t])
+
   const equiposOptions = useMemo(() => {
     return equipos.filter((equipo) => equipo.cliente_id === formValues.cliente_id)
   }, [equipos, formValues.cliente_id])
@@ -784,41 +810,40 @@ export function ServicioClientePage() {
       </div>
 
       <DataTable
-        columns={[
-          t('servicio.equipos.columns.cliente'),
-          t('servicio.equipos.columns.producto'),
-          t('servicio.equipos.columns.instalacion'),
-          t('servicio.equipos.columns.numeroSerie'),
-          t('servicio.equipos.columns.activo'),
-        ]}
+        columns={equiposColumns}
         rows={equiposRows}
         emptyLabel={emptyLabel}
+        mobileConfig={{
+          titleColumn: 0,
+          subtitleColumn: 1,
+          metaColumns: [2, 3],
+          badgeColumns: [4],
+        }}
       />
 
       <DataTable
-        columns={[
-          t('servicio.componentes.columns.equipo'),
-          t('servicio.componentes.columns.componente'),
-          t('servicio.componentes.columns.ciclo'),
-          t('servicio.componentes.columns.proximo'),
-          t('servicio.componentes.columns.activo'),
-        ]}
+        columns={componentesColumns}
         rows={componentesRows}
         emptyLabel={emptyLabel}
+        mobileConfig={{
+          titleColumn: 0,
+          subtitleColumn: 1,
+          metaColumns: [2, 3],
+          badgeColumns: [4],
+        }}
       />
 
       <DataTable
-        columns={[
-          t('servicio.servicios.columns.cliente'),
-          t('servicio.servicios.columns.fecha'),
-          t('servicio.servicios.columns.hora'),
-          t('servicio.servicios.columns.tipo'),
-          t('servicio.servicios.columns.observaciones'),
-          t('servicio.servicios.columns.venta'),
-          t('servicio.servicios.columns.acciones'),
-        ]}
+        columns={serviciosColumns}
         rows={serviciosRows}
         emptyLabel={emptyLabel}
+        mobileConfig={{
+          titleColumn: 0,
+          subtitleColumn: 1,
+          metaColumns: [2, 5],
+          badgeColumns: [3],
+          actionColumn: 6,
+        }}
       />
 
       <Modal

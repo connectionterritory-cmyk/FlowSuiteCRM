@@ -1,7 +1,7 @@
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
@@ -415,6 +415,16 @@ export function VentasPage() {
   }, [clienteMap, numberFormat, t, usersById, ventasOrdenadas])
 
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
+
+  const columns = useMemo<DataTableColumn[]>(() => [
+    { label: t('ventas.columns.nota'), hideOnMobile: true, hideOnTablet: true, priority: 5 },
+    { label: t('ventas.columns.cliente'), priority: 1 },
+    { label: t('ventas.columns.vendedor'), hideOnMobile: true, hideOnTablet: true, priority: 6 },
+    { label: t('ventas.columns.monto'), priority: 2 },
+    { label: t('ventas.columns.tipo'), priority: 3 },
+    { label: t('ventas.columns.estado'), priority: 4 },
+    { label: t('ventas.columns.fecha'), priority: 7 },
+  ], [t])
 
   const limpiarFiltros = () => {
     setBusqueda('')
@@ -977,15 +987,7 @@ export function VentasPage() {
         </div>
       ) : (
         <DataTable
-          columns={[
-            t('ventas.columns.nota'),
-            t('ventas.columns.cliente'),
-            t('ventas.columns.vendedor'),
-            t('ventas.columns.monto'),
-            t('ventas.columns.tipo'),
-            t('ventas.columns.estado'),
-            t('ventas.columns.fecha'),
-          ]}
+          columns={columns}
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={handleRowClick}
