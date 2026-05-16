@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as XLSX from 'xlsx'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
@@ -723,23 +723,28 @@ export function ProductosPage() {
     ]
   }, [selectedRow, detailEditMode, detailValues, canViewCostos, t, detailPhotoPreview, handleDetailChange, handleDetailPhotoChange])
 
-  const columns = useMemo(() => {
-    const base = [
-      t('productos.columns.foto'),
-      t('productos.columns.codigo'),
-      t('productos.columns.nombre'),
-      t('productos.columns.categoria'),
-      t('productos.columns.subcategoria'),
+  const columns = useMemo<DataTableColumn[]>(() => {
+    const base: DataTableColumn[] = [
+      { label: t('productos.columns.foto'), hideOnMobile: true, hideOnTablet: true, priority: 9 },
+      { label: t('productos.columns.codigo'), priority: 2 },
+      { label: t('productos.columns.nombre'), priority: 1 },
+      { label: t('productos.columns.categoria'), priority: 3 },
+      { label: t('productos.columns.subcategoria'), hideOnMobile: true, hideOnTablet: true, priority: 7 },
     ]
     const costoColumns = canViewCostos
       ? [
-          t('productos.columns.categoriaCompra'),
-          t('productos.columns.linea'),
-          t('productos.columns.costoN3'),
-          t('productos.columns.recargo'),
+          { label: t('productos.columns.categoriaCompra'), hideOnMobile: true, hideOnTablet: true, priority: 8 },
+          { label: t('productos.columns.linea'), hideOnMobile: true, priority: 6 },
+          { label: t('productos.columns.costoN3'), hideOnMobile: true, hideOnTablet: true, priority: 10 },
+          { label: t('productos.columns.recargo'), hideOnMobile: true, hideOnTablet: true, priority: 11 },
         ]
       : []
-    return [...base, ...costoColumns, t('productos.columns.precio'), t('productos.columns.activo')]
+    return [
+      ...base,
+      ...costoColumns,
+      { label: t('productos.columns.precio'), priority: 4 },
+      { label: t('productos.columns.activo'), priority: 5 },
+    ]
   }, [canViewCostos, t])
 
   const procesarListaPrecios = async (file: File) => {

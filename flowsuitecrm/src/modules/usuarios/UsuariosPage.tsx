@@ -1,7 +1,7 @@
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
@@ -408,6 +408,15 @@ export function UsuariosPage() {
 
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
 
+  const columns = useMemo<DataTableColumn[]>(() => [
+    { label: t('usuarios.columns.nombre'), priority: 1 },
+    { label: t('usuarios.columns.email'), priority: 2 },
+    { label: t('usuarios.columns.rol'), priority: 3 },
+    { label: t('usuarios.columns.codigo'), hideOnMobile: true, hideOnTablet: true, priority: 5 },
+    { label: t('usuarios.columns.activo'), priority: 4 },
+    { label: t('usuarios.columns.actions'), priority: 6 },
+  ], [t])
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!configured) {
@@ -562,17 +571,17 @@ export function UsuariosPage() {
           </div>
 
           <DataTable
-            columns={[
-              t('usuarios.columns.nombre'),
-              t('usuarios.columns.email'),
-              t('usuarios.columns.rol'),
-              t('usuarios.columns.codigo'),
-              t('usuarios.columns.activo'),
-              t('usuarios.columns.actions'),
-            ]}
+            columns={columns}
             rows={rows as DataTableRow[]}
             emptyLabel={emptyLabel}
             onRowClick={(row) => setSelectedRow(row as UsuarioRow)}
+            mobileConfig={{
+              titleColumn: 0,
+              subtitleColumn: 1,
+              badgeColumns: [2, 4],
+              metaColumns: [3],
+              actionColumn: 5,
+            }}
           />
 
           <Modal
