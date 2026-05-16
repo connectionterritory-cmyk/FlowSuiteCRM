@@ -2,7 +2,7 @@ import { startTransition, type ChangeEvent, type FormEvent, type KeyboardEvent, 
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { StatCard } from '../../components/StatCard'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
@@ -1122,6 +1122,18 @@ export function ConexionesActivacionesTabLegacy() {
     usersById,
   ])
 
+  const activationColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('conexiones.activaciones.columns.fecha'), priority: 3 },
+    { label: t('conexiones.activaciones.columns.representante'), hideOnMobile: true, hideOnTablet: true, priority: 7 },
+    { label: t('conexiones.activaciones.columns.cliente'), priority: 1 },
+    { label: t('conexiones.activaciones.columns.referidos'), priority: 4 },
+    { label: 'Progreso', priority: 5 },
+    { label: t('conexiones.activaciones.columns.regalo'), hideOnMobile: true, hideOnTablet: true, priority: 8 },
+    { label: t('conexiones.activaciones.columns.foto'), hideOnMobile: true, hideOnTablet: true, priority: 9 },
+    { label: t('conexiones.activaciones.columns.whatsapp'), hideOnMobile: true, priority: 6 },
+    { label: t('conexiones.activaciones.columns.estado'), priority: 2 },
+  ], [t])
+
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
   const activationActionLabel = canSeeStep2
     ? t('conexiones.activaciones.form.activateProgram')
@@ -1200,20 +1212,16 @@ export function ConexionesActivacionesTabLegacy() {
       {error && <div className="form-error">{error}</div>}
       {loading && <div className="form-hint">{t('common.loading')}</div>}
       <DataTable
-        columns={[
-          t('conexiones.activaciones.columns.fecha'),
-          t('conexiones.activaciones.columns.representante'),
-          t('conexiones.activaciones.columns.cliente'),
-          t('conexiones.activaciones.columns.referidos'),
-          'Progreso',
-          t('conexiones.activaciones.columns.regalo'),
-          t('conexiones.activaciones.columns.foto'),
-          t('conexiones.activaciones.columns.whatsapp'),
-          t('conexiones.activaciones.columns.estado'),
-        ]}
+        columns={activationColumns}
         rows={activationRows}
         emptyLabel={emptyLabel}
         onRowClick={(row) => setSelectedActivationId(row.id)}
+        mobileConfig={{
+          titleColumn: 2,
+          subtitleColumn: 0,
+          metaColumns: [1, 3, 4, 5, 6, 7],
+          badgeColumns: [8],
+        }}
       />
 
       <Modal
@@ -3576,6 +3584,18 @@ function ConexionesActivacionesTab() {
     })
   }, [sortedActivaciones, formatDateTime, formatRelativeTime, getOwnerLabel, isClosed, referidosCount, vendedorMap, effectiveScope, handleReactivate, t])
 
+  const listColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('conexiones.activaciones.labels.owner'), priority: 1 },
+    { label: t('conexiones.activaciones.labels.referidos'), priority: 3 },
+    { label: 'Progreso', priority: 4 },
+    { label: t('conexiones.activaciones.labels.lastActivity'), priority: 5 },
+    { label: t('conexiones.activaciones.labels.estado'), priority: 2 },
+    ...(effectiveScope === 'distribution'
+      ? [{ label: t('conexiones.activaciones.labels.representante'), hideOnTablet: true, priority: 6 }]
+      : []),
+    { label: t('conexiones.activaciones.labels.actions'), priority: 7 },
+  ], [effectiveScope, t])
+
   const canAccess = role !== 'telemercadeo'
 
 
@@ -3780,15 +3800,7 @@ function ConexionesActivacionesTab() {
             </div>
           ) : (
             <DataTable
-              columns={[
-                t('conexiones.activaciones.labels.owner'),
-                t('conexiones.activaciones.labels.referidos'),
-                'Progreso',
-                t('conexiones.activaciones.labels.lastActivity'),
-                t('conexiones.activaciones.labels.estado'),
-                ...(effectiveScope === 'distribution' ? [t('conexiones.activaciones.labels.representante')] : []),
-                t('conexiones.activaciones.labels.actions'),
-              ]}
+              columns={listColumns}
               rows={listRows}
               emptyLabel={t('conexiones.activaciones.emptyTable')}
               sortableColumns={[1, 3]}
@@ -4412,6 +4424,16 @@ function ConexionesEmbajadoresTab() {
     })
   }, [embajadorEstadoMap, embajadorMap, embajadorOrigenMap, embajadorPersonaIdMap, numberFormat, periodoMap, sortedProgramas, t])
 
+  const embajadorColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('conexiones.columns.embajador'), priority: 1 },
+    { label: t('conexiones.columns.estado'), priority: 2 },
+    { label: t('conexiones.columns.origen'), hideOnTablet: true, priority: 6 },
+    { label: t('conexiones.columns.periodo'), hideOnTablet: true, priority: 7 },
+    { label: t('conexiones.columns.conexiones'), priority: 3 },
+    { label: t('conexiones.columns.ventas'), priority: 4 },
+    { label: t('conexiones.columns.nivel'), priority: 5 },
+  ], [t])
+
   const emptyLabel = loadingEmbajadores ? t('common.loading') : t('common.noData')
   const vendedorName = session?.user.id ? usersById[session.user.id] ?? session.user.id : '-'
   const conexionCount = conexionRows.filter((row) => row.nombre.trim() !== '').length
@@ -4784,15 +4806,7 @@ function ConexionesEmbajadoresTab() {
         </div>
       ) : (
         <DataTable
-          columns={[
-            t('conexiones.columns.embajador'),
-            t('conexiones.columns.estado'),
-            t('conexiones.columns.origen'),
-            t('conexiones.columns.periodo'),
-            t('conexiones.columns.conexiones'),
-            t('conexiones.columns.ventas'),
-            t('conexiones.columns.nivel'),
-          ]}
+          columns={embajadorColumns}
           rows={rows}
           emptyLabel={emptyLabel}
           sortableColumns={[4, 5]}
