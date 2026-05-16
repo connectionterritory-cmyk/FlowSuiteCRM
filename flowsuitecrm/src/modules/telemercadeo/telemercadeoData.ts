@@ -102,6 +102,8 @@ export function useTelemercadeoEquipos() {
       .from('equipos_instalados')
       .select(`
         id, cliente_id, fecha_instalacion, activo,
+        numero_serie, proxima_revision, intervalo_cambio_meses, proxima_cambio, ultimo_servicio,
+        productos:productos(codigo, nombre, categoria),
         cliente:clientes(${CLIENTE_FIELDS})
       `)
       .eq('activo', true)

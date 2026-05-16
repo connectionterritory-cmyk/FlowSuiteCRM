@@ -29,8 +29,13 @@ export type EquipoInstalado = {
   cliente_id: string
   fecha_instalacion: string | null
   activo: boolean | null
+  numero_serie: string | null
+  proxima_revision: string | null
+  intervalo_cambio_meses: number | null
+  proxima_cambio: string | null
+  ultimo_servicio: string | null
   cliente?: Cliente
-  ultimo_servicio?: string | null
+  productos?: { codigo: string; nombre: string; categoria: string | null } | null
 }
 
 export type ResultadoLlamada =

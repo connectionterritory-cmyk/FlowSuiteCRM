@@ -222,6 +222,7 @@ export function HoyPage() {
   const [crmTasks, setCrmTasks] = useState<HoyTask[]>([])
   const [mantenimientoStats, setMantenimientoStats] = useState({ rojo: 0, amarillo: 0 })
   const [filtroMantenimiento, setFiltroMantenimiento] = useState<'todos' | 'rojo' | 'amarillo'>('todos')
+  const [filtrosAtencionCount, setFiltrosAtencionCount] = useState(0)
   const [taskSavingId, setTaskSavingId] = useState<string | null>(null)
 
   // Collapsible modals
@@ -822,6 +823,20 @@ export function HoyPage() {
     loadData()
   }, [loadData])
 
+  useEffect(() => {
+    if (!isSupabaseConfigured || !session?.user.id) return
+    const d45 = new Date()
+    d45.setDate(d45.getDate() + 45)
+    const d45Iso = d45.toLocaleDateString('en-CA')
+    void supabase
+      .from('equipos_instalados')
+      .select('id', { count: 'exact', head: true })
+      .eq('activo', true)
+      .not('proxima_revision', 'is', null)
+      .lte('proxima_revision', d45Iso)
+      .then(({ count }) => setFiltrosAtencionCount(count ?? 0))
+  }, [session?.user.id])
+
   const handleCall = (telefono?: string | null) => {
     if (!telefono) {
       showToast(t('messaging.phoneMissing'), 'error')
@@ -1292,6 +1307,34 @@ export function HoyPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Filtros de agua atención card ─────────────────── */}
+      {filtrosAtencionCount > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate('/telemercadeo/filtros')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            padding: '0.6rem 1rem',
+            borderRadius: '0.5rem',
+            border: '1px solid rgba(59,130,246,0.35)',
+            background: 'rgba(59,130,246,0.08)',
+            color: '#3b82f6',
+            cursor: 'pointer',
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: '1rem' }}>💧</span>
+          <span>
+            <strong>{filtrosAtencionCount}</strong> filtro{filtrosAtencionCount !== 1 ? 's' : ''} requieren atención
+          </span>
+          <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '0.75rem' }}>Ver →</span>
+        </button>
+      )}
 
       {error && <div className="form-error">{error}</div>}
 
