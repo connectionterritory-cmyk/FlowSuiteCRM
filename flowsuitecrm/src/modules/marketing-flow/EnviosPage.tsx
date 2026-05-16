@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { StatCard } from '../../components/StatCard'
 import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
@@ -720,6 +720,19 @@ export function EnviosPage() {
     statusLabels,
   ])
 
+  const columns = useMemo<DataTableColumn[]>(() => {
+    const base: DataTableColumn[] = [
+      { label: 'Nombre', priority: 1 },
+      { label: 'Teléfono', priority: 2 },
+      { label: 'Contacto', hideOnMobile: true, hideOnTablet: true, priority: 5 },
+      { label: 'WhatsApp', priority: 4 },
+      { label: 'Estado', priority: 3 },
+    ]
+    return isBirthdayCampaign
+      ? [...base, { label: 'Día', priority: 6 }, { label: 'Acciones', priority: 7 }]
+      : [...base, { label: 'Acciones', priority: 6 }]
+  }, [isBirthdayCampaign])
+
   return (
     <div className="page-stack">
       <SectionHeader title="Envíos" subtitle="Seguimiento por campaña" />
@@ -890,14 +903,19 @@ export function EnviosPage() {
       {hasResults && (
         <div className="marketing-envios-table">
           <DataTable
-            columns={isBirthdayCampaign
-              ? ['Nombre', 'Teléfono', 'Contacto', 'WhatsApp', 'Estado', 'Día', 'Acciones']
-              : ['Nombre', 'Teléfono', 'Contacto', 'WhatsApp', 'Estado', 'Acciones']}
+            columns={columns}
             rows={rows}
             sortableColumns={isBirthdayCampaign && dayColumnIndex !== null ? [dayColumnIndex] : undefined}
             sortColIndex={daySort && dayColumnIndex !== null ? dayColumnIndex : undefined}
             sortDir={daySort ?? undefined}
             onSort={handleSort}
+            mobileConfig={{
+              titleColumn: 0,
+              subtitleColumn: 1,
+              metaColumns: isBirthdayCampaign ? [2, 5] : [2],
+              badgeColumns: [3, 4],
+              actionColumn: isBirthdayCampaign ? 6 : 5,
+            }}
           />
         </div>
       )}

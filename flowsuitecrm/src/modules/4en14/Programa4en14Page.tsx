@@ -2,7 +2,7 @@ import { startTransition, type ChangeEvent, type FormEvent, type KeyboardEvent, 
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { StatCard } from '../../components/StatCard'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
@@ -918,6 +918,16 @@ export function Programa4en14Page() {
     usersById,
   ])
 
+  const cycleColumns = useMemo<DataTableColumn[]>(() => [
+    { label: t('programa4en14.columns.expand'), priority: 7 },
+    { label: t('programa4en14.columns.propietario'), priority: 1 },
+    { label: t('programa4en14.columns.vendedor'), hideOnTablet: true, priority: 5 },
+    { label: t('programa4en14.columns.fechaInicio'), priority: 3 },
+    { label: t('programa4en14.columns.estado'), priority: 2 },
+    { label: t('programa4en14.columns.presentaciones'), priority: 4 },
+    { label: t('programa4en14.columns.regalo'), hideOnMobile: true, hideOnTablet: true, priority: 6 },
+  ], [t])
+
   useEffect(() => {
     if (!leadContext || cycles.length === 0) return
 
@@ -1167,17 +1177,17 @@ export function Programa4en14Page() {
       )}
       {error && <div className="form-error">{error}</div>}
       <DataTable
-        columns={[
-          t('programa4en14.columns.expand'),
-          t('programa4en14.columns.propietario'),
-          t('programa4en14.columns.vendedor'),
-          t('programa4en14.columns.fechaInicio'),
-          t('programa4en14.columns.estado'),
-          t('programa4en14.columns.presentaciones'),
-          t('programa4en14.columns.regalo'),
-        ]}
+        columns={cycleColumns}
         rows={cycleRows}
         emptyLabel={emptyLabel}
+        mobileConfig={{
+          titleColumn: 1,
+          subtitleColumn: 2,
+          metaColumns: [3, 5],
+          badgeColumns: [4],
+          detailColumns: [6],
+          actionColumn: 0,
+        }}
       />
 
       <Modal

@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
 import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
@@ -763,6 +763,17 @@ export function CampanasPage() {
   }, [campaigns, estadoFilter, updateCampaignState])
 
   const hasResults = rows.length > 0
+
+  const columns = useMemo<DataTableColumn[]>(() => [
+    { label: 'Nombre', priority: 1 },
+    { label: 'Canal', priority: 3 },
+    { label: 'Segmento', priority: 4 },
+    { label: 'Plantilla', hideOnMobile: true, hideOnTablet: true, priority: 6 },
+    { label: 'Estado', priority: 2 },
+    { label: 'Creada', priority: 5 },
+    { label: 'Acciones', priority: 7 },
+  ], [])
+
   const isLeadAudience = formValues.audiencia === 'leads'
   const selectedSegment = segmentsForFuente.find((segment) => segment.key === formValues.segmento_key)
   const leadSourceLabel = formValues.lead_source === 'all' ? 'Todas las fuentes' : getLeadSourceLabel(formValues.lead_source)
@@ -815,8 +826,15 @@ export function CampanasPage() {
       )}
       {hasResults && (
         <DataTable
-          columns={['Nombre', 'Canal', 'Segmento', 'Plantilla', 'Estado', 'Creada', 'Acciones']}
+          columns={columns}
           rows={rows}
+          mobileConfig={{
+            titleColumn: 0,
+            subtitleColumn: 2,
+            metaColumns: [1, 3, 5],
+            badgeColumns: [4],
+            actionColumn: 6,
+          }}
         />
       )}
 

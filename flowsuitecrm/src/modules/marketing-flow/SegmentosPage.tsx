@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { StatCard } from '../../components/StatCard'
-import { DataTable, type DataTableRow } from '../../components/DataTable'
+import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
 import { Button } from '../../components/Button'
 import { Badge } from '../../components/Badge'
@@ -114,6 +114,13 @@ export function SegmentosPage() {
   }, [filteredTargets])
 
   const hasResults = rows.length > 0
+
+  const columns = useMemo<DataTableColumn[]>(() => [
+    { label: t('segmentos.table.nombre'), priority: 1 },
+    { label: t('segmentos.table.telefono'), priority: 2 },
+    { label: t('segmentos.table.ciudad'), hideOnMobile: true, hideOnTablet: true, priority: 4 },
+    { label: 'WhatsApp', priority: 3 },
+  ], [t])
 
   const segmentCopy = useMemo(() => ({
     nuevos: {
@@ -244,8 +251,14 @@ export function SegmentosPage() {
       )}
       {hasResults && (
         <DataTable
-          columns={[t('segmentos.table.nombre'), t('segmentos.table.telefono'), t('segmentos.table.ciudad'), 'WhatsApp']}
+          columns={columns}
           rows={rows}
+          mobileConfig={{
+            titleColumn: 0,
+            subtitleColumn: 1,
+            metaColumns: [2],
+            badgeColumns: [3],
+          }}
         />
       )}
     </div>
