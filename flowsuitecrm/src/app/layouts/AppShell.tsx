@@ -57,6 +57,7 @@ export function AppShell() {
       ...allNavigationItems.map((item) => ({ labelKey: item.labelKey, path: item.path })),
       ...programSubItems,
       { labelKey: 'nav.perfil', path: '/perfil' },
+      { labelKey: 'nav.telemercadeoFiltros', path: '/telemercadeo/filtros' },
     ]
     const match = titleItems.find((item) => location.pathname.startsWith(item.path))
     if (!match) {
