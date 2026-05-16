@@ -4,6 +4,7 @@ import { useUsers } from '../../data/useUsers'
 import { Modal } from '../../components/Modal'
 import { INPUT_STYLE, LABEL_STYLE } from '../../components/formControlStyles'
 import { RegistrarGestionModal, type GestionContactoRef, type GestionDraft, type GestionRole } from '../../components/RegistrarGestionModal'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useMessaging } from '../../hooks/useMessaging'
 import type { MessagingChannel, MessagingContact } from '../../types/messaging'
 import {
@@ -2857,6 +2858,7 @@ const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: 
 type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: string | null }
 
 export function CarteraPage() {
+  const { isMobile, isTablet } = useBreakpoint()
   const { usersById } = useUsers()
   const { openWhatsapp, openSms, openEmail } = useMessaging()
   const [cases, setCases] = useState<Case[]>([])
@@ -2871,6 +2873,7 @@ export function CarteraPage() {
   const [tipoCasoFiltro, setTipoCasoFiltro] = useState<'todos' | 'dfp' | 'cargo_vuelta'>('todos')
   const [lastGestionByCase, setLastGestionByCase] = useState<Record<string, LastGestionInfo>>({})
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
 
   const loadCases = async () => {
     setLoading(true)
@@ -3036,6 +3039,11 @@ export function CarteraPage() {
 
   const handleCaseUpdated = () => void loadCases()
 
+  const handleSelectCase = (caso: Case) => {
+    setSelectedCase(caso)
+    if (isMobile) setMobileView('detail')
+  }
+
   const currentIndex = selectedCase ? filtered.findIndex(c => c.id === selectedCase.id) : -1
   const hasPrevious = currentIndex > 0
   const hasNext = currentIndex !== -1 && currentIndex < filtered.length - 1
@@ -3047,10 +3055,13 @@ export function CarteraPage() {
     if (hasNext) setSelectedCase(filtered[currentIndex + 1])
   }
 
+  const showListPane = !isMobile || mobileView === 'list' || !selectedCase
+  const showDetailPane = !isMobile || (mobileView === 'detail' && selectedCase)
+
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: isMobile ? 'auto' : '100%', minHeight: isMobile ? '100%' : undefined, overflow: isMobile ? 'visible' : 'hidden', gap: 0 }}>
       {/* Left: cases list */}
-      <div style={{ width: '360px', minWidth: '300px', maxWidth: '400px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border)', height: '100%', overflow: 'hidden', flexShrink: 0 }}>
+      <div style={{ width: isMobile ? '100%' : isTablet ? '320px' : '360px', minWidth: isMobile ? 0 : isTablet ? '280px' : '300px', maxWidth: isMobile ? 'none' : isTablet ? '340px' : '400px', display: showListPane ? 'flex' : 'none', flexDirection: 'column', borderRight: isMobile ? 'none' : '1px solid var(--color-border)', height: isMobile ? 'auto' : '100%', overflow: isMobile ? 'visible' : 'hidden', flexShrink: 0 }}>
 
         {/* Search + responsable */}
         <div style={{ padding: '0.75rem 1rem 0.6rem', borderBottom: '1px solid var(--color-border)' }}>
@@ -3160,7 +3171,7 @@ export function CarteraPage() {
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => setSelectedCase(c)}
+                  onClick={() => handleSelectCase(c)}
                   style={{ width: '100%', textAlign: 'left', padding: '0.65rem 1rem', border: 'none', borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-primary-subtle, rgba(59,130,246,0.08))' : 'transparent', cursor: 'pointer', borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent' }}
                 >
                   {/* Row 1: nombre + monto */}
@@ -3281,7 +3292,21 @@ export function CarteraPage() {
       </div>
 
       {/* Right: case detail */}
-      <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: showDetailPane ? 'block' : 'none', height: isMobile ? 'auto' : '100%', minWidth: isMobile ? 0 : undefined, overflow: isMobile ? 'visible' : 'hidden' }}>
+        {isMobile && selectedCase && (
+          <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.85rem', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface, var(--color-bg))' }}>
+            <button
+              type="button"
+              onClick={() => setMobileView('list')}
+              style={{ minHeight: '38px', padding: '0 0.75rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700 }}
+            >
+              ← Volver
+            </button>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+              {nombreCliente(selectedCase.clientes)}
+            </span>
+          </div>
+        )}
         {selectedCase ? (
           <CaseDetail
             key={selectedCase.id}
