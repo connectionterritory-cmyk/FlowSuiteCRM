@@ -146,6 +146,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
         to={item.path}
         end={item.path === '/dashboard'}
         title={label}
+        onClick={mobileOpen ? onMobileClose : undefined}
         className={({ isActive }) =>
           `nav-link ${depth > 0 ? 'nav-sublink' : ''} ${isActive ? 'active' : ''}`
         }

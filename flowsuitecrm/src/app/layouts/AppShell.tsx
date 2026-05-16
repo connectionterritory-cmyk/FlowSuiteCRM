@@ -35,6 +35,11 @@ export function AppShell() {
 
   const mobileNavOpen = mobileNavState.open && mobileNavState.path === location.pathname
 
+  useEffect(() => {
+    document.body.style.overflow = mobileNavOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileNavOpen])
+
   const handleToggle = () => {
     setCollapsed((prev) => {
       const next = !prev

@@ -3,6 +3,7 @@ import { useMessaging } from '../../hooks/useMessaging'
 import type { EquipoInstalado } from './TelemercadeoShared'
 import { nombreCompleto } from './telemercadeoSharedUtils'
 import { useTelemercadeoEquipos } from './telemercadeoData'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { supabase } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../components/useToast'
@@ -45,6 +46,8 @@ export function TelemercadeoFiltrosPage() {
   const { equipos, loading } = useTelemercadeoEquipos()
   const { session } = useAuth()
   const { showToast } = useToast()
+  const { isMobile, isTablet } = useBreakpoint()
+  const useMobileView = isMobile || isTablet
   const [tab, setTab] = useState<Semaforo>('vencido')
   const [busqueda, setBusqueda] = useState('')
   const [contactandoId, setContactandoId] = useState<string | null>(null)
@@ -181,7 +184,148 @@ export function TelemercadeoFiltrosPage() {
         <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
           Sin equipos en este segmento
         </div>
+      ) : useMobileView ? (
+        /* ── Mobile / Tablet: cards ─────────────────────────── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {filtrados.map((eq) => {
+            const cliente = eq.cliente
+            if (!cliente) return null
+            const dias = diasRestantes(eq.proxima_revision)
+            const semaforoColor =
+              eq.semaforo === 'vencido' ? '#ef4444' :
+              eq.semaforo === 'proximo' ? '#f59e0b' : '#22c55e'
+
+            return (
+              <div
+                key={eq.id}
+                style={{
+                  padding: '1rem',
+                  background: 'var(--color-card, #1b2230)',
+                  borderRadius: '0.75rem',
+                  border: `1px solid ${semaforoColor}44`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem',
+                }}
+              >
+                {/* Header row: nombre + badge días */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text)' }}>
+                      {nombreCompleto(cliente)}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '0.1rem' }}>
+                      {cliente.telefono ?? cliente.telefono_casa ?? '—'}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: '9999px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      background: semaforoColor + '22',
+                      color: semaforoColor,
+                      border: `1px solid ${semaforoColor}44`,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {dias === null ? '—' : dias < 0 ? `${Math.abs(dias)}d venc.` : `en ${dias}d`}
+                  </span>
+                </div>
+
+                {/* Product + serie */}
+                <div style={{ fontSize: '0.82rem', color: 'var(--color-text)', display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1rem' }}>
+                  <span><span style={{ color: 'var(--color-text-muted)' }}>Producto:</span> {eq.productos?.nombre ?? '—'}</span>
+                  {eq.numero_serie && (
+                    <span><span style={{ color: 'var(--color-text-muted)' }}>S/N:</span> <span style={{ fontFamily: 'monospace' }}>{eq.numero_serie}</span></span>
+                  )}
+                </div>
+
+                {/* Dates grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem', fontSize: '0.75rem' }}>
+                  <div>
+                    <div style={{ color: 'var(--color-text-muted)', marginBottom: '0.1rem' }}>Instalado</div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>{formatFecha(eq.fecha_instalacion)}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--color-text-muted)', marginBottom: '0.1rem' }}>Próx. revisión</div>
+                    <div style={{ fontWeight: 600, color: semaforoColor }}>{formatFecha(eq.proxima_revision)}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--color-text-muted)', marginBottom: '0.1rem' }}>Próx. cambio</div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>{formatFecha(eq.proxima_cambio)}</div>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => openWhatsapp(buildContact(eq), undefined, 'servicio')}
+                    style={{
+                      flex: 1,
+                      padding: '0.6rem 0',
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(34,197,94,0.35)',
+                      background: 'rgba(34,197,94,0.12)',
+                      color: '#22c55e',
+                      cursor: 'pointer',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    WhatsApp
+                  </button>
+                  {cliente.email && (
+                    <button
+                      type="button"
+                      onClick={() => openEmail(buildContact(eq), undefined, 'servicio')}
+                      style={{
+                        flex: 1,
+                        padding: '0.6rem 0',
+                        borderRadius: '0.5rem',
+                        border: '1px solid rgba(59,130,246,0.35)',
+                        background: 'rgba(59,130,246,0.12)',
+                        color: '#3b82f6',
+                        cursor: 'pointer',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        touchAction: 'manipulation',
+                      }}
+                    >
+                      Email
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={contactandoId === eq.id}
+                    onClick={() => void handleContactado(eq)}
+                    style={{
+                      flex: 1,
+                      padding: '0.6rem 0',
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(168,85,247,0.35)',
+                      background: 'rgba(168,85,247,0.12)',
+                      color: '#a855f7',
+                      cursor: contactandoId === eq.id ? 'not-allowed' : 'pointer',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      opacity: contactandoId === eq.id ? 0.6 : 1,
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    {contactandoId === eq.id ? '…' : 'Contactado'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       ) : (
+        /* ── Desktop: table ─────────────────────────────────── */
         <div style={{ overflowX: 'auto' }}>
           <table
             style={{
@@ -223,9 +367,7 @@ export function TelemercadeoFiltrosPage() {
                         {cliente.telefono ?? cliente.telefono_casa ?? '—'}
                       </div>
                     </td>
-                    <td style={{ padding: '0.6rem 0.75rem' }}>
-                      {eq.productos?.nombre ?? '—'}
-                    </td>
+                    <td style={{ padding: '0.6rem 0.75rem' }}>{eq.productos?.nombre ?? '—'}</td>
                     <td style={{ padding: '0.6rem 0.75rem', color: 'var(--color-text-muted)', fontFamily: 'monospace', fontSize: '0.78rem' }}>
                       {eq.numero_serie ?? '—'}
                     </td>
