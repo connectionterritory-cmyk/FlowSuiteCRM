@@ -162,6 +162,9 @@ type DfpAccount = {
   saldo_fees_actual: number
   saldo_total_actual: number
   estado: string
+  statement_closing_day: number | null
+  customer_preferred_payment_day: number | null
+  min_days_statement_to_due: number
 }
 
 type LedgerEntry = {
@@ -837,7 +840,7 @@ function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onS
         numero_cuota: c.numero_cuota,
         monto: c.monto_programado,
         fecha_vencimiento: c.fecha_vencimiento,
-        estado: 'programada',
+        estado: 'pendiente',
         monto_programado: c.monto_programado,
         principal_programado: c.principal_programado,
         interes_programado: c.interes_programado,
@@ -1334,7 +1337,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       supabase.from('cob_plan_pagos').select('id,monto_total,numero_cuotas,estado,tipo_plan,balance_inicial,tasa_anual_pct,monto_cuota,fecha_primer_pago,metodo_pago_id,notas,created_at').or(`case_id.eq.${caso.id},cargo_vuelta_case_id.eq.${caso.id}`).order('created_at', { ascending: false }),
       supabase
         .from('cob_revolving_accounts')
-        .select('id,case_id,cliente_id,apr_anual,fecha_inicio,fecha_ultimo_devengo,saldo_principal_inicial,saldo_principal_actual,saldo_interes_actual,saldo_fees_actual,saldo_total_actual,estado')
+        .select('id,case_id,cliente_id,apr_anual,fecha_inicio,fecha_ultimo_devengo,saldo_principal_inicial,saldo_principal_actual,saldo_interes_actual,saldo_fees_actual,saldo_total_actual,estado,statement_closing_day,customer_preferred_payment_day,min_days_statement_to_due')
         .eq('case_id', caso.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -1494,6 +1497,32 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
   const cliente = caso.clientes
   const contactName = nombreCliente(cliente)
+  const planCarta = planes[0] ?? null
+  const ptpCarta = [...ptps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null
+  const primerPago = [...pagos]
+    .filter(p => p.estado !== 'rechazado' && p.estado !== 'reversado')
+    .sort((a, b) => new Date(a.fecha_pago).getTime() - new Date(b.fecha_pago).getTime())[0] ?? null
+
+  const parseDayFromYmd = (value: string | null | undefined): number | null => {
+    if (!value) return null
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
+    if (match) return Number(match[3])
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getDate()
+  }
+
+  const diaDebitoPlan = parseDayFromYmd(planCarta?.fecha_primer_pago)
+  const diaDebitoPtp = parseDayFromYmd(ptpCarta?.fecha_compromiso)
+  const pagoMensualAcordado = ptpCarta?.monto ?? planCarta?.monto_cuota ?? primerPago?.monto ?? null
+  const metodoPagoPlan = planCarta?.metodo_pago_id
+    ? metodosPago.find(m => m.id === planCarta.metodo_pago_id) ?? null
+    : null
+  const metodoPagoLabel = metodoPagoPlan
+    ? [metodoPagoPlan.provider, metodoPagoPlan.brand, metodoPagoPlan.last4 ? `****${metodoPagoPlan.last4}` : null]
+        .filter(Boolean)
+        .join(' · ')
+    : 'débito a tarjeta registrada'
+
   const cartaContact = useMemo<MessagingContact>(() => ({
     nombre: contactName,
     telefono: cliente?.telefono ?? null,
@@ -1505,7 +1534,17 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     fechaCargoVuelta: caso.fecha_cargo_vuelta ?? '',
     diasAtraso: caso.dias_vencido,
     clienteId: caso.cliente_id,
-  }), [caso.cliente_id, caso.dias_vencido, caso.fecha_cargo_vuelta, caso.monto_devuelto, caso.monto_total, cliente?.email, cliente?.hycite_id, cliente?.saldo_actual, cliente?.telefono, contactName, saldo])
+    casoNumero: cliente?.hycite_id ?? '',
+    agreementDate: planCarta?.created_at ? fmtFecha(planCarta.created_at) : '',
+    primerPagoMonto: primerPago?.monto ?? null,
+    primerPagoFecha: primerPago?.fecha_pago ? fmtFecha(primerPago.fecha_pago) : '',
+    balanceAlAcuerdo: planCarta?.balance_inicial ?? saldoBase ?? null,
+    pagoMensual: pagoMensualAcordado,
+    diaDebito: diaDebitoPlan ?? diaDebitoPtp,
+    metodoPagoLabel,
+    feeTarjetaPct: 4,
+    telefonoOficina: '786-291-3042',
+  }), [caso.cliente_id, caso.dias_vencido, caso.fecha_cargo_vuelta, caso.monto_devuelto, caso.monto_total, cliente?.email, cliente?.hycite_id, cliente?.saldo_actual, cliente?.telefono, contactName, diaDebitoPlan, diaDebitoPtp, metodoPagoLabel, pagoMensualAcordado, planCarta?.balance_inicial, planCarta?.created_at, primerPago?.fecha_pago, primerPago?.monto, saldo, saldoBase])
 
   const openCarta = (channel: MessagingChannel) => {
     const contact = { ...cartaContact }
@@ -1519,15 +1558,15 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       const email = window.prompt('Email del cliente para enviar la carta:', contact.email ?? '')
       if (!email) return
       contact.email = email.trim()
-      openEmail(contact, 'sys_email_cartera.cargo_vuelta_oficina_local', 'cobranza', ['patrospi@hotmail.com'])
+      openEmail(contact, 'sys_email_cartera.cartera.acuerdo_pago_cwg', 'cobranza', ['patrospi@hotmail.com'])
       return
     }
     if (!contact.telefono) {
       window.alert('Este cliente no tiene teléfono registrado.')
       return
     }
-    if (channel === 'whatsapp') openWhatsapp(contact, 'sys_cartera.cargo_vuelta_oficina_local', 'cobranza')
-    else openSms(contact, 'sys_cartera.cargo_vuelta_oficina_local', 'cobranza')
+    if (channel === 'whatsapp') openWhatsapp(contact, 'sys_cartera.cartera.acuerdo_pago_cwg', 'cobranza')
+    else openSms(contact, 'sys_cartera.cartera.acuerdo_pago_cwg', 'cobranza')
   }
 
   const gestionContacto: GestionContactoRef = {
@@ -1715,7 +1754,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         ) : tab === 'equipos' ? (
           <EquiposTab clienteId={caso.cliente_id} />
         ) : (
-          <PlanesList planes={planes} />
+          <PlanesList planes={planes} ptps={ptps} />
         )}
       </div>
 
@@ -1919,35 +1958,80 @@ function PagosList({ pagos }: { pagos: Pago[]; usersById: Record<string, { nombr
 
 // ── Planes list ───────────────────────────────────────────────────────────────
 
-function PlanesList({ planes }: { planes: Plan[] }) {
+function PlanesList({ planes, ptps }: { planes: Plan[]; ptps: PTP[] }) {
+  const [openByPlan, setOpenByPlan] = useState<Record<string, boolean>>({})
+  const ptpMasReciente = useMemo(() => {
+    if (ptps.length === 0) return null
+    return [...ptps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null
+  }, [ptps])
+
   if (planes.length === 0) return <Empty label="No hay planes de pago para este caso" icon="📅" />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {planes.map(plan => {
         const pagadas = plan.cuotas.filter(c => c.estado === 'pagada').length
         const color = plan.estado === 'completado' ? '#10b981' : plan.estado === 'cancelado' ? '#6b7280' : '#7c3aed'
+        const isOpen = !!openByPlan[plan.id]
+        const pagoMensualAcordado = ptpMasReciente?.monto ?? plan.monto_cuota
         return (
           <div key={plan.id} style={{ borderRadius: '0.5rem', border: `1px solid ${color}44`, overflow: 'hidden' }}>
-            <div style={{ padding: '0.65rem 0.75rem', background: color + '0d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setOpenByPlan(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+              style={{ width: '100%', padding: '0.65rem 0.75rem', background: color + '0d', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+            >
               <div>
                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text)' }}>{fmtMonto(plan.monto_total)}</span>
                 <span style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)', marginLeft: '0.5rem' }}>{pagadas}/{plan.numero_cuotas} cuotas pagadas</span>
+                <span style={{ fontSize: '0.72rem', color: '#60a5fa', marginLeft: '0.65rem', fontWeight: 700 }}>
+                  {isOpen ? 'Ocultar desglose ▲' : 'Ver desglose ▼'}
+                </span>
               </div>
-              <span style={{ padding: '0.12rem 0.45rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, background: color + '22', color }}>{plan.estado}</span>
-            </div>
-            <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              {plan.cuotas.map(c => {
-                const cc = c.estado === 'pagada' ? '#10b981' : c.estado === 'vencida' ? '#dc2626' : c.estado === 'cancelada' ? '#6b7280' : '#6b7280'
-                return (
-                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Cuota {c.numero_cuota}</span>
-                    <span style={{ color: 'var(--color-text)' }}>{fmtMonto(c.monto)}</span>
-                    <span style={{ color: 'var(--color-text-muted)' }}>{fmtFecha(c.fecha_vencimiento)}</span>
-                    <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: cc + '22', color: cc }}>{c.estado}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ padding: '0.12rem 0.45rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, background: color + '22', color }}>{plan.estado}</span>
+              </div>
+            </button>
+            {isOpen && (
+              <div style={{ padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem', borderTop: '1px solid var(--color-border)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.45rem', fontSize: '0.73rem' }}>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>Balance inicial: </span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(plan.balance_inicial)}</strong></div>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>Pago mensual acordado: </span><strong style={{ color: '#22c55e' }}>{fmtMonto(pagoMensualAcordado)}</strong></div>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>APR: </span><strong style={{ color: 'var(--color-text)' }}>{Number(plan.tasa_anual_pct || 0).toFixed(2)}%</strong></div>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>Primer pago: </span><strong style={{ color: 'var(--color-text)' }}>{fmtFecha(plan.fecha_primer_pago)}</strong></div>
+                </div>
+                {plan.monto_cuota != null && pagoMensualAcordado !== plan.monto_cuota && (
+                  <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                    Cuota técnica del plan: <strong>{fmtMonto(plan.monto_cuota)}</strong> (referencia de cálculo).
+                  </p>
+                )}
+
+                {plan.notas && (
+                  <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                    {plan.notas}
+                  </p>
+                )}
+
+                {plan.cuotas.length === 0 ? (
+                  <p style={{ margin: '0.1rem 0 0', fontSize: '0.74rem', color: '#f59e0b', fontWeight: 600 }}>
+                    Este acuerdo no tiene cuotas generadas todavía.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    {plan.cuotas.map(c => {
+                      const cc = c.estado === 'pagada' ? '#10b981' : c.estado === 'vencida' ? '#dc2626' : c.estado === 'cancelada' ? '#6b7280' : '#6b7280'
+                      return (
+                        <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem' }}>
+                          <span style={{ color: 'var(--color-text-muted)' }}>Cuota {c.numero_cuota}</span>
+                          <span style={{ color: 'var(--color-text)' }}>{fmtMonto(c.monto)}</span>
+                          <span style={{ color: 'var(--color-text-muted)' }}>{fmtFecha(c.fecha_vencimiento)}</span>
+                          <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: cc + '22', color: cc }}>{c.estado}</span>
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )
       })}

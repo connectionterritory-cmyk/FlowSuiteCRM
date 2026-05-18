@@ -190,6 +190,16 @@ export function MessagingProvider({
       equipo_nombre: initialContact?.equipo_nombre || '',
       equipo_serie: initialContact?.equipo_serie || '',
       dias_vencido: initialContact?.dias_vencido != null ? String(Math.abs(initialContact.dias_vencido)) : '',
+      caso_numero: initialContact?.casoNumero || '',
+      agreement_date: initialContact?.agreementDate || '',
+      primer_pago_monto: formatMoney(initialContact?.primerPagoMonto) || '0.00',
+      primer_pago_fecha: initialContact?.primerPagoFecha || '',
+      balance_al_acuerdo: formatMoney(initialContact?.balanceAlAcuerdo) || '0.00',
+      pago_mensual: formatMoney(initialContact?.pagoMensual) || '0.00',
+      dia_debito: initialContact?.diaDebito ? String(initialContact.diaDebito) : '',
+      metodo_pago: initialContact?.metodoPagoLabel || '',
+      fee_tarjeta_pct: typeof initialContact?.feeTarjetaPct === 'number' ? String(initialContact.feeTarjetaPct) : '',
+      telefono_oficina: initialContact?.telefonoOficina || '',
     }
 
     return vars

@@ -33,6 +33,17 @@ export type MessagingContact = {
   equipo_nombre?: string | null
   equipo_serie?: string | null
   dias_vencido?: number | null
+  // Campos para cartas de acuerdo en cartera
+  casoNumero?: string | null
+  agreementDate?: string | null
+  primerPagoMonto?: number | null
+  primerPagoFecha?: string | null
+  balanceAlAcuerdo?: number | null
+  pagoMensual?: number | null
+  diaDebito?: number | null
+  metodoPagoLabel?: string | null
+  feeTarjetaPct?: number | null
+  telefonoOficina?: string | null
 }
 
 export type MessagingChannel = 'whatsapp' | 'sms' | 'email' | 'telegram'
