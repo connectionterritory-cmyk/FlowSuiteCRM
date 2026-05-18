@@ -185,6 +185,37 @@ type LedgerEntry = {
   created_at: string
 }
 
+type DfpStatement = {
+  id: string
+  org_id: string
+  case_id: string
+  revolving_account_id: string
+  periodo_inicio: string
+  periodo_fin: string
+  fecha_corte: string
+  fecha_vencimiento: string | null
+  balance_previo: number
+  compras_periodo: number
+  cargos_interes_periodo: number
+  pagos_periodo: number
+  nuevo_balance: number
+  pago_minimo: number
+  apr_tae: number | null
+  status: string
+  created_at: string
+}
+
+type DfpStatementLine = {
+  id: string
+  statement_id: string
+  transaction_date: string | null
+  posting_date: string | null
+  entry_type: string | null
+  description: string
+  amount: number
+  metadata: { original_amount?: number } | null
+}
+
 type HistorialEvent = {
   id: string
   timestamp: string
@@ -1313,6 +1344,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const [planes, setPlanes] = useState<Plan[]>([])
   const [dfpAccount, setDfpAccount] = useState<DfpAccount | null>(null)
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([])
+  const [statements, setStatements] = useState<DfpStatement[]>([])
+  const [statementLinesById, setStatementLinesById] = useState<Record<string, DfpStatementLine[]>>({})
   const [loading, setLoading] = useState(false)
   const [ptpOpen, setPtpOpen] = useState(false)
   const [pagoOpen, setPagoOpen] = useState(false)
@@ -1330,6 +1363,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     setLoading(true)
     setDfpAccount(null)
     setLedgerEntries([])
+    setStatements([])
+    setStatementLinesById({})
     const [g, p, pg, pl, dfp] = await Promise.all([
       supabase.from('cob_gestiones').select('id,tipo_gestion,resultado,monto_comprometido,fecha_compromiso,notas,gestionado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase.from('cob_ptps').select('id,monto,fecha_compromiso,estado,canal,notas,creado_por,fecha_cumplimiento,cumplido_at,incumplido_at,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
@@ -1374,18 +1409,52 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     }
 
     if (loadedDfpAccount) {
-      const { data: ledgerData } = await supabase
-        .from('cob_financial_ledger')
-        .select('id,revolving_account_id,case_id,entry_date,effective_date,entry_type,component_type,debit_credit,amount,description,balance_principal_after,balance_interest_after,balance_fees_after,balance_total_after,created_at')
-        .eq('revolving_account_id', loadedDfpAccount.id)
-        .eq('case_id', caso.id)
-        .order('effective_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(100)
+      const [ledgerRes, statementsRes] = await Promise.all([
+        supabase
+          .from('cob_financial_ledger')
+          .select('id,revolving_account_id,case_id,entry_date,effective_date,entry_type,component_type,debit_credit,amount,description,balance_principal_after,balance_interest_after,balance_fees_after,balance_total_after,created_at')
+          .eq('revolving_account_id', loadedDfpAccount.id)
+          .eq('case_id', caso.id)
+          .order('effective_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('cob_statements')
+          .select('id,org_id,case_id,revolving_account_id,periodo_inicio,periodo_fin,fecha_corte,fecha_vencimiento,balance_previo,compras_periodo,cargos_interes_periodo,pagos_periodo,nuevo_balance,pago_minimo,apr_tae,status,created_at')
+          .eq('revolving_account_id', loadedDfpAccount.id)
+          .eq('case_id', caso.id)
+          .order('periodo_fin', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(24),
+      ])
       if (loadSeq !== detailLoadSeq.current) return
-      setLedgerEntries((ledgerData ?? []) as LedgerEntry[])
+      const ledgerData = (ledgerRes.data ?? []) as LedgerEntry[]
+      const statementsData = (statementsRes.data ?? []) as DfpStatement[]
+      setLedgerEntries(ledgerData)
+      setStatements(statementsData)
+
+      if (statementsData.length > 0) {
+        const { data: linesData } = await supabase
+          .from('cob_statement_lines')
+          .select('id,statement_id,transaction_date,posting_date,entry_type,description,amount,metadata')
+          .in('statement_id', statementsData.map(s => s.id))
+          .order('line_order', { ascending: true })
+          .order('created_at', { ascending: true })
+        if (loadSeq !== detailLoadSeq.current) return
+
+        const grouped: Record<string, DfpStatementLine[]> = {}
+        for (const line of (linesData ?? []) as DfpStatementLine[]) {
+          if (!grouped[line.statement_id]) grouped[line.statement_id] = []
+          grouped[line.statement_id].push(line)
+        }
+        setStatementLinesById(grouped)
+      } else {
+        setStatementLinesById({})
+      }
     } else {
       setLedgerEntries([])
+      setStatements([])
+      setStatementLinesById({})
     }
     setLoading(false)
   }
@@ -1744,7 +1813,12 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         ) : tab === 'cliente' ? (
           <ClienteTab cliente={caso.clientes} clienteId={caso.cliente_id} onSaved={handleRefresh} />
         ) : tab === 'estado_cuenta' ? (
-          <EstadoCuentaList account={safeDfpAccount} entries={ledgerEntries} />
+          <EstadoCuentaList
+            account={safeDfpAccount}
+            entries={ledgerEntries}
+            statements={statements}
+            statementLinesById={statementLinesById}
+          />
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
         ) : tab === 'ptps' ? (
@@ -2148,7 +2222,19 @@ function GenerarStatementButton({ account }: { account: DfpAccount }) {
   )
 }
 
-function EstadoCuentaList({ account, entries }: { account: DfpAccount | null; entries: LedgerEntry[] }) {
+function EstadoCuentaList({
+  account,
+  entries,
+  statements,
+  statementLinesById,
+}: {
+  account: DfpAccount | null
+  entries: LedgerEntry[]
+  statements: DfpStatement[]
+  statementLinesById: Record<string, DfpStatementLine[]>
+}) {
+  const [openStatements, setOpenStatements] = useState<Record<string, boolean>>({})
+
   if (!account) {
     return <Empty label="Este caso todavía no tiene cuenta DFP/revolving asociada" />
   }
@@ -2166,6 +2252,83 @@ function EstadoCuentaList({ account, entries }: { account: DfpAccount | null; en
           <DfpMetric label="Total" value={fmtMonto(account.saldo_total_actual)} color="#0f766e" />
         </div>
       </div>
+      <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid #2563eb33', background: '#2563eb0d' }}>
+        <p style={{ margin: '0 0 0.6rem', fontSize: '0.76rem', fontWeight: 800, color: '#1d4ed8' }}>Statements (snapshot histórico)</p>
+        {statements.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+            Todavía no hay statements generados para esta cuenta.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+            {statements.map(statement => {
+              const isOpen = !!openStatements[statement.id]
+              const lines = statementLinesById[statement.id] ?? []
+              return (
+                <div key={statement.id} style={{ border: '1px solid #2563eb33', borderRadius: '0.45rem', overflow: 'hidden', background: 'var(--color-card)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenStatements(prev => ({ ...prev, [statement.id]: !prev[statement.id] }))}
+                    style={{ width: '100%', border: 'none', textAlign: 'left', cursor: 'pointer', background: '#2563eb12', padding: '0.55rem 0.65rem' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 800, color: 'var(--color-text)' }}>
+                          Período {fmtFecha(statement.periodo_inicio)} - {fmtFecha(statement.periodo_fin)}
+                        </p>
+                        <p style={{ margin: '0.14rem 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          Corte {fmtFecha(statement.fecha_corte)} · Vence {statement.fecha_vencimiento ? fmtFecha(statement.fecha_vencimiento) : '—'} · APR {statement.apr_tae != null ? `${(statement.apr_tae * 100).toFixed(2)}%` : '—'}
+                        </p>
+                      </div>
+                      <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: '#2563eb22', color: '#1d4ed8', flexShrink: 0 }}>
+                        {statement.status}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: '0.45rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.4rem', fontSize: '0.71rem' }}>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Balance previo: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.balance_previo)}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Compras/principal: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.compras_periodo)}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Interés: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.cargos_interes_periodo)}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Pagos: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.pagos_periodo)}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Nuevo balance: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.nuevo_balance)}</strong></span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>Pago mínimo: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.pago_minimo)}</strong></span>
+                    </div>
+                    <p style={{ margin: '0.45rem 0 0', fontSize: '0.69rem', color: '#1d4ed8', fontWeight: 700 }}>
+                      {isOpen ? 'Ocultar líneas ▲' : 'Ver líneas ▼'}
+                    </p>
+                  </button>
+                  {isOpen && (
+                    <div style={{ borderTop: '1px solid var(--color-border)', padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {lines.length === 0 ? (
+                        <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>
+                          Este statement no tiene líneas visibles.
+                        </p>
+                      ) : lines.map((line, idx) => {
+                        const lineDate = line.transaction_date ?? line.posting_date
+                        const runningBalance = lines
+                          .slice(0, idx + 1)
+                          .reduce((acc, cur) => acc + Number(cur.amount || 0), Number(statement.balance_previo || 0))
+                        return (
+                          <div key={line.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(80px, 120px) minmax(90px, 1fr) minmax(140px, 2fr) minmax(110px, 120px) minmax(120px, 160px)', gap: '0.45rem', alignItems: 'center', fontSize: '0.72rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.35rem' }}>
+                            <span style={{ color: 'var(--color-text-muted)' }}>{lineDate ? fmtFecha(lineDate) : '—'}</span>
+                            <span style={{ color: 'var(--color-text)' }}>{line.entry_type ?? '—'}</span>
+                            <span style={{ color: 'var(--color-text)' }}>{line.description || '—'}</span>
+                            <span style={{ color: 'var(--color-text)', fontWeight: 700 }}>{fmtMonto(line.amount)}</span>
+                            <span style={{ color: 'var(--color-text-muted)' }}>
+                              Running balance {fmtMonto(runningBalance)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+      <p style={{ margin: '0.1rem 0', fontSize: '0.74rem', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+        Ledger vivo (transacciones)
+      </p>
       {entries.length === 0 ? (
         <Empty label="La cuenta DFP no tiene movimientos de ledger visibles" />
       ) : (
