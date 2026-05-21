@@ -105,6 +105,7 @@ type ReferidorOption = {
 }
 
 const initialForm = {
+  id: undefined as string | undefined,
   nombre: '',
   apellido: '',
   email: '',
@@ -1132,7 +1133,7 @@ export function LeadsPage() {
     setManageError(null)
     const { error: updateError } = await supabase
       .from('leads')
-      .update({ vendedor_id: manageOwnerId })
+      .update({ vendedor_id: manageOwnerId, owner_id: manageOwnerId })
       .eq('id', manageLead.id)
     if (updateError) {
       setManageError(updateError.message)
@@ -1273,6 +1274,42 @@ export function LeadsPage() {
     setFormOpen(true)
   }
 
+  const handleEditLead = (leadToEdit: LeadRecord) => {
+    let fuente = leadToEdit.fuente ?? ''
+    let fOtro = ''
+    if (fuente && !sourceOptions.some(s => s.value === fuente)) {
+      fOtro = fuente
+      fuente = 'otro'
+    }
+
+    setFormValues({
+      id: leadToEdit.id,
+      nombre: leadToEdit.nombre,
+      apellido: leadToEdit.apellido ?? '',
+      email: leadToEdit.email ?? '',
+      telefono: leadToEdit.telefono ?? '',
+      fecha_nacimiento: leadToEdit.fecha_nacimiento ?? '',
+      fuente,
+      programa_id: leadToEdit.programa_id ?? '',
+      referidor_tipo: (leadToEdit.referidor_tipo as '' | 'cliente' | 'lead' | 'embajador') ?? '',
+      referidor_id: leadToEdit.referidor_id ?? leadToEdit.embajador_id ?? '',
+      embajador_id: leadToEdit.embajador_id ?? '',
+      owner_id: leadToEdit.owner_id ?? '',
+      estado_pipeline: leadToEdit.estado_pipeline ?? 'nuevo',
+      next_action: leadToEdit.next_action ?? '',
+      next_action_date: leadToEdit.next_action_date ?? '',
+    })
+    setFuenteOtro(fOtro)
+    setReferidorSearch('')
+    setReferidorOptions([])
+    setReferidorLoading(false)
+    setSelectedReferidorLabel('') // Would require resolving the label if we want it pre-filled, but empty is OK for now
+    setBirthDateInputMode(leadToEdit.fecha_nacimiento ? 'date' : 'text')
+    setNextActionDateInputMode(leadToEdit.next_action_date ? 'date' : 'text')
+    setFormError(null)
+    setFormOpen(true)
+  }
+
   useEffect(() => {
     if (!formOpen || !canReassignLeads || ownerOptions.length === 0) return
     setFormValues((prev) => {
@@ -1342,15 +1379,25 @@ export function LeadsPage() {
       next_action_date: formValues.next_action_date || null,
     }
 
-    const { error: insertError } = await supabase.from('leads').insert(payload)
+    let resultError = null
+    if (formValues.id) {
+      const { error } = await supabase.from('leads').update(payload).eq('id', formValues.id)
+      resultError = error
+    } else {
+      const { error } = await supabase.from('leads').insert(payload)
+      resultError = error
+    }
 
-    if (insertError) {
-      setFormError(insertError.message)
-      showToast(insertError.message, 'error')
+    if (resultError) {
+      setFormError(resultError.message)
+      showToast(resultError.message, 'error')
     } else {
       setFormOpen(false)
       await loadLeads()
-      showToast(t('toast.success'))
+      showToast(formValues.id ? 'Prospecto actualizado' : t('toast.success'))
+      if (formValues.id && selectedLead?.id === formValues.id) {
+        setSelectedLead(prev => prev ? { ...prev, ...payload } as LeadRecord : null)
+      }
     }
     setSubmitting(false)
   }
@@ -2500,6 +2547,7 @@ export function LeadsPage() {
         recomendadoPor={selectedLead ? getRecomendadoPor(selectedLead) : undefined}
         canManage={canDeleteLeads || canReassignLeads}
         onOpenManage={(lead, mode) => openManageModal(lead as LeadRecord, mode)}
+        onEditLead={selectedLead ? () => handleEditLead(selectedLead) : undefined}
         onVerPerfil={selectedLead?.persona_id ? () => setPerfilPersonaId(selectedLead.persona_id ?? null) : undefined}
         onAgendarCita={selectedLead ? () => handleAgendarCita(selectedLead) : undefined}
         onClose={() => setSelectedLead(null)}
