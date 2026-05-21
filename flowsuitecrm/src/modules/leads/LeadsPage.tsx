@@ -1284,7 +1284,7 @@ export function LeadsPage() {
 
     setFormValues({
       id: leadToEdit.id,
-      nombre: leadToEdit.nombre,
+      nombre: leadToEdit.nombre ?? '',
       apellido: leadToEdit.apellido ?? '',
       email: leadToEdit.email ?? '',
       telefono: leadToEdit.telefono ?? '',
