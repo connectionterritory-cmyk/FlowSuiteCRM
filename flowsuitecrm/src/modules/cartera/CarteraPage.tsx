@@ -1532,6 +1532,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       }
     }
 
+    const fechaGestion = (draft as GestionDraft & { fechaGestion?: string }).fechaGestion
     const { error: actividadError } = await supabase.from('contacto_actividades').insert({
       contacto_tipo: 'cliente',
       contacto_id: caso.cliente_id,
@@ -1548,8 +1549,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         origen_id: draft.origenId ?? caso.id,
       },
       autor_id: currentUserId,
-      fecha_actividad: draft.fechaGestion
-        ? new Date(draft.fechaGestion).toISOString()
+      fecha_actividad: fechaGestion
+        ? new Date(fechaGestion).toISOString()
         : new Date().toISOString(),
     })
 
@@ -2063,7 +2064,7 @@ function PlanesList({ planes, ptps }: { planes: Plan[]; ptps: PTP[] }) {
             {isOpen && (
               <div style={{ padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem', borderTop: '1px solid var(--color-border)' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.45rem', fontSize: '0.73rem' }}>
-                  <div><span style={{ color: 'var(--color-text-muted)' }}>Balance inicial: </span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(plan.balance_inicial)}</strong></div>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>Balance inicial: </span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(plan.balance_inicial ?? 0)}</strong></div>
                   <div><span style={{ color: 'var(--color-text-muted)' }}>Pago mensual acordado: </span><strong style={{ color: '#22c55e' }}>{fmtMonto(pagoMensualAcordado ?? 0)}</strong></div>
                   <div><span style={{ color: 'var(--color-text-muted)' }}>APR: </span><strong style={{ color: 'var(--color-text)' }}>{Number(plan.tasa_anual_pct || 0).toFixed(2)}%</strong></div>
                   <div><span style={{ color: 'var(--color-text-muted)' }}>Primer pago: </span><strong style={{ color: 'var(--color-text)' }}>{plan.fecha_primer_pago ? fmtFecha(plan.fecha_primer_pago) : '—'}</strong></div>
