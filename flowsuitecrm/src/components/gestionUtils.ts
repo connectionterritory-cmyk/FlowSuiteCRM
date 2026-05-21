@@ -106,6 +106,8 @@ export async function saveGestion(draft: GestionDraft, userId: string) {
     throw new Error('Falta contacto')
   }
   
+  const fechaGestion = (draft as GestionDraft & { fechaGestion?: string }).fechaGestion
+
   const payload = {
     contacto_tipo: draft.contactoTipo,
     contacto_id: draft.contactoId,
@@ -121,7 +123,7 @@ export async function saveGestion(draft: GestionDraft, userId: string) {
       origen_id: draft.origenId,
     },
     autor_id: userId,
-    fecha_actividad: draft.fechaGestion || new Date().toISOString(),
+    fecha_actividad: fechaGestion || new Date().toISOString(),
   }
 
   const { error } = await supabase.from('contacto_actividades').insert(payload)

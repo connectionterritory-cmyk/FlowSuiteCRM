@@ -1548,7 +1548,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         origen_id: draft.origenId ?? caso.id,
       },
       autor_id: currentUserId,
-      fecha_actividad: new Date().toISOString(),
+      fecha_actividad: draft.fechaGestion
+        ? new Date(draft.fechaGestion).toISOString()
+        : new Date().toISOString(),
     })
 
     if (actividadError) throw actividadError
@@ -1583,14 +1585,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const diaDebitoPlan = parseDayFromYmd(planCarta?.fecha_primer_pago)
   const diaDebitoPtp = parseDayFromYmd(ptpCarta?.fecha_compromiso)
   const pagoMensualAcordado = ptpCarta?.monto ?? planCarta?.monto_cuota ?? primerPago?.monto ?? null
-  const metodoPagoPlan = planCarta?.metodo_pago_id
-    ? metodosPago.find(m => m.id === planCarta.metodo_pago_id) ?? null
-    : null
-  const metodoPagoLabel = metodoPagoPlan
-    ? [metodoPagoPlan.provider, metodoPagoPlan.brand, metodoPagoPlan.last4 ? `****${metodoPagoPlan.last4}` : null]
-        .filter(Boolean)
-        .join(' · ')
-    : 'débito a tarjeta registrada'
+  const metodoPagoLabel = planCarta?.metodo_pago_id ? `método ${planCarta.metodo_pago_id}` : 'débito a tarjeta registrada'
 
   const cartaContact = useMemo<MessagingContact>(() => ({
     nombre: contactName,
@@ -2069,9 +2064,9 @@ function PlanesList({ planes, ptps }: { planes: Plan[]; ptps: PTP[] }) {
               <div style={{ padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem', borderTop: '1px solid var(--color-border)' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.45rem', fontSize: '0.73rem' }}>
                   <div><span style={{ color: 'var(--color-text-muted)' }}>Balance inicial: </span><strong style={{ color: 'var(--color-text)' }}>{fmtMonto(plan.balance_inicial)}</strong></div>
-                  <div><span style={{ color: 'var(--color-text-muted)' }}>Pago mensual acordado: </span><strong style={{ color: '#22c55e' }}>{fmtMonto(pagoMensualAcordado)}</strong></div>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>Pago mensual acordado: </span><strong style={{ color: '#22c55e' }}>{fmtMonto(pagoMensualAcordado ?? 0)}</strong></div>
                   <div><span style={{ color: 'var(--color-text-muted)' }}>APR: </span><strong style={{ color: 'var(--color-text)' }}>{Number(plan.tasa_anual_pct || 0).toFixed(2)}%</strong></div>
-                  <div><span style={{ color: 'var(--color-text-muted)' }}>Primer pago: </span><strong style={{ color: 'var(--color-text)' }}>{fmtFecha(plan.fecha_primer_pago)}</strong></div>
+                  <div><span style={{ color: 'var(--color-text-muted)' }}>Primer pago: </span><strong style={{ color: 'var(--color-text)' }}>{plan.fecha_primer_pago ? fmtFecha(plan.fecha_primer_pago) : '—'}</strong></div>
                 </div>
                 {plan.monto_cuota != null && pagoMensualAcordado !== plan.monto_cuota && (
                   <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
