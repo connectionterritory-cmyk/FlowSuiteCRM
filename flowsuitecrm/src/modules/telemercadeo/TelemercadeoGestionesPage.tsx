@@ -4,7 +4,9 @@ import { useToast } from '../../components/useToast'
 import { useModalHost } from '../../modals/useModalHost'
 import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
+import { useAuth } from '../../auth/useAuth'
 import { resultadoLabel, resultadoColor, formatFechaCorta } from './telemercadeoSharedUtils'
+import { saveGestion } from '../../components/gestionUtils'
 
 type GestionRow = {
   id: string
@@ -86,6 +88,7 @@ function StatBadge({ label, value, color }: { label: string; value: number; colo
 }
 
 export function TelemercadeoGestionesPage() {
+  const { session } = useAuth()
   const { showToast } = useToast()
   const { openGestionModal } = useModalHost()
   const { usersById } = useUsers()
@@ -215,11 +218,17 @@ export function TelemercadeoGestionesPage() {
     openGestionModal({
       moduloOrigen: 'telemercadeo_gestiones',
       onSubmit: async (draft) => {
-        showToast(`Gestión preparada: ${draft.resumen ?? draft.tipo}`)
-        await cargarGestiones()
+        if (!session?.user) return
+        try {
+          await saveGestion(draft, session.user.id)
+          showToast(`Gestión registrada: ${draft.resumen ?? draft.tipo}`)
+          await cargarGestiones()
+        } catch (err: any) {
+          showToast(`Error: ${err.message}`, 'error')
+        }
       },
     })
-  }, [openGestionModal, showToast, cargarGestiones])
+  }, [openGestionModal, showToast, cargarGestiones, session])
 
   useEffect(() => {
     if (openedOnMountRef.current) return

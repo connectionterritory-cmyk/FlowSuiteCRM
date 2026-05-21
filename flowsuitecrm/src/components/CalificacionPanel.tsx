@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase/client'
 import { isMissingLeadAddressColumnError } from '../lib/leadsSchema'
 import { ContactoTimeline } from './ContactoTimeline'
 import { useToast } from './useToast'
+import { saveGestion } from './gestionUtils'
+import { useAuth } from '../auth/useAuth'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
 import { useModalHost } from '../modals/useModalHost'
@@ -52,6 +54,7 @@ type CalificacionPanelProps = {
   canManage?: boolean
   focusAddress?: boolean
   onOpenManage?: (lead: LeadCalificacion, mode: 'delete' | 'reassign' | 'restore') => void
+  onEditLead?: () => void
   onVerPerfil?: () => void
   onAgendarCita?: () => void
   onClose: () => void
@@ -172,6 +175,7 @@ export function CalificacionPanel({
   canManage = false,
   focusAddress = false,
   onOpenManage,
+  onEditLead,
   onVerPerfil,
   onAgendarCita,
   onClose,
@@ -179,6 +183,7 @@ export function CalificacionPanel({
 }: CalificacionPanelProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { session } = useAuth()
   const { showToast } = useToast()
   const { openGestionModal, openCitaModal } = useModalHost()
   const [formValues, setFormValues] = useState(initialForm)
@@ -774,6 +779,11 @@ export function CalificacionPanel({
                   Ver perfil
                 </button>
               )}
+              {onEditLead && (
+                <button type="button" className="btn ghost" onClick={onEditLead}>
+                  Editar perfil
+                </button>
+              )}
               <button
                 type="button"
                 className="btn ghost"
@@ -806,7 +816,13 @@ export function CalificacionPanel({
                     moduloOrigen: 'leads',
                     origenId: lead.id,
                     onSubmit: async (draft) => {
-                      showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
+                      if (!session?.user) return
+                      try {
+                        await saveGestion(draft, session.user.id)
+                        showToast(`Gestión registrada: ${draft.resumen || draft.tipo}`)
+                      } catch (err: any) {
+                        showToast(`Error: ${err.message}`, 'error')
+                      }
                     },
                   })
                 }
@@ -1170,7 +1186,13 @@ export function CalificacionPanel({
                             moduloOrigen: 'leads',
                             origenId: lead.id,
                             onSubmit: async (draft) => {
-                              showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
+                              if (!session?.user) return
+                              try {
+                                await saveGestion(draft, session.user.id)
+                                showToast(`Gestión registrada: ${draft.resumen || draft.tipo}`)
+                              } catch (err: any) {
+                                showToast(`Error: ${err.message}`, 'error')
+                              }
                             },
                           })
                         }

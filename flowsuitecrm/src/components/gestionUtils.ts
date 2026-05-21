@@ -1,4 +1,5 @@
-import type { GestionResultado, GestionRole, GestionTipo } from './RegistrarGestionModal'
+import type { GestionResultado, GestionRole, GestionTipo, GestionDraft } from './RegistrarGestionModal'
+import { supabase } from '../lib/supabase/client'
 
 type ResultadoOption = {
   value: GestionResultado
@@ -98,4 +99,43 @@ const CITA_CTA_RULES = new Set([
 export function shouldOfferCitaCTA(tipo: GestionTipo, resultado: GestionResultado | null) {
   if (!resultado) return false
   return CITA_CTA_RULES.has(`${tipo}:${resultado}`)
+}
+
+export async function saveGestion(draft: GestionDraft, userId: string) {
+  if (!draft.contactoId || !draft.contactoTipo) {
+    throw new Error('Falta contacto')
+  }
+  
+  const payload = {
+    contacto_tipo: draft.contactoTipo,
+    contacto_id: draft.contactoId,
+    tipo: draft.tipo,
+    resumen: draft.resumen.trim() || buildGestionAutoSummary(draft.tipo, draft.resultado),
+    contenido: draft.contenido.trim() || null,
+    metadata: {
+      canal: draft.canal,
+      resultado: draft.resultado,
+      followup_at: draft.followupAt || null,
+      monto_prometido: draft.montoPrometido ? parseFloat(draft.montoPrometido) : null,
+      modulo_origen: draft.moduloOrigen,
+      origen_id: draft.origenId,
+    },
+    autor_id: userId,
+    fecha_actividad: draft.fechaGestion || new Date().toISOString(),
+  }
+
+  const { error } = await supabase.from('contacto_actividades').insert(payload)
+  
+  if (error) {
+    // Retry without org_id if schema cache issue
+    if (error.message.toLowerCase().includes("could not find the 'org_id' column")) {
+       const legacyPayload = { ...payload }
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       delete (legacyPayload as any).org_id
+       const { error: retryError } = await supabase.from('contacto_actividades').insert(legacyPayload)
+       if (retryError) throw new Error(retryError.message)
+       return
+    }
+    throw new Error(error.message)
+  }
 }

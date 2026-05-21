@@ -6,6 +6,8 @@ import { Modal } from '../../components/Modal'
 import { Button } from '../../components/Button'
 import { useToast } from '../../components/useToast'
 import { useModalHost } from '../../modals/useModalHost'
+import { saveGestion } from '../../components/gestionUtils'
+import { useAuth } from '../../auth/useAuth'
 
 type CiReferido = {
   id: string
@@ -39,6 +41,7 @@ function StarDisplay({ value }: { value: number | null }) {
 
 export function TelemercadeoReferidosPage() {
   const configured = isSupabaseConfigured
+  const { session } = useAuth()
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { showToast } = useToast()
   const { openGestionModal } = useModalHost()
@@ -263,7 +266,13 @@ export function TelemercadeoReferidosPage() {
                         moduloOrigen: 'telemercadeo_referidos',
                         origenId: ref.id,
                         onSubmit: async (draft) => {
-                          showToast(`Gestión piloto preparada para ${ref.nombre ?? 'referido'}: ${draft.resumen || draft.tipo}`)
+                          if (!session?.user) return
+                          try {
+                            await saveGestion(draft, session.user.id)
+                            showToast(`Gestión registrada para ${ref.nombre ?? 'referido'}: ${draft.resumen || draft.tipo}`)
+                          } catch (err: any) {
+                            showToast(`Error: ${err.message}`, 'error')
+                          }
                         },
                       })
                     }

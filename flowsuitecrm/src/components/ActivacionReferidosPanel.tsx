@@ -5,6 +5,8 @@ import { Button } from './Button'
 import { CalificacionPanel } from './CalificacionPanel'
 import { useMessaging } from '../hooks/useMessaging'
 import { useToast } from './useToast'
+import { saveGestion } from './gestionUtils'
+import { useAuth } from '../auth/useAuth'
 import {
   MIN_REFERIDOS_CI,
   CI_REFERIDO_ESTADOS,
@@ -165,6 +167,7 @@ export function ActivacionReferidosPanel({
   onRefresh,
 }: Props) {
   const { t } = useTranslation()
+  const { session } = useAuth()
   const { openWhatsapp, openSms, ModalRenderer } = useMessaging()
   const { openGestionModal } = useModalHost()
   const { showToast } = useToast()
@@ -1028,6 +1031,15 @@ export function ActivacionReferidosPanel({
                                 },
                                 tipoDefault: 'llamada',
                                 moduloOrigen: 'conexiones_infinitas',
+                                onSubmit: async (draft) => {
+                                  if (!session?.user) return
+                                  try {
+                                    await saveGestion(draft, session.user.id)
+                                    showToast(`Gestión registrada: ${draft.resumen || draft.tipo}`)
+                                  } catch (err: any) {
+                                    showToast(`Error: ${err.message}`, 'error')
+                                  }
+                                },
                               })
                             }}
                           >
