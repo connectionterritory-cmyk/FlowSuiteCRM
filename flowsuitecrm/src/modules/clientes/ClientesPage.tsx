@@ -6,6 +6,7 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
+import { NearbyContactsPanel, type NearbyPanelState } from '../../components/NearbyContactsPanel'
 import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { EmptyState } from '../../components/EmptyState'
@@ -30,6 +31,7 @@ import { diasParaCumple } from '../telemercadeo/telemercadeoSharedUtils'
 
 type ClienteRecord = {
   id: string
+  org_id?: string | null
   nombre: string | null
   apellido: string | null
   email: string | null
@@ -100,6 +102,7 @@ type ServicioResumen = {
 
 const CLIENTES_LIST_SELECT = [
   'id',
+  'org_id',
   'nombre',
   'apellido',
   'email',
@@ -263,6 +266,12 @@ function formatSnapshotMoney(value: number | null | undefined): string {
     : 'No registrado'
 }
 
+function formatMoney(value: number | null | undefined): string {
+  return value !== null && value !== undefined
+    ? `$${Number(value).toFixed(2)}`
+    : '-'
+}
+
 function formatSnapshotText(value: string | null | undefined): string {
   return value && value.trim() ? value : 'No registrado'
 }
@@ -377,6 +386,7 @@ export function ClientesPage() {
   const [nextActionDraft, setNextActionDraft] = useState('')
   const [nextActionDateDraft, setNextActionDateDraft] = useState('')
   const [savingNextAction, setSavingNextAction] = useState(false)
+  const [nearbyPanel, setNearbyPanel] = useState<NearbyPanelState | null>(null)
   const [abrirCasoOpen, setAbrirCasoOpen] = useState(false)
   const [tipoCasoSeleccionado, setTipoCasoSeleccionado] = useState<'cargo_vuelta' | 'dfp'>('cargo_vuelta')
   const [abriendoCaso, setAbriendoCaso] = useState(false)
@@ -896,8 +906,8 @@ export function ClientesPage() {
 
       const ciudadDisplay = cliente.ciudad ?? '-'
 
-      const saldoDisplay = cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-'
-      const montoMorosoDisplay = (cliente.monto_moroso ?? 0) > 0 ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-'
+      const saldoDisplay = formatMoney(cliente.saldo_actual)
+      const montoMorosoDisplay = formatMoney(cliente.monto_moroso)
 
       const cellMap: Record<string, React.ReactNode> = {
         cliente: fullName,
@@ -951,12 +961,18 @@ export function ClientesPage() {
               return addr ? (
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <span>{addr}</span>
-                  {mapsUrl && (
-                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none', padding: '0.1rem 0.5rem', border: '1px solid #10b98133', borderRadius: '9999px', background: '#10b98111' }}>
-                      🗺 Navegar
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setNearbyPanel({
+                      contactoNombre: [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || 'Cliente',
+                      mapsUrl,
+                      zip: cliente.codigo_postal ?? null,
+                      ciudad: cliente.ciudad ?? null,
+                    })}
+                    style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none', padding: '0.1rem 0.5rem', border: '1px solid #10b98133', borderRadius: '9999px', background: '#10b98111', cursor: 'pointer' }}
+                  >
+                    🗺 Navegar
+                  </button>
                 </span>
               ) : '-'
             })(),
@@ -966,8 +982,8 @@ export function ClientesPage() {
           { label: 'Codigo postal', value: cliente.codigo_postal ?? '-' },
           { label: 'Cuenta Hycite', value: cliente.hycite_id ?? '-' },
           { label: 'Cuenta financiera', value: cliente.numero_cuenta_financiera ?? '-' },
-          { label: 'Saldo actual', value: cliente.saldo_actual ? `$${Number(cliente.saldo_actual).toFixed(2)}` : '-' },
-          { label: 'Monto moroso', value: cliente.monto_moroso ? `$${Number(cliente.monto_moroso).toFixed(2)}` : '-' },
+          { label: 'Saldo actual', value: formatMoney(cliente.saldo_actual) },
+          { label: 'Monto moroso', value: formatMoney(cliente.monto_moroso) },
           { label: 'Dias de atraso', value: segmento },
           { label: 'Nivel', value: cliente.nivel ? String(cliente.nivel) : '-' },
           { label: 'Estado cuenta', value: cliente.estado_cuenta ?? '-' },
@@ -1006,7 +1022,7 @@ export function ClientesPage() {
         supabase
           .from('clientes')
           .select(
-            'id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, credito_disponible, pago_minimo_mensual, factor_ingresos, tipo_cuenta_hycite, estado_cuenta_raw, fecha_orden, fecha_cierre, metodo_pago, vendedor_hycite_nombre, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, ultima_fecha_pago, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
+            'id, org_id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, credito_disponible, pago_minimo_mensual, factor_ingresos, tipo_cuenta_hycite, estado_cuenta_raw, fecha_orden, fecha_cierre, metodo_pago, vendedor_hycite_nombre, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, ultima_fecha_pago, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
           )
           .eq('id', selectedRow.id)
           .maybeSingle(),
@@ -1118,6 +1134,20 @@ export function ClientesPage() {
     showToast('Próxima acción actualizada')
   }, [nextActionDraft, nextActionDateDraft, savingNextAction, selectedClienteDetail, showToast])
 
+  const refreshClienteDetail = useCallback(async (clienteId: string) => {
+    const { data, error } = await supabase
+      .from('clientes')
+      .select(
+        'id, org_id, nombre, apellido, email, telefono, telefono_casa, direccion, ciudad, estado_region, codigo_postal, hycite_id, numero_cuenta_financiera, saldo_actual, monto_moroso, dias_atraso, credito_disponible, pago_minimo_mensual, factor_ingresos, tipo_cuenta_hycite, estado_cuenta_raw, fecha_orden, fecha_cierre, metodo_pago, vendedor_hycite_nombre, estado_morosidad, nivel, vendedor_id, distribuidor_id, fecha_nacimiento, ultima_fecha_pago, fecha_ultimo_pedido, estado_cuenta, codigo_vendedor_hycite, origen, persona_id, next_action, next_action_date',
+      )
+      .eq('id', clienteId)
+      .maybeSingle()
+
+    if (!error) {
+      setDetailCliente((data as ClienteRecord | null) ?? null)
+    }
+  }, [])
+
   const handleAbrirCasoCliente = useCallback(async () => {
     if (!selectedClienteDetail || abriendoCaso) return
     const parsedMonto = parseMontoCargoVueltaInput(casoMonto)
@@ -1161,10 +1191,10 @@ export function ClientesPage() {
     letterSpacing: '0.06em', color: 'var(--color-muted, #9ca3af)',
   }
   const fieldLbl: React.CSSProperties = {
-    display: 'block', fontSize: '0.72rem', color: 'var(--color-muted, #9ca3af)',
-    marginBottom: '0.1rem', fontWeight: 500,
+    display: 'block', fontSize: '0.7rem', color: 'var(--color-muted, #9ca3af)',
+    marginBottom: '0.1rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
   }
-  const fieldVal: React.CSSProperties = { fontSize: '0.86rem', color: 'var(--color-text)' }
+  const fieldVal: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--color-text)', fontWeight: 500 }
   const inlineBtn = (color: string): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem',
     borderRadius: '9999px', border: `1px solid ${color}44`, background: `${color}11`,
@@ -2273,29 +2303,42 @@ export function ClientesPage() {
             const c = selectedClienteDetail
             const risk = riskChip(c.dias_atraso, c.monto_moroso)
 
+            const missingHint = (label: string) => (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                {noReg}
+                {canEditClientes && (
+                  <button type="button" style={{ ...inlineBtn('#64748b'), minHeight: '40px' }} onClick={() => handleOpenEditForm(c)}>
+                    {label}
+                  </button>
+                )}
+              </span>
+            )
+
             const phoneActions = (phone: string) => (
-              <span style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.86rem' }}>{phone}</span>
-                <a href={buildTelUrl(phone)} style={inlineBtn('#3b82f6')}>Llamar</a>
-                <button type="button" style={inlineBtn('#6b7280')} onClick={() => copyToClipboard(phone, 'Teléfono copiado')}>Copiar</button>
-                <button
-                  type="button"
-                  style={inlineBtn('#16a34a')}
-                  onClick={() => openWhatsapp({
-                    nombre: [c.nombre, c.apellido].filter(Boolean).join(' '),
-                    telefono: phone,
-                    email: c.email ?? '',
-                    vendedor: c.vendedor_id ? (usersById[c.vendedor_id] ?? '') : '',
-                    cuentaHycite: c.hycite_id ?? c.numero_cuenta_financiera ?? '',
-                    saldoActual: c.saldo_actual,
-                    montoMoroso: c.monto_moroso,
-                    diasAtraso: c.dias_atraso,
-                    estadoMorosidad: c.estado_morosidad,
-                    clienteId: c.id,
-                  })}
-                >
-                  WhatsApp
-                </button>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{phone}</span>
+                <span style={{ display: 'inline-flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button type="button" style={{ ...inlineBtn('#6b7280'), minHeight: '40px' }} onClick={() => copyToClipboard(phone, 'Teléfono copiado')}>Copiar</button>
+                  <button
+                    type="button"
+                    style={{ ...inlineBtn('#16a34a'), minHeight: '40px' }}
+                    onClick={() => openWhatsapp({
+                      nombre: [c.nombre, c.apellido].filter(Boolean).join(' '),
+                      telefono: phone,
+                      email: c.email ?? '',
+                      vendedor: c.vendedor_id ? (usersById[c.vendedor_id] ?? '') : '',
+                      cuentaHycite: c.hycite_id ?? c.numero_cuenta_financiera ?? '',
+                      saldoActual: c.saldo_actual,
+                      montoMoroso: c.monto_moroso,
+                      diasAtraso: c.dias_atraso,
+                      estadoMorosidad: c.estado_morosidad,
+                      clienteId: c.id,
+                    })}
+                  >
+                    WhatsApp
+                  </button>
+                  <a href={buildTelUrl(phone)} style={{ ...inlineBtn('#3b82f6'), minHeight: '40px' }}>Llamar</a>
+                </span>
               </span>
             )
 
@@ -2306,7 +2349,20 @@ export function ClientesPage() {
               <span style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <span style={{ fontSize: '0.86rem' }}>{fullAddr}</span>
                 <span style={{ display: 'inline-flex', gap: '0.3rem' }}>
-                  {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={inlineBtn('#10b981')}>🗺 Navegar</a>}
+                  {mapsUrl && (
+                    <button
+                      type="button"
+                      style={inlineBtn('#10b981')}
+                      onClick={() => setNearbyPanel({
+                        contactoNombre: [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Cliente',
+                        mapsUrl,
+                        zip: c.codigo_postal ?? null,
+                        ciudad: c.ciudad ?? null,
+                      })}
+                    >
+                      🗺 Navegar
+                    </button>
+                  )}
                   <button type="button" style={inlineBtn('#6b7280')} onClick={() => copyToClipboard(fullAddr, 'Dirección copiada')}>Copiar</button>
                 </span>
               </span>
@@ -2329,7 +2385,9 @@ export function ClientesPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
                   {/* ── CHIPS de estado ── */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid var(--card-border, #e5e7eb)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--card-border, #e5e7eb)' }}>
+                    <p style={blockTitle}>Resumen operativo</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
                     <span style={chip('#6b7280', '#f3f4f6')}>{c.estado_cuenta ?? 'Sin estado'}</span>
                     {c.saldo_actual !== null && (
                       <span style={chip('#1d4ed8', '#dbeafe')}>Saldo ${Number(c.saldo_actual).toFixed(2)}</span>
@@ -2343,6 +2401,7 @@ export function ClientesPage() {
                         Próx. acción: {new Date(c.next_action_date + 'T00:00:00').toLocaleDateString('es', { day: '2-digit', month: 'short' })}
                       </span>
                     )}
+                    </div>
                   </div>
 
                   {/* ── GRID 2 columnas ── */}
@@ -2357,17 +2416,17 @@ export function ClientesPage() {
                       </div>
                       <div>
                         <label style={fieldLbl}>Móvil</label>
-                        {c.telefono ? phoneActions(c.telefono) : noReg}
+                        {c.telefono ? phoneActions(c.telefono) : missingHint('Agregar teléfono')}
                       </div>
                       <div>
                         <label style={fieldLbl}>Casa</label>
-                        {c.telefono_casa ? phoneActions(c.telefono_casa) : noReg}
+                        {c.telefono_casa ? phoneActions(c.telefono_casa) : missingHint('Agregar teléfono')}
                       </div>
                       <div>
                         <label style={fieldLbl}>Email</label>
                         {c.email
                           ? <a href={`mailto:${c.email}`} style={{ color: '#3b82f6', fontSize: '0.86rem', textDecoration: 'none' }}>{c.email}</a>
-                          : noReg}
+                          : missingHint('Agregar email')}
                       </div>
                       <div>
                         <label style={fieldLbl}>Cumpleaños</label>
@@ -2394,6 +2453,12 @@ export function ClientesPage() {
                         <label style={fieldLbl}>ZIP</label>
                         <span style={fieldVal}>{c.codigo_postal ?? noReg}</span>
                       </div>
+                      {!fullAddr && (
+                        <div>
+                          <label style={fieldLbl}>Acción</label>
+                          {missingHint('Agregar dirección')}
+                        </div>
+                      )}
                     </div>
 
                     {/* CUENTA */}
@@ -2409,7 +2474,11 @@ export function ClientesPage() {
                       </div>
                       <div>
                         <label style={fieldLbl}>Vendedor</label>
-                        <span style={fieldVal}>{c.vendedor_id ? usersById[c.vendedor_id] ?? noReg : noReg}</span>
+                        <span style={fieldVal}>
+                          {c.vendedor_id
+                            ? usersById[c.vendedor_id] ?? `Usuario no cargado (${c.vendedor_id.slice(0, 8)}...)`
+                            : noReg}
+                        </span>
                       </div>
                       <div>
                         <label style={fieldLbl}>Nivel</label>
@@ -2520,9 +2589,11 @@ export function ClientesPage() {
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <Button
+                variant="ghost"
                 type="button"
+                style={{ minHeight: '40px' }}
                 onClick={() =>
                   openCitaModal({
                     initialData: {
@@ -2551,8 +2622,8 @@ export function ClientesPage() {
               </Button>
 
               <Button
-                variant="ghost"
                 type="button"
+                style={{ minHeight: '40px' }}
                 onClick={() =>
                   openGestionModal({
                     contacto: {
@@ -2568,7 +2639,68 @@ export function ClientesPage() {
                     moduloOrigen: 'clientes',
                     origenId: selectedClienteDetail.id,
                     onSubmit: async (draft) => {
-                      showToast(`Gestión preparada: ${draft.resumen || draft.tipo}`)
+                      if (!session?.user?.id) {
+                        showToast('No hay sesión activa para registrar la gestión.', 'error')
+                        return
+                      }
+
+                      const montoComprometidoRaw = draft.montoPrometido.trim() ? Number(draft.montoPrometido) : null
+                      const montoComprometidoSafe =
+                        montoComprometidoRaw !== null && Number.isFinite(montoComprometidoRaw)
+                          ? montoComprometidoRaw
+                          : null
+                      const resultado = draft.resultado ?? (draft.tipo === 'nota' ? 'nota' : draft.tipo)
+
+                      const cobPayload: Record<string, unknown> = {
+                        cliente_id: selectedClienteDetail.id,
+                        tipo_gestion: draft.tipo,
+                        resultado,
+                        notas: draft.contenido || null,
+                        monto_comprometido: montoComprometidoSafe,
+                        fecha_compromiso: draft.followupAt || null,
+                        gestionado_por: session.user.id,
+                      }
+                      if (selectedClienteDetail.org_id) {
+                        cobPayload.org_id = selectedClienteDetail.org_id
+                      }
+
+                      const { data: cobData, error: cobError } = await supabase
+                        .from('cob_gestiones')
+                        .insert(cobPayload)
+                        .select('id')
+                        .single()
+
+                      if (cobError) {
+                        showToast(`Error al registrar gestión: ${cobError.message}`, 'error')
+                        throw cobError
+                      }
+
+                      const { error: actividadError } = await supabase.from('contacto_actividades').insert({
+                        contacto_tipo: 'cliente',
+                        contacto_id: selectedClienteDetail.id,
+                        tipo: draft.tipo,
+                        resumen: draft.resumen || draft.tipo,
+                        contenido: draft.contenido || null,
+                        metadata: {
+                          resultado,
+                          canal: draft.canal,
+                          followup_at: draft.followupAt || null,
+                          monto_prometido: montoComprometidoSafe,
+                          cob_gestion_id: cobData?.id ?? null,
+                          modulo_origen: draft.moduloOrigen ?? 'clientes',
+                        },
+                        autor_id: session.user.id,
+                        fecha_actividad: draft.fechaGestion
+                          ? new Date(draft.fechaGestion).toISOString()
+                          : new Date().toISOString(),
+                      })
+
+                      if (actividadError) {
+                        showToast(`Gestión registrada, pero no se pudo registrar actividad: ${actividadError.message}`, 'error')
+                      }
+
+                      await Promise.all([refreshClienteDetail(selectedClienteDetail.id), loadClientes()])
+                      showToast('Gestión registrada correctamente')
                     },
                   })
                 }
@@ -2577,12 +2709,12 @@ export function ClientesPage() {
               </Button>
 
               {canEditClientes && (
-                <Button variant="ghost" type="button" onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
+                <Button variant="ghost" type="button" style={{ minHeight: '40px' }} onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
                   Editar
                 </Button>
               )}
               {selectedClienteDetail.persona_id && (
-                <Button variant="ghost" type="button" onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}>
+                <Button variant="ghost" type="button" style={{ minHeight: '40px' }} onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}>
                   Ver perfil
                 </Button>
               )}
@@ -2590,6 +2722,7 @@ export function ClientesPage() {
                 <Button
                   variant="ghost"
                   type="button"
+                  style={{ minHeight: '40px' }}
                   onClick={() => {
                     setTipoCasoSeleccionado('cargo_vuelta')
                     setCasoMonto(''); setCasoFecha(''); setCasoDias(''); setCasoNotas(''); setCasoError(null)
@@ -2822,6 +2955,10 @@ export function ClientesPage() {
           )}
         </div>
       </Modal>
+
+      {nearbyPanel && (
+        <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} />
+      )}
     </div>
   )
 }
