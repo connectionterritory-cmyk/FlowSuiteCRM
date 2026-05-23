@@ -10,6 +10,7 @@ import { useAuth } from '../auth/useAuth'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
 import { useModalHost } from '../modals/useModalHost'
+import { NearbyContactsPanel, type NearbyPanelState } from './NearbyContactsPanel'
 import { CILlamadasPanel } from '../modules/conexiones-infinitas/CILlamadasPanel'
 
 type LeadCalificacion = {
@@ -202,6 +203,7 @@ export function CalificacionPanel({
     return () => clearTimeout(timer)
   }, [open, focusAddress])
   const [activeTab, setActiveTab] = useState<LeadDetailTab>('resumen')
+  const [nearbyPanel, setNearbyPanel] = useState<NearbyPanelState | null>(null)
   const [context, setContext] = useState<LeadContextState>({
     loading: false,
     origenPrincipal: '-',
@@ -762,6 +764,7 @@ export function CalificacionPanel({
   }
 
   return (
+    <>
     <div className="drawer-backdrop" onClick={onClose} role="presentation">
       <aside
         className="drawer"
@@ -1031,10 +1034,14 @@ export function CalificacionPanel({
                 })
                 return mapsUrl ? (
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <a
-                      href={mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => setNearbyPanel({
+                        contactoNombre: [formValues.nombre, formValues.apellido].filter(Boolean).join(' ') || 'Prospecto',
+                        mapsUrl,
+                        zip: formValues.codigo_postal || null,
+                        ciudad: formValues.ciudad || null,
+                      })}
                       style={{
                         fontSize: '0.82rem',
                         color: '#10b981',
@@ -1047,10 +1054,11 @@ export function CalificacionPanel({
                         border: '1px solid #10b98133',
                         borderRadius: '9999px',
                         background: '#10b98111',
+                        cursor: 'pointer',
                       }}
                     >
                       🗺 Ver en mapa / Navegar
-                    </a>
+                    </button>
                   </div>
                 ) : null
               })()}
@@ -1321,5 +1329,10 @@ export function CalificacionPanel({
         </div>
       </aside>
     </div>
+
+    {nearbyPanel && (
+      <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} />
+    )}
+    </>
   )
 }
