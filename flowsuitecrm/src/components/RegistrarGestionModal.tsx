@@ -65,6 +65,7 @@ export type GestionDraft = GestionOrigen & {
   contenido: string
   followupAt: string
   montoPrometido: string
+  fechaGestion?: string
 }
 
 type ResultadoOption = {
@@ -173,6 +174,7 @@ function createInitialDraft({
     montoPrometido: '',
     moduloOrigen,
     origenId,
+    fechaGestion: '',
   }
 }
 
@@ -852,6 +854,16 @@ export function RegistrarGestionModal({
             />
           </label>
         )}
+
+        <label style={{ display: 'grid', gap: '0.35rem' }}>
+          <span style={LABEL_STYLE}>Fecha de la gestión (Opcional, si fue en el pasado)</span>
+          <input
+            type="datetime-local"
+            value={draft.fechaGestion || ''}
+            onChange={(event) => setDraft((current) => ({ ...current, fechaGestion: event.target.value }))}
+            style={INPUT_STYLE}
+          />
+        </label>
       </div>
     </Modal>
   )

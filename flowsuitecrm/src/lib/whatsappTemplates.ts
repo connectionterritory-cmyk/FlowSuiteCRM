@@ -364,6 +364,13 @@ export const baseTemplates: WhatsappTemplate[] = [
     message:
       'Estimado/a {nombre}, le contactamos desde la oficina del distribuidor de *Connection Worldwide Group* respecto a su cuenta Royal Prestige #{cuenta_hycite}.\n\nSu cuenta tiene un *balance pendiente de ${monto_cargo_vuelta}*.\n\nSi no llegamos a un acuerdo de pago, esta cuenta será enviada al *Departamento Legal* ⚖️ para iniciar el proceso formal.\n\nPara evitar esto, comuníquese con nosotros:\n📞 *Patricia Caicedo* — (786) 291-3042\n📞 (818) 266-7038\n\nEstamos dispuestos a encontrar una solución antes de que el proceso avance.\n\n*Departamento de Cobranza CWG*',
   },
+  {
+    id: 'cartera.acuerdo_pago_cwg',
+    category: 'cartera',
+    label: 'Confirmación acuerdo de pago (CWG)',
+    message:
+      'Hola {nombre}. Te confirmamos tu acuerdo de pago del caso #{caso_numero}:\n\n- Acuerdo iniciado el {agreement_date}\n- Primer pago recibido: USD {primer_pago_monto} ({primer_pago_fecha})\n- Balance en esa fecha: USD {balance_al_acuerdo}\n- Pago mensual: USD {pago_mensual}\n- Fecha de cobro: día {dia_debito} de cada mes\n- Método: {metodo_pago}\n- Fee por uso de tarjeta: {fee_tarjeta_pct}% por cada cobro\n\nSi necesitas apoyo, contáctanos al {telefono_oficina}.\nConnection Worldwide Group – Distribuidor Autorizado de Royal Prestige.',
+  },
 
   // ── Campaña FrescaFlow Abril ────────────────────────────────────────────────
   {

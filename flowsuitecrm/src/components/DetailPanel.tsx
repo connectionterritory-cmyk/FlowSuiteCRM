@@ -25,8 +25,8 @@ export function DetailPanel({ open, title, items, onClose, action, tabs, activeT
           <h3 id="drawer-title">{title}</h3>
           <div className="flex items-center gap-2">
             {action}
-            <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-              x
+            <button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">
+              ✕
             </button>
           </div>
         </header>

@@ -128,6 +128,8 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
   const [cierreTarea, setCierreTarea] = useState<CierreTarea>(emptyCierreTarea)
   const [initialEstado, setInitialEstado] = useState('')
   const [initialSnapshot, setInitialSnapshot] = useState('')
+  const [existingActividadId, setExistingActividadId] = useState<string | null>(null)
+  const [existingTareaId, setExistingTareaId] = useState<string | null>(null)
 
   // When the caller doesn't provide assignedOptions, load them based on role
   const assignedOptions = assignedOptionsProp ?? internalAssignedOptions
@@ -222,6 +224,8 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
         setInitialEstado(next.estado || '')
         setCierreActividad(emptyCierreActividad)
         setCierreTarea(nextCierreTarea)
+        setExistingActividadId(null)
+        setExistingTareaId(null)
         setInitialSnapshot(buildDirtySnapshot({
           form: next,
           cierreActividad: emptyCierreActividad,
@@ -229,6 +233,72 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
         }))
       })
     }, 0)
+
+    if (next.id && isSupabaseConfigured) {
+      let active = true
+      Promise.all([
+        supabase
+          .from('contacto_actividades')
+          .select('*')
+          .eq('cita_id', next.id)
+          .eq('tipo', 'cita_completada')
+          .maybeSingle(),
+        supabase
+          .from('crm_tareas')
+          .select('*')
+          .eq('cita_origen_id', next.id)
+          .maybeSingle()
+      ]).then(([actividadRes, tareaRes]) => {
+        if (!active) return
+        startTransition(() => {
+          let updatedActividad = emptyCierreActividad
+          let updatedTarea = nextCierreTarea
+          
+          if (actividadRes.data) {
+            setExistingActividadId(actividadRes.data.id)
+            const meta = (actividadRes.data.metadata as Record<string, any>) || {}
+            updatedActividad = {
+              resumen: actividadRes.data.resumen || '',
+              demo_realizada: Boolean(meta.demo_realizada),
+              muestra_entregada: Boolean(meta.muestra_entregada),
+              referidos_obtenidos: Boolean(meta.referidos_obtenidos),
+              referidos_count: meta.referidos_count ? String(meta.referidos_count) : '',
+              productos_interes: Array.isArray(meta.productos_interes) ? meta.productos_interes : [],
+            }
+          }
+          
+          if (tareaRes.data) {
+            setExistingTareaId(tareaRes.data.id)
+            updatedTarea = {
+              crear_tarea: true,
+              tipo: tareaRes.data.tipo || 'llamada',
+              descripcion: tareaRes.data.descripcion || '',
+              asignado_a: tareaRes.data.asignado_a || next.assigned_to || sessionUserId || '',
+              fecha_vencimiento: tareaRes.data.fecha_vencimiento || '',
+              hora_vencimiento: tareaRes.data.hora_vencimiento || '',
+              prioridad: tareaRes.data.prioridad || 'media',
+            }
+          }
+
+          if (actividadRes.data || tareaRes.data) {
+            setCierreActividad(updatedActividad)
+            setCierreTarea(updatedTarea)
+            if (!userEditedRef.current) {
+              setInitialSnapshot(buildDirtySnapshot({
+                form: next,
+                cierreActividad: updatedActividad,
+                cierreTarea: updatedTarea,
+              }))
+            }
+          }
+        })
+      })
+      
+      // Cleanup function to avoid setting state if unmounted
+      const cleanupLoad = () => { active = false }
+      // We still need to load the address below, so we'll handle cleanup for both.
+    }
+
 
     // If editing an existing cita, refresh address from the linked contact
     if (!next.contacto_id || !isSupabaseConfigured) {
@@ -271,11 +341,21 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           zip: row.codigo_postal ?? prev.zip,
         }))
         if (!userEditedRef.current) {
-          setInitialSnapshot(buildDirtySnapshot({
-            form: nextForm,
-            cierreActividad: emptyCierreActividad,
-            cierreTarea: nextCierreTarea,
-          }))
+          setInitialSnapshot(prev => {
+            try {
+              const parsed = JSON.parse(prev)
+              return buildDirtySnapshot({
+                ...parsed,
+                form: nextForm,
+              })
+            } catch (e) {
+              return buildDirtySnapshot({
+                form: nextForm,
+                cierreActividad: emptyCierreActividad,
+                cierreTarea: nextCierreTarea,
+              })
+            }
+          })
         }
       })
     return () => {
@@ -558,9 +638,8 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
     const contactRef = buildContactRef(form.contacto_tipo, form.contacto_id)
 
     // ── Actividad histórica ──────────────────────────────────────────────
-    // Insert only when transitioning to completada (not on re-edits)
-    const isTransicionando = form.estado === 'completada' && initialEstado !== 'completada'
-    if (isTransicionando && citaId && session?.user.id) {
+    // Insert or update when form.estado === 'completada'
+    if (form.estado === 'completada' && citaId && session?.user.id) {
       const metadata: Record<string, unknown> = { resultado: form.resultado }
       if (cierreActividad.demo_realizada) metadata.demo_realizada = true
       if (cierreActividad.muestra_entregada) metadata.muestra_entregada = true
@@ -573,12 +652,12 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       if (cierreActividad.productos_interes.length > 0) {
         metadata.productos_interes = cierreActividad.productos_interes
       }
-        const resumen =
-          cierreActividad.resumen.trim() ||
-          RESULTADO_OPTIONS.find((o) => o.value === form.resultado)?.label ||
-          'Cita completada'
-      // Unique index on (cita_id) where tipo='cita_completada' prevents duplicates
-      const { error: actividadError } = await supabase.from('contacto_actividades').insert({
+      const resumen =
+        cierreActividad.resumen.trim() ||
+        RESULTADO_OPTIONS.find((o) => o.value === form.resultado)?.label ||
+        'Cita completada'
+        
+      const payloadActividad = {
         contacto_tipo: form.contacto_tipo,
         contacto_id: form.contacto_id.trim(),
         tipo: 'cita_completada',
@@ -588,11 +667,21 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
         fecha_actividad: startDate.toISOString(),
         metadata,
         cita_id: citaId,
-      })
+      }
+      
+      let actividadError
+      if (existingActividadId) {
+        const { error } = await supabase.from('contacto_actividades').update(payloadActividad).eq('id', existingActividadId)
+        actividadError = error
+      } else {
+        const { data, error } = await supabase.from('contacto_actividades').insert(payloadActividad).select('id').maybeSingle()
+        actividadError = error
+        if (data) setExistingActividadId(data.id)
+      }
+
       if (!mountedRef.current) return
       if (actividadError) {
-        // Non-blocking: cita already saved; log for debugging
-        console.warn('contacto_actividades insert failed:', actividadError.message)
+        console.warn('contacto_actividades update/insert failed:', actividadError.message)
       }
     }
 
@@ -604,7 +693,7 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
       cierreTarea.fecha_vencimiento &&
       session?.user.id
     ) {
-      const { error: tareaError } = await supabase.from('crm_tareas').insert({
+      const payloadTarea = {
         contacto_tipo: form.contacto_tipo,
         contacto_id: form.contacto_id.trim(),
         tipo: cierreTarea.tipo,
@@ -615,7 +704,18 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
         hora_vencimiento: cierreTarea.hora_vencimiento || null,
         prioridad: cierreTarea.prioridad,
         cita_origen_id: citaId || null,
-      })
+      }
+      
+      let tareaError
+      if (existingTareaId) {
+        const { error } = await supabase.from('crm_tareas').update(payloadTarea).eq('id', existingTareaId)
+        tareaError = error
+      } else {
+        const { data, error } = await supabase.from('crm_tareas').insert(payloadTarea).select('id').maybeSingle()
+        tareaError = error
+        if (data) setExistingTareaId(data.id)
+      }
+
       if (!mountedRef.current) return
       if (tareaError) {
         showToast('Tarea no guardada: ' + tareaError.message, 'error')

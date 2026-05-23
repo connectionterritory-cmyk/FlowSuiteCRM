@@ -281,6 +281,32 @@ Atentamente,
 Departamento de Cobranza CWG
 `,
   },
+  {
+    id: 'cartera.acuerdo_pago_cwg',
+    category: 'cartera',
+    label: 'Confirmación acuerdo de pago (CWG)',
+    subject: 'Confirmación de acuerdo de pago – Caso #{caso_numero}',
+    message: `Estimada/o {nombre},
+
+Por medio de la presente confirmamos el acuerdo de pago registrado para su cuenta (caso #{caso_numero}).
+
+Historial y condiciones del acuerdo:
+- Fecha de inicio del acuerdo: {agreement_date}
+- Primer pago recibido: USD {primer_pago_monto} ({primer_pago_fecha})
+- Balance operativo al momento del acuerdo: USD {balance_al_acuerdo}
+- Pago mensual acordado: USD {pago_mensual}
+- Fecha de cobro: día {dia_debito} de cada mes
+- Método de pago: {metodo_pago}
+- Cargo por procesamiento de tarjeta: {fee_tarjeta_pct}% por cada cobro
+
+Este acuerdo se mantiene vigente mientras los pagos se realicen en la fecha pactada. Para cualquier consulta o actualización de método de pago, puede comunicarse al {telefono_oficina}.
+
+Atentamente,
+Connection Worldwide Group
+Distribuidor Autorizado de Royal Prestige
+Tel. {telefono_oficina}
+`,
+  },
 
   // ── Cumpleaños ────────────────────────────────────────────────────────────
   {
