@@ -70,6 +70,18 @@ type ClienteRecord = {
   next_action_date: string | null
   estado_operativo: string | null
   fuente_import: string | null
+  lat: number | null
+  lng: number | null
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 function parseMontoCargoVueltaInput(value: string): number | null {
@@ -139,6 +151,8 @@ const CLIENTES_LIST_SELECT = [
   'next_action_date',
   'estado_operativo',
   'fuente_import',
+  'lat',
+  'lng',
   // Excluded from table columns, but still fetched for readonly detail/edit snapshot:
   // codigo_vendedor_hycite
 ].join(', ')
@@ -2502,6 +2516,74 @@ export function ClientesPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* ── CERCANOS ── */}
+                  {(() => {
+                    const RADIUS_KM = 8
+                    let nearby: ClienteRecord[] = []
+
+                    if (c.lat != null && c.lng != null) {
+                      nearby = clientes.filter(
+                        (other: ClienteRecord) =>
+                          other.id !== c.id &&
+                          other.lat != null &&
+                          other.lng != null &&
+                          haversineKm(c.lat!, c.lng!, other.lat!, other.lng!) <= RADIUS_KM
+                      ).sort((a: ClienteRecord, b: ClienteRecord) =>
+                        haversineKm(c.lat!, c.lng!, a.lat!, a.lng!) -
+                        haversineKm(c.lat!, c.lng!, b.lat!, b.lng!)
+                      ).slice(0, 10)
+                    } else if (c.codigo_postal) {
+                      nearby = clientes.filter(
+                        (other: ClienteRecord) => other.id !== c.id && other.codigo_postal === c.codigo_postal
+                      ).slice(0, 10)
+                    }
+
+                    if (nearby.length === 0) return null
+
+                    return (
+                      <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--card-border, #e5e7eb)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <p style={blockTitle}>
+                          {c.lat != null
+                            ? `Clientes cercanos (≤ ${RADIUS_KM} km)`
+                            : `Clientes en ZIP ${c.codigo_postal}`}
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {nearby.map((nb) => {
+                            const nbAddr = formatAddressLabel({ direccion: nb.direccion, ciudad: nb.ciudad, estado_region: nb.estado_region, codigo_postal: nb.codigo_postal })
+                            const nbMapsUrl = buildMapsNavUrl({ direccion: nb.direccion, ciudad: nb.ciudad, estado_region: nb.estado_region, codigo_postal: nb.codigo_postal })
+                            const nbKm = c.lat != null && c.lng != null && nb.lat != null && nb.lng != null
+                              ? haversineKm(c.lat!, c.lng!, nb.lat!, nb.lng!).toFixed(1)
+                              : null
+                            return (
+                              <div key={nb.id} style={{ padding: '0.5rem 0.6rem', borderRadius: '8px', background: 'var(--card-bg, #f9fafb)', border: '1px solid var(--card-border, #e5e7eb)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                                  <button
+                                    type="button"
+                                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#2563eb', fontWeight: 600, fontSize: '0.84rem', textAlign: 'left' }}
+                                    onClick={() => setSelectedRow({ id: nb.id })}
+                                  >
+                                    {nb.nombre} {nb.apellido}
+                                  </button>
+                                  <span style={{ fontSize: '0.72rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                    {nbKm != null ? `${nbKm} km` : `ZIP ${nb.codigo_postal}`}
+                                  </span>
+                                </div>
+                                {nbAddr && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>{nbAddr}</span>
+                                    {nbMapsUrl && (
+                                      <a href={nbMapsUrl} target="_blank" rel="noopener noreferrer" style={inlineBtn('#10b981')}>🗺 Maps</a>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                 </div>
               ),
