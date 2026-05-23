@@ -126,7 +126,6 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
   const [internalAssignedOptions, setInternalAssignedOptions] = useState<AssignedOption[]>([])
   const [cierreActividad, setCierreActividad] = useState<CierreActividad>(emptyCierreActividad)
   const [cierreTarea, setCierreTarea] = useState<CierreTarea>(emptyCierreTarea)
-  const [initialEstado, setInitialEstado] = useState('')
   const [initialSnapshot, setInitialSnapshot] = useState('')
   const [existingActividadId, setExistingActividadId] = useState<string | null>(null)
   const [existingTareaId, setExistingTareaId] = useState<string | null>(null)
@@ -221,7 +220,6 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
         setContactSearch(next.contacto_nombre || '')
         setClientResults([])
         setShowSearch(!next.contacto_id)
-        setInitialEstado(next.estado || '')
         setCierreActividad(emptyCierreActividad)
         setCierreTarea(nextCierreTarea)
         setExistingActividadId(null)
@@ -293,10 +291,6 @@ export function CitaModal({ open, onClose, onSaved, initialData, assignedOptions
           }
         })
       })
-      
-      // Cleanup function to avoid setting state if unmounted
-      const cleanupLoad = () => { active = false }
-      // We still need to load the address below, so we'll handle cleanup for both.
     }
 
 
