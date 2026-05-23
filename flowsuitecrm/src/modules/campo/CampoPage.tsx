@@ -249,7 +249,7 @@ export function CampoPage() {
       buildContactQ('leads', selBase).limit(50),
     ])
 
-    setClientes((clientesRaw ?? []).map((r: RawClienteRow) => ({
+    setClientes(((clientesRaw ?? []) as unknown as RawClienteRow[]).map((r) => ({
       id: r.id,
       tipo: 'cliente' as const,
       nombre: fullName(r),
@@ -261,7 +261,7 @@ export function CampoPage() {
       hasCoords: parseCoord(r.lat) !== null && parseCoord(r.lng) !== null,
     })))
 
-    setLeads((leadsRaw ?? []).map((r: RawBaseRow) => ({
+    setLeads(((leadsRaw ?? []) as unknown as RawBaseRow[]).map((r) => ({
       id: r.id,
       tipo: 'lead' as const,
       nombre: fullName(r),
