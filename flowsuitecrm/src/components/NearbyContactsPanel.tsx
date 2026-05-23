@@ -4,6 +4,18 @@ import { buildMapsNavUrl } from '../lib/addressUtils'
 import { buildWhatsappUrl } from '../lib/whatsappTemplates'
 import { Button } from './Button'
 
+const NEARBY_RADIUS_MILES = 5
+
+function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3958.8
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLng = (lng2 - lng1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
+
 export type NearbyContact = {
   id: string
   tipo: 'cliente' | 'lead'
@@ -13,6 +25,7 @@ export type NearbyContact = {
   ciudad: string | null
   estado_region: string | null
   zip: string | null
+  dist?: number | null
 }
 
 export type NearbyPanelState = {
@@ -22,7 +35,13 @@ export type NearbyPanelState = {
   ciudad: string | null
   baseId?: string
   baseTipo?: 'cliente' | 'lead'
+  baseLat?: number | null
+  baseLng?: number | null
 }
+
+type NearbyData =
+  | { mode: 'dist'; byDist: NearbyContact[]; byZipLeads: NearbyContact[] }
+  | { mode: 'zip'; byZip: NearbyContact[]; byCity: NearbyContact[] }
 
 function NearbyRow({ contact, onSelectContact }: { contact: NearbyContact; onSelectContact?: (contact: NearbyContact) => void }) {
   const waUrl = contact.telefono ? buildWhatsappUrl(contact.telefono, `Hola ${contact.nombre}`) : null
@@ -50,7 +69,14 @@ function NearbyRow({ contact, onSelectContact }: { contact: NearbyContact; onSel
       style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--color-surface-raised, #e5e7eb)', borderRadius: '0.5rem', cursor: onSelectContact ? 'pointer' : 'default', border: onSelectContact ? '1px solid #d1d5db' : '1px solid transparent', transition: 'background 120ms ease, border-color 120ms ease' }}
     >
       <div>
-        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#111827' }}>{contact.nombre}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#111827' }}>{contact.nombre}</span>
+          {contact.dist != null && (
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', background: '#f3f4f6', borderRadius: '9999px', padding: '0.05rem 0.4rem', whiteSpace: 'nowrap' }}>
+              {contact.dist.toFixed(1)} mi
+            </span>
+          )}
+        </div>
         <div style={{ fontSize: '0.78rem', color: '#374151' }}>
           {contact.tipo === 'lead' ? 'Prospecto' : 'Cliente'}{contact.telefono ? ` · ${contact.telefono}` : ''}
         </div>
@@ -84,24 +110,35 @@ type Props = NearbyPanelState & {
   onSelectContact?: (contact: NearbyContact) => void
 }
 
-export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, baseId, baseTipo, onClose, onSelectContact }: Props) {
-  const [nearbyData, setNearbyData] = useState<{ byZip: NearbyContact[]; byCity: NearbyContact[] } | null>(null)
+export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, baseId, baseTipo, baseLat, baseLng, onClose, onSelectContact }: Props) {
+  const [nearbyData, setNearbyData] = useState<NearbyData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
     setNearbyData(null)
+
     const nZip = zip?.trim() || null
     const nCity = ciudad?.trim().toLowerCase() || null
-    if (!nZip && !nCity) {
-      setNearbyData({ byZip: [], byCity: [] })
-      setLoading(false)
-      return
+    const hasBaseCoords =
+      typeof baseLat === 'number' && typeof baseLng === 'number' && baseLat !== 0 && baseLng !== 0
+
+    type RawRow = {
+      id: string
+      nombre: string | null
+      apellido: string | null
+      telefono: string | null
+      direccion: string | null
+      ciudad: string | null
+      estado_region: string | null
+      codigo_postal: string | null
     }
-    type RawRow = { id: string; nombre: string | null; apellido: string | null; telefono: string | null; direccion: string | null; ciudad: string | null; estado_region: string | null; codigo_postal: string | null }
+    type RawClienteRow = RawRow & { lat: number | string | null; lng: number | string | null }
+
     const isBase = (id: string, tipo: 'cliente' | 'lead') =>
       Boolean(baseId && baseTipo && id === baseId && tipo === baseTipo)
-    const toContact = (row: RawRow, tipo: 'cliente' | 'lead'): NearbyContact => ({
+
+    const toContact = (row: RawRow, tipo: 'cliente' | 'lead', dist?: number): NearbyContact => ({
       id: row.id,
       tipo,
       nombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || 'Sin nombre',
@@ -110,13 +147,62 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
       ciudad: row.ciudad ?? null,
       estado_region: row.estado_region ?? null,
       zip: row.codigo_postal ?? null,
+      dist: dist ?? null,
     })
-    const sel = 'id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal'
+
+    const selBase = 'id, nombre, apellido, telefono, direccion, ciudad, estado_region, codigo_postal'
+    const selCliente = `${selBase}, lat, lng`
+
+    if (hasBaseCoords) {
+      const bLat = baseLat as number
+      const bLng = baseLng as number
+      void Promise.all([
+        supabase.from('clientes').select(selCliente).not('lat', 'is', null).not('lng', 'is', null).limit(300),
+        nZip
+          ? supabase.from('leads').select(selBase).eq('codigo_postal', nZip).is('deleted_at', null).limit(25)
+          : Promise.resolve({ data: [] as RawRow[], error: null }),
+      ]).then(([allC, zipL]) => {
+        const seen = new Set<string>()
+        const byDist: NearbyContact[] = []
+        for (const row of ((allC.data ?? []) as RawClienteRow[])) {
+          if (isBase(row.id, 'cliente')) continue
+          const lat = typeof row.lat === 'string' ? parseFloat(row.lat) : row.lat
+          const lng = typeof row.lng === 'string' ? parseFloat(row.lng) : row.lng
+          if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) continue
+          const d = calculateDistanceMiles(bLat, bLng, lat, lng)
+          if (d > NEARBY_RADIUS_MILES) continue
+          seen.add(`c-${row.id}`)
+          byDist.push(toContact(row, 'cliente', d))
+        }
+        byDist.sort((a, b) => (a.dist ?? 99) - (b.dist ?? 99))
+
+        const byZipLeads: NearbyContact[] = []
+        for (const row of ((zipL.data ?? []) as RawRow[])) {
+          if (isBase(row.id, 'lead')) continue
+          const key = `l-${row.id}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          byZipLeads.push(toContact(row, 'lead'))
+        }
+
+        setNearbyData({ mode: 'dist', byDist, byZipLeads })
+        setLoading(false)
+      })
+      return
+    }
+
+    // fallback: ZIP / city mode
+    if (!nZip && !nCity) {
+      setNearbyData({ mode: 'zip', byZip: [], byCity: [] })
+      setLoading(false)
+      return
+    }
+
     void Promise.all([
-      nZip ? supabase.from('clientes').select(sel).eq('codigo_postal', nZip).limit(25) : Promise.resolve({ data: [] as RawRow[], error: null }),
-      nCity ? supabase.from('clientes').select(sel).ilike('ciudad', nCity).limit(25) : Promise.resolve({ data: [] as RawRow[], error: null }),
-      nZip ? supabase.from('leads').select(sel).eq('codigo_postal', nZip).is('deleted_at', null).limit(15) : Promise.resolve({ data: [] as RawRow[], error: null }),
-      nCity ? supabase.from('leads').select(sel).ilike('ciudad', nCity).is('deleted_at', null).limit(15) : Promise.resolve({ data: [] as RawRow[], error: null }),
+      nZip ? supabase.from('clientes').select(selBase).eq('codigo_postal', nZip).limit(25) : Promise.resolve({ data: [] as RawRow[], error: null }),
+      nCity ? supabase.from('clientes').select(selBase).ilike('ciudad', nCity).limit(25) : Promise.resolve({ data: [] as RawRow[], error: null }),
+      nZip ? supabase.from('leads').select(selBase).eq('codigo_postal', nZip).is('deleted_at', null).limit(15) : Promise.resolve({ data: [] as RawRow[], error: null }),
+      nCity ? supabase.from('leads').select(selBase).ilike('ciudad', nCity).is('deleted_at', null).limit(15) : Promise.resolve({ data: [] as RawRow[], error: null }),
     ]).then(([zipC, cityC, zipL, cityL]) => {
       const seen = new Set<string>()
       const byZip: NearbyContact[] = []
@@ -137,10 +223,12 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
         if (isBase(row.id, 'lead')) continue
         const key = `l-${row.id}`; if (seen.has(key)) continue; seen.add(key); byCity.push(toContact(row, 'lead'))
       }
-      setNearbyData({ byZip, byCity })
+      setNearbyData({ mode: 'zip', byZip, byCity })
       setLoading(false)
     })
-  }, [zip, ciudad, baseId, baseTipo])
+  }, [zip, ciudad, baseId, baseTipo, baseLat, baseLng])
+
+  const hasZipOrCity = Boolean(zip || ciudad)
 
   return (
     <>
@@ -196,18 +284,51 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
           </div>
         )}
 
-        {!loading && nearbyData && !zip && !ciudad && (
+        {!loading && nearbyData && nearbyData.mode === 'zip' && !hasZipOrCity && (
           <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
             No hay suficientes datos de ubicación para sugerir contactos cercanos.
           </div>
         )}
 
-        {!loading && nearbyData && (zip || ciudad) && (
+        {!loading && nearbyData && nearbyData.mode === 'dist' && (
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {nearbyData.byDist.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+                  Cercanos · menos de {NEARBY_RADIUS_MILES} mi
+                </div>
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {nearbyData.byDist.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} onSelectContact={onSelectContact} />)}
+                </div>
+              </div>
+            )}
+            {nearbyData.byZipLeads.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+                  Prospectos · mismo ZIP
+                </div>
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {nearbyData.byZipLeads.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} onSelectContact={onSelectContact} />)}
+                </div>
+              </div>
+            )}
+            {nearbyData.byDist.length === 0 && nearbyData.byZipLeads.length === 0 && (
+              <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
+                No se encontraron contactos en un radio de {NEARBY_RADIUS_MILES} millas.
+              </div>
+            )}
+          </div>
+        )}
+
+        {!loading && nearbyData && nearbyData.mode === 'zip' && hasZipOrCity && (
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             {nearbyData.byZip.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>
                   CERCANOS POR ZIP CODE · {zip}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '0.4rem' }}>
+                  Aproximado por ZIP. Verifica tiempo en Maps.
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
                   {nearbyData.byZip.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} onSelectContact={onSelectContact} />)}
