@@ -5,6 +5,7 @@ import {
   IconCustomers,
   IconLeads,
   IconMoreHorizontal,
+  IconNavigation,
   IconPipeline,
   IconProducts,
   IconPrograms,
@@ -87,6 +88,12 @@ export const navItems: NavItem[] = [
     labelKey: 'nav.mas',
     icon: IconMoreHorizontal,
     children: [
+      {
+        key: 'campo',
+        labelKey: 'nav.campo',
+        path: '/campo',
+        icon: IconNavigation,
+      },
       {
         key: 'citas',
         labelKey: 'nav.citas',

@@ -46,6 +46,7 @@ const MarketingFlowPage = lazy(async () => ({ default: (await import('../modules
 const SegmentosPage = lazy(async () => ({ default: (await import('../modules/marketing-flow/SegmentosPage')).SegmentosPage }))
 const CampanasPage = lazy(async () => ({ default: (await import('../modules/marketing-flow/CampanasPage')).CampanasPage }))
 const EnviosPage = lazy(async () => ({ default: (await import('../modules/marketing-flow/EnviosPage')).EnviosPage }))
+const CampoPage = lazy(async () => ({ default: (await import('../modules/campo/CampoPage')).CampoPage }))
 const CarteraPage = lazy(async () => ({ default: (await import('../modules/cartera/CarteraPage')).CarteraPage }))
 const InboxPage = lazy(async () => ({ default: (await import('../modules/inbox/InboxPage')).InboxPage }))
 const LoginPage = lazy(async () => ({ default: (await import('../modules/auth/LoginPage')).LoginPage }))
@@ -100,6 +101,7 @@ export default function App() {
             </Route>
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/citas" element={<CitasPage />} />
+            <Route path="/campo" element={<CampoPage />} />
             <Route path="/clientes" element={<ClientesPage />} />
             <Route path="/cartera" element={<CarteraPage />} />
             <Route path="/ventas" element={<VentasPage />} />
