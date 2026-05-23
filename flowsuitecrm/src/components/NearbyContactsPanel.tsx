@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { type KeyboardEventHandler, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { buildMapsNavUrl } from '../lib/addressUtils'
 import { buildWhatsappUrl } from '../lib/whatsappTemplates'
 import { Button } from './Button'
 
-type NearbyContact = {
+export type NearbyContact = {
   id: string
   tipo: 'cliente' | 'lead'
   nombre: string
@@ -24,7 +24,7 @@ export type NearbyPanelState = {
   baseTipo?: 'cliente' | 'lead'
 }
 
-function NearbyRow({ contact }: { contact: NearbyContact }) {
+function NearbyRow({ contact, onSelectContact }: { contact: NearbyContact; onSelectContact?: (contact: NearbyContact) => void }) {
   const waUrl = contact.telefono ? buildWhatsappUrl(contact.telefono, `Hola ${contact.nombre}`) : null
   const navUrl = buildMapsNavUrl({
     direccion: contact.direccion,
@@ -32,25 +32,45 @@ function NearbyRow({ contact }: { contact: NearbyContact }) {
     estado_region: contact.estado_region,
     codigo_postal: contact.zip,
   })
+  const handleSelect = () => {
+    onSelectContact?.(contact)
+  }
+  const handleKeyDown: KeyboardEventHandler<HTMLDivElement> = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleSelect()
+    }
+  }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--color-surface-raised, #f1f5f9)', borderRadius: '0.5rem' }}>
+    <div
+      role={onSelectContact ? 'button' : undefined}
+      tabIndex={onSelectContact ? 0 : undefined}
+      onClick={onSelectContact ? handleSelect : undefined}
+      onKeyDown={onSelectContact ? handleKeyDown : undefined}
+      style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--color-surface-raised, #e5e7eb)', borderRadius: '0.5rem', cursor: onSelectContact ? 'pointer' : 'default', border: onSelectContact ? '1px solid #d1d5db' : '1px solid transparent', transition: 'background 120ms ease, border-color 120ms ease' }}
+    >
       <div>
         <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#111827' }}>{contact.nombre}</div>
         <div style={{ fontSize: '0.78rem', color: '#374151' }}>
           {contact.tipo === 'lead' ? 'Prospecto' : 'Cliente'}{contact.telefono ? ` · ${contact.telefono}` : ''}
         </div>
         {contact.direccion && (
-          <div style={{ fontSize: '0.78rem', color: '#4b5563' }}>{contact.direccion}</div>
+          <div style={{ fontSize: '0.78rem', color: '#374151' }}>{contact.direccion}</div>
+        )}
+        {onSelectContact && (
+          <div style={{ fontSize: '0.72rem', color: '#4b5563', fontWeight: 600, marginTop: '0.2rem' }}>
+            Click para editar
+          </div>
         )}
       </div>
       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         {waUrl && (
-          <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '0.35rem 0.65rem', background: '#25d366', color: '#fff', borderRadius: '0.375rem', fontSize: '0.8rem', textDecoration: 'none', fontWeight: 600, minHeight: '32px', display: 'inline-flex', alignItems: 'center' }}>
+          <a onClick={(event) => event.stopPropagation()} href={waUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '0.35rem 0.65rem', background: '#25d366', color: '#fff', borderRadius: '0.375rem', fontSize: '0.8rem', textDecoration: 'none', fontWeight: 600, minHeight: '32px', display: 'inline-flex', alignItems: 'center' }}>
             WA
           </a>
         )}
         {navUrl && (
-          <a href={navUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '0.35rem 0.65rem', background: 'var(--color-primary, #2563eb)', color: '#fff', borderRadius: '0.375rem', fontSize: '0.8rem', textDecoration: 'none', fontWeight: 600, minHeight: '32px', display: 'inline-flex', alignItems: 'center' }}>
+          <a onClick={(event) => event.stopPropagation()} href={navUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '0.35rem 0.65rem', background: 'var(--color-primary, #2563eb)', color: '#fff', borderRadius: '0.375rem', fontSize: '0.8rem', textDecoration: 'none', fontWeight: 600, minHeight: '32px', display: 'inline-flex', alignItems: 'center' }}>
             🗺
           </a>
         )}
@@ -59,9 +79,12 @@ function NearbyRow({ contact }: { contact: NearbyContact }) {
   )
 }
 
-type Props = NearbyPanelState & { onClose: () => void }
+type Props = NearbyPanelState & {
+  onClose: () => void
+  onSelectContact?: (contact: NearbyContact) => void
+}
 
-export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, baseId, baseTipo, onClose }: Props) {
+export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, baseId, baseTipo, onClose, onSelectContact }: Props) {
   const [nearbyData, setNearbyData] = useState<{ byZip: NearbyContact[]; byCity: NearbyContact[] } | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -184,20 +207,20 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
             {nearbyData.byZip.length > 0 && (
               <div>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-                  Mismo ZIP · {zip}
+                  CERCANOS POR ZIP CODE · {zip}
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
-                  {nearbyData.byZip.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} />)}
+                  {nearbyData.byZip.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} onSelectContact={onSelectContact} />)}
                 </div>
               </div>
             )}
             {nearbyData.byCity.length > 0 && (
               <div>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-                  Misma ciudad · {ciudad}
+                  CERCANOS POR CIUDAD · {ciudad}
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
-                  {nearbyData.byCity.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} />)}
+                  {nearbyData.byCity.map(c => <NearbyRow key={`${c.tipo}-${c.id}`} contact={c} onSelectContact={onSelectContact} />)}
                 </div>
               </div>
             )}

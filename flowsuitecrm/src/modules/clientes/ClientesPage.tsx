@@ -6,7 +6,7 @@ import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
 import { Modal } from '../../components/Modal'
 import { DetailPanel } from '../../components/DetailPanel'
-import { NearbyContactsPanel, type NearbyPanelState } from '../../components/NearbyContactsPanel'
+import { NearbyContactsPanel, type NearbyContact, type NearbyPanelState } from '../../components/NearbyContactsPanel'
 import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { EmptyState } from '../../components/EmptyState'
@@ -1001,6 +1001,17 @@ export function ClientesPage() {
   const selectedCliente = selectedRow ? clientes.find((c) => c.id === selectedRow.id) ?? null : null
   const selectedClienteDetail = detailCliente ?? selectedCliente
   const editingCliente = editingId ? clientes.find((c) => c.id === editingId) ?? null : null
+  const handleSelectNearbyContact = useCallback((contact: NearbyContact) => {
+    setNearbyPanel(null)
+    if (contact.tipo === 'cliente') {
+      setSelectedRow((prev) => {
+        if (prev?.id === contact.id) return prev
+        return { id: contact.id, cells: [], detail: [] }
+      })
+      return
+    }
+    navigate(`/leads?leadId=${encodeURIComponent(contact.id)}`)
+  }, [navigate])
 
   useEffect(() => {
     if (!configured || !selectedRow?.id) {
@@ -2961,7 +2972,7 @@ export function ClientesPage() {
       </Modal>
 
       {nearbyPanel && (
-        <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} />
+        <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} onSelectContact={handleSelectNearbyContact} />
       )}
     </div>
   )

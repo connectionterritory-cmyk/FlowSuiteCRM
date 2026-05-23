@@ -10,7 +10,7 @@ import { useAuth } from '../auth/useAuth'
 import { IconRestore, IconSwap, IconTrash } from './icons'
 import { parseUsAddress, buildMapsNavUrl, capitalizeProperName, type ParsedAddress } from '../lib/addressUtils'
 import { useModalHost } from '../modals/useModalHost'
-import { NearbyContactsPanel, type NearbyPanelState } from './NearbyContactsPanel'
+import { NearbyContactsPanel, type NearbyContact, type NearbyPanelState } from './NearbyContactsPanel'
 import { CILlamadasPanel } from '../modules/conexiones-infinitas/CILlamadasPanel'
 
 type LeadCalificacion = {
@@ -204,6 +204,14 @@ export function CalificacionPanel({
   }, [open, focusAddress])
   const [activeTab, setActiveTab] = useState<LeadDetailTab>('resumen')
   const [nearbyPanel, setNearbyPanel] = useState<NearbyPanelState | null>(null)
+  const handleSelectNearbyContact = (contact: NearbyContact) => {
+    setNearbyPanel(null)
+    if (contact.tipo === 'lead') {
+      navigate(`/leads?leadId=${encodeURIComponent(contact.id)}`)
+      return
+    }
+    navigate(`/clientes?clienteId=${encodeURIComponent(contact.id)}`)
+  }
   const [context, setContext] = useState<LeadContextState>({
     loading: false,
     origenPrincipal: '-',
@@ -1333,7 +1341,7 @@ export function CalificacionPanel({
     </div>
 
     {nearbyPanel && (
-      <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} />
+      <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} onSelectContact={handleSelectNearbyContact} />
     )}
     </>
   )

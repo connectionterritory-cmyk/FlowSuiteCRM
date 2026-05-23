@@ -11,7 +11,7 @@ import { buildWhatsappUrl } from '../../lib/whatsappTemplates'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
 import { isContactKind } from '../../lib/contactRefs'
 import { useModalHost } from '../../modals/useModalHost'
-import { NearbyContactsPanel, type NearbyPanelState } from '../../components/NearbyContactsPanel'
+import { NearbyContactsPanel, type NearbyContact, type NearbyPanelState } from '../../components/NearbyContactsPanel'
 import type { CitaForm } from './CitaModal'
 
 type CitaRow = {
@@ -394,6 +394,14 @@ export function CitasPage() {
       baseTipo: item.cita?.contacto_tipo === 'lead' ? 'lead' : 'cliente',
     })
   }, [])
+  const handleSelectNearbyContact = useCallback((contact: NearbyContact) => {
+    setNearbyPanel(null)
+    if (contact.tipo === 'cliente') {
+      navigate(`/clientes?clienteId=${encodeURIComponent(contact.id)}`)
+      return
+    }
+    navigate(`/leads?leadId=${encodeURIComponent(contact.id)}`)
+  }, [navigate])
 
   const agendaItems = useMemo<AgendaItem[]>(() => {
     const citaItems: AgendaItem[] = citas.map((cita) => ({
@@ -574,7 +582,7 @@ export function CitasPage() {
       )}
 
       {nearbyPanel && (
-        <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} />
+        <NearbyContactsPanel {...nearbyPanel} onClose={() => setNearbyPanel(null)} onSelectContact={handleSelectNearbyContact} />
       )}
     </div>
   )
