@@ -44,6 +44,8 @@ type LeadCalificacion = {
   deleted_at?: string | null
   deleted_reason?: string | null
   persona_id?: string | null
+  lat?: number | null
+  lng?: number | null
 }
 
 type CalificacionPanelProps = {
@@ -1051,6 +1053,8 @@ export function CalificacionPanel({
                         ciudad: formValues.ciudad || null,
                         baseId: lead.id,
                         baseTipo: 'lead',
+                        baseLat: lead.lat ?? null,
+                        baseLng: lead.lng ?? null,
                       })}
                       style={{
                         fontSize: '0.82rem',

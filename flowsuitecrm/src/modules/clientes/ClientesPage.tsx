@@ -72,6 +72,8 @@ type ClienteRecord = {
   next_action_date: string | null
   estado_operativo: string | null
   fuente_import: string | null
+  lat: number | null
+  lng: number | null
 }
 
 function parseMontoCargoVueltaInput(value: string): number | null {
@@ -142,6 +144,8 @@ const CLIENTES_LIST_SELECT = [
   'next_action_date',
   'estado_operativo',
   'fuente_import',
+  'lat',
+  'lng',
   // Excluded from table columns, but still fetched for readonly detail/edit snapshot:
   // codigo_vendedor_hycite
 ].join(', ')
@@ -970,6 +974,8 @@ export function ClientesPage() {
                       ciudad: cliente.ciudad ?? null,
                       baseId: cliente.id,
                       baseTipo: 'cliente',
+                      baseLat: cliente.lat,
+                      baseLng: cliente.lng,
                     })}
                     style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none', padding: '0.1rem 0.5rem', border: '1px solid #10b98133', borderRadius: '9999px', background: '#10b98111', cursor: 'pointer' }}
                   >
@@ -2373,6 +2379,8 @@ export function ClientesPage() {
                         ciudad: c.ciudad ?? null,
                         baseId: c.id,
                         baseTipo: 'cliente',
+                        baseLat: c.lat,
+                        baseLng: c.lng,
                       })}
                     >
                       🗺 Navegar

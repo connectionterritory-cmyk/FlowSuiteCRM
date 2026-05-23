@@ -36,6 +36,15 @@ type CitaRow = {
   resultado_notas: string | null
 }
 
+function parseCoordinate(value: number | string | null | undefined): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 type ServicioRow = {
   id: string
   fecha_servicio: string | null
@@ -384,7 +393,21 @@ export function CitasPage() {
     })
   }, [assignedOptions, buildInitialForm, loadAgenda, openCitaModal])
 
-  const openNearbyPanel = useCallback((item: AgendaItem, mapsUrl: string | null) => {
+  const openNearbyPanel = useCallback(async (item: AgendaItem, mapsUrl: string | null) => {
+    let baseLat: number | null = null
+    let baseLng: number | null = null
+    const contactoTipo = item.cita?.contacto_tipo
+    const contactoId = item.cita?.contacto_id
+    if (contactoTipo === 'cliente' && contactoId) {
+      const { data } = await supabase
+        .from('clientes')
+        .select('lat, lng')
+        .eq('id', contactoId)
+        .maybeSingle()
+      const clienteCoords = data as { lat?: number | string | null; lng?: number | string | null } | null
+      baseLat = parseCoordinate(clienteCoords?.lat)
+      baseLng = parseCoordinate(clienteCoords?.lng)
+    }
     setNearbyPanel({
       contactoNombre: item.titulo,
       mapsUrl,
@@ -392,6 +415,8 @@ export function CitasPage() {
       ciudad: item.ciudad ?? null,
       baseId: item.cita?.contacto_id ?? undefined,
       baseTipo: item.cita?.contacto_tipo === 'lead' ? 'lead' : 'cliente',
+      baseLat,
+      baseLng,
     })
   }, [])
   const handleSelectNearbyContact = useCallback((contact: NearbyContact) => {
