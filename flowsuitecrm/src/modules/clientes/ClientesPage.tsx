@@ -968,6 +968,8 @@ export function ClientesPage() {
                       mapsUrl,
                       zip: cliente.codigo_postal ?? null,
                       ciudad: cliente.ciudad ?? null,
+                      baseId: cliente.id,
+                      baseTipo: 'cliente',
                     })}
                     style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none', padding: '0.1rem 0.5rem', border: '1px solid #10b98133', borderRadius: '9999px', background: '#10b98111', cursor: 'pointer' }}
                   >
@@ -2358,6 +2360,8 @@ export function ClientesPage() {
                         mapsUrl,
                         zip: c.codigo_postal ?? null,
                         ciudad: c.ciudad ?? null,
+                        baseId: c.id,
+                        baseTipo: 'cliente',
                       })}
                     >
                       🗺 Navegar

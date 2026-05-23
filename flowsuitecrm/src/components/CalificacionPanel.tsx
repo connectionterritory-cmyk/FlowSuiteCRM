@@ -1041,6 +1041,8 @@ export function CalificacionPanel({
                         mapsUrl,
                         zip: formValues.codigo_postal || null,
                         ciudad: formValues.ciudad || null,
+                        baseId: lead.id,
+                        baseTipo: 'lead',
                       })}
                       style={{
                         fontSize: '0.82rem',

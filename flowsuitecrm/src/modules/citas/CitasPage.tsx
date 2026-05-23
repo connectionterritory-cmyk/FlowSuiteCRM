@@ -390,6 +390,8 @@ export function CitasPage() {
       mapsUrl,
       zip: item.cita?.zip ?? null,
       ciudad: item.ciudad ?? null,
+      baseId: item.cita?.contacto_id ?? undefined,
+      baseTipo: item.cita?.contacto_tipo === 'lead' ? 'lead' : 'cliente',
     })
   }, [])
 
