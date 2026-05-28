@@ -840,23 +840,58 @@ export function ClientesPage() {
 
   const duplicateGroups = useMemo(() => {
     const phoneMap = new Map<string, ClienteRecord[]>()
+    const nameMap = new Map<string, ClienteRecord[]>()
     for (const c of clientes) {
       const normalized = (c.telefono ?? '').replace(/\D/g, '')
-      if (!normalized) continue
-      if (!phoneMap.has(normalized)) phoneMap.set(normalized, [])
-      phoneMap.get(normalized)!.push(c)
+      if (normalized) {
+        if (!phoneMap.has(normalized)) phoneMap.set(normalized, [])
+        phoneMap.get(normalized)!.push(c)
+      } else {
+        // Sin teléfono: agrupar por nombre+apellido normalizado
+        const nameKey = `${(c.nombre ?? '').trim().toLowerCase()} ${(c.apellido ?? '').trim().toLowerCase()}`.trim()
+        if (!nameKey || nameKey === ' ') continue
+        if (!nameMap.has(nameKey)) nameMap.set(nameKey, [])
+        nameMap.get(nameKey)!.push(c)
+      }
     }
-    return [...phoneMap.values()]
-      .filter((group) => group.length > 1)
-      .map((group) => group.sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '')))
+    const allGroups = [
+      ...[...phoneMap.values()].filter((g) => g.length > 1),
+      ...[...nameMap.values()].filter((g) => g.length > 1),
+    ]
+    return allGroups.map((group) => group.sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '')))
   }, [clientes])
 
-  const handleDeleteCliente = async (id: string) => {
+  const handleDeleteCliente = async (id: string, originalId?: string) => {
     if (!canDelete) {
       showToast('Solo Admin/Distribuidor puede eliminar clientes.', 'error')
       return
     }
     setDeletingId(id)
+
+    // Reasignar FKs al original antes de eliminar el duplicado
+    if (originalId && originalId !== id) {
+      const FK_TABLES = [
+        'llamadas_telemercadeo',
+        'cob_gestiones',
+        'cargo_vuelta_cases',
+        'cob_ptps',
+        'cob_revolving_accounts',
+        'cliente_productos',
+        'servicios',
+      ] as const
+      for (const table of FK_TABLES) {
+        const { error: fkError } = await supabase
+          .from(table)
+          .update({ cliente_id: originalId })
+          .eq('cliente_id', id)
+        if (fkError) {
+          showToast(`Error reasignando ${table}: ${fkError.message}`, 'error')
+          setDeletingId(null)
+          return
+        }
+      }
+    }
+
     const { error: delError } = await supabase.from('clientes').delete().eq('id', id)
     if (delError) {
       showToast(getClientesPermissionError(delError) ?? delError.message, 'error')
@@ -2836,7 +2871,7 @@ export function ClientesPage() {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #6b7280)', margin: 0 }}>
-            Cada grupo comparte el mismo teléfono. El primero de cada grupo (más antiguo) está marcado como <strong>Original</strong>. Elimina los duplicados que no necesites.
+            Cada grupo comparte el mismo teléfono o nombre. El primero de cada grupo (más antiguo) está marcado como <strong>Original</strong>. Elimina los duplicados que no necesites.
           </p>
           {duplicateGroups.map((group, gi) => (
             <div
@@ -2856,7 +2891,10 @@ export function ClientesPage() {
                   color: '#dc2626',
                 }}
               >
-                Tel: {group[0].telefono} — {group.length} registros
+                {group[0].telefono
+                  ? `Tel: ${group[0].telefono}`
+                  : `Nombre: ${[group[0].nombre, group[0].apellido].filter(Boolean).join(' ')}`
+                }{' '}— {group.length} registros
               </div>
               {group.map((c, idx) => {
                 const name = [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre'
@@ -2931,7 +2969,7 @@ export function ClientesPage() {
                       <button
                         type="button"
                         disabled={deletingId === c.id}
-                        onClick={() => handleDeleteCliente(c.id)}
+                        onClick={() => handleDeleteCliente(c.id, group[0].id)}
                         style={{
                           padding: '0.3rem 0.75rem',
                           borderRadius: '0.375rem',
@@ -2951,7 +2989,12 @@ export function ClientesPage() {
                       <button
                         type="button"
                         disabled={deletingId === c.id}
-                        onClick={() => handleDeleteCliente(c.id)}
+                        onClick={() => {
+                          const name = [c.nombre, c.apellido].filter(Boolean).join(' ') || 'este cliente'
+                          if (window.confirm(`¿Eliminar el registro ORIGINAL de ${name}? Sus gestiones, llamadas y casos pasarán al siguiente registro del grupo.`)) {
+                            handleDeleteCliente(c.id, group[1]?.id)
+                          }
+                        }}
                         style={{
                           padding: '0.3rem 0.75rem',
                           borderRadius: '0.375rem',
