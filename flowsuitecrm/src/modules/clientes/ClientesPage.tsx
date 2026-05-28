@@ -2791,6 +2791,22 @@ export function ClientesPage() {
                   Abrir caso
                 </Button>
               )}
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  style={{ minHeight: '40px', color: '#dc2626', borderColor: '#fca5a5' }}
+                  disabled={deletingId === selectedClienteDetail.id}
+                  onClick={() => {
+                    const name = [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'este cliente'
+                    if (window.confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer.`)) {
+                      void handleDeleteCliente(selectedClienteDetail.id).then(() => setSelectedRow(null))
+                    }
+                  }}
+                >
+                  {deletingId === selectedClienteDetail.id ? 'Eliminando…' : 'Eliminar'}
+                </Button>
+              )}
             </div>
           ) : null
         }
