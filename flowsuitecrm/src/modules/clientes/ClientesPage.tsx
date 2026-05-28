@@ -10,7 +10,7 @@ import { NearbyContactsPanel, type NearbyContact, type NearbyPanelState } from '
 import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { EmptyState } from '../../components/EmptyState'
-import { IconWhatsapp } from '../../components/icons'
+import { IconWhatsapp, IconTrash } from '../../components/icons'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
@@ -2804,6 +2804,7 @@ export function ClientesPage() {
                     }
                   }}
                 >
+                  <IconTrash style={{ width: '1rem', height: '1rem', marginRight: '0.35rem' }} />
                   {deletingId === selectedClienteDetail.id ? 'Eliminando…' : 'Eliminar'}
                 </Button>
               )}
