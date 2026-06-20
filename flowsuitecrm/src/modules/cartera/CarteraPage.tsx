@@ -321,12 +321,12 @@ function getClassificationLabel(classification: CarteraClassification) {
     case 'cargo_vuelta_confirmado':
       return 'Cargo de vuelta'
     case 'hibrido_revisar':
-      return 'Hibrido · revisar clasificacion'
+      return 'Híbrido · revisar clasificación'
     case 'dfp_incompleto_revisar':
       return 'DFP incompleto · revisar'
     case 'sin_clasificar':
     default:
-      return 'Sin clasificacion'
+      return 'Sin clasificación'
   }
 }
 
@@ -1387,29 +1387,30 @@ function computeNextStep(caso: Case, gestiones: Gestion[], ptps: PTP[]): NextSte
 function ProximoPasoSection({ rec, onPrimaryAction }: { rec: NextStepRec; onPrimaryAction: () => void }) {
   const riesgoColor = rec.riesgo === 'alto' ? '#dc2626' : rec.riesgo === 'medio' ? '#f59e0b' : '#10b981'
   const riesgoLabel = rec.riesgo === 'alto' ? 'Riesgo alto' : rec.riesgo === 'medio' ? 'Riesgo medio' : 'Bajo riesgo'
-  const riesgoIcon = rec.riesgo === 'alto' ? '🔴' : rec.riesgo === 'medio' ? '🟡' : '🟢'
   return (
-    <div style={{ padding: '0.7rem 1.25rem', background: riesgoColor + '08', borderBottom: `2px solid ${riesgoColor}30` }}>
+    <div style={{ padding: '0.7rem 1.25rem', background: riesgoColor + '07', borderBottom: `1px solid ${riesgoColor}20` }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
             <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>Próximo paso recomendado</span>
-            <span style={{ padding: '0.08rem 0.4rem', borderRadius: '999px', fontSize: '0.62rem', fontWeight: 700, background: riesgoColor + '20', color: riesgoColor }}>
-              {riesgoIcon} {riesgoLabel}
+            <span style={{ padding: '0.08rem 0.4rem', borderRadius: '999px', fontSize: '0.62rem', fontWeight: 700, background: riesgoColor + '16', color: riesgoColor, display: 'inline-flex', alignItems: 'center', gap: '0.28rem' }}>
+              <span style={{ display: 'inline-block', width: '5px', height: '5px', borderRadius: '50%', background: riesgoColor, flexShrink: 0 }} />
+              {riesgoLabel}
             </span>
           </div>
           <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.3 }}>{rec.action}</p>
           <p style={{ margin: '0.15rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{rec.motivo}</p>
           {rec.fechaSugerida && (
-            <p style={{ margin: '0.1rem 0 0', fontSize: '0.72rem', color: riesgoColor, fontWeight: 600 }}>
-              📅 Fecha sugerida: {fmtFecha(rec.fechaSugerida)}
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.72rem', color: riesgoColor, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Fecha sugerida: {fmtFecha(rec.fechaSugerida)}
             </p>
           )}
         </div>
         <button
           type="button"
           onClick={onPrimaryAction}
-          style={{ padding: '0.45rem 1rem', borderRadius: '0.5rem', border: 'none', background: rec.btnColor, color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, boxShadow: `0 2px 8px ${rec.btnColor}44` }}
+          style={{ padding: '0.4rem 0.9rem', borderRadius: '0.45rem', border: `1px solid ${rec.btnColor}55`, background: rec.btnColor + '14', color: rec.btnColor, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           {rec.btnLabel}
         </button>
@@ -1420,7 +1421,7 @@ function ProximoPasoSection({ rec, onPrimaryAction }: { rec: NextStepRec; onPrim
 
 // ── Case Detail Panel ─────────────────────────────────────────────────────────
 
-function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; label: string; disabled: boolean; onClick: (e: React.MouseEvent) => void }) {
+function QuickActionBtn({ icon, label, disabled, onClick }: { icon: React.ReactNode; label: string; disabled: boolean; onClick: (e: React.MouseEvent) => void }) {
   return (
     <button
       type="button"
@@ -1431,17 +1432,16 @@ function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; labe
         minWidth: '30px',
         height: '30px',
         borderRadius: '0.55rem',
-        border: '1px solid var(--color-border)',
-        background: disabled ? 'var(--color-surface-strong)' : 'rgba(255,255,255,0.72)',
+        border: '1px solid rgba(100,116,139,0.22)',
+        background: disabled ? 'rgba(100,116,139,0.04)' : 'rgba(100,116,139,0.1)',
         color: disabled ? 'var(--color-text-muted)' : 'var(--color-text)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        fontSize: '0.82rem',
-        boxShadow: disabled ? 'none' : '0 1px 3px rgba(15,23,42,0.08)',
-        backdropFilter: 'blur(8px)',
+        opacity: disabled ? 0.38 : 1,
+        boxShadow: 'none',
+        flexShrink: 0,
       }}
     >
       {icon}
@@ -1499,9 +1499,9 @@ function CaseContextHeader({
           alignSelf: 'flex-end',
           padding: '0.4rem 1rem',
           borderRadius: '0.45rem',
-          border: `1px solid ${tone.border}`,
-          background: tone.background,
-          color: tone.color,
+          border: '1px solid rgba(100,116,139,0.28)',
+          background: 'var(--color-card)',
+          color: 'var(--color-text)',
           cursor: 'pointer',
           fontSize: '0.78rem',
           fontWeight: 700,
@@ -1989,7 +1989,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   ]
   if (caso.acuerdo_tipo) chips.push({ label: caso.acuerdo_tipo, color: '#7c3aed' })
   if (shouldShowStatementActions(classification)) chips.push({ label: 'DFP financiero', color: '#0f766e' })
-  if (shouldShowRecoveryActions(classification)) chips.push({ label: 'Recuperacion', color: '#7c3aed' })
+  if (shouldShowRecoveryActions(classification)) chips.push({ label: 'Recuperación', color: '#7c3aed' })
 
   const TABS: { key: DetailTab; label: string }[] = [
     { key: 'historial', label: 'Historial' },
@@ -2008,7 +2008,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
         <div style={{ flex: 1 }}>
           <p style={{ margin: '0 0 0.4rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>
-            {caso.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.4rem' }}>⚖️</span>}
+            {caso.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.4rem', display: 'inline-flex', alignItems: 'center' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>}
             {nombreCliente(cliente)}
             {cliente?.hycite_id && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>#{cliente.hycite_id}</span>}
           </p>
@@ -2020,7 +2020,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           </div>
           {classification === 'hibrido_revisar' && (
             <p style={{ margin: '0 0 0.45rem', fontSize: '0.75rem', fontWeight: 600, color: '#b45309' }}>
-              Este caso esta marcado como Cargo de vuelta, pero tiene cuenta revolving y statements. Revisa la clasificacion antes de tomar decisiones financieras.
+              Este caso está marcado como Cargo de vuelta, pero tiene cuenta revolving y statements. Revisa la clasificación antes de tomar decisiones financieras.
             </p>
           )}
           <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
@@ -2086,12 +2086,13 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 
       {/* CTA pendiente de monto */}
       {(caso.monto_devuelto === null || caso.monto_devuelto === undefined || caso.monto_devuelto === 0) && (
-        <div style={{ padding: '0.55rem 1.25rem', background: 'rgba(217,119,6,0.08)', borderBottom: '1px solid rgba(217,119,6,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-          <span style={{ fontSize: '0.78rem', color: '#d97706', fontWeight: 600 }}>
-            ⚠ Monto cargo de vuelta pendiente — Hy-Cite reportó saldo 0 pero el cliente puede deber.
+        <div style={{ padding: '0.5rem 1.25rem', background: 'rgba(217,119,6,0.05)', borderBottom: '1px solid rgba(217,119,6,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <span style={{ fontSize: '0.76rem', color: '#92400e', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: '#b45309' }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Monto cargo de vuelta pendiente — Hy-Cite reportó saldo 0 pero el cliente puede deber.
           </span>
           <button type="button" onClick={() => setCapturarMontoOpen(true)}
-            style={{ padding: '0.25rem 0.75rem', borderRadius: '0.4rem', border: '1px solid rgba(217,119,6,0.5)', background: 'rgba(217,119,6,0.12)', color: '#d97706', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            style={{ padding: '0.22rem 0.65rem', borderRadius: '0.4rem', border: '1px solid rgba(146,64,14,0.28)', background: 'rgba(217,119,6,0.07)', color: '#92400e', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
             Capturar monto
           </button>
         </div>
@@ -2119,9 +2120,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         {/* Escalar */}
         <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Escalar</span>
-          <ActionBtn label="↩ Cargo vuelta" color="#7c3aed" onClick={() => setCapturarMontoOpen(true)} />
+          <ActionBtn label="Cargo vuelta" color="#7c3aed" onClick={() => setCapturarMontoOpen(true)} />
           <ActionBtn
-            label={caso.en_proceso_legal ? '⚖️ Legal activo' : '⚖️ Legal'}
+            label={caso.en_proceso_legal ? 'Legal activo' : 'Legal'}
             color={caso.en_proceso_legal ? '#dc2626' : '#6b7280'}
             onClick={async () => {
               await supabase.from('cargo_vuelta_cases').update({ en_proceso_legal: !caso.en_proceso_legal }).eq('id', caso.id)
@@ -2134,7 +2135,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
             <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
             <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
               <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Cerrar</span>
-              <ActionBtn label="✓ Pago recibido" color="#059669" onClick={() => setCierreOpen(true)} />
+              <ActionBtn label="Pago recibido" color="#059669" onClick={() => setCierreOpen(true)} />
             </div>
           </>
         )}
@@ -2251,7 +2252,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 function ActionBtn({ label, color, onClick, disabled = false }: { label: string; color: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      style={{ padding: '0.35rem 0.85rem', borderRadius: '0.4rem', border: `1px solid ${color}66`, background: color + '18', color, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontWeight: 700, opacity: disabled ? 0.55 : 1 }}>
+      style={{ padding: '0.28rem 0.65rem', borderRadius: '0.4rem', border: `1px solid ${color}38`, background: color + '0e', color, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.74rem', fontWeight: 600, opacity: disabled ? 0.4 : 1 }}>
       {label}
     </button>
   )
@@ -3585,7 +3586,13 @@ function HistorialList({ events, usersById }: { events: HistorialEvent[]; usersB
       {events.map((ev, idx) => {
         const color = historialColor(ev.tipo)
         const isLast = idx === events.length - 1
-        const TIPO_ICON: Record<HistorialEvent['tipo'], string> = { apertura: '🗂', gestion: '📞', ptp: '🤝', pago: '💳', cierre: '✅' }
+        const TIPO_ICON: Record<HistorialEvent['tipo'], React.ReactNode> = {
+          apertura: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>,
+          gestion: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.13h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.72a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21.92 16z"/></svg>,
+          ptp: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/></svg>,
+          pago: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>,
+          cierre: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+        }
         return (
           <div key={ev.id} style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start', paddingBottom: isLast ? 0 : '0.65rem' }}>
             {/* Timeline track */}
@@ -3658,7 +3665,7 @@ function CarteraEmptyState({
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
         <KpiCard label="Urgentes" value={String(urgentCount)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
-        <KpiCard label="Hibridos / revisar" value={String(reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
+        <KpiCard label="Híbridos / revisar" value={String(reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
         <KpiCard label="PTP vencidos" value={String(ptpVencidoCount)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
         <KpiCard label="Acuerdos activos" value={String(acuerdoActivoCount)} tone={{ border: '#10b98144', text: '#059669', bg: 'rgba(16,185,129,0.08)' }} />
       </div>
@@ -3668,7 +3675,7 @@ function CarteraEmptyState({
           onClick={onViewReview}
           style={{ padding: '0.55rem 0.9rem', borderRadius: '0.55rem', border: '1px solid #b4530944', background: 'rgba(217,119,6,0.1)', color: '#b45309', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
         >
-          Ver hibridos
+          Ver híbridos
         </button>
         <button
           type="button"
@@ -3694,15 +3701,15 @@ type QuickFilterKey =
   | 'alto_monto'
   | 'cerrado'
 
-const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: string }[] = [
-  { key: 'para_llamar_hoy', label: 'Para llamar hoy', color: '#3b82f6', icon: '📞' },
-  { key: 'sin_gestion', label: 'Sin gestión', color: '#f59e0b', icon: '⚠️' },
-  { key: 'ptp_vencido', label: 'PTP vencido', color: '#dc2626', icon: '🔴' },
-  { key: 'en_negociacion', label: 'En negociación', color: '#f59e0b', icon: '💬' },
-  { key: 'acuerdo_activo', label: 'Acuerdo activo', color: '#10b981', icon: '✅' },
-  { key: '90_mas', label: '90+ días', color: '#7c3aed', icon: '🚨' },
-  { key: 'alto_monto', label: 'Alto monto', color: '#ea580c', icon: '💰' },
-  { key: 'cerrado', label: 'Cerrado', color: '#6b7280', icon: '🔒' },
+const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: React.ReactNode }[] = [
+  { key: 'para_llamar_hoy', label: 'Para llamar hoy', color: '#3b82f6', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.13h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.72a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21.92 16z"/></svg> },
+  { key: 'sin_gestion', label: 'Sin gestión', color: '#f59e0b', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
+  { key: 'ptp_vencido', label: 'PTP vencido', color: '#dc2626', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
+  { key: 'en_negociacion', label: 'En negociación', color: '#f59e0b', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+  { key: 'acuerdo_activo', label: 'Acuerdo activo', color: '#10b981', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
+  { key: '90_mas', label: '90+ días', color: '#7c3aed', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+  { key: 'alto_monto', label: 'Alto monto', color: '#ea580c', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
+  { key: 'cerrado', label: 'Cerrado', color: '#6b7280', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> },
 ]
 
 type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: string | null }
@@ -4019,7 +4026,7 @@ export function CarteraPage() {
         <div style={{ padding: '0.75rem 1rem 0.6rem', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Financiamiento y Recuperacion</h2>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Financiamiento y Recuperación</h2>
               <p style={{ margin: '0.12rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
                 DFP, cargo de vuelta, acuerdos de pago y seguimiento de cartera
               </p>
@@ -4061,7 +4068,7 @@ export function CarteraPage() {
                 todos: 'Todos',
                 cargo_vuelta: 'Cargo de vuelta',
                 dfp: 'DFP',
-                hibridos: 'Hibridos / revisar',
+                hibridos: 'Híbridos / revisar',
                 acuerdos_activos: 'Acuerdos activos',
                 urgentes: 'Urgentes',
                 cerrados: 'Cerrados',
@@ -4089,7 +4096,7 @@ export function CarteraPage() {
         <div style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
             <KpiCard label="Cargo de vuelta confirmado" value={String(kpiMetrics.cargoConfirmadoCount)} tone={{ border: '#47556933', text: '#475569', bg: 'rgba(100,116,139,0.08)' }} />
-            <KpiCard label="Hibridos / revisar" value={String(kpiMetrics.reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
+            <KpiCard label="Híbridos / revisar" value={String(kpiMetrics.reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
             <KpiCard label="Balance por recuperar" value={fmtMonto(kpiMetrics.balancePendienteRecuperar)} tone={{ border: '#0f766e33', text: '#0f766e', bg: 'rgba(15,118,110,0.08)' }} />
             <KpiCard label="PTP vencidos" value={String(kpiMetrics.ptpVencidos)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
             <KpiCard label="Casos urgentes" value={String(kpiMetrics.urgentes)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
@@ -4180,13 +4187,13 @@ export function CarteraPage() {
                     return 'Requiere revisar la cuenta DFP'
                   case 'sin_clasificar':
                   default:
-                    return 'Requiere revision administrativa'
+                    return 'Requiere revisión administrativa'
                 }
               })()
               const actionLabel = (() => {
                 switch (classification) {
                   case 'cargo_vuelta_confirmado':
-                    return 'Gestionar recuperacion'
+                    return 'Gestionar recuperación'
                   case 'hibrido_revisar':
                     return 'Revisar cuenta'
                   case 'dfp_confirmado':
@@ -4194,7 +4201,7 @@ export function CarteraPage() {
                   case 'dfp_incompleto_revisar':
                   case 'sin_clasificar':
                   default:
-                    return 'Revisar clasificacion'
+                    return 'Revisar clasificación'
                 }
               })()
               const secondaryFacts = (() => {
@@ -4213,13 +4220,13 @@ export function CarteraPage() {
                   case 'dfp_incompleto_revisar':
                   case 'sin_clasificar':
                     return [
-                      'Requiere revision administrativa',
+                      'Requiere revisión administrativa',
                     ]
                   case 'cargo_vuelta_confirmado':
                   default:
                     return [
                       c.estado,
-                      `${c.dias_vencido} dias vencido`,
+                      `${c.dias_vencido} días vencido`,
                     ]
                 }
               })()
@@ -4234,7 +4241,7 @@ export function CarteraPage() {
                     padding: '0.85rem 0.95rem',
                     border: 'none',
                     borderBottom: '1px solid var(--color-border)',
-                    background: isSelected ? 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(255,255,255,0.5))' : 'transparent',
+                    background: isSelected ? 'rgba(14,165,233,0.07)' : 'transparent',
                     cursor: 'pointer',
                     borderLeft: isSelected ? `3px solid ${tone.color}` : '3px solid transparent',
                   }}
@@ -4269,14 +4276,14 @@ export function CarteraPage() {
                         <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-text)' }}>{secondaryFacts[0]}</p>
                       </div>
                       <div style={{ padding: '0.45rem 0.55rem', borderRadius: '0.55rem', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.16)' }}>
-                        <p style={{ margin: '0 0 0.12rem', fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{classification === 'dfp_confirmado' ? 'Accion sugerida' : 'Seguimiento'}</p>
+                        <p style={{ margin: '0 0 0.12rem', fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{classification === 'dfp_confirmado' ? 'Acción sugerida' : 'Seguimiento'}</p>
                         <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-text)' }}>{secondaryFacts[1] ?? actionLabel}</p>
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ultima gestion</p>
+                        <p style={{ margin: 0, fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Última gestión</p>
                         <p style={{ margin: '0.16rem 0 0', fontSize: '0.72rem', color: lastG ? 'var(--color-text-muted)' : '#b45309', fontWeight: lastG ? 500 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {lastGestionText}
                         </p>
@@ -4289,7 +4296,7 @@ export function CarteraPage() {
 
                   <div style={{ marginTop: '0.05rem', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <QuickActionBtn
-                      icon="📞"
+                      icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.13h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.72a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21.92 16z"/></svg>}
                       label="Llamar"
                       disabled={!c.clientes?.telefono}
                       onClick={(e) => {
@@ -4298,7 +4305,7 @@ export function CarteraPage() {
                       }}
                     />
                     <QuickActionBtn
-                      icon="💬"
+                      icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
                       label="WhatsApp"
                       disabled={!c.clientes?.telefono}
                       onClick={(e) => {
@@ -4318,7 +4325,7 @@ export function CarteraPage() {
                       }}
                     />
                     <QuickActionBtn
-                      icon="📱"
+                      icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><circle cx="12" cy="18" r="0.5" fill="currentColor"/></svg>}
                       label="SMS"
                       disabled={!c.clientes?.telefono}
                       onClick={(e) => {
@@ -4338,7 +4345,7 @@ export function CarteraPage() {
                       }}
                     />
                     <QuickActionBtn
-                      icon="✉️"
+                      icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/></svg>}
                       label="Email"
                       disabled={!c.clientes?.email}
                       onClick={(e) => {
