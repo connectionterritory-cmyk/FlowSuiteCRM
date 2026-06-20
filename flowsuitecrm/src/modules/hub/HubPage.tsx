@@ -1,15 +1,15 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../auth/useAuth'
+import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { AgendaHoy } from '../../components/AgendaHoy'
 import { Badge } from '../../components/Badge'
 import { StatCard } from '../../components/StatCard'
 import {
-  IconBriefcase,
   IconDashboard,
   IconFinance,
   IconInsurance,
   IconTelecom,
-  IconTraining,
 } from '../../components/icons'
 import { BusinessUnitGrid } from './BusinessUnitGrid'
 import { HubHeader } from './HubHeader'
@@ -20,6 +20,26 @@ import { useHubStats } from './useHubStats'
 export function HubPage() {
   const navigate = useNavigate()
   const { metrics, loading, error, scopePending } = useHubStats()
+  const { session } = useAuth()
+  const configured = isSupabaseConfigured
+  const [role, setRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    if (!configured || !session?.user.id) return
+    supabase
+      .from('usuarios')
+      .select('rol')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return
+        setRole((data as { rol?: string } | null)?.rol ?? null)
+      })
+    return () => { active = false }
+  }, [configured, session?.user.id])
+
+  const isAdminLike = role === 'admin' || role === 'distribuidor'
 
   const statValue = (value: number) => {
     if (scopePending) return 'Resolviendo alcance...'
@@ -82,7 +102,7 @@ export function HubPage() {
     [],
   )
 
-  const businessUnits = useMemo<BusinessUnit[]>(
+  const allBusinessUnits = useMemo<BusinessUnit[]>(
     () => [
       {
         title: 'Royal Prestige',
@@ -126,6 +146,11 @@ export function HubPage() {
       },
     ],
     [],
+  )
+
+  const businessUnits = useMemo(
+    () => isAdminLike ? allBusinessUnits : allBusinessUnits.filter((u) => u.status === 'active'),
+    [isAdminLike, allBusinessUnits],
   )
 
   const quickActions = useMemo<QuickAction[]>(
@@ -196,27 +221,29 @@ export function HubPage() {
         </div>
       </section>
 
-      <section className="page-stack">
-        <div className="hub-section-heading">
-          <p className="hub-section-kicker">Compensacion</p>
-          <h3>Comisiones</h3>
-          <div className="hub-inline-badges">
-            <Badge label="Fase 1" tone="gold" />
-            <Badge label="Disponible pronto" tone="gold" className="hub-commission-badge" />
+      {isAdminLike && (
+        <section className="page-stack">
+          <div className="hub-section-heading">
+            <p className="hub-section-kicker">Compensacion</p>
+            <h3>Comisiones</h3>
+            <div className="hub-inline-badges">
+              <Badge label="Fase 1" tone="gold" />
+              <Badge label="Disponible pronto" tone="gold" className="hub-commission-badge" />
+            </div>
           </div>
-        </div>
-        <div className="stat-grid hub-stat-grid hub-stat-grid-commission">
-          {commissionStats.map((stat) => (
-            <StatCard
-              key={stat.key}
-              label={stat.label}
-              value={stat.value}
-              hint={stat.hint}
-              accent={stat.accent}
-            />
-          ))}
-        </div>
-      </section>
+          <div className="stat-grid hub-stat-grid hub-stat-grid-commission">
+            {commissionStats.map((stat) => (
+              <StatCard
+                key={stat.key}
+                label={stat.label}
+                value={stat.value}
+                hint={stat.hint}
+                accent={stat.accent}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <BusinessUnitGrid units={businessUnits} />
 
@@ -230,32 +257,6 @@ export function HubPage() {
 
       <QuickActionsGrid actions={quickActions} />
 
-      <section className="hub-footer-grid">
-        <div className="card hub-footer-card">
-          <div className="hub-footer-icon">
-            <IconBriefcase className="hub-footer-svg" />
-          </div>
-          <div>
-            <h3>Portal madre listo para crecer</h3>
-            <p>
-              `/hub` ya centraliza accesos y placeholders de negocio sin tocar Supabase,
-              Izzyphone ni el dashboard legacy.
-            </p>
-          </div>
-        </div>
-        <div className="card hub-footer-card">
-          <div className="hub-footer-icon">
-            <IconTraining className="hub-footer-svg" />
-          </div>
-          <div>
-            <h3>Siguientes fases</h3>
-            <p>
-              Telecom, comisiones y entrenamiento quedan visibles desde la arquitectura
-              actual, pero sin activar integraciones futuras antes de tiempo.
-            </p>
-          </div>
-        </div>
-      </section>
     </div>
   )
 }

@@ -57,7 +57,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
       return false
     }
     if (item.businessUnit && ['telecom', 'seguros', 'finanzas', 'comisiones', 'entrenamiento'].includes(item.businessUnit)) {
-      return true
+      return isAdminLike
     }
     if (item.key === 'telemercadeo' || item.key.startsWith('telemercadeo-')) {
       if (viewMode === 'seller') {
