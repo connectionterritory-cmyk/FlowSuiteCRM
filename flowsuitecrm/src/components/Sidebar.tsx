@@ -56,6 +56,9 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
     if (viewMode === 'seller' && (item.key === 'usuarios' || item.key === 'importaciones')) {
       return false
     }
+    if (item.businessUnit && ['telecom', 'seguros', 'finanzas', 'comisiones', 'entrenamiento'].includes(item.businessUnit)) {
+      return true
+    }
     if (item.key === 'telemercadeo' || item.key.startsWith('telemercadeo-')) {
       if (viewMode === 'seller') {
         return effectiveRole === 'telemercadeo' || effectiveRole === 'supervisor_telemercadeo'
@@ -140,6 +143,23 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
 
     if (!isNavLeafItem(item)) return null
 
+    if (item.disabled) {
+      const badgeLabel = item.badgeLabelKey ? t(item.badgeLabelKey) : null
+
+      return (
+        <div
+          key={item.key}
+          className={`nav-link nav-link-disabled ${depth > 0 ? 'nav-sublink' : ''}`}
+          aria-disabled="true"
+          title={label}
+        >
+          <Icon className="nav-icon" />
+          {isNavExpanded && <span className="nav-label">{label}</span>}
+          {isNavExpanded && badgeLabel && <span className="nav-item-badge">{badgeLabel}</span>}
+        </div>
+      )
+    }
+
     return (
       <NavLink
         key={item.key}
@@ -167,11 +187,14 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="sidebar-top">
         <div className="sidebar-brand">
-          <img
-            src={isNavExpanded ? logoFull : logoMark}
-            alt={t('app.name')}
-            className={isNavExpanded ? 'logo-full' : 'logo-mark'}
-          />
+          <div className="sidebar-brand-stack">
+            <img
+              src={isNavExpanded ? logoFull : logoMark}
+              alt={t('app.name')}
+              className={isNavExpanded ? 'logo-full' : 'logo-mark'}
+            />
+            {isNavExpanded && <span className="sidebar-brand-tagline">CWG Business Hub</span>}
+          </div>
         </div>
         <button
           type="button"

@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconCalendarCheck, IconCustomers, IconLeads, IconWhatsapp } from './icons'
+import { IconCustomers, IconDashboard, IconLeads, IconMoreHorizontal } from './icons'
 import { QuickActionsSheet } from './QuickActionsSheet'
 import type { ActionKey } from './QuickActionsSheet'
 
-export function BottomNav() {
+type BottomNavProps = {
+  onOpenMenu: () => void
+  menuOpen: boolean
+}
+
+export function BottomNav({ onOpenMenu, menuOpen }: BottomNavProps) {
   const { t } = useTranslation()
   const [quickOpen, setQuickOpen] = useState(false)
   const [quickInitial, setQuickInitial] = useState<ActionKey | null>(null)
@@ -23,13 +28,13 @@ export function BottomNav() {
   return (
     <nav className="bottom-nav" aria-label="Mobile">
       <NavLink
-        to="/hoy"
+        to="/hub"
         className={({ isActive }) =>
           `bottom-nav-link ${isActive ? 'active' : ''}`
         }
       >
-        <IconCalendarCheck className="bottom-nav-icon" />
-        <span>{t('nav.hoy')}</span>
+        <IconDashboard className="bottom-nav-icon" />
+        <span>{t('nav.hub')}</span>
       </NavLink>
       <NavLink
         to="/leads"
@@ -57,15 +62,14 @@ export function BottomNav() {
         <IconCustomers className="bottom-nav-icon" />
         <span>{t('nav.clientes')}</span>
       </NavLink>
-      <NavLink
-        to="/inbox"
-        className={({ isActive }) =>
-          `bottom-nav-link ${isActive ? 'active' : ''}`
-        }
+      <button
+        type="button"
+        className={`bottom-nav-link bottom-nav-menu-trigger ${menuOpen ? 'active' : ''}`}
+        onClick={onOpenMenu}
       >
-        <IconWhatsapp className="bottom-nav-icon" />
-        <span>{t('nav.inbox')}</span>
-      </NavLink>
+        <IconMoreHorizontal className="bottom-nav-icon" />
+        <span>{t('nav.mas')}</span>
+      </button>
       <QuickActionsSheet
         open={quickOpen}
         initialAction={quickInitial}

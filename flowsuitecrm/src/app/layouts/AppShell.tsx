@@ -56,6 +56,7 @@ export function AppShell() {
     const titleItems = [
       ...allNavigationItems.map((item) => ({ labelKey: item.labelKey, path: item.path })),
       ...programSubItems,
+      { labelKey: 'nav.hub', path: '/hub' },
       { labelKey: 'nav.perfil', path: '/perfil' },
       { labelKey: 'nav.telemercadeoFiltros', path: '/telemercadeo/filtros' },
     ]
@@ -98,7 +99,15 @@ export function AppShell() {
               <Outlet />
             </main>
           </div>
-          <BottomNav />
+          <BottomNav
+            menuOpen={mobileNavOpen}
+            onOpenMenu={() =>
+              setMobileNavState((prev) => ({
+                open: prev.path === location.pathname ? !prev.open : true,
+                path: location.pathname,
+              }))
+            }
+          />
         </ModalProvider>
       </ViewModeProvider>
     </div>

@@ -1,6 +1,6 @@
 type BadgeProps = {
   label: string
-  tone?: 'neutral' | 'gold' | 'blue'
+  tone?: 'neutral' | 'gold' | 'blue' | 'emerald'
   className?: string
 }
 

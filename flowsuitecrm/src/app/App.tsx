@@ -5,6 +5,7 @@ import { AppShell } from './layouts/AppShell'
 import { useAuth } from '../auth/useAuth'
 
 const DashboardPage = lazy(async () => ({ default: (await import('../modules/dashboard/DashboardPage')).DashboardPage }))
+const HubPage = lazy(async () => ({ default: (await import('../modules/hub/HubPage')).HubPage }))
 const PipelinePage = lazy(async () => ({ default: (await import('../modules/pipeline/PipelinePage')).PipelinePage }))
 const LeadsPage = lazy(async () => ({ default: (await import('../modules/leads/LeadsPage')).LeadsPage }))
 const ClientesPage = lazy(async () => ({ default: (await import('../modules/clientes/ClientesPage')).ClientesPage }))
@@ -75,7 +76,7 @@ function ProtectedRoute() {
 export default function App() {
   const { t } = useTranslation()
   const { session, loading } = useAuth()
-  const defaultPath = session ? '/dashboard' : '/login'
+  const defaultPath = session ? '/hub' : '/login'
 
   if (loading) {
     return <div className="page">{t('common.loading')}</div>
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
+            <Route path="/hub" element={<HubPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/hoy" element={<HoyPage />} />
             <Route path="/cierres" element={<CierresPage />} />
@@ -112,7 +114,6 @@ export default function App() {
             <Route path="/conexiones-infinitas" element={<ConexionesInfinitasPage />} />
             <Route path="/4en14" element={<Programa4en14Page />} />
             <Route path="/servicio-cliente" element={<ServicioClientePage />} />
-            <Route path="/citas" element={<CitasPage />} />
             <Route path="/telemercadeo" element={<TelemercadeoPage />}>
               <Route index element={<Navigate to="/telemercadeo/cartera" replace />} />
               <Route path="gestiones" element={<TelemercadeoGestionesPage />} />

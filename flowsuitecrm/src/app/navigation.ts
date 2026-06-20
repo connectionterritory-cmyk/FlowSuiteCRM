@@ -1,16 +1,21 @@
 import type { ComponentType } from 'react'
 import {
+  IconBriefcase,
   IconCalendarCheck,
   IconCalendarClock,
   IconCustomers,
+  IconDashboard,
+  IconFinance,
+  IconInsurance,
   IconLeads,
-  IconMoreHorizontal,
   IconNavigation,
   IconPipeline,
   IconProducts,
   IconPrograms,
   IconService,
   IconShieldCheck,
+  IconTelecom,
+  IconTraining,
   IconUsers,
   IconSales,
   IconWhatsapp,
@@ -23,6 +28,9 @@ export type NavLeafItem = {
   path: string
   icon: ComponentType<{ className?: string }>
   children?: NavItem[]
+  disabled?: boolean
+  badgeLabelKey?: string
+  businessUnit?: 'telecom' | 'seguros' | 'finanzas' | 'comisiones' | 'entrenamiento' | 'royal_prestige'
 }
 
 export type NavGroupItem = {
@@ -48,51 +56,58 @@ export type NavSubItem = {
 
 export const navItems: NavItem[] = [
   {
-    key: 'hoy',
-    labelKey: 'nav.hoy',
-    path: '/hoy',
-    icon: IconCalendarCheck,
-  },
-  {
-    key: 'leads',
-    labelKey: 'nav.leads',
-    path: '/leads',
-    icon: IconLeads,
-  },
-  {
-    key: 'clientes',
-    labelKey: 'nav.clientes',
-    path: '/clientes',
-    icon: IconCustomers,
-  },
-  {
-    key: 'pipeline',
-    labelKey: 'nav.pipeline',
-    path: '/pipeline',
-    icon: IconPipeline,
-  },
-  {
-    key: 'cartera',
-    labelKey: 'nav.cartera',
-    path: '/cartera',
-    icon: IconWallet,
-  },
-  {
-    key: 'inbox',
-    labelKey: 'nav.inbox',
-    path: '/inbox',
-    icon: IconWhatsapp,
-  },
-  {
-    key: 'mas',
-    labelKey: 'nav.mas',
-    icon: IconMoreHorizontal,
+    key: 'inicio',
+    labelKey: 'nav.inicio',
+    icon: IconDashboard,
     children: [
       {
-        key: 'campo',
-        labelKey: 'nav.campo',
-        path: '/campo',
-        icon: IconNavigation,
+        key: 'hub',
+        labelKey: 'nav.hub',
+        path: '/hub',
+        icon: IconDashboard,
+      },
+      {
+        key: 'dashboard',
+        labelKey: 'nav.dashboard',
+        path: '/dashboard',
+        icon: IconDashboard,
+      },
+      {
+        key: 'hoy',
+        labelKey: 'nav.hoy',
+        path: '/hoy',
+        icon: IconCalendarCheck,
+      },
+      {
+        key: 'inbox',
+        labelKey: 'nav.inbox',
+        path: '/inbox',
+        icon: IconWhatsapp,
+      },
+    ],
+  },
+  {
+    key: 'crm',
+    labelKey: 'nav.crm',
+    icon: IconCustomers,
+    children: [
+      {
+        key: 'leads',
+        labelKey: 'nav.leads',
+        path: '/leads',
+        icon: IconLeads,
+      },
+      {
+        key: 'clientes',
+        labelKey: 'nav.clientes',
+        path: '/clientes',
+        icon: IconCustomers,
+      },
+      {
+        key: 'pipeline',
+        labelKey: 'nav.pipeline',
+        path: '/pipeline',
+        icon: IconPipeline,
       },
       {
         key: 'citas',
@@ -101,34 +116,57 @@ export const navItems: NavItem[] = [
         icon: IconCalendarClock,
       },
       {
+        key: 'campo',
+        labelKey: 'nav.campo',
+        path: '/campo',
+        icon: IconNavigation,
+      },
+    ],
+  },
+  {
+    key: 'royal-prestige',
+    labelKey: 'nav.royalPrestige',
+    icon: IconBriefcase,
+    children: [
+      {
         key: 'ventas',
         labelKey: 'nav.ventas',
         path: '/ventas',
         icon: IconSales,
+        businessUnit: 'royal_prestige',
       },
       {
-        key: 'marketing-flow',
-        labelKey: 'nav.marketingFlow',
-        path: '/marketing-flow',
-        icon: IconLeads,
+        key: 'catalogo-productos',
+        labelKey: 'nav.catalogoProductos',
+        path: '/catalogo',
+        icon: IconProducts,
+        businessUnit: 'royal_prestige',
+      },
+      {
+        key: 'cartera',
+        labelKey: 'nav.cartera',
+        path: '/cartera',
+        icon: IconWallet,
+        businessUnit: 'royal_prestige',
       },
       {
         key: 'telemercadeo',
         labelKey: 'nav.telemercadeo',
         path: '/telemercadeo',
         icon: IconUsers,
+        businessUnit: 'royal_prestige',
         children: [
-          {
-            key: 'telemercadeo-gestiones',
-            labelKey: 'nav.telemercadeoGestiones',
-            path: '/telemercadeo/gestiones',
-            icon: IconUsers,
-          },
           {
             key: 'telemercadeo-cartera',
             labelKey: 'nav.telemercadeoCartera',
             path: '/telemercadeo/cartera',
             icon: IconWallet,
+          },
+          {
+            key: 'telemercadeo-gestiones',
+            labelKey: 'nav.telemercadeoGestiones',
+            path: '/telemercadeo/gestiones',
+            icon: IconUsers,
           },
           {
             key: 'telemercadeo-cumpleanos',
@@ -151,23 +189,23 @@ export const navItems: NavItem[] = [
         ],
       },
       {
-        key: 'productos',
-        labelKey: 'nav.productos',
-        path: '/productos',
-        icon: IconProducts,
-      },
-      {
-        key: 'catalogo-productos',
-        labelKey: 'nav.catalogoProductos',
-        path: '/catalogo',
-        icon: IconProducts,
+        key: 'marketing-flow',
+        labelKey: 'nav.marketingFlow',
+        path: '/marketing-flow',
+        icon: IconLeads,
+        businessUnit: 'royal_prestige',
       },
       {
         key: 'programas',
         labelKey: 'nav.programas',
-        path: '/programas',
         icon: IconPrograms,
         children: [
+          {
+            key: 'programas-index',
+            labelKey: 'nav.programas',
+            path: '/programas',
+            icon: IconPrograms,
+          },
           {
             key: 'programa4en14',
             labelKey: 'nav.programa4en14',
@@ -182,11 +220,98 @@ export const navItems: NavItem[] = [
           },
         ],
       },
+    ],
+  },
+  {
+    key: 'telecom',
+    labelKey: 'nav.telecom',
+    icon: IconTelecom,
+    children: [
       {
-        key: 'servicio-cliente',
-        labelKey: 'nav.servicioCliente',
-        path: '/servicio-cliente',
-        icon: IconService,
+        key: 'telecom-placeholder',
+        labelKey: 'nav.proximamente',
+        path: '/hub/telecom',
+        icon: IconTelecom,
+        disabled: true,
+        badgeLabelKey: 'nav.proximamente',
+        businessUnit: 'telecom',
+      },
+    ],
+  },
+  {
+    key: 'seguros',
+    labelKey: 'nav.seguros',
+    icon: IconInsurance,
+    children: [
+      {
+        key: 'seguros-placeholder',
+        labelKey: 'nav.requiereLicencia',
+        path: '/hub/seguros',
+        icon: IconInsurance,
+        disabled: true,
+        badgeLabelKey: 'nav.requiereLicencia',
+        businessUnit: 'seguros',
+      },
+    ],
+  },
+  {
+    key: 'finanzas',
+    labelKey: 'nav.finanzas',
+    icon: IconFinance,
+    children: [
+      {
+        key: 'finanzas-placeholder',
+        labelKey: 'nav.proximamente',
+        path: '/hub/finanzas',
+        icon: IconFinance,
+        disabled: true,
+        badgeLabelKey: 'nav.proximamente',
+        businessUnit: 'finanzas',
+      },
+    ],
+  },
+  {
+    key: 'comisiones',
+    labelKey: 'nav.comisiones',
+    icon: IconBriefcase,
+    children: [
+      {
+        key: 'comisiones-placeholder',
+        labelKey: 'nav.proximamente',
+        path: '/hub/comisiones',
+        icon: IconBriefcase,
+        disabled: true,
+        badgeLabelKey: 'nav.proximamente',
+        businessUnit: 'comisiones',
+      },
+    ],
+  },
+  {
+    key: 'entrenamiento',
+    labelKey: 'nav.entrenamiento',
+    icon: IconTraining,
+    children: [
+      {
+        key: 'entrenamiento-placeholder',
+        labelKey: 'nav.proximamente',
+        path: '/hub/entrenamiento',
+        icon: IconTraining,
+        disabled: true,
+        badgeLabelKey: 'nav.proximamente',
+        businessUnit: 'entrenamiento',
+      },
+    ],
+  },
+  {
+    key: 'administracion',
+    labelKey: 'nav.administracion',
+    icon: IconShieldCheck,
+    children: [
+      {
+        key: 'usuarios',
+        labelKey: 'nav.usuarios',
+        path: '/usuarios',
+        icon: IconShieldCheck,
       },
       {
         key: 'importaciones',
@@ -195,10 +320,10 @@ export const navItems: NavItem[] = [
         icon: IconProducts,
       },
       {
-        key: 'usuarios',
-        labelKey: 'nav.usuarios',
-        path: '/usuarios',
-        icon: IconShieldCheck,
+        key: 'servicio-cliente',
+        labelKey: 'nav.servicioCliente',
+        path: '/servicio-cliente',
+        icon: IconService,
       },
     ],
   },

@@ -1,4 +1,13 @@
 {
+  "scripts": {
+    "sb:check-all": "bash scripts/supabase-manage.sh flowsuitecrm migration-list && bash scripts/supabase-manage.sh root migration-list",
+    "sb:status": "bash scripts/supabase-manage.sh flowsuitecrm status",
+    "sb:status:root": "bash scripts/supabase-manage.sh root status",
+    "sb:migrations": "bash scripts/supabase-manage.sh flowsuitecrm migration-list",
+    "sb:migrations:root": "bash scripts/supabase-manage.sh root migration-list",
+    "sb:push": "bash scripts/supabase-manage.sh flowsuitecrm db-push",
+    "sb:push:root": "bash scripts/supabase-manage.sh root db-push"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
     "dotenv": "^17.3.1",

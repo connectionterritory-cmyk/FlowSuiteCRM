@@ -23,6 +23,60 @@ export function IconDashboard(props: IconProps) {
   )
 }
 
+export function IconTelecom(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
+      <path d="M10 6h4" />
+      <circle cx="12" cy="18" r="0.8" fill="currentColor" stroke="none" />
+      <path d="M5 8c-1.6 1.3-2.5 3.1-2.5 5s.9 3.7 2.5 5" />
+      <path d="M19 8c1.6 1.3 2.5 3.1 2.5 5s-.9 3.7-2.5 5" />
+    </svg>
+  )
+}
+
+export function IconInsurance(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 3l7 3v5c0 4.7-2.9 8.8-7 10.5C7.9 19.8 5 15.7 5 11V6z" />
+      <path d="M9.5 12.5l1.8 1.8 3.5-4" />
+    </svg>
+  )
+}
+
+export function IconFinance(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M4 19h16" />
+      <path d="M6 16V9" />
+      <path d="M10 16V5" />
+      <path d="M14 16v-3" />
+      <path d="M18 16V7" />
+      <path d="M4 9l4-4 4 3 6-4 2 1.5" />
+    </svg>
+  )
+}
+
+export function IconTraining(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M3 8l9-4 9 4-9 4-9-4z" />
+      <path d="M7 10.5v4.5c0 1.7 2.2 3 5 3s5-1.3 5-3v-4.5" />
+      <path d="M21 10v5" />
+    </svg>
+  )
+}
+
+export function IconBriefcase(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="7" width="18" height="12" rx="2" />
+      <path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" />
+      <path d="M3 12h18" />
+    </svg>
+  )
+}
+
 export function IconCalendarCheck(props: IconProps) {
   return (
     <svg {...baseProps} viewBox="0 0 24 24" {...props}>
