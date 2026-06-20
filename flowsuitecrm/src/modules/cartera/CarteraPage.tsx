@@ -3741,6 +3741,7 @@ export function CarteraPage() {
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
   const [dfpCaseIdSet, setDfpCaseIdSet] = useState<Set<string>>(new Set())
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
+  const detailPanelRef = useRef<HTMLDivElement>(null)
 
   const loadCases = async () => {
     setLoading(true)
@@ -4002,6 +4003,13 @@ export function CarteraPage() {
     setSelectedCase(caso)
     if (isMobile) setMobileView('detail')
   }
+
+  useEffect(() => {
+    if (!selectedCase) return
+    requestAnimationFrame(() => {
+      detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [selectedCase?.id])
 
   const currentIndex = selectedCase ? filtered.findIndex(c => c.id === selectedCase.id) : -1
   const hasPrevious = currentIndex > 0
@@ -4373,7 +4381,7 @@ export function CarteraPage() {
       </div>
 
       {/* Right: case detail */}
-      <div style={{ flex: 1, display: showDetailPane ? 'block' : 'none', height: isMobile ? 'auto' : '100%', minWidth: isMobile ? 0 : undefined, overflow: isMobile ? 'visible' : 'hidden' }}>
+      <div ref={detailPanelRef} style={{ flex: 1, display: showDetailPane ? 'block' : 'none', height: isMobile ? 'auto' : '100%', minWidth: isMobile ? 0 : undefined, overflow: isMobile ? 'visible' : 'hidden' }}>
         {isMobile && selectedCase && (
           <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.85rem', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface, var(--color-bg))' }}>
             <button
