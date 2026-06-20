@@ -3403,6 +3403,72 @@ function HistorialList({ events, usersById }: { events: HistorialEvent[]; usersB
   )
 }
 
+function KpiCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: { border: string; text: string; bg: string }
+}) {
+  return (
+    <div style={{ padding: '0.7rem 0.8rem', borderRadius: '0.6rem', border: `1px solid ${tone.border}`, background: tone.bg }}>
+      <p style={{ margin: '0 0 0.25rem', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>{label}</p>
+      <p style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: tone.text }}>{value}</p>
+    </div>
+  )
+}
+
+function CarteraEmptyState({
+  urgentCount,
+  reviewCount,
+  ptpVencidoCount,
+  acuerdoActivoCount,
+  onViewUrgent,
+  onViewReview,
+}: {
+  urgentCount: number
+  reviewCount: number
+  ptpVencidoCount: number
+  acuerdoActivoCount: number
+  onViewUrgent: () => void
+  onViewReview: () => void
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '100%', padding: '1.5rem', gap: '1rem' }}>
+      <div style={{ padding: '1rem 1.1rem', borderRadius: '0.9rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(15,118,110,0.08), rgba(37,99,235,0.05))' }}>
+        <p style={{ margin: '0 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-text)' }}>Workspace de cartera</p>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+          Revisa urgentes, clasificaciones mixtas y acuerdos activos antes de abrir un caso.
+        </p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+        <KpiCard label="Urgentes" value={String(urgentCount)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
+        <KpiCard label="Hibridos / revisar" value={String(reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
+        <KpiCard label="PTP vencidos" value={String(ptpVencidoCount)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
+        <KpiCard label="Acuerdos activos" value={String(acuerdoActivoCount)} tone={{ border: '#10b98144', text: '#059669', bg: 'rgba(16,185,129,0.08)' }} />
+      </div>
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={onViewReview}
+          style={{ padding: '0.55rem 0.9rem', borderRadius: '0.55rem', border: '1px solid #b4530944', background: 'rgba(217,119,6,0.1)', color: '#b45309', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
+        >
+          Ver hibridos
+        </button>
+        <button
+          type="button"
+          onClick={onViewUrgent}
+          style={{ padding: '0.55rem 0.9rem', borderRadius: '0.55rem', border: '1px solid #dc262644', background: 'rgba(220,38,38,0.08)', color: '#dc2626', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
+        >
+          Ver urgentes
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main CarteraPage ──────────────────────────────────────────────────────────
 
 type QuickFilterKey =
@@ -3627,8 +3693,16 @@ export function CarteraPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cases, lastGestionByCase, ptpVencidoSet])
 
+  const classificationByCaseId = useMemo(() => {
+    const map = new Map<string, CarteraClassification>()
+    for (const c of cases) {
+      map.set(c.id, classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null))
+    }
+    return map
+  }, [cases, dfpCaseIdSet])
+
   const matchesPrimaryTab = (c: Case, tab: CarteraPrimaryTab): boolean => {
-    const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
+    const classification = classificationByCaseId.get(c.id) ?? 'sin_clasificar'
     switch (tab) {
       case 'todos':
         return true
@@ -3651,6 +3725,40 @@ export function CarteraPage() {
         return c.estado === 'Cerrado'
     }
   }
+
+  const kpiMetrics = useMemo(() => {
+    const cargoConfirmado = cases.filter(c => (classificationByCaseId.get(c.id) ?? 'sin_clasificar') === 'cargo_vuelta_confirmado')
+    const reviewCases = cases.filter(c => {
+      const classification = classificationByCaseId.get(c.id) ?? 'sin_clasificar'
+      return classification === 'hibrido_revisar'
+        || classification === 'dfp_incompleto_revisar'
+        || classification === 'sin_clasificar'
+    })
+    const recoveryRelated = cases.filter(c => {
+      const classification = classificationByCaseId.get(c.id) ?? 'sin_clasificar'
+      return classification === 'cargo_vuelta_confirmado' || classification === 'hibrido_revisar'
+    })
+    const balancePendienteRecuperar = cargoConfirmado.reduce((sum, c) => sum + Number(c.monto_devuelto ?? c.monto_total ?? 0), 0)
+    const ptpVencidos = recoveryRelated.filter(c => ptpVencidoSet.has(c.id)).length
+    const urgentes = cases.filter(c =>
+      ptpVencidoSet.has(c.id)
+      || !lastGestionByCase[c.id]
+      || c.dias_vencido >= 90
+      || (c.monto_devuelto ?? c.monto_total) >= 500,
+    ).length
+    const cerrados = cases.filter(c => c.estado === 'Cerrado').length
+    const acuerdosActivos = cases.filter(c => c.estado === 'Acuerdo').length
+
+    return {
+      cargoConfirmadoCount: cargoConfirmado.length,
+      reviewCount: reviewCases.length,
+      balancePendienteRecuperar,
+      ptpVencidos,
+      urgentes,
+      cerrados,
+      acuerdosActivos,
+    }
+  }, [cases, classificationByCaseId, lastGestionByCase, ptpVencidoSet])
 
   const filtered = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -3697,7 +3805,12 @@ export function CarteraPage() {
         {/* Search + responsable */}
         <div style={{ padding: '0.75rem 1rem 0.6rem', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Cartera</h2>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Financiamiento y Recuperacion</h2>
+              <p style={{ margin: '0.12rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                DFP, cargo de vuelta, acuerdos de pago y seguimiento de cartera
+              </p>
+            </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
               {loading ? '…' : `${filtered.length} de ${cases.length}`}
             </span>
@@ -3757,6 +3870,17 @@ export function CarteraPage() {
                 </button>
               )
             })}
+          </div>
+        </div>
+
+        <div style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
+            <KpiCard label="Cargo de vuelta confirmado" value={String(kpiMetrics.cargoConfirmadoCount)} tone={{ border: '#47556933', text: '#475569', bg: 'rgba(100,116,139,0.08)' }} />
+            <KpiCard label="Hibridos / revisar" value={String(kpiMetrics.reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
+            <KpiCard label="Balance por recuperar" value={fmtMonto(kpiMetrics.balancePendienteRecuperar)} tone={{ border: '#0f766e33', text: '#0f766e', bg: 'rgba(15,118,110,0.08)' }} />
+            <KpiCard label="PTP vencidos" value={String(kpiMetrics.ptpVencidos)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
+            <KpiCard label="Casos urgentes" value={String(kpiMetrics.urgentes)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
+            <KpiCard label="Casos cerrados" value={String(kpiMetrics.cerrados)} tone={{ border: '#6b728044', text: '#6b7280', bg: 'rgba(107,114,128,0.08)' }} />
           </div>
         </div>
 
@@ -3967,10 +4091,20 @@ export function CarteraPage() {
             onNext={handleNext}
           />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '0.5rem' }}>
-            <div style={{ fontSize: '2.5rem' }}>👈</div>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>Selecciona un caso para ver el detalle</p>
-          </div>
+          <CarteraEmptyState
+            urgentCount={kpiMetrics.urgentes}
+            reviewCount={kpiMetrics.reviewCount}
+            ptpVencidoCount={kpiMetrics.ptpVencidos}
+            acuerdoActivoCount={kpiMetrics.acuerdosActivos}
+            onViewReview={() => {
+              setPrimaryTab('hibridos')
+              setQuickFilter(null)
+            }}
+            onViewUrgent={() => {
+              setPrimaryTab('urgentes')
+              setQuickFilter(null)
+            }}
+          />
         )}
       </div>
     </div>
