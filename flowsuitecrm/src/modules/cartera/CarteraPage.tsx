@@ -3428,6 +3428,15 @@ const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: 
 
 type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: string | null }
 
+type CarteraPrimaryTab =
+  | 'todos'
+  | 'cargo_vuelta'
+  | 'dfp'
+  | 'hibridos'
+  | 'acuerdos_activos'
+  | 'urgentes'
+  | 'cerrados'
+
 export function CarteraPage() {
   const { isMobile, isTablet } = useBreakpoint()
   const { usersById } = useUsers()
@@ -3441,7 +3450,7 @@ export function CarteraPage() {
   const [responsableFiltro, setResponsableFiltro] = useState<string>('all')
   const [selectedCase, setSelectedCase] = useState<Case | null>(null)
   const [quickFilter, setQuickFilter] = useState<QuickFilterKey | null>(null)
-  const [tipoCasoFiltro, setTipoCasoFiltro] = useState<'todos' | 'dfp' | 'cargo_vuelta'>('todos')
+  const [primaryTab, setPrimaryTab] = useState<CarteraPrimaryTab>('todos')
   const [lastGestionByCase, setLastGestionByCase] = useState<Record<string, LastGestionInfo>>({})
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
   const [dfpCaseIdSet, setDfpCaseIdSet] = useState<Set<string>>(new Set())
@@ -3618,6 +3627,31 @@ export function CarteraPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cases, lastGestionByCase, ptpVencidoSet])
 
+  const matchesPrimaryTab = (c: Case, tab: CarteraPrimaryTab): boolean => {
+    const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
+    switch (tab) {
+      case 'todos':
+        return true
+      case 'cargo_vuelta':
+        return classification === 'cargo_vuelta_confirmado'
+      case 'dfp':
+        return classification === 'dfp_confirmado'
+      case 'hibridos':
+        return classification === 'hibrido_revisar'
+          || classification === 'dfp_incompleto_revisar'
+          || classification === 'sin_clasificar'
+      case 'acuerdos_activos':
+        return c.estado === 'Acuerdo'
+      case 'urgentes':
+        return matchesQuickFilter(c, 'ptp_vencido')
+          || matchesQuickFilter(c, 'sin_gestion')
+          || matchesQuickFilter(c, '90_mas')
+          || matchesQuickFilter(c, 'alto_monto')
+      case 'cerrados':
+        return c.estado === 'Cerrado'
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     return cases.filter(c => {
@@ -3627,13 +3661,12 @@ export function CarteraPage() {
         if (!nombre.includes(q) && !hid.includes(q)) return false
       }
       if (responsableFiltro !== 'all' && c.updated_by !== responsableFiltro) return false
-      if (tipoCasoFiltro === 'dfp' && c.tipo_caso !== 'dfp') return false
-      if (tipoCasoFiltro === 'cargo_vuelta' && c.tipo_caso !== 'cargo_vuelta') return false
+      if (!matchesPrimaryTab(c, primaryTab)) return false
       if (quickFilter) return matchesQuickFilter(c, quickFilter)
       return true
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, busqueda, responsableFiltro, quickFilter, tipoCasoFiltro, lastGestionByCase, ptpVencidoSet])
+  }, [cases, busqueda, responsableFiltro, quickFilter, primaryTab, lastGestionByCase, ptpVencidoSet, dfpCaseIdSet])
 
   const handleCaseUpdated = () => void loadCases()
 
@@ -3689,13 +3722,37 @@ export function CarteraPage() {
             </select>
           )}
           <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.4rem' }}>
-            {(['todos', 'dfp', 'cargo_vuelta'] as const).map(t => {
-              const labels = { todos: 'Todos', dfp: 'DFP', cargo_vuelta: 'Cargo vuelta' }
-              const colors = { todos: '#6b7280', dfp: '#2563eb', cargo_vuelta: '#475569' }
-              const active = tipoCasoFiltro === t
+            {([
+              'todos',
+              'cargo_vuelta',
+              'dfp',
+              'hibridos',
+              'acuerdos_activos',
+              'urgentes',
+              'cerrados',
+            ] as const).map(t => {
+              const labels: Record<CarteraPrimaryTab, string> = {
+                todos: 'Todos',
+                cargo_vuelta: 'Cargo de vuelta',
+                dfp: 'DFP',
+                hibridos: 'Hibridos / revisar',
+                acuerdos_activos: 'Acuerdos activos',
+                urgentes: 'Urgentes',
+                cerrados: 'Cerrados',
+              }
+              const colors: Record<CarteraPrimaryTab, string> = {
+                todos: '#6b7280',
+                cargo_vuelta: '#475569',
+                dfp: '#2563eb',
+                hibridos: '#b45309',
+                acuerdos_activos: '#10b981',
+                urgentes: '#dc2626',
+                cerrados: '#6b7280',
+              }
+              const active = primaryTab === t
               return (
-                <button key={t} type="button" onClick={() => setTipoCasoFiltro(t)}
-                  style={{ flex: 1, padding: '0.2rem 0.3rem', borderRadius: '0.35rem', border: `1px solid ${active ? colors[t] : 'var(--color-border)'}`, background: active ? colors[t] + '22' : 'transparent', color: active ? colors[t] : 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700 }}>
+                <button key={t} type="button" onClick={() => setPrimaryTab(t)}
+                  style={{ padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: `1px solid ${active ? colors[t] : 'var(--color-border)'}`, background: active ? colors[t] + '22' : 'transparent', color: active ? colors[t] : 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                   {labels[t]}
                 </button>
               )
