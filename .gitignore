@@ -64,3 +64,8 @@ flowsuitecrm/outputs/
 # Local OCR/security test files
 test_ocr_approval.ts
 **/test_ocr_approval.ts
+
+# Local temporary files and tool state
+tmp/
+flowsuitecrm/tmp/
+skills-lock.json
