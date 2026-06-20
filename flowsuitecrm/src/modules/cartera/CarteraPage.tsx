@@ -1428,18 +1428,20 @@ function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; labe
       disabled={disabled}
       onClick={onClick}
       style={{
-        width: '28px',
-        height: '28px',
-        borderRadius: '0.4rem',
+        minWidth: '30px',
+        height: '30px',
+        borderRadius: '0.55rem',
         border: '1px solid var(--color-border)',
-        background: disabled ? 'var(--color-surface-strong)' : 'var(--color-card)',
+        background: disabled ? 'var(--color-surface-strong)' : 'rgba(255,255,255,0.72)',
         color: disabled ? 'var(--color-text-muted)' : 'var(--color-text)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
-        fontSize: '0.85rem'
+        fontSize: '0.82rem',
+        boxShadow: disabled ? 'none' : '0 1px 3px rgba(15,23,42,0.08)',
+        backdropFilter: 'blur(8px)',
       }}
     >
       {icon}
@@ -3947,34 +3949,134 @@ export function CarteraPage() {
               const lastG = lastGestionByCase[c.id]
               const hasPtpVencido = ptpVencidoSet.has(c.id)
               const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
+              const tone = getClassificationBadgeTone(classification)
+              const primaryMetricLabel = classification === 'dfp_confirmado'
+                ? 'Balance financiero'
+                : 'Balance por recuperar'
+              const primaryMetricValue = sinMonto ? 'No disponible' : fmtMonto(displayAmount)
+              const lastGestionText = lastG
+                ? `${lastG.tipo_gestion}${lastG.resultado ? ` · ${lastG.resultado}` : ''} · ${fmtFecha(lastG.created_at)}`
+                : 'Sin gestion'
+              const classificationHint = (() => {
+                switch (classification) {
+                  case 'cargo_vuelta_confirmado':
+                    return 'Cuenta devuelta por HyCite'
+                  case 'hibrido_revisar':
+                    return 'Recovery + DFP'
+                  case 'dfp_confirmado':
+                    return 'Cuenta financiada directamente'
+                  case 'dfp_incompleto_revisar':
+                    return 'Requiere revisar la cuenta DFP'
+                  case 'sin_clasificar':
+                  default:
+                    return 'Requiere revision administrativa'
+                }
+              })()
+              const actionLabel = (() => {
+                switch (classification) {
+                  case 'cargo_vuelta_confirmado':
+                    return 'Gestionar recuperacion'
+                  case 'hibrido_revisar':
+                    return 'Revisar cuenta'
+                  case 'dfp_confirmado':
+                    return 'Enviar statement'
+                  case 'dfp_incompleto_revisar':
+                  case 'sin_clasificar':
+                  default:
+                    return 'Revisar clasificacion'
+                }
+              })()
+              const secondaryFacts = (() => {
+                switch (classification) {
+                  case 'hibrido_revisar':
+                    return [
+                      `Recovery: ${primaryMetricValue}`,
+                      'DFP disponible',
+                      'Statement disponible',
+                    ]
+                  case 'dfp_confirmado':
+                    return [
+                      'Cuenta DFP',
+                      'Statement disponible',
+                    ]
+                  case 'dfp_incompleto_revisar':
+                  case 'sin_clasificar':
+                    return [
+                      'Requiere revision administrativa',
+                    ]
+                  case 'cargo_vuelta_confirmado':
+                  default:
+                    return [
+                      c.estado,
+                      `${c.dias_vencido} dias vencido`,
+                    ]
+                }
+              })()
               return (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => handleSelectCase(c)}
-                  style={{ width: '100%', textAlign: 'left', padding: '0.65rem 1rem', border: 'none', borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-primary-subtle, rgba(59,130,246,0.08))' : 'transparent', cursor: 'pointer', borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent' }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '0.85rem 0.95rem',
+                    border: 'none',
+                    borderBottom: '1px solid var(--color-border)',
+                    background: isSelected ? 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(255,255,255,0.5))' : 'transparent',
+                    cursor: 'pointer',
+                    borderLeft: isSelected ? `3px solid ${tone.color}` : '3px solid transparent',
+                  }}
                 >
-                  {/* Row 1: nombre + monto */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-                      {c.en_proceso_legal && <span title="En proceso legal" style={{ marginRight: '0.3rem' }}>⚖️</span>}
-                      {nombreCliente(c.clientes)}
-                    </span>
-                    {sinMonto ? (
-                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d97706', flexShrink: 0, padding: '0.1rem 0.4rem', borderRadius: '0.3rem', background: 'rgba(217,119,6,0.1)' }}>Sin monto</span>
-                    ) : (
-                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: dColor, flexShrink: 0 }}>{fmtMonto(displayAmount)}</span>
-                    )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                          <ClassificationBadge classification={classification} />
+                          {hasPtpVencido && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.64rem', fontWeight: 700, background: '#dc262612', color: '#dc2626', border: '1px solid #dc262633' }}>PTP vencido</span>}
+                          {c.en_proceso_legal && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.64rem', fontWeight: 700, background: '#33415512', color: '#334155', border: '1px solid #33415533' }}>Legal</span>}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {nombreCliente(c.clientes)}
+                        </div>
+                        <div style={{ marginTop: '0.12rem', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.71rem', color: 'var(--color-text-muted)' }}>
+                          {c.clientes?.hycite_id && <span>#{c.clientes.hycite_id}</span>}
+                          <span>{classificationHint}</span>
+                        </div>
+                      </div>
+                      <div style={{ flexShrink: 0, textAlign: 'right', minWidth: '120px' }}>
+                        <p style={{ margin: 0, fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{primaryMetricLabel}</p>
+                        <p style={{ margin: '0.14rem 0 0', fontSize: '0.92rem', fontWeight: 800, color: classification === 'hibrido_revisar' ? '#b45309' : classification === 'dfp_confirmado' ? '#0f766e' : dColor }}>
+                          {primaryMetricValue}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
+                      <div style={{ padding: '0.45rem 0.55rem', borderRadius: '0.55rem', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.16)' }}>
+                        <p style={{ margin: '0 0 0.12rem', fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{classification === 'dfp_confirmado' ? 'Estado de cuenta' : 'Estado actual'}</p>
+                        <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-text)' }}>{secondaryFacts[0]}</p>
+                      </div>
+                      <div style={{ padding: '0.45rem 0.55rem', borderRadius: '0.55rem', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.16)' }}>
+                        <p style={{ margin: '0 0 0.12rem', fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{classification === 'dfp_confirmado' ? 'Accion sugerida' : 'Seguimiento'}</p>
+                        <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-text)' }}>{secondaryFacts[1] ?? actionLabel}</p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ultima gestion</p>
+                        <p style={{ margin: '0.16rem 0 0', fontSize: '0.72rem', color: lastG ? 'var(--color-text-muted)' : '#b45309', fontWeight: lastG ? 500 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {lastGestionText}
+                        </p>
+                      </div>
+                      <span style={{ flexShrink: 0, padding: '0.4rem 0.7rem', borderRadius: '999px', background: tone.background, color: tone.color, border: `1px solid ${tone.border}`, fontSize: '0.7rem', fontWeight: 800 }}>
+                        {actionLabel}
+                      </span>
+                    </div>
                   </div>
-                  {/* Row 2: estado + días + PTP badge */}
-                  <div style={{ marginTop: '0.22rem', display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 700, background: dColor + '22', color: dColor }}>{c.dias_vencido}d</span>
-                    <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 600, background: estadoColor(c.estado) + '22', color: estadoColor(c.estado) }}>{c.estado}</span>
-                    <ClassificationBadge classification={classification} />
-                    {hasPtpVencido && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, background: '#dc262622', color: '#dc2626' }}>PTP vencido</span>}
-                    {c.clientes?.hycite_id && <span style={{ fontSize: '0.67rem', color: 'var(--color-text-muted)' }}>#{c.clientes.hycite_id}</span>}
-                  </div>
-                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem' }}>
+
+                  <div style={{ marginTop: '0.05rem', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <QuickActionBtn
                       icon="📞"
                       label="Llamar"
@@ -4045,14 +4147,6 @@ export function CarteraPage() {
                       }}
                     />
                   </div>
-                  {/* Row 3: última gestión */}
-                  {lastG ? (
-                    <p style={{ margin: '0.18rem 0 0', fontSize: '0.69rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      📞 {lastG.tipo_gestion}{lastG.resultado ? ` · ${lastG.resultado}` : ''} · {fmtFecha(lastG.created_at)}
-                    </p>
-                  ) : (
-                    <p style={{ margin: '0.18rem 0 0', fontSize: '0.69rem', color: '#f59e0b', fontWeight: 600 }}>⚠️ Sin gestiones registradas</p>
-                  )}
                 </button>
               )
             })
