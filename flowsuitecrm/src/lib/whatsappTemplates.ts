@@ -371,6 +371,13 @@ export const baseTemplates: WhatsappTemplate[] = [
     message:
       'Hola {nombre}. Te confirmamos tu acuerdo de pago del caso #{caso_numero}:\n\n- Acuerdo iniciado el {agreement_date}\n- Primer pago recibido: USD {primer_pago_monto} ({primer_pago_fecha})\n- Balance en esa fecha: USD {balance_al_acuerdo}\n- Pago mensual: USD {pago_mensual}\n- Fecha de cobro: día {dia_debito} de cada mes\n- Método: {metodo_pago}\n- Fee por uso de tarjeta: {fee_tarjeta_pct}% por cada cobro\n\nSi necesitas apoyo, contáctanos al {telefono_oficina}.\nConnection Worldwide Group – Distribuidor Autorizado de Royal Prestige.',
   },
+  {
+    id: 'cartera.estado_cuenta_dfp',
+    category: 'cartera',
+    label: 'Estado de cuenta DFP / revolving',
+    message:
+      'Hola {nombre}. Tu estado de cuenta DFP más reciente:\n\n- Período: {periodo}\n- Nuevo balance: {nuevo_balance}\n- Pago mínimo: {pago_minimo}\n- Fecha de vencimiento: {fecha_vencimiento}\n\nSi necesitas apoyo, contáctanos al {telefono_oficina}.',
+  },
 
   // ── Campaña FrescaFlow Abril ────────────────────────────────────────────────
   {

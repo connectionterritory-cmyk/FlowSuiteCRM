@@ -307,6 +307,31 @@ Distribuidor Autorizado de Royal Prestige
 Tel. {telefono_oficina}
 `,
   },
+  {
+    id: 'cartera.estado_cuenta_dfp',
+    category: 'cartera',
+    label: 'Estado de cuenta DFP / revolving',
+    subject: 'Estado de cuenta DFP — {periodo}',
+    message: `Hola {nombre},
+
+Le compartimos el resumen más reciente de su estado de cuenta DFP/revolving:
+
+- Período: {periodo}
+- Balance previo: {balance_previo}
+- Compras del período: {compras_periodo}
+- Cargos por interés: {cargos_interes}
+- Pagos del período: {pagos_periodo}
+- Nuevo balance: {nuevo_balance}
+- Pago mínimo: {pago_minimo}
+- Fecha de vencimiento: {fecha_vencimiento}
+
+Si tiene alguna pregunta o desea apoyo para revisar su cuenta, puede comunicarse con nuestra oficina al {telefono_oficina}.
+
+Atentamente,
+Connection Worldwide Group
+Tel. {telefono_oficina}
+`,
+  },
 
   // ── Cumpleaños ────────────────────────────────────────────────────────────
   {

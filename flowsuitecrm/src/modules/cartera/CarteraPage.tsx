@@ -7,6 +7,9 @@ import { RegistrarGestionModal, type GestionContactoRef, type GestionDraft, type
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useMessaging } from '../../hooks/useMessaging'
 import type { MessagingChannel, MessagingContact } from '../../types/messaging'
+import { emailTemplates } from '../../lib/emailTemplates'
+import { buildWhatsappUrl, baseTemplates as whatsappTemplates } from '../../lib/whatsappTemplates'
+import { resolveTemplate } from '../../lib/messagePlaceholders'
 import {
   calculatePaymentPlanSummary,
   generateInstallmentSchedule,
@@ -227,6 +230,17 @@ type HistorialEvent = {
   actor: string | null
 }
 
+const DFP_STATEMENT_EMAIL_TEMPLATE_ID = 'cartera.estado_cuenta_dfp'
+const DFP_STATEMENT_WHATSAPP_TEMPLATE_ID = 'cartera.estado_cuenta_dfp'
+const CARTERA_OFFICE_PHONE = '786-291-3042'
+
+type CarteraClassification =
+  | 'dfp_confirmado'
+  | 'cargo_vuelta_confirmado'
+  | 'hibrido_revisar'
+  | 'dfp_incompleto_revisar'
+  | 'sin_clasificar'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pad2(n: number) {
@@ -263,6 +277,135 @@ function fmtFechaUsaFromIso(iso: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
   if (!m) return iso
   return `${m[2]}/${m[3]}/${m[1]}`
+}
+
+function fmtMontoOrFallback(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? fmtMonto(value) : 'No disponible'
+}
+
+function fmtFechaOrFallback(value: string | null | undefined) {
+  return value ? fmtFecha(value) : 'No disponible'
+}
+
+function formatStatementPeriod(statement: DfpStatement) {
+  return `${fmtFecha(statement.periodo_inicio)} - ${fmtFecha(statement.periodo_fin)}`
+}
+
+function getLatestStatement(statements: DfpStatement[]) {
+  if (statements.length === 0) return null
+  return [...statements].sort((a, b) => {
+    const dateA = new Date(a.fecha_corte || a.created_at).getTime()
+    const dateB = new Date(b.fecha_corte || b.created_at).getTime()
+    return dateB - dateA
+  })[0] ?? null
+}
+
+function classifyCarteraCase(
+  caseItem: Pick<Case, 'tipo_caso'>,
+  dfpAccount: Pick<DfpAccount, 'id'> | null | undefined,
+): CarteraClassification {
+  const tipo = caseItem.tipo_caso
+  const hasDfp = Boolean(dfpAccount)
+
+  if (tipo === 'dfp' && hasDfp) return 'dfp_confirmado'
+  if (tipo === 'cargo_vuelta' && !hasDfp) return 'cargo_vuelta_confirmado'
+  if (tipo === 'cargo_vuelta' && hasDfp) return 'hibrido_revisar'
+  if (tipo === 'dfp' && !hasDfp) return 'dfp_incompleto_revisar'
+  return 'sin_clasificar'
+}
+
+function getClassificationLabel(classification: CarteraClassification) {
+  switch (classification) {
+    case 'dfp_confirmado':
+      return 'DFP'
+    case 'cargo_vuelta_confirmado':
+      return 'Cargo de vuelta'
+    case 'hibrido_revisar':
+      return 'Hibrido · revisar clasificacion'
+    case 'dfp_incompleto_revisar':
+      return 'DFP incompleto · revisar'
+    case 'sin_clasificar':
+    default:
+      return 'Sin clasificacion'
+  }
+}
+
+function getClassificationBadgeTone(classification: CarteraClassification) {
+  switch (classification) {
+    case 'dfp_confirmado':
+      return { background: 'rgba(59,130,246,0.16)', color: '#2563eb', border: '#2563eb44' }
+    case 'cargo_vuelta_confirmado':
+      return { background: 'rgba(100,116,139,0.2)', color: '#475569', border: '#47556944' }
+    case 'hibrido_revisar':
+      return { background: 'rgba(217,119,6,0.16)', color: '#b45309', border: '#b4530944' }
+    case 'dfp_incompleto_revisar':
+      return { background: 'rgba(220,38,38,0.12)', color: '#dc2626', border: '#dc262644' }
+    case 'sin_clasificar':
+    default:
+      return { background: 'rgba(107,114,128,0.16)', color: '#6b7280', border: '#6b728044' }
+  }
+}
+
+function isFinancialDfpAvailable(classification: CarteraClassification) {
+  return classification === 'dfp_confirmado' || classification === 'hibrido_revisar'
+}
+
+function isRecoveryCase(classification: CarteraClassification) {
+  return classification === 'cargo_vuelta_confirmado' || classification === 'hibrido_revisar'
+}
+
+function shouldShowStatementActions(classification: CarteraClassification) {
+  return isFinancialDfpAvailable(classification)
+}
+
+function shouldShowRecoveryActions(classification: CarteraClassification) {
+  return isRecoveryCase(classification) || classification === 'dfp_incompleto_revisar'
+}
+
+function ClassificationBadge({ classification }: { classification: CarteraClassification }) {
+  const tone = getClassificationBadgeTone(classification)
+  return (
+    <span
+      style={{
+        padding: '0.08rem 0.38rem',
+        borderRadius: '999px',
+        fontSize: '0.66rem',
+        fontWeight: 700,
+        background: tone.background,
+        color: tone.color,
+        border: `1px solid ${tone.border}`,
+      }}
+    >
+      {getClassificationLabel(classification)}
+    </span>
+  )
+}
+
+function buildDfpStatementTemplateVariables(statement: DfpStatement, nombre: string) {
+  return {
+    nombre,
+    periodo: formatStatementPeriod(statement),
+    balance_previo: fmtMontoOrFallback(statement.balance_previo),
+    compras_periodo: fmtMontoOrFallback(statement.compras_periodo),
+    cargos_interes: fmtMontoOrFallback(statement.cargos_interes_periodo),
+    pagos_periodo: fmtMontoOrFallback(statement.pagos_periodo),
+    nuevo_balance: fmtMontoOrFallback(statement.nuevo_balance),
+    pago_minimo: fmtMontoOrFallback(statement.pago_minimo),
+    fecha_vencimiento: fmtFechaOrFallback(statement.fecha_vencimiento),
+    telefono_oficina: CARTERA_OFFICE_PHONE,
+  }
+}
+
+function buildMailtoUrl({
+  to,
+  subject,
+  body,
+}: {
+  to: string
+  subject: string
+  body: string
+}) {
+  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
 function normalizeFechaYmdOrUsa(value: string): string | null {
@@ -1565,6 +1708,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const handleNextStepAction = () => { setGestionOpen(true) }
   const safeDfpAccount = dfpAccount?.case_id === caso.id ? dfpAccount : null
   const isDfp = Boolean(safeDfpAccount)
+  const classification = classifyCarteraCase(caso, safeDfpAccount)
   const saldoBase = caso.monto_devuelto ?? caso.monto_total
   const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
   const cliente = caso.clientes
@@ -1646,6 +1790,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     { label: caso.estado, color: estadoColor(caso.estado) },
   ]
   if (caso.acuerdo_tipo) chips.push({ label: caso.acuerdo_tipo, color: '#7c3aed' })
+  if (shouldShowStatementActions(classification)) chips.push({ label: 'DFP financiero', color: '#0f766e' })
+  if (shouldShowRecoveryActions(classification)) chips.push({ label: 'Recuperacion', color: '#7c3aed' })
 
   const TABS: { key: DetailTab; label: string }[] = [
     { key: 'historial', label: 'Historial' },
@@ -1669,10 +1815,16 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
             {cliente?.hycite_id && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>#{cliente.hycite_id}</span>}
           </p>
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+            <ClassificationBadge classification={classification} />
             {chips.map(ch => (
               <span key={ch.label} style={{ padding: '0.15rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: ch.color + '22', color: ch.color, border: `1px solid ${ch.color}44` }}>{ch.label}</span>
             ))}
           </div>
+          {classification === 'hibrido_revisar' && (
+            <p style={{ margin: '0 0 0.45rem', fontSize: '0.75rem', fontWeight: 600, color: '#b45309' }}>
+              Este caso esta marcado como Cargo de vuelta, pero tiene cuenta revolving y statements. Revisa la clasificacion antes de tomar decisiones financieras.
+            </p>
+          )}
           <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
             {/* Saldo Hy-Cite siempre como referencia */}
           {cliente?.saldo_actual !== undefined && cliente?.saldo_actual !== null && (
@@ -1814,6 +1966,12 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
             entries={ledgerEntries}
             statements={statements}
             statementLinesById={statementLinesById}
+            caseId={caso.id}
+            clienteId={caso.cliente_id}
+            cliente={cliente}
+            orgId={orgId}
+            currentUserId={currentUserId}
+            onSaved={handleRefresh}
           />
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
@@ -2218,16 +2376,177 @@ function GenerarStatementButton({ account }: { account: DfpAccount }) {
   )
 }
 
+function EnviarStatementButton({
+  caseId,
+  clienteId,
+  orgId,
+  currentUserId,
+  cliente,
+  statements,
+  onSaved,
+}: {
+  caseId: string
+  clienteId: string
+  orgId: string
+  currentUserId: string | null
+  cliente: Case['clientes']
+  statements: DfpStatement[]
+  onSaved: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const latestStatement = useMemo(() => getLatestStatement(statements), [statements])
+
+  const registerStatementGestion = useCallback(async (channel: 'email' | 'whatsapp', statement: DfpStatement) => {
+    if (!currentUserId) return
+    setSaving(true)
+    const { error } = await supabase.from('cob_gestiones').insert({
+      org_id: orgId,
+      cliente_id: clienteId,
+      case_id: caseId,
+      tipo_gestion: channel === 'email' ? 'Email' : 'WhatsApp',
+      resultado: 'mensaje_enviado',
+      notas: `Estado de cuenta DFP enviado por ${channel} · período ${formatStatementPeriod(statement)}`,
+      gestionado_por: currentUserId,
+    })
+    setSaving(false)
+    if (error) {
+      window.alert(`No se pudo registrar la gestión: ${error.message}`)
+      return
+    }
+    onSaved()
+  }, [caseId, clienteId, currentUserId, onSaved, orgId])
+
+  const handleSend = useCallback(async (channel: 'email' | 'whatsapp') => {
+    if (!latestStatement) {
+      window.alert('Primero genera un estado de cuenta.')
+      return
+    }
+
+    const nombre = nombreCliente(cliente)
+    const variables = buildDfpStatementTemplateVariables(latestStatement, nombre)
+
+    if (channel === 'email') {
+      const template = emailTemplates.find((item) => item.id === DFP_STATEMENT_EMAIL_TEMPLATE_ID)
+      const email = cliente?.email?.trim()
+      if (!template) {
+        window.alert('No se encontró el template de email para estado de cuenta.')
+        return
+      }
+      if (!email) {
+        window.alert('Este cliente no tiene email registrado.')
+        return
+      }
+      const subject = resolveTemplate(template.subject, variables).text
+      const body = resolveTemplate(template.message, variables).text
+      window.location.href = buildMailtoUrl({ to: email, subject, body })
+      if (window.confirm('¿Deseas registrar esta gestión de envío por email en el historial del caso?')) {
+        await registerStatementGestion('email', latestStatement)
+      }
+      setOpen(false)
+      return
+    }
+
+    const template = whatsappTemplates.find((item) => item.id === DFP_STATEMENT_WHATSAPP_TEMPLATE_ID)
+    const phone = cliente?.telefono?.trim() || cliente?.telefono_casa?.trim() || ''
+    if (!template) {
+      window.alert('No se encontró el template de WhatsApp para estado de cuenta.')
+      return
+    }
+    if (!phone) {
+      window.alert('Este cliente no tiene teléfono registrado.')
+      return
+    }
+    const body = resolveTemplate(template.message, variables).text
+    const whatsappUrl = buildWhatsappUrl(phone, body)
+    if (!whatsappUrl) {
+      window.alert('El teléfono del cliente no es válido para WhatsApp.')
+      return
+    }
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+    if (window.confirm('¿Deseas registrar esta gestión de envío por WhatsApp en el historial del caso?')) {
+      await registerStatementGestion('whatsapp', latestStatement)
+    }
+    setOpen(false)
+  }, [cliente, latestStatement, registerStatementGestion])
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (!latestStatement) {
+            window.alert('Primero genera un estado de cuenta.')
+            return
+          }
+          setOpen(true)
+        }}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #0f766e44', background: '#0f766e18', color: '#0f766e', cursor: 'pointer' }}
+      >
+        Enviar estado de cuenta
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text)' }}>Enviar estado de cuenta</p>
+      <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+        Se usará el statement más reciente: {latestStatement ? formatStatementPeriod(latestStatement) : 'No disponible'}.
+      </p>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => void handleSend('email')}
+          disabled={saving}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb18', color: '#2563eb', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}
+        >
+          Email
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleSend('whatsapp')}
+          disabled={saving}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #16a34a44', background: '#16a34a18', color: '#16a34a', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}
+        >
+          WhatsApp
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={saving}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: saving ? 'not-allowed' : 'pointer' }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function EstadoCuentaList({
   account,
   entries,
   statements,
   statementLinesById,
+  caseId,
+  clienteId,
+  cliente,
+  orgId,
+  currentUserId,
+  onSaved,
 }: {
   account: DfpAccount | null
   entries: LedgerEntry[]
   statements: DfpStatement[]
   statementLinesById: Record<string, DfpStatementLine[]>
+  caseId: string
+  clienteId: string
+  cliente: Case['clientes']
+  orgId: string
+  currentUserId: string | null
+  onSaved: () => void
 }) {
   const [openStatements, setOpenStatements] = useState<Record<string, boolean>>({})
 
@@ -2238,7 +2557,16 @@ function EstadoCuentaList({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid #0f766e33', background: '#0f766e0d' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+          <EnviarStatementButton
+            caseId={caseId}
+            clienteId={clienteId}
+            orgId={orgId}
+            currentUserId={currentUserId}
+            cliente={cliente}
+            statements={statements}
+            onSaved={onSaved}
+          />
           <GenerarStatementButton account={account} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
@@ -3116,6 +3444,7 @@ export function CarteraPage() {
   const [tipoCasoFiltro, setTipoCasoFiltro] = useState<'todos' | 'dfp' | 'cargo_vuelta'>('todos')
   const [lastGestionByCase, setLastGestionByCase] = useState<Record<string, LastGestionInfo>>({})
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
+  const [dfpCaseIdSet, setDfpCaseIdSet] = useState<Set<string>>(new Set())
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
 
   const loadCases = async () => {
@@ -3141,6 +3470,7 @@ export function CarteraPage() {
     if (casesError) {
       console.error('[CarteraPage] error cargando casos:', casesError)
       setCases([])
+      setDfpCaseIdSet(new Set())
       setLoading(false)
       return
     }
@@ -3154,6 +3484,7 @@ export function CarteraPage() {
 
     if (clienteIds.length === 0) {
       setCases(baseCases)
+      setDfpCaseIdSet(new Set())
       setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
@@ -3167,6 +3498,7 @@ export function CarteraPage() {
     if (clientesError) {
       console.error('[CarteraPage] error cargando clientes de casos:', clientesError)
       setCases(baseCases)
+      setDfpCaseIdSet(new Set())
       setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
@@ -3181,6 +3513,29 @@ export function CarteraPage() {
       ...row,
       clientes: clientesMap.get(row.cliente_id) ?? null,
     }))
+
+    const caseIds = loadedCases.map((row) => row.id)
+    if (caseIds.length > 0) {
+      const { data: revolvingRows, error: revolvingError } = await supabase
+        .from('cob_revolving_accounts')
+        .select('case_id')
+        .in('case_id', caseIds)
+
+      if (revolvingError) {
+        console.error('[CarteraPage] error cargando cuentas DFP:', revolvingError)
+        setDfpCaseIdSet(new Set())
+      } else {
+        setDfpCaseIdSet(
+          new Set(
+            ((revolvingRows ?? []) as { case_id: string | null }[])
+              .map((row) => row.case_id)
+              .filter((caseId): caseId is string => Boolean(caseId)),
+          ),
+        )
+      }
+    } else {
+      setDfpCaseIdSet(new Set())
+    }
 
     setCases(loadedCases)
     setSelectedCase((prev) => prev ? (loadedCases.find((row) => row.id === prev.id) ?? null) : null)
@@ -3410,6 +3765,7 @@ export function CarteraPage() {
               const sinMonto = !c.monto_devuelto || c.monto_devuelto === 0
               const lastG = lastGestionByCase[c.id]
               const hasPtpVencido = ptpVencidoSet.has(c.id)
+              const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
               return (
                 <button
                   key={c.id}
@@ -3433,18 +3789,7 @@ export function CarteraPage() {
                   <div style={{ marginTop: '0.22rem', display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 700, background: dColor + '22', color: dColor }}>{c.dias_vencido}d</span>
                     <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.66rem', fontWeight: 600, background: estadoColor(c.estado) + '22', color: estadoColor(c.estado) }}>{c.estado}</span>
-                    <span
-                      style={{
-                        padding: '0.08rem 0.38rem',
-                        borderRadius: '999px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        background: c.tipo_caso === 'dfp' ? 'rgba(59,130,246,0.16)' : 'rgba(100,116,139,0.2)',
-                        color: c.tipo_caso === 'dfp' ? '#2563eb' : '#475569',
-                      }}
-                    >
-                      {c.tipo_caso === 'dfp' ? 'DFP' : 'Cargo de vuelta'}
-                    </span>
+                    <ClassificationBadge classification={classification} />
                     {hasPtpVencido && <span style={{ padding: '0.08rem 0.38rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, background: '#dc262622', color: '#dc2626' }}>PTP vencido</span>}
                     {c.clientes?.hycite_id && <span style={{ fontSize: '0.67rem', color: 'var(--color-text-muted)' }}>#{c.clientes.hycite_id}</span>}
                   </div>
