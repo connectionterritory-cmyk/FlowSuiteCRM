@@ -69,3 +69,7 @@ test_ocr_approval.ts
 tmp/
 flowsuitecrm/tmp/
 skills-lock.json
+
+# Sensitive local import scripts
+scripts/import_csv_excel.py
+scripts/import_imagenes.py
