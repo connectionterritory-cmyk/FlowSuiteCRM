@@ -1449,6 +1449,202 @@ function QuickActionBtn({ icon, label, disabled, onClick }: { icon: string; labe
   )
 }
 
+// ── Case Context Header ───────────────────────────────────────────────────────
+
+type CaseContextHeaderProps = {
+  classification: CarteraClassification
+  caso: Case
+  gestiones: Gestion[]
+  ptps: PTP[]
+  safeDfpAccount: DfpAccount | null
+  statements: DfpStatement[]
+  saldo: number
+  onGestionar: () => void
+  onGoToStatements: () => void
+}
+
+function CaseContextHeader({
+  classification,
+  caso,
+  gestiones,
+  ptps,
+  safeDfpAccount,
+  statements,
+  saldo,
+  onGestionar,
+  onGoToStatements,
+}: CaseContextHeaderProps) {
+  const tone = getClassificationBadgeTone(classification)
+  const latestStatement = getLatestStatement(statements)
+  const lastGestion = gestiones[0] ?? null
+  const ptpVencido = ptps.find(
+    p => p.estado === 'vencido' || (p.estado === 'pendiente' && p.fecha_compromiso < todayYmd()),
+  )
+
+  function metaRow(label: string, value: string, valueColor?: string) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', fontSize: '0.77rem' }}>
+        <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>{label}</span>
+        <strong style={{ color: valueColor ?? 'var(--color-text)', textAlign: 'right' }}>{value}</strong>
+      </div>
+    )
+  }
+
+  function primaryBtn(label: string, onClick: () => void) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          alignSelf: 'flex-end',
+          padding: '0.4rem 1rem',
+          borderRadius: '0.45rem',
+          border: `1px solid ${tone.border}`,
+          background: tone.background,
+          color: tone.color,
+          cursor: 'pointer',
+          fontSize: '0.78rem',
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </button>
+    )
+  }
+
+  if (classification === 'cargo_vuelta_confirmado') {
+    return (
+      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(100,116,139,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Cuenta devuelta por HyCite</p>
+          </div>
+          <ClassificationBadge classification={classification} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.65rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+          {metaRow('Balance por recuperar', fmtMonto(saldo), saldo > 0 ? '#dc2626' : '#10b981')}
+          {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
+          {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
+          {metaRow(
+            'Última gestión',
+            lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión',
+            lastGestion ? 'var(--color-text)' : '#d97706',
+          )}
+        </div>
+        {ptpVencido && (
+          <div style={{ padding: '0.35rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#dc2626' }}>
+              PTP vencido: {fmtMonto(ptpVencido.monto)} · {fmtFecha(ptpVencido.fecha_compromiso)}
+            </span>
+          </div>
+        )}
+        {primaryBtn('Gestionar recuperación', onGestionar)}
+      </div>
+    )
+  }
+
+  if (classification === 'hibrido_revisar') {
+    return (
+      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(217,119,6,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Caso híbrido: recovery + DFP</p>
+          </div>
+          <ClassificationBadge classification={classification} />
+        </div>
+        <div style={{ padding: '0.4rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.3)' }}>
+          <p style={{ margin: 0, fontSize: '0.73rem', color: '#92400e', lineHeight: 1.45 }}>
+            Este caso está marcado como Cargo de vuelta, pero tiene cuenta DFP/revolving y statements. Revisa la clasificación antes de tomar decisiones financieras.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(100,116,139,0.25)', background: 'rgba(100,116,139,0.07)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.04em' }}>Recuperación</p>
+            {metaRow('Balance', fmtMonto(caso.monto_devuelto ?? caso.monto_total))}
+            {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
+            {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
+          </div>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(59,130,246,0.25)', background: 'rgba(59,130,246,0.07)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#2563eb', letterSpacing: '0.04em' }}>DFP</p>
+            {safeDfpAccount ? (
+              <>
+                {metaRow('Balance financiero', fmtMonto(safeDfpAccount.saldo_total_actual), '#2563eb')}
+                {latestStatement && metaRow('Statement', formatStatementPeriod(latestStatement))}
+                {latestStatement?.fecha_vencimiento && metaRow('Vence', fmtFecha(latestStatement.fecha_vencimiento))}
+              </>
+            ) : (
+              <span style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>No disponible</span>
+            )}
+          </div>
+        </div>
+        {primaryBtn('Revisar cuenta', onGestionar)}
+      </div>
+    )
+  }
+
+  if (classification === 'dfp_confirmado') {
+    return (
+      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(59,130,246,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Cuenta DFP financiada directamente</p>
+          </div>
+          <ClassificationBadge classification={classification} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.65rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+          {safeDfpAccount && metaRow('Balance financiero', fmtMonto(safeDfpAccount.saldo_total_actual), tone.color)}
+          {latestStatement ? (
+            <>
+              {metaRow('Pago mínimo', fmtMonto(latestStatement.pago_minimo))}
+              {latestStatement.fecha_vencimiento && metaRow('Fecha de vencimiento', fmtFecha(latestStatement.fecha_vencimiento))}
+              {metaRow('Último statement', formatStatementPeriod(latestStatement))}
+            </>
+          ) : (
+            metaRow('Último statement', 'Sin statement generado', '#d97706')
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onGoToStatements}
+          style={{
+            alignSelf: 'flex-end',
+            padding: '0.4rem 1rem',
+            borderRadius: '0.45rem',
+            border: `1px solid ${tone.border}`,
+            background: tone.background,
+            color: tone.color,
+            cursor: 'pointer',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+          }}
+        >
+          Enviar statement
+        </button>
+      </div>
+    )
+  }
+
+  // dfp_incompleto_revisar | sin_clasificar
+  return (
+    <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: tone.background }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+        <div>
+          <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
+          <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Caso requiere revisión</p>
+        </div>
+        <ClassificationBadge classification={classification} />
+      </div>
+      <p style={{ margin: 0, fontSize: '0.77rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+        Este caso necesita clasificación administrativa antes de generar documentos automáticos.
+      </p>
+      {primaryBtn('Revisar clasificación', onGestionar)}
+    </div>
+  )
+}
+
 type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan' | 'cliente' | 'equipos'
 
 type CaseDetailProps = {
@@ -1943,6 +2139,21 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           </>
         )}
       </div>
+
+      {/* Context header — tipo de cuenta y resumen operativo */}
+      {!loading && (
+        <CaseContextHeader
+          classification={classification}
+          caso={caso}
+          gestiones={gestiones}
+          ptps={ptps}
+          safeDfpAccount={safeDfpAccount}
+          statements={statements}
+          saldo={saldo}
+          onGestionar={handleNextStepAction}
+          onGoToStatements={() => setTab('estado_cuenta')}
+        />
+      )}
 
       {/* Tabs */}
       <div style={{ padding: '0 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0', overflowX: 'auto' }}>
