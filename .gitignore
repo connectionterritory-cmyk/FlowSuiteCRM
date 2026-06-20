@@ -18,6 +18,10 @@ node_modules/
 dist/
 build/
 .vite/
+playwright-report/
+test-results/
+flowsuitecrm/playwright-report/
+flowsuitecrm/test-results/
 
 # Dumps
 *.dump
