@@ -20,7 +20,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!loading && session) {
-      navigate('/dashboard', { replace: true })
+      navigate('/hub', { replace: true })
     }
   }, [loading, navigate, session])
 
@@ -37,7 +37,7 @@ export function LoginPage() {
     if (signInError) {
       setError(signInError.message)
     } else {
-      navigate('/dashboard', { replace: true })
+      navigate('/hub', { replace: true })
     }
 
     setSubmitting(false)
