@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../auth/useAuth'
-import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { AgendaHoy } from '../../components/AgendaHoy'
-import { Badge } from '../../components/Badge'
 import { StatCard } from '../../components/StatCard'
 import {
   IconDashboard,
@@ -20,26 +17,7 @@ import { useHubStats } from './useHubStats'
 export function HubPage() {
   const navigate = useNavigate()
   const { metrics, loading, error, scopePending } = useHubStats()
-  const { session } = useAuth()
-  const configured = isSupabaseConfigured
-  const [role, setRole] = useState<string | null>(null)
 
-  useEffect(() => {
-    let active = true
-    if (!configured || !session?.user.id) return
-    supabase
-      .from('usuarios')
-      .select('rol')
-      .eq('id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return
-        setRole((data as { rol?: string } | null)?.rol ?? null)
-      })
-    return () => { active = false }
-  }, [configured, session?.user.id])
-
-  const isAdminLike = role === 'admin' || role === 'distribuidor'
 
   const statValue = (value: number) => {
     if (scopePending) return 'Resolviendo alcance...'
@@ -75,32 +53,7 @@ export function HubPage() {
     [metrics.citasToday, metrics.leadsNew, metrics.tareasPending, loading, error, scopePending],
   )
 
-  const commissionStats = useMemo<HubStat[]>(
-    () => [
-      {
-        key: 'estimadas',
-        label: 'Comisiones estimadas',
-        value: '—',
-        hint: 'Disponible pronto',
-        accent: 'gold',
-      },
-      {
-        key: 'aprobadas',
-        label: 'Comisiones aprobadas',
-        value: '—',
-        hint: 'Disponible pronto',
-        accent: 'gold',
-      },
-      {
-        key: 'pagadas',
-        label: 'Comisiones pagadas',
-        value: '—',
-        hint: 'Disponible pronto',
-        accent: 'gold',
-      },
-    ],
-    [],
-  )
+
 
   const allBusinessUnits = useMemo<BusinessUnit[]>(
     () => [
@@ -149,8 +102,8 @@ export function HubPage() {
   )
 
   const businessUnits = useMemo(
-    () => isAdminLike ? allBusinessUnits : allBusinessUnits.filter((u) => u.status === 'active'),
-    [isAdminLike, allBusinessUnits],
+    () => allBusinessUnits.filter((u) => u.status === 'active'),
+    [allBusinessUnits],
   )
 
   const quickActions = useMemo<QuickAction[]>(
@@ -221,29 +174,7 @@ export function HubPage() {
         </div>
       </section>
 
-      {isAdminLike && (
-        <section className="page-stack">
-          <div className="hub-section-heading">
-            <p className="hub-section-kicker">Compensacion</p>
-            <h3>Comisiones</h3>
-            <div className="hub-inline-badges">
-              <Badge label="Fase 1" tone="gold" />
-              <Badge label="Disponible pronto" tone="gold" className="hub-commission-badge" />
-            </div>
-          </div>
-          <div className="stat-grid hub-stat-grid hub-stat-grid-commission">
-            {commissionStats.map((stat) => (
-              <StatCard
-                key={stat.key}
-                label={stat.label}
-                value={stat.value}
-                hint={stat.hint}
-                accent={stat.accent}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+
 
       <BusinessUnitGrid units={businessUnits} />
 
