@@ -109,7 +109,7 @@ export default function App() {
             <Route path="/ventas" element={<VentasPage />} />
             <Route path="/catalogo" element={<CatalogoProductosPage />} />
             <Route path="/productos" element={<ProductosPage />} />
-            <Route path="/catalogo-productos" element={<CatalogoProductosPage />} />
+            <Route path="/catalogo-productos" element={<Navigate to="/catalogo" replace />} />
             <Route path="/programas" element={<ProgramasPage />} />
             <Route path="/conexiones-infinitas" element={<ConexionesInfinitasPage />} />
             <Route path="/4en14" element={<Programa4en14Page />} />
