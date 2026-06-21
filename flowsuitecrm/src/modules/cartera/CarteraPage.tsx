@@ -15,6 +15,7 @@ import {
   generateInstallmentSchedule,
   validatePaymentPlanInput,
 } from './services/PaymentPlanService'
+import { useCvResumenPdf } from './pdf/useCvResumenPdf'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -217,6 +218,27 @@ type DfpStatementLine = {
   description: string
   amount: number
   metadata: { original_amount?: number } | null
+}
+
+type CvResumen = {
+  id: string
+  case_id: string
+  cliente_id: string
+  periodo_inicio: string
+  periodo_fin: string
+  fecha_corte: string
+  monto_original: number
+  saldo_apertura_periodo: number
+  pagos_periodo: number
+  pagos_acumulados: number
+  fee_plataforma_periodo: number
+  creditos_periodo: number
+  ajustes_periodo: number
+  saldo_pendiente_corte: number
+  proximo_pago_esperado: number | null
+  fecha_proximo_pago: string | null
+  status: 'draft' | 'enviado' | 'anulado'
+  created_at: string
 }
 
 type HistorialEvent = {
@@ -1687,6 +1709,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([])
   const [statements, setStatements] = useState<DfpStatement[]>([])
   const [statementLinesById, setStatementLinesById] = useState<Record<string, DfpStatementLine[]>>({})
+  const [cvResumenes, setCvResumenes] = useState<CvResumen[]>([])
+  const [cvPdfPreviewUrl, setCvPdfPreviewUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [ptpOpen, setPtpOpen] = useState(false)
   const [pagoOpen, setPagoOpen] = useState(false)
@@ -1706,6 +1730,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     setLedgerEntries([])
     setStatements([])
     setStatementLinesById({})
+    setCvResumenes([])
     const [g, p, pg, pl, dfp] = await Promise.all([
       supabase.from('cob_gestiones').select('id,tipo_gestion,resultado,monto_comprometido,fecha_compromiso,notas,gestionado_por,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
       supabase.from('cob_ptps').select('id,monto,fecha_compromiso,estado,canal,notas,creado_por,fecha_cumplimiento,cumplido_at,incumplido_at,created_at').eq('case_id', caso.id).order('created_at', { ascending: false }),
@@ -1797,6 +1822,19 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       setStatements([])
       setStatementLinesById({})
     }
+
+    // Fetch CV resumenes (cargo_vuelta cases)
+    if (caso.tipo_caso === 'cargo_vuelta' || !loadedDfpAccount) {
+      const { data: cvData } = await supabase
+        .from('cob_cv_resumenes')
+        .select('id,case_id,cliente_id,periodo_inicio,periodo_fin,fecha_corte,monto_original,saldo_apertura_periodo,pagos_periodo,pagos_acumulados,fee_plataforma_periodo,creditos_periodo,ajustes_periodo,saldo_pendiente_corte,proximo_pago_esperado,fecha_proximo_pago,status,created_at')
+        .eq('case_id', caso.id)
+        .order('periodo_fin', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (loadSeq !== detailLoadSeq.current) return
+      setCvResumenes((cvData ?? []) as CvResumen[])
+    }
+
     setLoading(false)
   }
 
@@ -2175,18 +2213,32 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         ) : tab === 'cliente' ? (
           <ClienteTab cliente={caso.clientes} clienteId={caso.cliente_id} onSaved={handleRefresh} />
         ) : tab === 'estado_cuenta' ? (
-          <EstadoCuentaList
-            account={safeDfpAccount}
-            entries={ledgerEntries}
-            statements={statements}
-            statementLinesById={statementLinesById}
-            caseId={caso.id}
-            clienteId={caso.cliente_id}
-            cliente={cliente}
-            orgId={orgId}
-            currentUserId={currentUserId}
-            onSaved={handleRefresh}
-          />
+          <>
+            {cvResumenes.length > 0 || classification === 'cargo_vuelta_confirmado' ? (
+              <CvResumenSection
+                resumenes={cvResumenes}
+                caseId={caso.id}
+                caseEstado={caso.estado}
+                previewUrl={cvPdfPreviewUrl}
+                onPreviewUrl={setCvPdfPreviewUrl}
+                onRefresh={handleRefresh}
+              />
+            ) : null}
+            {(safeDfpAccount || classification !== 'cargo_vuelta_confirmado') && (
+              <EstadoCuentaList
+                account={safeDfpAccount}
+                entries={ledgerEntries}
+                statements={statements}
+                statementLinesById={statementLinesById}
+                caseId={caso.id}
+                clienteId={caso.cliente_id}
+                cliente={cliente}
+                orgId={orgId}
+                currentUserId={currentUserId}
+                onSaved={handleRefresh}
+              />
+            )}
+          </>
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
         ) : tab === 'ptps' ? (
@@ -2734,6 +2786,148 @@ function EnviarStatementButton({
         >
           Cancelar
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── CV Resumen Section ────────────────────────────────────────────────────────
+
+function CvResumenPdfButton({ resumen, caseId, caseEstado, onPreviewUrl }: {
+  resumen: CvResumen
+  caseId: string
+  caseEstado: string
+  onPreviewUrl: (url: string | null) => void
+}) {
+  const { loading, error, downloadPdf, getPreviewUrl } = useCvResumenPdf()
+
+  async function handlePreview() {
+    onPreviewUrl(null)
+    const url = await getPreviewUrl({ resumenId: resumen.id, caseId, caseEstado })
+    if (url) onPreviewUrl(url)
+  }
+
+  async function handleDownload() {
+    await downloadPdf(
+      { resumenId: resumen.id, caseId, caseEstado },
+      `estado-cuenta-${resumen.periodo_inicio}-${resumen.periodo_fin}.pdf`,
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+      {error && <span style={{ fontSize: '0.7rem', color: '#dc2626' }}>{error}</span>}
+      <button
+        type="button"
+        disabled={loading}
+        onClick={handlePreview}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #1e40af', background: '#dbeafe', color: '#1e40af', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+      >
+        {loading ? 'Generando…' : 'Ver PDF'}
+      </button>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={handleDownload}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #15803d', background: '#dcfce7', color: '#15803d', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+      >
+        Descargar PDF
+      </button>
+    </div>
+  )
+}
+
+function CvResumenSection({ resumenes, caseId, caseEstado, previewUrl, onPreviewUrl, onRefresh }: {
+  resumenes: CvResumen[]
+  caseId: string
+  caseEstado: string
+  previewUrl: string | null
+  onPreviewUrl: (url: string | null) => void
+  onRefresh: () => void
+}) {
+  const fmtM = (n: number | null | undefined) =>
+    n == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+  const fmtD = (s: string | null | undefined) => {
+    if (!s) return '—'
+    const [y, m, d] = s.slice(0, 10).split('-')
+    return `${d}/${m}/${y}`
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+      {/* Preview modal */}
+      {previewUrl && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: '0.75rem', width: '90vw', maxWidth: '900px', height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }}>
+            <div style={{ padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f2044' }}>Estado de Cuenta — Vista Previa</span>
+              <button
+                type="button"
+                onClick={() => onPreviewUrl(null)}
+                style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', fontWeight: 700, border: '1px solid #e5e7eb', borderRadius: '0.4rem', background: '#f9fafb', cursor: 'pointer' }}
+              >
+                Cerrar
+              </button>
+            </div>
+            <iframe src={previewUrl} style={{ flex: 1, border: 'none', width: '100%' }} title="Estado de Cuenta PDF" />
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid #7c3aed33', background: '#7c3aed0d' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 800, color: '#5b21b6' }}>
+            Resúmenes de Cuenta — Cargo de Vuelta
+          </p>
+          <button
+            type="button"
+            onClick={onRefresh}
+            style={{ fontSize: '0.7rem', color: '#5b21b6', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+          >
+            Actualizar
+          </button>
+        </div>
+
+        {resumenes.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+            No hay resúmenes generados aún. Usa la función <code>fn_cv_resumen_generar</code> para crear el primer resumen de este caso.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+            {resumenes.map(r => (
+              <div key={r.id} style={{ border: '1px solid #7c3aed33', borderRadius: '0.45rem', overflow: 'hidden', background: 'var(--color-card)' }}>
+                <div style={{ padding: '0.55rem 0.65rem', background: '#7c3aed12' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 800, color: 'var(--color-text)' }}>
+                        Período {fmtD(r.periodo_inicio)} – {fmtD(r.periodo_fin)}
+                      </p>
+                      <p style={{ margin: '0.12rem 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                        Corte {fmtD(r.fecha_corte)} · Próximo pago: {r.fecha_proximo_pago ? fmtD(r.fecha_proximo_pago) : 'Por confirmar'}
+                      </p>
+                    </div>
+                    <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: r.status === 'enviado' ? '#dcfce7' : '#f3f4f6', color: r.status === 'enviado' ? '#15803d' : '#6b7280', flexShrink: 0 }}>
+                      {r.status}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.35rem', fontSize: '0.71rem', marginBottom: '0.5rem' }}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Monto original: <strong style={{ color: 'var(--color-text)' }}>{fmtM(r.monto_original)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Pagos período: <strong style={{ color: '#15803d' }}>{fmtM(r.pagos_periodo)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Pagos acumulados: <strong style={{ color: '#15803d' }}>{fmtM(r.pagos_acumulados)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Saldo pendiente: <strong style={{ color: '#dc2626' }}>{fmtM(r.saldo_pendiente_corte)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Próximo pago: <strong style={{ color: 'var(--color-text)' }}>{fmtM(r.proximo_pago_esperado)}</strong></span>
+                  </div>
+                  <CvResumenPdfButton
+                    resumen={r}
+                    caseId={caseId}
+                    caseEstado={caseEstado}
+                    onPreviewUrl={onPreviewUrl}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
