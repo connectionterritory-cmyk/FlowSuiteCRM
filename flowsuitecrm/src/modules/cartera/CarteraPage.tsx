@@ -16,6 +16,7 @@ import {
   validatePaymentPlanInput,
 } from './services/PaymentPlanService'
 import { useCvResumenPdf } from './pdf/useCvResumenPdf'
+import { useDfpStatementPdf } from './pdf/useDfpStatementPdf'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2271,6 +2272,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
                 statements={statements}
                 statementLinesById={statementLinesById}
                 caseId={caso.id}
+                caseEstado={caso.estado}
                 clienteId={caso.cliente_id}
                 cliente={cliente}
                 orgId={orgId}
@@ -2976,12 +2978,131 @@ function CvResumenSection({ resumenes, caseId, caseEstado, previewUrl, onPreview
   )
 }
 
+function DfpStatementPdfActions({
+  statement,
+  lines,
+  cliente,
+  caseEstado,
+}: {
+  statement: DfpStatement
+  lines: DfpStatementLine[]
+  cliente: Case['clientes']
+  caseEstado: string
+}) {
+  const { loading, error, downloadPdf, getPreviewUrl, printPdf } = useDfpStatementPdf()
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  const clienteSnap = {
+    nombre: cliente?.nombre ?? null,
+    apellido: cliente?.apellido ?? null,
+    hycite_id: cliente?.hycite_id ?? null,
+    telefono: cliente?.telefono ?? cliente?.telefono_casa ?? null,
+    email: cliente?.email ?? null,
+    direccion: cliente?.direccion ?? null,
+    ciudad: cliente?.ciudad ?? null,
+    estado_region: cliente?.estado_region ?? null,
+    codigo_postal: cliente?.codigo_postal ?? null,
+  }
+
+  const opts = {
+    statement,
+    lines,
+    cliente: clienteSnap,
+    caseEstado,
+  }
+
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
+  }
+
+  async function handlePreview() {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl)
+      setPreviewUrl(null)
+    }
+    const url = await getPreviewUrl(opts)
+    if (url) setPreviewUrl(url)
+  }
+
+  async function handleDownload() {
+    await downloadPdf(opts, `statement-${statement.periodo_inicio}-${statement.periodo_fin}.pdf`)
+  }
+
+  async function handlePrint() {
+    await printPdf(opts)
+  }
+
+  return (
+    <>
+      {error && <span style={{ fontSize: '0.7rem', color: '#dc2626' }}>{error}</span>}
+      <button
+        type="button"
+        disabled={loading}
+        onClick={(event) => {
+          event.stopPropagation()
+          void handlePreview()
+        }}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #1e40af', background: '#dbeafe', color: '#1e40af', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+      >
+        {loading ? 'Generando…' : 'Ver PDF'}
+      </button>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={(event) => {
+          event.stopPropagation()
+          void handleDownload()
+        }}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #15803d', background: '#dcfce7', color: '#15803d', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+      >
+        Descargar PDF
+      </button>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={(event) => {
+          event.stopPropagation()
+          void handlePrint()
+        }}
+        style={{ padding: '0.3rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #9a3412', background: '#ffedd5', color: '#9a3412', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+      >
+        Imprimir
+      </button>
+      {previewUrl && (
+        <div
+          onClick={closePreview}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={event => event.stopPropagation()}
+            style={{ background: '#fff', borderRadius: '0.75rem', width: '90vw', maxWidth: '900px', height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }}
+          >
+            <div style={{ padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f2044' }}>Statement — Vista Previa</span>
+              <button
+                type="button"
+                onClick={closePreview}
+                style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', fontWeight: 700, border: '1px solid #e5e7eb', borderRadius: '0.4rem', background: '#f9fafb', cursor: 'pointer' }}
+              >
+                Cerrar
+              </button>
+            </div>
+            <iframe src={previewUrl} style={{ flex: 1, border: 'none', width: '100%' }} title="Statement PDF" />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function EstadoCuentaList({
   account,
   entries,
   statements,
   statementLinesById,
   caseId,
+  caseEstado,
   clienteId,
   cliente,
   orgId,
@@ -2993,6 +3114,7 @@ function EstadoCuentaList({
   statements: DfpStatement[]
   statementLinesById: Record<string, DfpStatementLine[]>
   caseId: string
+  caseEstado: string
   clienteId: string
   cliente: Case['clientes']
   orgId: string
@@ -3040,11 +3162,7 @@ function EstadoCuentaList({
               const lines = statementLinesById[statement.id] ?? []
               return (
                 <div key={statement.id} style={{ border: '1px solid #2563eb33', borderRadius: '0.45rem', overflow: 'hidden', background: 'var(--color-card)' }}>
-                  <button
-                    type="button"
-                    onClick={() => setOpenStatements(prev => ({ ...prev, [statement.id]: !prev[statement.id] }))}
-                    style={{ width: '100%', border: 'none', textAlign: 'left', cursor: 'pointer', background: '#2563eb12', padding: '0.55rem 0.65rem' }}
-                  >
+                  <div style={{ width: '100%', textAlign: 'left', background: '#2563eb12', padding: '0.55rem 0.65rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
                       <div style={{ minWidth: 0 }}>
                         <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 800, color: 'var(--color-text)' }}>
@@ -3066,10 +3184,22 @@ function EstadoCuentaList({
                       <span style={{ color: 'var(--color-text-muted)' }}>Nuevo balance: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.nuevo_balance)}</strong></span>
                       <span style={{ color: 'var(--color-text-muted)' }}>Pago mínimo: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.pago_minimo)}</strong></span>
                     </div>
-                    <p style={{ margin: '0.45rem 0 0', fontSize: '0.69rem', color: '#1d4ed8', fontWeight: 700 }}>
+                    <div style={{ marginTop: '0.55rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <DfpStatementPdfActions
+                        statement={statement}
+                        lines={lines}
+                        cliente={cliente}
+                        caseEstado={caseEstado}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenStatements(prev => ({ ...prev, [statement.id]: !prev[statement.id] }))}
+                      style={{ margin: '0.45rem 0 0', padding: 0, fontSize: '0.69rem', color: '#1d4ed8', fontWeight: 700, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                    >
                       {isOpen ? 'Ocultar líneas ▲' : 'Ver líneas ▼'}
-                    </p>
-                  </button>
+                    </button>
+                  </div>
                   {isOpen && (
                     <div style={{ borderTop: '1px solid var(--color-border)', padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                       {lines.length === 0 ? (
@@ -3893,7 +4023,7 @@ function CarteraEmptyState({
   onViewReview: () => void
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '100%', padding: '1.5rem', gap: '1rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', minHeight: '100%', padding: '1.5rem', gap: '1rem' }}>
       <div style={{ padding: '1rem 1.1rem', borderRadius: '0.9rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(15,118,110,0.08), rgba(37,99,235,0.05))' }}>
         <p style={{ margin: '0 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-text)' }}>Workspace de cartera</p>
         <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
