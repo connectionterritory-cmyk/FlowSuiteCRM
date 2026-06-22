@@ -143,6 +143,131 @@ function mapCvLineType(raw: string): StatementLineType {
   return map[raw] ?? 'ajuste'
 }
 
-// ── DFP → normalized (stub, Phase 2) ─────────────────────────────────────────
-// When DFP is implemented, add dfpStatementToStatementData() here following
-// the same contract. The template receives the same StatementPdfData shape.
+// ── DFP → normalized ──────────────────────────────────────────────────────────
+
+export type DfpStatementRaw = {
+  id: string
+  case_id: string
+  periodo_inicio: string
+  periodo_fin: string
+  fecha_corte: string
+  fecha_vencimiento: string | null
+  balance_previo: number
+  compras_periodo: number
+  cargos_interes_periodo: number
+  pagos_periodo: number
+  nuevo_balance: number
+  pago_minimo: number
+  apr_tae: number | null
+  status: string
+}
+
+export type DfpStatementLineRaw = {
+  id: string
+  transaction_date: string | null
+  posting_date: string | null
+  entry_type: string | null
+  description: string
+  amount: number
+}
+
+export function dfpStatementToStatementData(
+  statement: DfpStatementRaw,
+  lines: DfpStatementLineRaw[],
+  cliente: ClienteSnap,
+  caseEstado: string,
+): StatementPdfData {
+  let runningBalance = Number(statement.balance_previo || 0)
+  const normalizedLines: StatementLine[] = lines.map(line => {
+    const signedAmount = Number(line.amount || 0)
+    runningBalance += signedAmount
+    return {
+      date: line.transaction_date ?? line.posting_date,
+      description: line.description || line.entry_type || 'Movimiento',
+      type: mapDfpLineType(line.entry_type, signedAmount),
+      amount: Math.abs(signedAmount),
+      runningBalance,
+    }
+  })
+
+  const nombre = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || 'Cliente'
+
+  return {
+    accountType: 'dfp',
+    caseId: statement.case_id,
+    accountNumber: resolveAccountNumber(statement.case_id, cliente.hycite_id),
+    emissionDate: statement.fecha_corte,
+    periodStart: statement.periodo_inicio,
+    periodEnd: statement.periodo_fin,
+
+    clientName: nombre,
+    address: cliente.direccion,
+    city: cliente.ciudad,
+    state: cliente.estado_region,
+    zip: cliente.codigo_postal,
+    phone: cliente.telefono,
+    email: cliente.email,
+
+    originalAmount: statement.compras_periodo,
+    previousBalance: statement.balance_previo,
+    paymentsAccumulated: 0,
+    paymentsPeriod: statement.pagos_periodo,
+    creditsPeriod: 0,
+    interestCharges: statement.cargos_interes_periodo,
+    feesPeriod: 0,
+    pendingBalance: statement.nuevo_balance,
+    projectedDueBalance: null,
+
+    agreedMonthlyPayment: statement.pago_minimo,
+    nextPaymentDate: statement.fecha_vencimiento,
+    accountStatus: caseEstado,
+    approvalDate: null,
+    statementDate: statement.fecha_corte,
+    dueDate: statement.fecha_vencimiento,
+    interestPeriodStart: null,
+    interestPeriodEnd: null,
+    interestDays: null,
+
+    apr: statement.apr_tae,
+    interestApr: null,
+    interestBasis: null,
+    ytdInterest: null,
+    ytdFees: null,
+
+    lines: normalizedLines,
+    documentStatus: mapDocumentStatus(statement.status),
+  }
+}
+
+function mapDfpLineType(raw: string | null | undefined, amount: number): StatementLineType {
+  const value = (raw ?? '').toLowerCase()
+
+  if (value.includes('principal_initial') || value.includes('saldo_apertura') || value.includes('opening')) {
+    return 'saldo_apertura'
+  }
+  if (value.includes('interest') || value.includes('interes')) {
+    return 'cargo_interes'
+  }
+  if (value.includes('fee') || value.includes('cargo_fee') || value.includes('late')) {
+    return 'cargo_fee'
+  }
+  if (value.includes('payment') || value.includes('pago')) {
+    return 'pago'
+  }
+  if (value.includes('credit') || value.includes('credito') || value.includes('refund') || value.includes('reversal')) {
+    return 'credito'
+  }
+  if (value.includes('adjust') || value.includes('ajuste')) {
+    return 'ajuste'
+  }
+
+  return amount < 0 ? 'pago' : 'ajuste'
+}
+
+function mapDocumentStatus(status: string): StatementPdfData['documentStatus'] {
+  const value = status.toLowerCase()
+  if (value.includes('anulad')) return 'anulado'
+  if (value.includes('enviad')) return 'enviado'
+  if (value.includes('final')) return 'final'
+  return 'draft'
+}
