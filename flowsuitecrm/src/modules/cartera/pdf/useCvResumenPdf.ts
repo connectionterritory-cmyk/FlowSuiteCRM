@@ -27,6 +27,10 @@ export function useCvResumenPdf() {
           .from('cob_cv_resumenes')
           .select(`
             id, case_id, cliente_id, periodo_inicio, periodo_fin, fecha_corte,
+            approval_date_snapshot, statement_date_snapshot, due_date_snapshot,
+            interest_period_start_snapshot, interest_period_end_snapshot,
+            interest_days_snapshot, interest_apr_snapshot, interest_amount_periodo,
+            balance_proyectado_due_date,
             monto_original, saldo_apertura_periodo, pagos_periodo, pagos_acumulados,
             fee_plataforma_periodo, creditos_periodo, ajustes_periodo,
             saldo_pendiente_corte, proximo_pago_esperado, fecha_proximo_pago, status,

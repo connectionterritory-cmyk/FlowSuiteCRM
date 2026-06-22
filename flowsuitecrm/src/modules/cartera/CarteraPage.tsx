@@ -43,6 +43,13 @@ type Case = {
   fecha_cierre: string | null
   updated_by: string | null
   en_proceso_legal: boolean
+  cv_approval_date: string | null
+  cv_due_date: string | null
+  cv_statement_date: string | null
+  cv_interest_apr: number | null
+  cv_statement_schedule_status: string | null
+  cv_statement_generated_at: string | null
+  cv_statement_last_resumen_id: string | null
   clientes: {
     nombre: string | null
     apellido: string | null
@@ -227,6 +234,15 @@ type CvResumen = {
   periodo_inicio: string
   periodo_fin: string
   fecha_corte: string
+  approval_date_snapshot: string | null
+  statement_date_snapshot: string | null
+  due_date_snapshot: string | null
+  interest_period_start_snapshot: string | null
+  interest_period_end_snapshot: string | null
+  interest_days_snapshot: number | null
+  interest_apr_snapshot: number | null
+  interest_amount_periodo: number
+  balance_proyectado_due_date: number | null
   monto_original: number
   saldo_apertura_periodo: number
   pagos_periodo: number
@@ -307,6 +323,12 @@ function fmtMontoOrFallback(value: number | null | undefined) {
 
 function fmtFechaOrFallback(value: string | null | undefined) {
   return value ? fmtFecha(value) : 'No disponible'
+}
+
+function fmtPercentOrPending(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${(value * 100).toFixed(2)}%`
+    : 'APR pendiente'
 }
 
 function formatStatementPeriod(statement: DfpStatement) {
@@ -1480,6 +1502,7 @@ type CaseContextHeaderProps = {
   ptps: PTP[]
   safeDfpAccount: DfpAccount | null
   statements: DfpStatement[]
+  cvResumenes: CvResumen[]
   saldo: number
   onGestionar: () => void
   onGoToStatements: () => void
@@ -1492,12 +1515,14 @@ function CaseContextHeader({
   ptps,
   safeDfpAccount,
   statements,
+  cvResumenes,
   saldo,
   onGestionar,
   onGoToStatements,
 }: CaseContextHeaderProps) {
   const tone = getClassificationBadgeTone(classification)
   const latestStatement = getLatestStatement(statements)
+  const latestCvResumen = cvResumenes[0] ?? null
   const lastGestion = gestiones[0] ?? null
   const ptpVencido = ptps.find(
     p => p.estado === 'vencido' || (p.estado === 'pendiente' && p.fecha_compromiso < todayYmd()),
@@ -1548,6 +1573,20 @@ function CaseContextHeader({
           {metaRow('Balance por recuperar', fmtMonto(saldo), saldo > 0 ? '#dc2626' : '#10b981')}
           {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
           {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
+          {metaRow('APR CV', fmtPercentOrPending(caso.cv_interest_apr), caso.cv_interest_apr == null ? '#d97706' : 'var(--color-text)')}
+          {metaRow('Approval date', fmtFechaOrFallback(caso.cv_approval_date))}
+          {metaRow('Statement date', fmtFechaOrFallback(caso.cv_statement_date))}
+          {metaRow('Due date', fmtFechaOrFallback(caso.cv_due_date))}
+          {metaRow('Estado calendario CV', caso.cv_statement_schedule_status ?? 'Pendiente', caso.cv_statement_schedule_status ? 'var(--color-text)' : '#d97706')}
+          {metaRow(
+            'Último resumen generado',
+            latestCvResumen
+              ? `${fmtFecha(latestCvResumen.periodo_inicio)} - ${fmtFecha(latestCvResumen.periodo_fin)}`
+              : caso.cv_statement_generated_at
+                ? fmtFecha(caso.cv_statement_generated_at)
+                : 'Sin resumen generado',
+            latestCvResumen || caso.cv_statement_generated_at ? 'var(--color-text)' : '#d97706',
+          )}
           {metaRow(
             'Última gestión',
             lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión',
@@ -1827,7 +1866,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     if (caso.tipo_caso === 'cargo_vuelta' || !loadedDfpAccount) {
       const { data: cvData } = await supabase
         .from('cob_cv_resumenes')
-        .select('id,case_id,cliente_id,periodo_inicio,periodo_fin,fecha_corte,monto_original,saldo_apertura_periodo,pagos_periodo,pagos_acumulados,fee_plataforma_periodo,creditos_periodo,ajustes_periodo,saldo_pendiente_corte,proximo_pago_esperado,fecha_proximo_pago,status,created_at')
+        .select('id,case_id,cliente_id,periodo_inicio,periodo_fin,fecha_corte,approval_date_snapshot,statement_date_snapshot,due_date_snapshot,interest_period_start_snapshot,interest_period_end_snapshot,interest_days_snapshot,interest_apr_snapshot,interest_amount_periodo,balance_proyectado_due_date,monto_original,saldo_apertura_periodo,pagos_periodo,pagos_acumulados,fee_plataforma_periodo,creditos_periodo,ajustes_periodo,saldo_pendiente_corte,proximo_pago_esperado,fecha_proximo_pago,status,created_at')
         .eq('case_id', caso.id)
         .order('periodo_fin', { ascending: false })
         .order('created_at', { ascending: false })
@@ -2188,6 +2227,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           ptps={ptps}
           safeDfpAccount={safeDfpAccount}
           statements={statements}
+          cvResumenes={cvResumenes}
           saldo={saldo}
           onGestionar={handleNextStepAction}
           onGoToStatements={() => setTab('estado_cuenta')}
@@ -2903,7 +2943,7 @@ function CvResumenSection({ resumenes, caseId, caseEstado, previewUrl, onPreview
                         Período {fmtD(r.periodo_inicio)} – {fmtD(r.periodo_fin)}
                       </p>
                       <p style={{ margin: '0.12rem 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                        Corte {fmtD(r.fecha_corte)} · Próximo pago: {r.fecha_proximo_pago ? fmtD(r.fecha_proximo_pago) : 'Por confirmar'}
+                        Approval {fmtD(r.approval_date_snapshot)} · Statement {fmtD(r.statement_date_snapshot)} · Due {fmtD(r.due_date_snapshot)}
                       </p>
                     </div>
                     <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.67rem', fontWeight: 700, background: r.status === 'enviado' ? '#dcfce7' : '#f3f4f6', color: r.status === 'enviado' ? '#15803d' : '#6b7280', flexShrink: 0 }}>
@@ -2915,7 +2955,10 @@ function CvResumenSection({ resumenes, caseId, caseEstado, previewUrl, onPreview
                     <span style={{ color: 'var(--color-text-muted)' }}>Pagos período: <strong style={{ color: '#15803d' }}>{fmtM(r.pagos_periodo)}</strong></span>
                     <span style={{ color: 'var(--color-text-muted)' }}>Pagos acumulados: <strong style={{ color: '#15803d' }}>{fmtM(r.pagos_acumulados)}</strong></span>
                     <span style={{ color: 'var(--color-text-muted)' }}>Saldo pendiente: <strong style={{ color: '#dc2626' }}>{fmtM(r.saldo_pendiente_corte)}</strong></span>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Próximo pago: <strong style={{ color: 'var(--color-text)' }}>{fmtM(r.proximo_pago_esperado)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>APR: <strong style={{ color: r.interest_apr_snapshot == null ? '#d97706' : 'var(--color-text)' }}>{fmtPercentOrPending(r.interest_apr_snapshot)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Interest period: <strong style={{ color: 'var(--color-text)' }}>{r.interest_period_start_snapshot && r.interest_period_end_snapshot ? `${fmtD(r.interest_period_start_snapshot)} - ${fmtD(r.interest_period_end_snapshot)}` : 'Pendiente'}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Interés proyectado: <strong style={{ color: '#b45309' }}>{fmtM(r.interest_amount_periodo)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Total proyectado: <strong style={{ color: '#1d4ed8' }}>{fmtM(r.balance_proyectado_due_date)}</strong></span>
                   </div>
                   <CvResumenPdfButton
                     resumen={r}
@@ -3954,7 +3997,7 @@ export function CarteraPage() {
 
     const { data, error: casesError } = await supabase
       .from('cargo_vuelta_cases')
-      .select('id,org_id,cliente_id,tipo_caso,monto_total,monto_devuelto,fecha_cargo_vuelta,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,en_proceso_legal')
+      .select('id,org_id,cliente_id,tipo_caso,monto_total,monto_devuelto,fecha_cargo_vuelta,dias_vencido,estado,acuerdo_tipo,fecha_apertura,fecha_cierre,updated_by,en_proceso_legal,cv_approval_date,cv_due_date,cv_statement_date,cv_interest_apr,cv_statement_schedule_status,cv_statement_generated_at,cv_statement_last_resumen_id')
       .order('dias_vencido', { ascending: false })
 
     if (casesError) {

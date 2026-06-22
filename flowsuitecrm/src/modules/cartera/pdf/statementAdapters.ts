@@ -9,6 +9,15 @@ export type CvResumenRaw = {
   periodo_inicio: string
   periodo_fin: string
   fecha_corte: string
+  approval_date_snapshot: string | null
+  statement_date_snapshot: string | null
+  due_date_snapshot: string | null
+  interest_period_start_snapshot: string | null
+  interest_period_end_snapshot: string | null
+  interest_days_snapshot: number | null
+  interest_apr_snapshot: number | null
+  interest_amount_periodo: number
+  balance_proyectado_due_date: number | null
   monto_original: number
   saldo_apertura_periodo: number
   pagos_periodo: number
@@ -95,15 +104,23 @@ export function cvResumenToStatementData(
     paymentsAccumulated: resumen.pagos_acumulados,
     paymentsPeriod: resumen.pagos_periodo,
     creditsPeriod: resumen.creditos_periodo + resumen.ajustes_periodo,
-    interestCharges: 0,
+    interestCharges: resumen.interest_amount_periodo,
     feesPeriod: resumen.fee_plataforma_periodo,
     pendingBalance: resumen.saldo_pendiente_corte,
+    projectedDueBalance: resumen.balance_proyectado_due_date,
 
     agreedMonthlyPayment: resumen.proximo_pago_esperado,
     nextPaymentDate: resumen.fecha_proximo_pago,
     accountStatus: caseEstado,
+    approvalDate: resumen.approval_date_snapshot,
+    statementDate: resumen.statement_date_snapshot,
+    dueDate: resumen.due_date_snapshot,
+    interestPeriodStart: resumen.interest_period_start_snapshot,
+    interestPeriodEnd: resumen.interest_period_end_snapshot,
+    interestDays: resumen.interest_days_snapshot,
 
     apr: null,
+    interestApr: resumen.interest_apr_snapshot,
     interestBasis: null,
     ytdInterest: null,
     ytdFees: null,
@@ -119,6 +136,7 @@ function mapCvLineType(raw: string): StatementLineType {
     pago: 'pago',
     credito: 'credito',
     ajuste: 'ajuste',
+    cargo_interes: 'cargo_interes',
     saldo_cierre: 'saldo_cierre',
     proximo_pago: 'proximo_pago',
   }

@@ -21,6 +21,11 @@ function fmtDate(iso: string | null | undefined): string {
   return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`
 }
 
+function fmtPercentDecimal(n: number | null | undefined): string {
+  if (n == null) return 'APR pendiente'
+  return `${(n * 100).toFixed(2)}%`
+}
+
 function lineIsDebit(line: StatementLine): boolean {
   return line.type === 'saldo_apertura' || line.type === 'cargo_interes' || line.type === 'cargo_fee'
 }
@@ -187,6 +192,7 @@ const s = StyleSheet.create({
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function PageHeader({ data, pageNum }: { data: StatementPdfData; pageNum: string }) {
+  const isCv = data.accountType === 'cargo_vuelta'
   return (
     <View style={s.headerBar}>
       <View style={s.headerLeft}>
@@ -208,6 +214,22 @@ function PageHeader({ data, pageNum }: { data: StatementPdfData; pageNum: string
           <Text style={s.headerMetaLabel}>PERÍODO DEL ESTADO</Text>
           <Text style={s.headerMetaValue}>{fmtDate(data.periodStart)} – {fmtDate(data.periodEnd)}</Text>
         </View>
+        {isCv && (
+          <>
+            <View style={s.headerMetaRow}>
+              <Text style={s.headerMetaLabel}>FECHA DE APROBACIÓN</Text>
+              <Text style={s.headerMetaValue}>{fmtDate(data.approvalDate)}</Text>
+            </View>
+            <View style={s.headerMetaRow}>
+              <Text style={s.headerMetaLabel}>STATEMENT DATE</Text>
+              <Text style={s.headerMetaValue}>{fmtDate(data.statementDate)}</Text>
+            </View>
+            <View style={s.headerMetaRow}>
+              <Text style={s.headerMetaLabel}>DUE DATE</Text>
+              <Text style={s.headerMetaValue}>{fmtDate(data.dueDate)}</Text>
+            </View>
+          </>
+        )}
         <View>
           <Text style={s.headerMetaLabel}>NÚMERO DE CUENTA / CASO</Text>
           <Text style={s.headerMetaValue}>{data.accountNumber}</Text>
@@ -285,6 +307,18 @@ function AccountSummaryCol({ data }: { data: StatementPdfData }) {
             <Text style={s.summaryLabel}>Pagos acumulados (anteriores al período)</Text>
             <Text style={s.summaryValueGreen}>-{fmtMoney(data.paymentsAccumulated - data.paymentsPeriod)}</Text>
           </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>APR acordado</Text>
+            <Text style={s.summaryValue}>{fmtPercentDecimal(data.interestApr)}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Período de interés</Text>
+            <Text style={s.summaryValue}>
+              {data.interestPeriodStart && data.interestPeriodEnd
+                ? `${fmtDate(data.interestPeriodStart)} – ${fmtDate(data.interestPeriodEnd)}`
+                : 'Pendiente'}
+            </Text>
+          </View>
         </>
       )}
 
@@ -309,16 +343,32 @@ function AccountSummaryCol({ data }: { data: StatementPdfData }) {
         </View>
       )}
 
+      {!isDfp && (
+        <View style={s.summaryRow}>
+          <Text style={s.summaryLabel}>Interés proyectado</Text>
+          <Text style={s.summaryValue}>{fmtMoney(data.interestCharges)}</Text>
+        </View>
+      )}
+
       <View style={s.summaryDivider} />
       <View style={s.summaryTotal}>
-        <Text style={s.summaryTotalLabel}>Saldo Pendiente al {fmtDate(data.emissionDate)}</Text>
+        <Text style={s.summaryTotalLabel}>
+          {isDfp ? `Saldo Pendiente al ${fmtDate(data.emissionDate)}` : `Saldo al statement (${fmtDate(data.statementDate ?? data.emissionDate)})`}
+        </Text>
         <Text style={s.summaryTotalValue}>{fmtMoney(data.pendingBalance)}</Text>
       </View>
+      {!isDfp && (
+        <View style={[s.summaryTotal, { marginTop: 6, backgroundColor: COLORS.blueMid }]}>
+          <Text style={s.summaryTotalLabel}>Total proyectado al due date</Text>
+          <Text style={s.summaryTotalValue}>{fmtMoney(data.projectedDueBalance)}</Text>
+        </View>
+      )}
     </View>
   )
 }
 
 function PaymentInfoCol({ data }: { data: StatementPdfData }) {
+  const isCv = data.accountType === 'cargo_vuelta'
   const badge = accountStatusBadge(data.accountStatus)
   return (
     <View style={s.infoColLast}>
@@ -335,17 +385,34 @@ function PaymentInfoCol({ data }: { data: StatementPdfData }) {
 
       <View style={s.paymentCard}>
         <View>
-          <Text style={s.paymentCardLabel}>Fecha de próximo pago</Text>
+          <Text style={s.paymentCardLabel}>{isCv ? 'Due date' : 'Fecha de próximo pago'}</Text>
           <Text style={s.paymentCardValue}>
-            {data.nextPaymentDate ? fmtDate(data.nextPaymentDate) : 'Por confirmar'}
+            {isCv
+              ? fmtDate(data.dueDate ?? data.nextPaymentDate)
+              : data.nextPaymentDate ? fmtDate(data.nextPaymentDate) : 'Por confirmar'}
           </Text>
         </View>
       </View>
 
       <View style={[s.paymentCard, { flexDirection: 'column', alignItems: 'flex-start' }]}>
-        <Text style={s.paymentCardLabel}>Saldo pendiente</Text>
+        <Text style={s.paymentCardLabel}>{isCv ? 'Saldo al statement' : 'Saldo pendiente'}</Text>
         <Text style={s.paymentCardValueRed}>{fmtMoney(data.pendingBalance)}</Text>
       </View>
+
+      {isCv && (
+        <>
+          <View style={[s.paymentCard, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+            <Text style={s.paymentCardLabel}>Total proyectado al vencimiento</Text>
+            <Text style={s.paymentCardValue}>{fmtMoney(data.projectedDueBalance)}</Text>
+          </View>
+          <View style={s.paymentCard}>
+            <View>
+              <Text style={s.paymentCardLabel}>APR acordado</Text>
+              <Text style={s.paymentCardValue}>{fmtPercentDecimal(data.interestApr)}</Text>
+            </View>
+          </View>
+        </>
+      )}
 
       <View style={s.paymentCard}>
         <View style={{ flex: 1 }}>
@@ -455,13 +522,19 @@ function ClientMessageZone({ data }: { data: StatementPdfData }) {
       <View style={s.couponBox}>
         <Text style={s.couponHeader}>Cupón de Pago</Text>
 
-        <Text style={s.couponLabel}>Cantidad a pagar</Text>
+        <Text style={s.couponLabel}>{data.accountType === 'cargo_vuelta' ? 'Total proyectado a pagar' : 'Cantidad a pagar'}</Text>
         <Text style={s.couponAmount}>
-          {data.agreedMonthlyPayment != null ? fmtMoney(data.agreedMonthlyPayment) : fmtMoney(data.pendingBalance)}
+          {data.accountType === 'cargo_vuelta'
+            ? fmtMoney(data.projectedDueBalance ?? data.pendingBalance)
+            : data.agreedMonthlyPayment != null ? fmtMoney(data.agreedMonthlyPayment) : fmtMoney(data.pendingBalance)}
         </Text>
 
-        <Text style={s.couponLabel}>Fecha de vencimiento</Text>
-        <Text style={s.couponValue}>{data.nextPaymentDate ? fmtDate(data.nextPaymentDate) : 'Por confirmar'}</Text>
+        <Text style={s.couponLabel}>{data.accountType === 'cargo_vuelta' ? 'Due date' : 'Fecha de vencimiento'}</Text>
+        <Text style={s.couponValue}>
+          {data.accountType === 'cargo_vuelta'
+            ? fmtDate(data.dueDate ?? data.nextPaymentDate)
+            : data.nextPaymentDate ? fmtDate(data.nextPaymentDate) : 'Por confirmar'}
+        </Text>
 
         <Text style={s.couponLabel}>Número de cuenta / caso</Text>
         <Text style={[s.couponValue, { fontSize: 7 }]}>{data.accountNumber}</Text>

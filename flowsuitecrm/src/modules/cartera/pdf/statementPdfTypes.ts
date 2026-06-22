@@ -49,14 +49,22 @@ export type StatementPdfData = {
   interestCharges: number         // 0 for CV | cargos_interes_periodo (DFP)
   feesPeriod: number              // fee_plataforma_periodo (CV) | cargos_totales_periodo (DFP)
   pendingBalance: number          // saldo_pendiente_corte (CV) | nuevo_balance (DFP)
+  projectedDueBalance: number | null
 
   // Payment info
   agreedMonthlyPayment: number | null   // proximo_pago_esperado (CV) | pago_minimo (DFP)
   nextPaymentDate: string | null        // fecha_proximo_pago (CV) | fecha_vencimiento (DFP)
   accountStatus: string                 // derived from case estado
+  approvalDate: string | null
+  statementDate: string | null
+  dueDate: string | null
+  interestPeriodStart: string | null
+  interestPeriodEnd: string | null
+  interestDays: number | null
 
   // DFP-only fields (null for CV)
   apr: number | null              // apr_tae (DFP)
+  interestApr: number | null      // APR snapshoteado del statement CV
   interestBasis: number | null    // balance_sujeto_interes (DFP)
   ytdInterest: number | null
   ytdFees: number | null
