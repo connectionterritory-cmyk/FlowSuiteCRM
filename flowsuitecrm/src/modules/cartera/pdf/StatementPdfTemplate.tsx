@@ -478,6 +478,7 @@ function TransactionsTable({ lines }: { lines: StatementLine[] }) {
 function ClientMessageZone({ data }: { data: StatementPdfData }) {
   const msg = buildClientMessage(data)
   const isPositive = msg.icon === '✓'
+  const hasPaymentUrl = Boolean(CWG.paymentUrl)
   return (
     <View style={s.msgZone}>
       {/* Message */}
@@ -495,13 +496,15 @@ function ClientMessageZone({ data }: { data: StatementPdfData }) {
       {/* Payment options */}
       <View style={s.optionsBox}>
         <Text style={s.optionsHeader}>Opciones de Pago</Text>
-        <View style={s.optionRow}>
-          <Text style={s.optionIcon}>$</Text>
-          <View>
-            <Text style={s.optionLabel}>Pague en Línea</Text>
-            <Text style={s.optionValue}>{CWG.paymentUrl}</Text>
+        {hasPaymentUrl && (
+          <View style={s.optionRow}>
+            <Text style={s.optionIcon}>$</Text>
+            <View>
+              <Text style={s.optionLabel}>Pague en Línea</Text>
+              <Text style={s.optionValue}>{CWG.paymentUrl}</Text>
+            </View>
           </View>
-        </View>
+        )}
         <View style={s.optionRow}>
           <Text style={s.optionIcon}>T</Text>
           <View>
@@ -510,10 +513,17 @@ function ClientMessageZone({ data }: { data: StatementPdfData }) {
           </View>
         </View>
         <View style={s.optionRow}>
-          <Text style={s.optionIcon}>B</Text>
+          <Text style={s.optionIcon}>@</Text>
           <View>
-            <Text style={s.optionLabel}>Transferencia Bancaria</Text>
-            <Text style={s.optionValue}>Contáctenos para obtener instrucciones.</Text>
+            <Text style={s.optionLabel}>Solicite Instrucciones de Pago</Text>
+            <Text style={s.optionValue}>{CWG.email}</Text>
+          </View>
+        </View>
+        <View style={s.optionRow}>
+          <Text style={s.optionIcon}>H</Text>
+          <View>
+            <Text style={s.optionLabel}>Horario de Atención</Text>
+            <Text style={s.optionValue}>{CWG.hours}</Text>
           </View>
         </View>
       </View>
@@ -582,32 +592,32 @@ const PAGE2_SECTIONS = [
   {
     num: '1',
     title: '¿Hay un error en su estado de cuenta?',
-    body: `Si usted piensa que hay un error en su estado de cuenta, escríbanos dentro de los 60 días posteriores a la fecha de emisión. Incluya su nombre, número de cuenta, descripción del error y la razón por la que lo considera incorrecto.\n\nConnection Worldwide Group\nAtención: Servicio al Cliente\n23501 SW 115th Ave #386, Miami, FL 33170\nEmail: servicioalcliente@connectionww.com`,
+    body: `Si usted piensa que hay un error en su estado de cuenta, escríbanos dentro de los 60 días posteriores a la fecha de emisión. Incluya su nombre, número de cuenta, descripción del error y la razón por la que lo considera incorrecto.\n\n${CWG.name}\nAtención: Servicio al Cliente\n${CWG.address}\nEmail: ${CWG.email}`,
   },
   {
     num: '2',
     title: 'Cómo Hacer Pagos',
-    body: `• En línea: https://payments.connectionww.com\n• Por teléfono: (786) 291-3042\n• Por correo: Envíe su pago a Connection Worldwide Group, 23501 SW 115th Ave #386, Miami, FL 33170\n• Transferencia bancaria: Contáctenos para obtener instrucciones.`,
+    body: `Para realizar un pago o solicitar instrucciones de pago, comuníquese con nuestro equipo de atención al cliente.\n\nTeléfono: ${CWG.phone}\nEmail: ${CWG.email}\nHorario: ${CWG.hours}`,
   },
   {
     num: '3',
     title: 'Preguntas sobre el Producto / Garantía',
-    body: `Para preguntas sobre el uso, garantía del producto o servicio, comuníquese con nuestro departamento de Soporte de Producto.\n\nTeléfono: (786) 291-3042\nEmail: soporte@connectionww.com`,
+    body: `Para preguntas sobre el uso, garantía del producto o servicio, comuníquese con nuestro departamento de Soporte de Producto.\n\nTeléfono: ${CWG.phone}\nEmail: ${CWG.supportEmail}`,
   },
   {
     num: '4',
     title: 'Aviso Importante',
-    body: `Si su cuenta presenta pagos atrasados, podríamos reportar información negativa a las Agencias Nacionales de Reporte de Crédito y/o referir su cuenta a un servicio de cobranza para su recuperación.\n\nQueremos evitarlo. Comuníquese con nosotros hoy mismo.\n\nServicio al Cliente: (786) 291-3042`,
+    body: `Si su cuenta presenta pagos atrasados, podríamos reportar información negativa a las Agencias Nacionales de Reporte de Crédito y/o referir su cuenta a un servicio de cobranza para su recuperación.\n\nQueremos evitarlo. Comuníquese con nosotros hoy mismo.\n\nServicio al Cliente: ${CWG.phone}`,
   },
   {
     num: '5',
     title: 'Cambio de Dirección o Información',
-    body: `Si su dirección, número de teléfono o correo electrónico cambian, por favor notifíquenos para mantener su información actualizada.\n\nservicioalcliente@connectionww.com\n(786) 291-3042`,
+    body: `Si su dirección, número de teléfono o correo electrónico cambian, por favor notifíquenos para mantener su información actualizada.\n\n${CWG.email}\n${CWG.phone}`,
   },
   {
     num: '6',
     title: 'Su Privacidad es Importante',
-    body: `Protegemos su información personal. Para conocer nuestras prácticas de privacidad, visite:\nhttps://www.connectionww.com/privacy-policy`,
+    body: `Protegemos su información personal. Para conocer nuestras prácticas de privacidad, visite:\n${CWG.privacyUrl}`,
   },
 ]
 
