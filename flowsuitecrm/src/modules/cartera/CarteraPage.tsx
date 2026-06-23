@@ -2959,8 +2959,8 @@ function CvResumenSection({ resumenes, caseId, caseEstado, previewUrl, onPreview
                     <span style={{ color: 'var(--color-text-muted)' }}>Saldo pendiente: <strong style={{ color: '#dc2626' }}>{fmtM(r.saldo_pendiente_corte)}</strong></span>
                     <span style={{ color: 'var(--color-text-muted)' }}>APR: <strong style={{ color: r.interest_apr_snapshot == null ? '#d97706' : 'var(--color-text)' }}>{fmtPercentOrPending(r.interest_apr_snapshot)}</strong></span>
                     <span style={{ color: 'var(--color-text-muted)' }}>Interest period: <strong style={{ color: 'var(--color-text)' }}>{r.interest_period_start_snapshot && r.interest_period_end_snapshot ? `${fmtD(r.interest_period_start_snapshot)} - ${fmtD(r.interest_period_end_snapshot)}` : 'Pendiente'}</strong></span>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Interés proyectado: <strong style={{ color: '#b45309' }}>{fmtM(r.interest_amount_periodo)}</strong></span>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Total proyectado: <strong style={{ color: '#1d4ed8' }}>{fmtM(r.balance_proyectado_due_date)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Interés del statement: <strong style={{ color: '#b45309' }}>{fmtM(r.interest_amount_periodo)}</strong></span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Total estimado a pagar: <strong style={{ color: '#1d4ed8' }}>{fmtM(r.balance_proyectado_due_date)}</strong></span>
                   </div>
                   <CvResumenPdfButton
                     resumen={r}

@@ -345,7 +345,7 @@ function AccountSummaryCol({ data }: { data: StatementPdfData }) {
 
       {!isDfp && (
         <View style={s.summaryRow}>
-          <Text style={s.summaryLabel}>Interés proyectado</Text>
+          <Text style={s.summaryLabel}>Interés del período del statement</Text>
           <Text style={s.summaryValue}>{fmtMoney(data.interestCharges)}</Text>
         </View>
       )}
@@ -359,7 +359,7 @@ function AccountSummaryCol({ data }: { data: StatementPdfData }) {
       </View>
       {!isDfp && (
         <View style={[s.summaryTotal, { marginTop: 6, backgroundColor: COLORS.blueMid }]}>
-          <Text style={s.summaryTotalLabel}>Total proyectado al due date</Text>
+          <Text style={s.summaryTotalLabel}>Total estimado a pagar antes del due date</Text>
           <Text style={s.summaryTotalValue}>{fmtMoney(data.projectedDueBalance)}</Text>
         </View>
       )}
@@ -385,7 +385,7 @@ function PaymentInfoCol({ data }: { data: StatementPdfData }) {
 
       <View style={s.paymentCard}>
         <View>
-          <Text style={s.paymentCardLabel}>{isCv ? 'Due date' : 'Fecha de próximo pago'}</Text>
+          <Text style={s.paymentCardLabel}>{isCv ? 'Due date / fecha límite' : 'Fecha de próximo pago'}</Text>
           <Text style={s.paymentCardValue}>
             {isCv
               ? fmtDate(data.dueDate ?? data.nextPaymentDate)
@@ -402,7 +402,7 @@ function PaymentInfoCol({ data }: { data: StatementPdfData }) {
       {isCv && (
         <>
           <View style={[s.paymentCard, { flexDirection: 'column', alignItems: 'flex-start' }]}>
-            <Text style={s.paymentCardLabel}>Total proyectado al vencimiento</Text>
+            <Text style={s.paymentCardLabel}>Total estimado a pagar antes del due date</Text>
             <Text style={s.paymentCardValue}>{fmtMoney(data.projectedDueBalance)}</Text>
           </View>
           <View style={s.paymentCard}>
