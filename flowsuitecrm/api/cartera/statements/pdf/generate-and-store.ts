@@ -2,17 +2,19 @@ import { createHash } from 'node:crypto'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { createElement, type ReactElement } from 'react'
-import { StatementPdfTemplate } from '../../../../src/modules/cartera/pdf/StatementPdfTemplate.js'
+import { StatementPdfTemplate } from './_lib/StatementPdfTemplate.js'
 import {
   cvResumenToStatementData,
   dfpStatementToStatementData,
-  type ClienteSnap,
-  type CvResumenLineRaw,
-  type CvResumenRaw,
-  type DfpStatementLineRaw,
-  type DfpStatementRaw,
+} from './_lib/statementAdapters.js'
+import type {
+  ClienteSnap,
+  CvResumenLineRaw,
+  CvResumenRaw,
+  DfpStatementLineRaw,
+  DfpStatementRaw,
 } from '../../../../src/modules/cartera/pdf/statementAdapters.js'
-import type { StatementPdfData } from '../../../../src/modules/cartera/pdf/statementPdfTypes.js'
+type StatementPdfData = ReturnType<typeof dfpStatementToStatementData>
 
 type DocumentType = 'dfp_statement' | 'cv_resumen'
 
