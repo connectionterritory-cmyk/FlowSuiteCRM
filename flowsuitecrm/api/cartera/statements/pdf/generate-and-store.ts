@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { createElement, type ReactElement } from 'react'
-import { StatementPdfTemplate } from '../../../../src/modules/cartera/pdf/StatementPdfTemplate'
+import { StatementPdfTemplate } from '../../../../src/modules/cartera/pdf/StatementPdfTemplate.js'
 import {
   cvResumenToStatementData,
   dfpStatementToStatementData,
@@ -11,8 +11,8 @@ import {
   type CvResumenRaw,
   type DfpStatementLineRaw,
   type DfpStatementRaw,
-} from '../../../../src/modules/cartera/pdf/statementAdapters'
-import type { StatementPdfData } from '../../../../src/modules/cartera/pdf/statementPdfTypes'
+} from '../../../../src/modules/cartera/pdf/statementAdapters.js'
+import type { StatementPdfData } from '../../../../src/modules/cartera/pdf/statementPdfTypes.js'
 
 type DocumentType = 'dfp_statement' | 'cv_resumen'
 

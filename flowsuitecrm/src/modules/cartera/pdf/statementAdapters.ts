@@ -1,4 +1,4 @@
-import type { StatementPdfData, StatementLine, StatementLineType } from './statementPdfTypes'
+import type { StatementPdfData, StatementLine, StatementLineType } from './statementPdfTypes.js'
 
 // ── Raw types from Supabase queries ──────────────────────────────────────────
 

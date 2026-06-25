@@ -5,8 +5,8 @@ import {
   Text,
   StyleSheet,
 } from '@react-pdf/renderer'
-import type { StatementPdfData, StatementLine } from './statementPdfTypes'
-import { CWG, COLORS, FONTS, ACCOUNT_TYPE_LABEL, LINE_TYPE_LABEL } from './pdfConstants'
+import type { StatementPdfData, StatementLine } from './statementPdfTypes.js'
+import { CWG, COLORS, FONTS, ACCOUNT_TYPE_LABEL, LINE_TYPE_LABEL } from './pdfConstants.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
