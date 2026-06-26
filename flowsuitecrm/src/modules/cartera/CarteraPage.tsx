@@ -395,17 +395,11 @@ function isFinancialDfpAvailable(classification: CarteraClassification) {
   return classification === 'dfp_confirmado' || classification === 'hibrido_revisar'
 }
 
-function isRecoveryCase(classification: CarteraClassification) {
-  return classification === 'cargo_vuelta_confirmado' || classification === 'hibrido_revisar'
-}
 
 function shouldShowStatementActions(classification: CarteraClassification) {
   return isFinancialDfpAvailable(classification)
 }
 
-function shouldShowRecoveryActions(classification: CarteraClassification) {
-  return isRecoveryCase(classification) || classification === 'dfp_incompleto_revisar'
-}
 
 function ClassificationBadge({ classification }: { classification: CarteraClassification }) {
   const tone = getClassificationBadgeTone(classification)
@@ -1555,46 +1549,57 @@ function CaseContextHeader({
 
   if (classification === 'cargo_vuelta_confirmado') {
     return (
-      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(100,116,139,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-          <div>
-            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
-            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Cuenta devuelta por HyCite</p>
-          </div>
+      <div style={{ padding: '0.65rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.45rem', background: 'rgba(100,116,139,0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Cuenta devuelta por HyCite</p>
           <ClassificationBadge classification={classification} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.65rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
-          {metaRow('Balance por recuperar', fmtMonto(saldo), saldo > 0 ? '#dc2626' : '#10b981')}
-          {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
-          {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
-          {metaRow('APR CV', fmtPercentOrPending(caso.cv_interest_apr), caso.cv_interest_apr == null ? '#d97706' : 'var(--color-text)')}
-          {metaRow('Approval date', fmtFechaOrFallback(caso.cv_approval_date))}
-          {metaRow('Statement date', fmtFechaOrFallback(caso.cv_statement_date))}
-          {metaRow('Due date', fmtFechaOrFallback(caso.cv_due_date))}
-          {metaRow('Estado calendario CV', caso.cv_statement_schedule_status ?? 'Pendiente', caso.cv_statement_schedule_status ? 'var(--color-text)' : '#d97706')}
-          {metaRow(
-            'Último resumen generado',
-            latestCvResumen
-              ? `${fmtFecha(latestCvResumen.periodo_inicio)} - ${fmtFecha(latestCvResumen.periodo_fin)}`
-              : caso.cv_statement_generated_at
-                ? fmtFecha(caso.cv_statement_generated_at)
-                : 'Sin resumen generado',
-            latestCvResumen || caso.cv_statement_generated_at ? 'var(--color-text)' : '#d97706',
-          )}
-          {metaRow(
-            'Última gestión',
-            lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión',
-            lastGestion ? 'var(--color-text)' : '#d97706',
-          )}
-        </div>
         {ptpVencido && (
-          <div style={{ padding: '0.35rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)' }}>
-            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#dc2626' }}>
+          <div style={{ padding: '0.28rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#dc2626' }}>
               PTP vencido: {fmtMonto(ptpVencido.monto)} · {fmtFecha(ptpVencido.fecha_compromiso)}
             </span>
           </div>
         )}
-        {primaryBtn('Gestionar recuperación', onGestionar)}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '0.4rem' }}>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: `1px solid ${saldo > 0 ? '#dc262630' : '#10b98130'}`, background: saldo > 0 ? 'rgba(220,38,38,0.04)' : 'rgba(16,185,129,0.04)' }}>
+            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Balance</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
+              {metaRow('Por recuperar', fmtMonto(saldo), saldo > 0 ? '#dc2626' : '#10b981')}
+              {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
+              {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
+            </div>
+          </div>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seguimiento</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
+              {metaRow('Calendario CV', caso.cv_statement_schedule_status ?? 'Pendiente', 'var(--color-text-muted)')}
+              {metaRow(
+                'Última gestión',
+                lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión',
+                lastGestion ? 'var(--color-text)' : '#d97706',
+              )}
+              {metaRow(
+                'Último resumen',
+                latestCvResumen
+                  ? fmtFecha(latestCvResumen.fecha_corte)
+                  : caso.cv_statement_generated_at
+                    ? fmtFecha(caso.cv_statement_generated_at)
+                    : 'Sin resumen generado',
+                latestCvResumen || caso.cv_statement_generated_at ? 'var(--color-text)' : 'var(--color-text-muted)',
+              )}
+            </div>
+          </div>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Documentos</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
+              {metaRow('APR CV', fmtPercentOrPending(caso.cv_interest_apr), caso.cv_interest_apr == null ? '#d97706' : 'var(--color-text)')}
+              {metaRow('Approval date', caso.cv_approval_date ? fmtFecha(caso.cv_approval_date) : 'Sin aprobación', caso.cv_approval_date ? 'var(--color-text)' : 'var(--color-text-muted)')}
+              {metaRow('Statement date', caso.cv_statement_date ? fmtFecha(caso.cv_statement_date) : 'Sin statement', caso.cv_statement_date ? 'var(--color-text)' : 'var(--color-text-muted)')}
+              {metaRow('Due date', caso.cv_due_date ? fmtFecha(caso.cv_due_date) : 'Sin vencimiento', caso.cv_due_date ? 'var(--color-text)' : 'var(--color-text-muted)')}
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -1630,7 +1635,7 @@ function CaseContextHeader({
                 {latestStatement?.fecha_vencimiento && metaRow('Vence', fmtFecha(latestStatement.fecha_vencimiento))}
               </>
             ) : (
-              <span style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>No disponible</span>
+              <span style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>Sin datos DFP</span>
             )}
           </div>
         </div>
@@ -1754,6 +1759,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const [cierreNota, setCierreNota] = useState('')
   const [cerrando, setCerrando] = useState(false)
   const detailLoadSeq = useRef(0)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
 
   const loadDetail = async () => {
     const loadSeq = detailLoadSeq.current + 1
@@ -1873,6 +1880,17 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
 
   useEffect(() => { void loadDetail() }, [caso.id])
 
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const handle = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [moreMenuOpen])
+
   const handleRefresh = () => { void loadDetail(); onCaseUpdated() }
 
   const handleCerrarCaso = async () => {
@@ -1980,6 +1998,21 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const classification = classifyCarteraCase(caso, safeDfpAccount)
   const saldoBase = caso.monto_devuelto ?? caso.monto_total
   const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
+  const hasActivePlan = planes.some(p => p.estado === 'activo')
+  const hasPendingOrOverduePtp = ptps.some(p => p.estado === 'pendiente' || p.estado === 'vencido')
+  const hasPagosPrevios = pagos.filter(p => p.estado !== 'rechazado' && p.estado !== 'reversado').length > 0
+  const showRegistrarPago = hasActivePlan || hasPagosPrevios || hasPendingOrOverduePtp
+  const montoCvPendiente = !isDfp && (caso.monto_devuelto === null || caso.monto_devuelto === undefined || caso.monto_devuelto === 0)
+  const recAction = (() => {
+    const today = todayYmd()
+    if (caso.estado === 'Cerrado') return { label: 'Ver historial', color: '#6b7280', onClick: () => setTab('historial') }
+    const ptpVencido = ptps.find(p => p.estado === 'vencido' || (p.estado === 'pendiente' && p.fecha_compromiso < today))
+    if (ptpVencido) return { label: 'Contactar por PTP vencido', color: '#dc2626', onClick: () => setGestionOpen(true) }
+    if (montoCvPendiente && !hasActivePlan) return { label: 'Capturar monto CV', color: '#b45309', onClick: () => setCapturarMontoOpen(true) }
+    if (gestiones.length === 0) return { label: 'Registrar contacto', color: '#3b82f6', onClick: () => setGestionOpen(true) }
+    if (hasActivePlan) return { label: 'Registrar gestión', color: '#3b82f6', onClick: () => setGestionOpen(true) }
+    return { label: 'Crear acuerdo', color: '#7c3aed', onClick: () => setPlanOpen(true) }
+  })()
   const cliente = caso.clientes
   const contactName = nombreCliente(cliente)
   const planCarta = planes[0] ?? null
@@ -2059,8 +2092,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     { label: caso.estado, color: estadoColor(caso.estado) },
   ]
   if (caso.acuerdo_tipo) chips.push({ label: caso.acuerdo_tipo, color: '#7c3aed' })
-  if (shouldShowStatementActions(classification)) chips.push({ label: 'DFP financiero', color: '#0f766e' })
-  if (shouldShowRecoveryActions(classification)) chips.push({ label: 'Recuperación', color: '#7c3aed' })
 
   const TABS: { key: DetailTab; label: string }[] = [
     { key: 'historial', label: 'Historial' },
@@ -2101,14 +2132,14 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text-muted)' }}>{fmtMonto(cliente.saldo_actual)}</strong>
             </span>
           )}
-          {/* Monto cargo de vuelta */}
+          {/* Monto CV oficial */}
           {caso.monto_devuelto !== null && caso.monto_devuelto !== undefined && caso.monto_devuelto > 0 ? (
-            <span>Monto cargo de vuelta: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(caso.monto_devuelto)}</strong></span>
+            <span>Monto CV oficial: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(caso.monto_devuelto)}</strong></span>
           ) : (
-            <span style={{ color: '#d97706', fontWeight: 700 }}>⚠ Monto cargo de vuelta: pendiente de capturar</span>
+            <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ Monto CV oficial: pendiente</span>
           )}
           {!isDfp && <span>Pagado: <strong style={{ color: '#10b981' }}>{fmtMonto(totalPagado)}</strong></span>}
-          <span>Saldo operativo: <strong style={{ color: saldo > 0 ? '#f87171' : '#10b981' }}>{fmtMonto(saldo)}</strong></span>
+          <span>{montoCvPendiente ? 'Saldo est.' : 'Saldo operativo'}: <strong style={{ color: saldo > 0 ? '#f87171' : '#10b981' }}>{fmtMonto(saldo)}</strong></span>
         </div>
         {/* Plan activo — resumen compacto */}
         {(() => {
@@ -2160,56 +2191,72 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         <div style={{ padding: '0.5rem 1.25rem', background: 'rgba(217,119,6,0.05)', borderBottom: '1px solid rgba(217,119,6,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
           <span style={{ fontSize: '0.76rem', color: '#92400e', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: '#b45309' }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Monto cargo de vuelta pendiente — Hy-Cite reportó saldo 0 pero el cliente puede deber.
+            Monto CV oficial pendiente — Hy-Cite reportó saldo 0, pero el cliente puede tener saldo por recuperar.
           </span>
           <button type="button" onClick={() => setCapturarMontoOpen(true)}
-            style={{ padding: '0.22rem 0.65rem', borderRadius: '0.4rem', border: '1px solid rgba(146,64,14,0.28)', background: 'rgba(217,119,6,0.07)', color: '#92400e', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            Capturar monto
+            style={{ padding: '0.35rem 0.9rem', borderRadius: '0.4rem', border: 'none', background: '#b45309', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+            Capturar monto CV
           </button>
         </div>
       )}
 
-      {/* Action bar — grouped */}
-      <div style={{ padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Registrar */}
-        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Registrar</span>
-          <ActionBtn label="Llamada" color="#3b82f6" onClick={() => setGestionOpen(true)} />
-          <ActionBtn label="PTP" color="#f59e0b" onClick={() => setPtpOpen(true)} />
-          <ActionBtn label="Pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
-          <ActionBtn label="Refinanciar" color="#7c3aed" onClick={() => setPlanOpen(true)} />
-        </div>
-        <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
-        {/* Enviar */}
-        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Enviar carta</span>
-          <ActionBtn label="Email" color="#2563eb" onClick={() => openCarta('email')} />
-          <ActionBtn label="WhatsApp" color="#16a34a" onClick={() => openCarta('whatsapp')} disabled={!cliente?.telefono} />
-          <ActionBtn label="SMS" color="#6b7280" onClick={() => openCarta('sms')} disabled={!cliente?.telefono} />
-        </div>
-        <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
-        {/* Escalar */}
-        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Escalar</span>
-          <ActionBtn label="Cargo vuelta" color="#7c3aed" onClick={() => setCapturarMontoOpen(true)} />
-          <ActionBtn
-            label={caso.en_proceso_legal ? 'Legal activo' : 'Legal'}
-            color={caso.en_proceso_legal ? '#dc2626' : '#6b7280'}
-            onClick={async () => {
-              await supabase.from('cargo_vuelta_cases').update({ en_proceso_legal: !caso.en_proceso_legal }).eq('id', caso.id)
-              onCaseUpdated()
-            }}
-          />
-        </div>
-        {caso.estado !== 'Cerrado' && (
-          <>
-            <div style={{ width: '1px', background: 'var(--color-border)', alignSelf: 'stretch', flexShrink: 0 }} />
-            <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Cerrar</span>
-              <ActionBtn label="Pago recibido" color="#059669" onClick={() => setCierreOpen(true)} />
-            </div>
-          </>
+      {/* Action bar — simplified */}
+      <div style={{ padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Acción recomendada */}
+        <button type="button" onClick={recAction.onClick}
+          style={{ padding: '0.28rem 0.8rem', borderRadius: '0.4rem', border: `1px solid ${recAction.color}55`, background: recAction.color + '14', color: recAction.color, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+          {recAction.label}
+        </button>
+        {/* Registrar contacto — oculto si ya es la acción recomendada */}
+        {recAction.label !== 'Registrar contacto' && (
+          <ActionBtn label="Registrar contacto" color="#3b82f6" onClick={() => setGestionOpen(true)} />
         )}
+        {/* Registrar pago — solo cuando hay contexto de pago */}
+        {showRegistrarPago && (
+          <ActionBtn label="Registrar pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
+        )}
+        {/* Más — dropdown agrupado */}
+        <div ref={moreMenuRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+          <ActionBtn label="Más ▾" color="#6b7280" onClick={() => setMoreMenuOpen(v => !v)} />
+          {moreMenuOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '0.55rem', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: '215px', padding: '0.35rem 0' }}>
+              <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Comunicación</p>
+              <MasMenuItem label="Carta por Email" onClick={() => { openCarta('email'); setMoreMenuOpen(false) }} />
+              <MasMenuItem label="Carta por WhatsApp" onClick={() => { openCarta('whatsapp'); setMoreMenuOpen(false) }} disabled={!cliente?.telefono} />
+              <MasMenuItem label="Carta por SMS" onClick={() => { openCarta('sms'); setMoreMenuOpen(false) }} disabled={!cliente?.telefono} />
+              <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
+              <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cuenta / acuerdo</p>
+              <MasMenuItem label="Crear acuerdo" onClick={() => { setPlanOpen(true); setMoreMenuOpen(false) }} />
+              <MasMenuItem label="Registrar PTP" onClick={() => { setPtpOpen(true); setMoreMenuOpen(false) }} />
+              <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
+              <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Escalación</p>
+              <MasMenuItem label="Capturar monto cargo vuelta" onClick={() => { setCapturarMontoOpen(true); setMoreMenuOpen(false) }} />
+              <MasMenuItem
+                label={caso.en_proceso_legal ? 'Quitar proceso legal' : 'Marcar en proceso legal'}
+                color={caso.en_proceso_legal ? '#dc2626' : undefined}
+                onClick={async () => {
+                  await supabase.from('cargo_vuelta_cases').update({ en_proceso_legal: !caso.en_proceso_legal }).eq('id', caso.id)
+                  onCaseUpdated()
+                  setMoreMenuOpen(false)
+                }}
+              />
+              {caso.estado !== 'Cerrado' && (
+                <>
+                  <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
+                  <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cierre</p>
+                  <MasMenuItem label="Pago recibido — cerrar caso" color="#059669" onClick={() => { setCierreOpen(true); setMoreMenuOpen(false) }} />
+                </>
+              )}
+              {shouldShowStatementActions(classification) && (
+                <>
+                  <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
+                  <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Auditoría</p>
+                  <MasMenuItem label="Ver estado de cuenta" onClick={() => { setTab('estado_cuenta'); setMoreMenuOpen(false) }} />
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Context header — tipo de cuenta y resumen operativo */}
@@ -2340,6 +2387,15 @@ function ActionBtn({ label, color, onClick, disabled = false }: { label: string;
   return (
     <button type="button" onClick={onClick} disabled={disabled}
       style={{ padding: '0.28rem 0.65rem', borderRadius: '0.4rem', border: `1px solid ${color}38`, background: color + '0e', color, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.74rem', fontWeight: 600, opacity: disabled ? 0.4 : 1 }}>
+      {label}
+    </button>
+  )
+}
+
+function MasMenuItem({ label, onClick, disabled = false, color }: { label: string; onClick: () => void; disabled?: boolean; color?: string }) {
+  return (
+    <button type="button" onClick={disabled ? undefined : onClick} disabled={disabled}
+      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.32rem 0.8rem', border: 'none', background: 'transparent', color: disabled ? 'var(--color-text-muted)' : (color ?? 'var(--color-text)'), cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 500, opacity: disabled ? 0.45 : 1 }}>
       {label}
     </button>
   )
@@ -4017,6 +4073,12 @@ function CarteraEmptyState({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', minHeight: '100%', padding: '1.5rem', gap: '1rem' }}>
+      <div style={{ padding: '0.6rem 0.85rem', borderRadius: '0.55rem', border: '1px dashed var(--color-border)', background: 'var(--color-card)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <p style={{ margin: 0, fontSize: '0.79rem', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
+          Selecciona un caso de la lista para ver el resumen, acuerdo activo, próximo pago e historial de gestión.
+        </p>
+      </div>
       <div style={{ padding: '1rem 1.1rem', borderRadius: '0.9rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(15,118,110,0.08), rgba(37,99,235,0.05))' }}>
         <p style={{ margin: '0 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-text)' }}>Workspace de cartera</p>
         <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
@@ -4116,6 +4178,7 @@ export function CarteraPage() {
   const [pageSize, setPageSize] = useState<CarteraPageSize>(loadCarteraPageSize)
   const [currentPage, setCurrentPage] = useState(1)
   const detailPanelRef = useRef<HTMLDivElement>(null)
+  const [metricsOpen, setMetricsOpen] = useState(false)
 
   const loadCases = async () => {
     setLoading(true)
@@ -4490,15 +4553,24 @@ export function CarteraPage() {
           </div>
         </div>
 
-        <div style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
-            <KpiCard label="Cargo de vuelta confirmado" value={String(kpiMetrics.cargoConfirmadoCount)} tone={{ border: '#47556933', text: '#475569', bg: 'rgba(100,116,139,0.08)' }} />
-            <KpiCard label="Híbridos / revisar" value={String(kpiMetrics.reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
-            <KpiCard label="Balance por recuperar" value={fmtMonto(kpiMetrics.balancePendienteRecuperar)} tone={{ border: '#0f766e33', text: '#0f766e', bg: 'rgba(15,118,110,0.08)' }} />
-            <KpiCard label="PTP vencidos" value={String(kpiMetrics.ptpVencidos)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
-            <KpiCard label="Casos urgentes" value={String(kpiMetrics.urgentes)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
-            <KpiCard label="Casos cerrados" value={String(kpiMetrics.cerrados)} tone={{ border: '#6b728044', text: '#6b7280', bg: 'rgba(107,114,128,0.08)' }} />
-          </div>
+        <div style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+          <button type="button" onClick={() => setMetricsOpen(v => !v)}
+            style={{ width: '100%', padding: '0.42rem 0.75rem', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span>Métricas</span>
+            <span style={{ fontSize: '0.62rem', opacity: 0.7 }}>{metricsOpen ? '▲ Ocultar' : '▼ Ver'}</span>
+          </button>
+          {metricsOpen && (
+            <div style={{ padding: '0 0.75rem 0.65rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
+                <KpiCard label="Cargo de vuelta confirmado" value={String(kpiMetrics.cargoConfirmadoCount)} tone={{ border: '#47556933', text: '#475569', bg: 'rgba(100,116,139,0.08)' }} />
+                <KpiCard label="Híbridos / revisar" value={String(kpiMetrics.reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
+                <KpiCard label="Balance por recuperar" value={fmtMonto(kpiMetrics.balancePendienteRecuperar)} tone={{ border: '#0f766e33', text: '#0f766e', bg: 'rgba(15,118,110,0.08)' }} />
+                <KpiCard label="PTP vencidos" value={String(kpiMetrics.ptpVencidos)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
+                <KpiCard label="Casos urgentes" value={String(kpiMetrics.urgentes)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
+                <KpiCard label="Casos cerrados" value={String(kpiMetrics.cerrados)} tone={{ border: '#6b728044', text: '#6b7280', bg: 'rgba(107,114,128,0.08)' }} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Quick filters */}
@@ -4560,7 +4632,7 @@ export function CarteraPage() {
               const isSelected = selectedCase?.id === c.id
               const dColor = diasColor(c.dias_vencido)
               const displayAmount = c.monto_devuelto ?? c.monto_total
-              const sinMonto = !c.monto_devuelto || c.monto_devuelto === 0
+              const displayAmountPositive = displayAmount && displayAmount > 0
               const lastG = lastGestionByCase[c.id]
               const hasPtpVencido = ptpVencidoSet.has(c.id)
               const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
@@ -4568,7 +4640,7 @@ export function CarteraPage() {
               const primaryMetricLabel = classification === 'dfp_confirmado'
                 ? 'Balance financiero'
                 : 'Balance por recuperar'
-              const primaryMetricValue = sinMonto ? 'No disponible' : fmtMonto(displayAmount)
+              const primaryMetricValue = displayAmountPositive ? fmtMonto(displayAmount) : 'Pendiente de capturar'
               const lastGestionText = lastG
                 ? `${lastG.tipo_gestion}${lastG.resultado ? ` · ${lastG.resultado}` : ''} · ${fmtFecha(lastG.created_at)}`
                 : 'Sin gestion'
@@ -4585,46 +4657,6 @@ export function CarteraPage() {
                   case 'sin_clasificar':
                   default:
                     return 'Requiere revisión administrativa'
-                }
-              })()
-              const actionLabel = (() => {
-                switch (classification) {
-                  case 'cargo_vuelta_confirmado':
-                    return 'Gestionar recuperación'
-                  case 'hibrido_revisar':
-                    return 'Revisar cuenta'
-                  case 'dfp_confirmado':
-                    return 'Enviar statement'
-                  case 'dfp_incompleto_revisar':
-                  case 'sin_clasificar':
-                  default:
-                    return 'Revisar clasificación'
-                }
-              })()
-              const secondaryFacts = (() => {
-                switch (classification) {
-                  case 'hibrido_revisar':
-                    return [
-                      `Recovery: ${primaryMetricValue}`,
-                      'DFP disponible',
-                      'Statement disponible',
-                    ]
-                  case 'dfp_confirmado':
-                    return [
-                      'Cuenta DFP',
-                      'Statement disponible',
-                    ]
-                  case 'dfp_incompleto_revisar':
-                  case 'sin_clasificar':
-                    return [
-                      'Requiere revisión administrativa',
-                    ]
-                  case 'cargo_vuelta_confirmado':
-                  default:
-                    return [
-                      c.estado,
-                      `${c.dias_vencido} días vencido`,
-                    ]
                 }
               })()
               return (
@@ -4661,33 +4693,22 @@ export function CarteraPage() {
                       </div>
                       <div style={{ flexShrink: 0, textAlign: 'right', minWidth: '120px' }}>
                         <p style={{ margin: 0, fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{primaryMetricLabel}</p>
-                        <p style={{ margin: '0.14rem 0 0', fontSize: '0.92rem', fontWeight: 800, color: classification === 'hibrido_revisar' ? '#b45309' : classification === 'dfp_confirmado' ? '#0f766e' : dColor }}>
+                        <p style={{ margin: '0.14rem 0 0', fontSize: '0.92rem', fontWeight: 800, color: !displayAmountPositive ? '#d97706' : classification === 'hibrido_revisar' ? '#b45309' : classification === 'dfp_confirmado' ? '#0f766e' : dColor }}>
                           {primaryMetricValue}
                         </p>
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
-                      <div style={{ padding: '0.45rem 0.55rem', borderRadius: '0.55rem', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.16)' }}>
-                        <p style={{ margin: '0 0 0.12rem', fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{classification === 'dfp_confirmado' ? 'Estado de cuenta' : 'Estado actual'}</p>
-                        <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-text)' }}>{secondaryFacts[0]}</p>
-                      </div>
-                      <div style={{ padding: '0.45rem 0.55rem', borderRadius: '0.55rem', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.16)' }}>
-                        <p style={{ margin: '0 0 0.12rem', fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{classification === 'dfp_confirmado' ? 'Acción sugerida' : 'Seguimiento'}</p>
-                        <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: 'var(--color-text)' }}>{secondaryFacts[1] ?? actionLabel}</p>
-                      </div>
+                    <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, color: dColor, padding: '0.08rem 0.4rem', borderRadius: '0.3rem', background: dColor + '12', border: `1px solid ${dColor}28` }}>{c.dias_vencido}d</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: estadoColor(c.estado) }}>{c.estado}</span>
+                      {c.acuerdo_tipo && <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#7c3aed' }}>{c.acuerdo_tipo}</span>}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: '0.64rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Última gestión</p>
-                        <p style={{ margin: '0.16rem 0 0', fontSize: '0.72rem', color: lastG ? 'var(--color-text-muted)' : '#b45309', fontWeight: lastG ? 500 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {lastGestionText}
-                        </p>
-                      </div>
-                      <span style={{ flexShrink: 0, padding: '0.4rem 0.7rem', borderRadius: '999px', background: tone.background, color: tone.color, border: `1px solid ${tone.border}`, fontSize: '0.7rem', fontWeight: 800 }}>
-                        {actionLabel}
-                      </span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: '0.68rem', color: lastG ? 'var(--color-text-muted)' : '#b45309', fontWeight: lastG ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {lastGestionText}
+                      </p>
                     </div>
                   </div>
 
