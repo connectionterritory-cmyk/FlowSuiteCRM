@@ -38,6 +38,9 @@ export function TelemercadeoCarteraPage() {
   const loadGestiones = async (ids: string[]) => {
     const today = new Date().toLocaleDateString('en-CA')
 
+    // Phase 1 note:
+    // This view still infers promise status from cob_gestiones for continuity.
+    // Follow-up phase should source overdue promises from cob_ptps lifecycle.
     const { data: cobData } = await supabase
       .from('cob_gestiones')
       .select('cliente_id, resultado, created_at, fecha_compromiso')

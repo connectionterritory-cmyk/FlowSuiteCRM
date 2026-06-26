@@ -620,19 +620,18 @@ function PTPModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSa
     }
     setSaving(true)
     setError(null)
-    const { error: err } = await supabase.from('cob_ptps').insert({
-      org_id: orgId,
-      cliente_id: clienteId,
-      case_id: caseId,
-      monto: parsedMonto,
-      fecha_compromiso: fecha,
-      estado: 'pendiente',
-      canal,
-      notas: notas || null,
-      creado_por: currentUserId ?? null,
+    const { data, error: err } = await supabase.rpc('fn_cob_registrar_ptp_operativo', {
+      p_case_id: caseId,
+      p_monto: parsedMonto,
+      p_fecha_compromiso: fecha,
+      p_canal: canal,
+      p_notas: notas.trim() || null,
+      p_tipo_gestion: 'PTP',
     })
     setSaving(false)
     if (err) { setError(err.message); return }
+    const result = data as { ok?: boolean } | null
+    if (result && result.ok === false) { setError('No se pudo registrar el PTP'); return }
     onSaved()
     onClose()
   }
@@ -725,12 +724,15 @@ function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, dfpAcc
     setError(null)
 
     if (dfpAccountId) {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc('fn_registrar_pago_revolving', {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('fn_cob_registrar_pago_revolving_operativo', {
         p_account_id: dfpAccountId,
         p_monto: parsedMonto,
         p_fecha: fecha,
-        p_referencia: referenciaExterna.trim() || null,
+        p_metodo_pago: metodo,
+        p_referencia_externa: referenciaExterna.trim() || null,
+        p_comprobante_url: comprobanteUrl.trim() || null,
         p_notas: notas.trim() || null,
+        p_ptp_id: ptpId || null,
       })
       setSaving(false)
       if (rpcErr) { setError(rpcErr.message); return }
@@ -739,23 +741,20 @@ function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, dfpAcc
       onSaved(); onClose(); return
     }
 
-    const { error: err } = await supabase.from('cob_pagos').insert({
-      org_id: orgId,
-      cliente_id: clienteId,
-      cargo_vuelta_case_id: caseId,
-      ptp_id: ptpId || null,
-      monto: parsedMonto,
-      moneda: 'USD',
-      fecha_pago: fecha,
-      metodo_pago: metodo,
-      referencia_externa: referenciaExterna.trim() || null,
-      comprobante_url: comprobanteUrl.trim() || null,
-      notas: notas.trim() || null,
-      estado: 'registrado',
-      source: 'manual',
-      created_by: currentUserId ?? null,
+    const { data: rpcData, error: err } = await supabase.rpc('fn_cob_registrar_pago_case', {
+      p_case_id: caseId,
+      p_monto: parsedMonto,
+      p_fecha_pago: fecha,
+      p_metodo_pago: metodo,
+      p_referencia_externa: referenciaExterna.trim() || null,
+      p_comprobante_url: comprobanteUrl.trim() || null,
+      p_notas: notas.trim() || null,
+      p_ptp_id: ptpId || null,
+      p_cuota_ids: null,
     })
     if (err) { setSaving(false); setError(err.message); return }
+    const result = rpcData as { ok?: boolean; error?: string } | null
+    if (result && !result.ok && result.error) { setSaving(false); setError(result.error); return }
 
     setSaving(false)
     onSaved()
@@ -4090,6 +4089,18 @@ type CarteraPrimaryTab =
   | 'urgentes'
   | 'cerrados'
 
+const CARTERA_PAGE_SIZE_KEY = 'cartera_page_size'
+const CARTERA_VALID_PAGE_SIZES = [10, 20, 50] as const
+type CarteraPageSize = (typeof CARTERA_VALID_PAGE_SIZES)[number]
+
+function loadCarteraPageSize(): CarteraPageSize {
+  try {
+    const stored = Number(localStorage.getItem(CARTERA_PAGE_SIZE_KEY))
+    if ((CARTERA_VALID_PAGE_SIZES as readonly number[]).includes(stored)) return stored as CarteraPageSize
+  } catch { /* ignore */ }
+  return 10
+}
+
 export function CarteraPage() {
   const { isMobile, isTablet } = useBreakpoint()
   const { usersById } = useUsers()
@@ -4108,6 +4119,8 @@ export function CarteraPage() {
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
   const [dfpCaseIdSet, setDfpCaseIdSet] = useState<Set<string>>(new Set())
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
+  const [pageSize, setPageSize] = useState<CarteraPageSize>(loadCarteraPageSize)
+  const [currentPage, setCurrentPage] = useState(1)
   const detailPanelRef = useRef<HTMLDivElement>(null)
 
   const loadCases = async () => {
@@ -4364,6 +4377,19 @@ export function CarteraPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cases, busqueda, responsableFiltro, quickFilter, primaryTab, lastGestionByCase, ptpVencidoSet, dfpCaseIdSet])
 
+  // Reset to page 1 whenever the filtered set changes (filter, search, tab)
+  useEffect(() => { setCurrentPage(1) }, [busqueda, responsableFiltro, quickFilter, primaryTab])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(currentPage, totalPages)
+  const paginatedFiltered = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+
+  const handlePageSizeChange = (newSize: CarteraPageSize) => {
+    setPageSize(newSize)
+    setCurrentPage(1)
+    try { localStorage.setItem(CARTERA_PAGE_SIZE_KEY, String(newSize)) } catch { /* ignore */ }
+  }
+
   const handleCaseUpdated = () => void loadCases()
 
   const handleSelectCase = (caso: Case) => {
@@ -4407,7 +4433,9 @@ export function CarteraPage() {
               </p>
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-              {loading ? '…' : `${filtered.length} de ${cases.length}`}
+              {loading ? '…' : filtered.length === cases.length
+                ? `${cases.length} casos`
+                : `${filtered.length} de ${cases.length}`}
             </span>
           </div>
           <input
@@ -4534,7 +4562,7 @@ export function CarteraPage() {
               )}
             </div>
           ) : (
-            filtered.map(c => {
+            paginatedFiltered.map(c => {
               const isSelected = selectedCase?.id === c.id
               const dColor = diasColor(c.dias_vencido)
               const displayAmount = c.monto_devuelto ?? c.monto_total
@@ -4743,6 +4771,49 @@ export function CarteraPage() {
                 </button>
               )
             })
+          )}
+          {/* Pagination controls */}
+          {!loading && filtered.length > 0 && (
+            <div style={{ padding: '0.6rem 0.75rem', borderTop: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.45rem', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                  {`Mostrando ${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, filtered.length)} de ${filtered.length} casos`}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Por página:</span>
+                  <select
+                    value={pageSize}
+                    onChange={e => handlePageSizeChange(Number(e.target.value) as CarteraPageSize)}
+                    style={{ height: '26px', padding: '0 0.4rem', borderRadius: '0.35rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: 'var(--color-text)', fontSize: '0.72rem', cursor: 'pointer' }}
+                  >
+                    {CARTERA_VALID_PAGE_SIZES.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  style={{ padding: '0.25rem 0.65rem', borderRadius: '0.35rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: safePage <= 1 ? 'var(--color-border)' : 'var(--color-text)', cursor: safePage <= 1 ? 'default' : 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                >
+                  Anterior
+                </button>
+                <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', minWidth: '60px', textAlign: 'center' }}>
+                  {safePage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  style={{ padding: '0.25rem 0.65rem', borderRadius: '0.35rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', color: safePage >= totalPages ? 'var(--color-border)' : 'var(--color-text)', cursor: safePage >= totalPages ? 'default' : 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
