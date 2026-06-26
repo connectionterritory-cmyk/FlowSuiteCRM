@@ -591,14 +591,11 @@ function buildHistorial(gestiones: Gestion[], ptps: PTP[], pagos: Pago[], caso: 
 type PTPModalProps = {
   open: boolean
   caseId: string
-  clienteId: string
-  orgId: string
-  currentUserId: string | null
   onClose: () => void
   onSaved: () => void
 }
 
-function PTPModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PTPModalProps) {
+function PTPModal({ open, caseId, onClose, onSaved }: PTPModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState('')
   const [canal, setCanal] = useState('telefono')
@@ -682,16 +679,13 @@ function PTPModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSa
 type PagoModalProps = {
   open: boolean
   caseId: string
-  clienteId: string
-  orgId: string
-  currentUserId: string | null
   ptps: PTP[]
   dfpAccountId?: string | null
   onClose: () => void
   onSaved: () => void
 }
 
-function PagoModal({ open, caseId, clienteId, orgId, currentUserId, ptps, dfpAccountId, onClose, onSaved }: PagoModalProps) {
+function PagoModal({ open, caseId, ptps, dfpAccountId, onClose, onSaved }: PagoModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState(todayYmd())
   const [metodo, setMetodo] = useState('cash')
@@ -2304,8 +2298,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         moduloOrigen="cartera"
         origenId={caso.id}
       />
-      <PTPModal open={ptpOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
-      <PagoModal open={pagoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} ptps={ptps} dfpAccountId={safeDfpAccount?.id ?? null} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
+      <PTPModal open={ptpOpen} caseId={caso.id} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
+      <PagoModal open={pagoOpen} caseId={caso.id} ptps={ptps} dfpAccountId={safeDfpAccount?.id ?? null} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
       <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
 
