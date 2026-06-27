@@ -112,10 +112,12 @@ export function CierresPage() {
     () => [
       { value: 'nuevo', label: t('pipeline.columns.nuevo') },
       { value: 'contactado', label: t('pipeline.columns.contactado') },
-      { value: 'cita', label: t('pipeline.columns.cita') },
-      { value: 'demo', label: t('pipeline.columns.demo') },
-      { value: 'cierre', label: t('pipeline.columns.cierre') },
-      { value: 'descartado', label: t('pipeline.columns.descartado') },
+      { value: 'calificado', label: t('pipeline.columns.cita') },
+      { value: 'propuesta', label: t('pipeline.columns.demo') },
+      { value: 'negociacion', label: t('pipeline.columns.contactado') },
+      { value: 'cerrado', label: t('pipeline.columns.cierre') },
+      { value: 'cerrado_ganado', label: 'Cerrado ganado' },
+      { value: 'cerrado_perdido', label: 'Cerrado perdido' },
     ],
     [t]
   )

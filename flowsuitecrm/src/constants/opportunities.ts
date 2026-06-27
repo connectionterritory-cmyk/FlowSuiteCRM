@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next'
 const OPPORTUNITY_STAGE_ALIASES: Record<string, string> = {
   calificado: 'cita',
   demostracion: 'demo',
+  cierre: 'cerrado',
 }
 
 export type OpportunityStageVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
@@ -22,9 +23,12 @@ export const getOpportunityStageLabel = (stage: string | null | undefined, t: TF
 
 export const getOpportunityStageBadgeVariant = (stage: string | null | undefined): OpportunityStageVariant => {
   const normalized = normalizeOpportunityStage(stage)
-  if (normalized === 'cierre') return 'success'
+  if (normalized === 'cerrado_ganado') return 'success'
+  if (normalized === 'cerrado_perdido') return 'danger'
+  if (normalized === 'cerrado') return 'success'
   if (normalized === 'demo' || normalized === 'cita') return 'warning'
   if (normalized === 'contactado' || normalized === 'nuevo') return 'info'
   if (normalized === 'descartado') return 'neutral'
+  if (normalized === 'propuesta' || normalized === 'negociacion') return 'warning'
   return 'neutral'
 }

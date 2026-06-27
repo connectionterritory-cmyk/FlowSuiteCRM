@@ -814,9 +814,12 @@ export function PipelinePage() {
             <select value={formValues.etapa} onChange={handleFormChange('etapa')}>
               <option value="nuevo">{t('pipeline.columns.nuevo')}</option>
               <option value="contactado">{t('pipeline.columns.contactado')}</option>
-              <option value="cita">{t('pipeline.columns.cita')}</option>
-              <option value="demo">{t('pipeline.columns.demo')}</option>
-              <option value="cierre">{t('pipeline.columns.cierre')}</option>
+              <option value="calificado">{t('pipeline.columns.cita')}</option>
+              <option value="propuesta">{t('pipeline.columns.demo')}</option>
+              <option value="negociacion">{t('pipeline.columns.contactado')}</option>
+              <option value="cerrado">{t('pipeline.columns.cierre')}</option>
+              <option value="cerrado_ganado">Cerrado ganado</option>
+              <option value="cerrado_perdido">Cerrado perdido</option>
             </select>
           </label>
           <label className="form-field">
