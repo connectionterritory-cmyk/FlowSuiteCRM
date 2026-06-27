@@ -614,9 +614,7 @@ export function HoyPage() {
         .from('clientes')
         .select('id, nombre, apellido, telefono, fecha_nacimiento, vendedor_id')
         .eq('vendedor_id', vendedorId)
-        .not('fecha_nacimiento', 'is', null)
-        .filter('extract(month from fecha_nacimiento)', 'eq', today.getMonth() + 1)
-        .filter('extract(day from fecha_nacimiento)', 'eq', today.getDate()),
+        .not('fecha_nacimiento', 'is', null),
       supabase
         .from('clientes')
         .select('id, nombre, apellido, telefono, fecha_ultimo_pedido, vendedor_id')
@@ -760,7 +758,16 @@ export function HoyPage() {
 
     // Client sections — silent fail if not available
     setCobranzas((cobranzasRes.data as ClienteCobranzaRow[] | null) ?? [])
-    setBirthdays((birthdaysRes.data as ClienteBirthdayRow[] | null) ?? [])
+    const todayMonth = today.getMonth() + 1
+    const todayDay = today.getDate()
+    const allWithBirthday = (birthdaysRes.data as ClienteBirthdayRow[] | null) ?? []
+    setBirthdays(
+      allWithBirthday.filter((c) => {
+        if (!c.fecha_nacimiento) return false
+        const d = new Date(c.fecha_nacimiento + 'T00:00:00')
+        return d.getMonth() + 1 === todayMonth && d.getDate() === todayDay
+      })
+    )
     setReactivacion((reactivacionRes.data as ClienteReactivacionRow[] | null) ?? [])
 
     const mantRaw = (mantenimientosRes.data as MantenimientoRow[] | null) ?? []
