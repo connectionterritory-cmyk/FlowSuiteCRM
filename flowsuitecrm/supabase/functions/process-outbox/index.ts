@@ -12,6 +12,7 @@ type OutboxStatus =
 
 type OutboxMessage = {
   id: string
+  owner_id: string | null
   org_id: string | null
   canal: 'whatsapp' | 'sms' | 'email' | 'telegram'
   destinatario: string | null
@@ -59,6 +60,7 @@ type ProcessResult = {
 
 const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
+const outboxWorkerSecret = Deno.env.get('OUTBOX_WORKER_SECRET') ?? ''
 
 const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? ''
 const resendFromEmail = Deno.env.get('RESEND_FROM_EMAIL') ?? 'cobranza@flowiadigital.com'
@@ -96,7 +98,7 @@ function getCorsHeaders(req: Request) {
   return {
     'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey, X-Client-Info, x-client-info',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey, X-Client-Info, x-client-info, X-FlowSuite-Worker-Secret',
     'Access-Control-Max-Age': '86400',
   }
 }
@@ -1008,6 +1010,26 @@ serve(async (req: Request) => {
     return jsonResponse({ error: 'Missing service role configuration' }, 500, req)
   }
 
+  // Two valid callers: (1) a trusted internal worker presenting the shared
+  // secret, allowed to run the batch sweep; (2) an authenticated app user,
+  // who may only ask us to process the single outbox_id they own.
+  const incomingWorkerSecret = req.headers.get('X-FlowSuite-Worker-Secret') ?? ''
+  const isWorkerRequest = Boolean(outboxWorkerSecret) && incomingWorkerSecret === outboxWorkerSecret
+
+  let authenticatedUserId: string | null = null
+  if (!isWorkerRequest) {
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const token = authHeader.replace('Bearer ', '').trim()
+    if (!token) {
+      return jsonResponse({ error: 'Missing authorization' }, 401, req)
+    }
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return jsonResponse({ error: 'Invalid token' }, 401, req)
+    }
+    authenticatedUserId = user.id
+  }
+
   let requestedOutboxId: string | null = null
   try {
     const body = req.method === 'POST' ? await req.json().catch(() => null) : null
@@ -1016,6 +1038,12 @@ serve(async (req: Request) => {
       : null
   } catch {
     requestedOutboxId = null
+  }
+
+  // A user-authenticated caller (no worker secret) may only ever process a
+  // single outbox_id they own — the batch sweep is worker-only.
+  if (!isWorkerRequest && !requestedOutboxId) {
+    return jsonResponse({ error: 'outbox_id is required' }, 400, req)
   }
 
   const nowIso = new Date().toISOString()
@@ -1071,6 +1099,19 @@ serve(async (req: Request) => {
         error_message: 'Outbox message not found',
         attempt_count: 0,
       }, 404, req)
+    }
+
+    // Worker requests are trusted; user requests may only touch their own messages.
+    if (!isWorkerRequest && (data as OutboxMessage).owner_id !== authenticatedUserId) {
+      return jsonResponse({
+        ok: false,
+        outbox_id: requestedOutboxId,
+        status: 'fallido',
+        provider: null,
+        provider_message_id: null,
+        error_message: 'Forbidden',
+        attempt_count: 0,
+      }, 403, req)
     }
 
     const result = await processOutboxRow(data as OutboxMessage, nowIso)

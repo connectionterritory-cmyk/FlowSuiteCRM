@@ -590,9 +590,13 @@ export function InboxPage() {
       setAttachments([])
       showToast('Mensaje enviado a cola', 'success')
 
-      const { error: invokeError } = await supabase.functions.invoke('process-outbox')
-      if (invokeError) {
-        console.warn('process-outbox invoke warning:', invokeError.message)
+      if (data?.id) {
+        const { error: invokeError } = await supabase.functions.invoke('process-outbox', {
+          body: { outbox_id: data.id },
+        })
+        if (invokeError) {
+          console.warn('process-outbox invoke warning:', invokeError.message)
+        }
       }
 
       setPendingOutbound((prev) => prev.filter((row) => row.id !== optimisticId))

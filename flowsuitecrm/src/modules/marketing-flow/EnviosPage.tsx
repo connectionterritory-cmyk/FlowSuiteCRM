@@ -317,7 +317,9 @@ export function EnviosPage() {
         showToast(mkError.message, 'error')
         return
       }
-      const { error: invokeError } = await supabase.functions.invoke('process-outbox')
+      const { error: invokeError } = await supabase.functions.invoke('process-outbox', {
+        body: { outbox_id: message.outbox_message_id },
+      })
       if (invokeError) {
         showToast('Reintento en cola. El worker lo procesará en breve.')
       } else {
