@@ -104,6 +104,12 @@ export const navItems: NavItem[] = [
         icon: IconCustomers,
       },
       {
+        key: 'oportunidades-cliente',
+        labelKey: 'nav.oportunidadesCliente',
+        path: '/oportunidades-cliente',
+        icon: IconPipeline,
+      },
+      {
         key: 'pipeline',
         labelKey: 'nav.pipeline',
         path: '/pipeline',

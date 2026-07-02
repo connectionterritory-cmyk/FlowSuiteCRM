@@ -9,10 +9,12 @@ import { DetailPanel } from '../../components/DetailPanel'
 import { NearbyContactsPanel, type NearbyContact, type NearbyPanelState } from '../../components/NearbyContactsPanel'
 import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
+import { ClienteOpportunityCard } from '../../components/ClienteOpportunityCard'
 import { EmptyState } from '../../components/EmptyState'
 import { IconWhatsapp, IconTrash } from '../../components/icons'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { getCarteraOpportunityGuard, type CarteraOpportunityGuard } from '../../lib/carteraOpportunityGuard'
 import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/useUsers'
 import { useViewMode } from '../../data/useViewMode'
@@ -100,6 +102,74 @@ type ServicioResumen = {
   hora_cita: string | null
   tipo_servicio: string | null
   observaciones: string | null
+}
+
+type ClienteOpportunitySummary = {
+  id: string
+  cliente_id: string | null
+  owner_id: string | null
+  etapa: string | null
+  estado: string | null
+  producto_recomendado: string | null
+  categoria_producto: string | null
+  next_action: string | null
+  next_action_date: string | null
+  blocked_by_cartera: boolean | null
+  motivo_bloqueo: string | null
+}
+
+function isMissingOpportunityColumnError(message: string | undefined) {
+  return Boolean(message && /column .* does not exist/i.test(message))
+}
+
+async function fetchClienteOpportunitySummary(clienteId: string) {
+  const extended = await supabase
+    .from('oportunidades')
+    .select('id, cliente_id, owner_id, etapa, estado, producto_recomendado, categoria_producto, next_action, next_action_date, blocked_by_cartera, motivo_bloqueo')
+    .eq('cliente_id', clienteId)
+    .not('etapa', 'in', '("cerrado_ganado","cerrado_perdido","cerrado")')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!extended.error) {
+    return {
+      data: (extended.data as ClienteOpportunitySummary | null) ?? null,
+      error: null,
+    }
+  }
+
+  if (!isMissingOpportunityColumnError(extended.error.message)) {
+    return {
+      data: null,
+      error: extended.error,
+    }
+  }
+
+  const fallback = await supabase
+    .from('oportunidades')
+    .select('id, cliente_id, owner_id, etapa')
+    .eq('cliente_id', clienteId)
+    .not('etapa', 'in', '("cerrado_ganado","cerrado_perdido","cerrado")')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return {
+    data: fallback.data
+      ? {
+          ...(fallback.data as { id: string; cliente_id: string | null; owner_id: string | null; etapa: string | null }),
+          estado: 'abierta',
+          producto_recomendado: null,
+          categoria_producto: null,
+          next_action: null,
+          next_action_date: null,
+          blocked_by_cartera: false,
+          motivo_bloqueo: null,
+        }
+      : null,
+    error: fallback.error,
+  }
 }
 
 const CLIENTES_LIST_SELECT = [
@@ -383,6 +453,9 @@ export function ClientesPage() {
   const [notasLoading, setNotasLoading] = useState(false)
   const [clienteServicios, setClienteServicios] = useState<ServicioResumen[]>([])
   const [serviciosLoading, setServiciosLoading] = useState(false)
+  const [clienteOpportunity, setClienteOpportunity] = useState<ClienteOpportunitySummary | null>(null)
+  const [clienteOpportunityLoading, setClienteOpportunityLoading] = useState(false)
+  const [clienteOpportunityGuard, setClienteOpportunityGuard] = useState<CarteraOpportunityGuard | null>(null)
   const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
   const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; label: string; rol: string | null }>>([])
   const [citaAssignedOptions, setCitaAssignedOptions] = useState<Array<{ id: string; label: string }>>([])
@@ -1060,6 +1133,8 @@ export function ClientesPage() {
         setDetailCliente(null)
         setClienteNotas([])
         setClienteServicios([])
+        setClienteOpportunity(null)
+        setClienteOpportunityGuard(null)
         setServiciosLoading(false)
       })
       return
@@ -1069,10 +1144,11 @@ export function ClientesPage() {
       setDetailLoading(true)
       setNotasLoading(true)
       setServiciosLoading(true)
+      setClienteOpportunityLoading(true)
       setDetailTab('info')
     })
     const loadDetail = async () => {
-      const [detailRes, notasRes, serviciosRes] = await Promise.all([
+      const [detailRes, notasRes, serviciosRes, opportunityRes, guardRes] = await Promise.all([
         supabase
           .from('clientes')
           .select(
@@ -1093,6 +1169,8 @@ export function ClientesPage() {
           .order('fecha_servicio', { ascending: false })
           .order('hora_cita', { ascending: false, nullsFirst: false })
           .limit(3),
+        fetchClienteOpportunitySummary(selectedRow.id),
+        getCarteraOpportunityGuard(selectedRow.id),
       ])
       if (!active) return
       if (detailRes.error) {
@@ -1110,9 +1188,16 @@ export function ClientesPage() {
       } else {
         setClienteServicios((serviciosRes.data as ServicioResumen[]) ?? [])
       }
+      if (opportunityRes.error) {
+        setClienteOpportunity(null)
+      } else {
+        setClienteOpportunity((opportunityRes.data as ClienteOpportunitySummary | null) ?? null)
+      }
+      setClienteOpportunityGuard(guardRes)
       setDetailLoading(false)
       setNotasLoading(false)
       setServiciosLoading(false)
+      setClienteOpportunityLoading(false)
     }
     const handle = window.setTimeout(() => {
       void loadDetail()
@@ -2629,6 +2714,16 @@ export function ClientesPage() {
                       )}
                     </div>
                   </div>
+
+                  <ClienteOpportunityCard
+                    opportunity={clienteOpportunity}
+                    guard={clienteOpportunityGuard}
+                    loading={clienteOpportunityLoading}
+                    onOpen={() => navigate(`/oportunidades-cliente?clienteId=${encodeURIComponent(c.id)}`)}
+                    onCreate={() => navigate(`/oportunidades-cliente?clienteId=${encodeURIComponent(c.id)}`)}
+                    onRefer={() => navigate('/conexiones-infinitas')}
+                    onResolveCartera={() => navigate('/cartera')}
+                  />
 
                 </div>
               ),

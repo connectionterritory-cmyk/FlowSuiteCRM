@@ -9,6 +9,9 @@ const HubPage = lazy(async () => ({ default: (await import('../modules/hub/HubPa
 const PipelinePage = lazy(async () => ({ default: (await import('../modules/pipeline/PipelinePage')).PipelinePage }))
 const LeadsPage = lazy(async () => ({ default: (await import('../modules/leads/LeadsPage')).LeadsPage }))
 const ClientesPage = lazy(async () => ({ default: (await import('../modules/clientes/ClientesPage')).ClientesPage }))
+const OportunidadesClientePage = lazy(async () => ({
+  default: (await import('../modules/oportunidades-cliente/OportunidadesClientePage')).OportunidadesClientePage,
+}))
 const VentasPage = lazy(async () => ({ default: (await import('../modules/ventas/VentasPage')).VentasPage }))
 const ProductosPage = lazy(async () => ({ default: (await import('../modules/productos/ProductosPage')).ProductosPage }))
 const ProgramasPage = lazy(async () => ({ default: (await import('../modules/programas/ProgramasPage')).ProgramasPage }))
@@ -95,6 +98,7 @@ export default function App() {
             <Route path="/cierres" element={<CierresPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/leads" element={<LeadsPage />} />
+            <Route path="/oportunidades-cliente" element={<OportunidadesClientePage />} />
             <Route path="/marketing-flow" element={<MarketingFlowPage />}>
               <Route index element={<Navigate to="/marketing-flow/segmentos" replace />} />
               <Route path="segmentos" element={<SegmentosPage />} />
