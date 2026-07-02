@@ -3,7 +3,7 @@
   "createdAt": "2026-05-03T18:11:21.598Z",
   "id": "jRJAhjnBcXBjBwFE",
   "name": "Cargo de Vuelta / DFP - Cobranza Automatica",
-  "description": null,
+  "description": "Snapshot local endurecido: usa cadence_step canonico del RPC, agrega idempotencia por cobranza_automation_key y evita despachar ramas cuando el outbox insertado es duplicado o no devuelve fila.",
   "active": false,
   "isArchived": false,
   "nodes": [
@@ -99,7 +99,7 @@
     },
     {
       "parameters": {
-        "jsCode": "function money(value) {\n  const n = Number(value || 0);\n  return n > 0 ? `$${n.toFixed(2)}` : 'pendiente de confirmar';\n}\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '');\n  if (!raw) return '';\n  if (raw.length === 10) return `1${raw}`;\n  if (raw.length === 11 && raw.startsWith('1')) return raw;\n  return raw;\n}\nfunction cadence(attempts, daysOpen) {\n  const n = Number(attempts || 0) + 1;\n  if (n <= 1) return { step: 'dia_1', label: 'Aviso formal amable' };\n  if (n === 2) return { step: 'dia_2', label: 'Recordatorio corto' };\n  if (n === 3) return { step: 'dia_3', label: 'Revision interna de cuenta' };\n  if (n === 4 || Number(daysOpen || 0) >= 5) return { step: 'dia_4', label: 'Ultimo intento automatico' };\n  return { step: 'dia_8_plus', label: 'Seguimiento cada 3 dias' };\n}\nfunction buildMessage(target, channel, cadenceInfo) {\n  const nombre = target.nombre || 'Cliente';\n  const cuenta = target.cuenta_hycite || 'S/N';\n  const monto = money(target.monto_cargo_vuelta);\n  const fecha = target.fecha_cargo_vuelta || 'No registrada';\n  const stop = channel === 'whatsapp' ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.' : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.';\n  const variants = {\n    dia_1: `Estimado/a ${nombre},\\n\\nLe contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente de regularizar: ${monto}\\nFecha de referencia: ${fecha}\\n\\nQueremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.${stop}`,\n    dia_2: `Hola ${nombre}, le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nTenemos opciones de pago disponibles para regularizar el balance de ${monto}. Responda a este mensaje y coordinamos un acuerdo comodo.${stop}`,\n    dia_3: `Estimado/a ${nombre}, su cuenta #${cuenta} continua en revision interna por balance pendiente de ${monto}.\\n\\nNuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.${stop}`,\n    dia_4: `Hola ${nombre}, este es nuestro ultimo intento automatico de seguimiento sobre la cuenta #${cuenta}.\\n\\nQueremos darle oportunidad de establecer un acuerdo de pago comodo por el balance pendiente de ${monto}. Comuniquese con Patricia Caicedo al (786) 291-3042 o responda este mensaje.${stop}`,\n    dia_8_plus: `Hola ${nombre}, seguimos disponibles para ayudarle a regularizar la cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente: ${monto}. Responda este mensaje para revisar opciones de pago.${stop}`\n  };\n  return variants[cadenceInfo.step] || variants.dia_8_plus;\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json;\n  const cadenceInfo = cadence(t.auto_attempt_count, t.days_since_case_opened);\n  const metaText = `campaign_key=cargo_vuelta_dfp_auto; case_id=${t.case_id}; cadence_step=${cadenceInfo.step}`;\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id;\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID;\n  const scheduledFor = new Date(Date.now() - 1000).toISOString();\n  const emailMessage = buildMessage(t, 'email', cadenceInfo);\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceInfo);\n  const phone = digitsOnly(t.telefono || t.telefono_casa);\n  out.push({ json: { ...t, cadence: cadenceInfo, provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(), normalized_phone: phone, emailOutbox: t.email ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'email', destinatario: t.email, asunto: `Revision de cuenta Royal Prestige #${t.cuenta_hycite || 'S/N'}`, mensaje: emailMessage, mensaje_resuelto: emailMessage, cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null, from_name: 'Equipo de Resolucion CWG', dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, whatsappOutbox: phone ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'whatsapp', destinatario: phone, mensaje: whatsappMessage, mensaje_resuelto: whatsappMessage, dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, gestion: { org_id: orgId, cliente_id: t.cliente_id, case_id: t.case_id, tipo_gestion: 'seguimiento', resultado: 'recordatorio_automatico_cargo_vuelta', notas: `Recordatorio automatico de cargo de vuelta enviado. ${cadenceInfo.label}. ${metaText}` } } });\n}\nreturn out;"
+        "jsCode": "function money(value) {\n  const n = Number(value || 0)\n  return n > 0 ? '$' + n.toFixed(2) : 'pendiente de confirmar'\n}\n\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '')\n  if (!raw) return ''\n  if (raw.length === 10) return '1' + raw\n  if (raw.length === 11 && raw.startsWith('1')) return raw\n  return raw\n}\n\nfunction cadenceLabel(step) {\n  const labels = {\n    formal_amable: 'Aviso formal amable',\n    recordatorio_corto: 'Recordatorio corto',\n    revision_interna: 'Revision interna de cuenta',\n    ultimo_aviso_legal: 'Ultimo aviso legal',\n  }\n  return labels[step] || null\n}\n\nfunction buildAutomationKey(caseId, campaignType, cadenceStep, localDate, channel) {\n  return [caseId, campaignType, cadenceStep, localDate, channel].join(':')\n}\n\nfunction buildMessage(target, channel, cadenceStep) {\n  const nombre = target.nombre || 'Cliente'\n  const cuenta = target.cuenta_hycite || 'S/N'\n  const monto = money(target.monto_cargo_vuelta)\n  const fecha = target.fecha_cargo_vuelta || 'No registrada'\n  const stop = channel === 'whatsapp'\n    ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.'\n    : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.'\n  const variants = {\n    formal_amable:\n      'Estimado/a ' + nombre + ',\\n\\n' +\n      'Le contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #' + cuenta + '.\\n\\n' +\n      'Balance pendiente de regularizar: ' + monto + '\\n' +\n      'Fecha de referencia: ' + fecha + '\\n\\n' +\n      'Queremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. ' +\n      'Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.' + stop,\n    recordatorio_corto:\n      'Hola ' + nombre + ', le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #' + cuenta + '.\\n\\n' +\n      'Tenemos opciones de pago disponibles para regularizar el balance de ' + monto + '. ' +\n      'Responda a este mensaje y coordinamos un acuerdo comodo.' + stop,\n    revision_interna:\n      'Estimado/a ' + nombre + ', su cuenta #' + cuenta + ' continua en revision interna por balance pendiente de ' + monto + '.\\n\\n' +\n      'Nuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.' + stop,\n    ultimo_aviso_legal:\n      'Hola ' + nombre + ', este es nuestro ultimo aviso automatico sobre la cuenta Royal Prestige / Hy-Cite #' + cuenta + '.\\n\\n' +\n      'Balance pendiente de regularizar: ' + monto + '\\n' +\n      'Fecha de referencia: ' + fecha + '\\n\\n' +\n      'Si no logramos documentar una alternativa de pago, el caso puede avanzar a la siguiente revision operativa/legal. ' +\n      'Comuniquese hoy con Patricia Caicedo al (786) 291-3042 o responda este mensaje.' + stop,\n  }\n  return variants[cadenceStep] || null\n}\n\nconst out = []\nfor (const item of $input.all()) {\n  const t = item.json\n  const cadenceStep = typeof t.cadence_step === 'string' ? t.cadence_step.trim() : ''\n  const cadenceStepLabel = cadenceLabel(cadenceStep)\n  if (!cadenceStep || !cadenceStepLabel) {\n    continue\n  }\n\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID\n  const scheduledFor = new Date(Date.now() - 1000).toISOString()\n  const localDate = $now.toISODate()\n  const campaignType = 'cargo_vuelta_dfp_auto'\n  const emailMessage = buildMessage(t, 'email', cadenceStep)\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceStep)\n  const phone = digitsOnly(t.telefono || t.telefono_casa)\n  const keyBase = campaignType + '; case_id=' + t.case_id + '; cadence_step=' + cadenceStep + '; local_date=' + localDate\n\n  out.push({\n    json: {\n      ...t,\n      cadence: {\n        step: cadenceStep,\n        label: cadenceStepLabel,\n      },\n      provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(),\n      normalized_phone: phone,\n      emailOutbox: t.email && emailMessage ? {\n        owner_id: ownerId,\n        org_id: orgId,\n        contact_tipo: 'cliente',\n        contact_id: t.cliente_id,\n        contexto_tipo: 'cobranza',\n        canal: 'email',\n        destinatario: t.email,\n        asunto: 'Revision de cuenta Royal Prestige #' + (t.cuenta_hycite || 'S/N'),\n        mensaje: emailMessage,\n        mensaje_resuelto: emailMessage,\n        cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null,\n        from_name: 'Equipo de Resolucion CWG',\n        dispatch_provider: 'n8n',\n        cobranza_automation_key: buildAutomationKey(t.case_id, campaignType, cadenceStep, localDate, 'email'),\n        status: 'programado',\n        scheduled_for: scheduledFor,\n      } : null,\n      whatsappOutbox: phone && whatsappMessage ? {\n        owner_id: ownerId,\n        org_id: orgId,\n        contact_tipo: 'cliente',\n        contact_id: t.cliente_id,\n        contexto_tipo: 'cobranza',\n        canal: 'whatsapp',\n        destinatario: phone,\n        mensaje: whatsappMessage,\n        mensaje_resuelto: whatsappMessage,\n        dispatch_provider: 'n8n',\n        cobranza_automation_key: buildAutomationKey(t.case_id, campaignType, cadenceStep, localDate, 'whatsapp'),\n        status: 'programado',\n        scheduled_for: scheduledFor,\n      } : null,\n      gestion: {\n        org_id: orgId,\n        cliente_id: t.cliente_id,\n        case_id: t.case_id,\n        tipo_gestion: 'seguimiento',\n        resultado: 'recordatorio_automatico_cargo_vuelta',\n        notas: 'Recordatorio automatico de cargo de vuelta preparado. ' + cadenceStepLabel + '. ' + keyBase,\n      },\n    },\n  })\n}\n\nreturn out"
       },
       "id": "cvdfp-0004-build",
       "name": "Build Message Cadence",
@@ -133,7 +133,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?on_conflict=cobranza_automation_key",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -151,7 +151,7 @@
             },
             {
               "name": "Prefer",
-              "value": "return=representation"
+              "value": "resolution=ignore-duplicates,return=representation"
             }
           ]
         },
@@ -167,7 +167,8 @@
       "position": [
         1260,
         180
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -299,7 +300,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?on_conflict=cobranza_automation_key",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -317,7 +318,7 @@
             },
             {
               "name": "Prefer",
-              "value": "return=representation"
+              "value": "resolution=ignore-duplicates,return=representation"
             }
           ]
         },
@@ -333,7 +334,8 @@
       "position": [
         1260,
         520
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -573,6 +575,46 @@
         600
       ],
       "notes": "MOCK audit only."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !!$json.id }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "cvdfp-0020-email-outbox-inserted",
+      "name": "IF Email Outbox Inserted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !!$json.id }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "cvdfp-0021-whatsapp-outbox-inserted",
+      "name": "IF WhatsApp Outbox Inserted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        520
+      ]
     }
   ],
   "connections": {
@@ -657,7 +699,7 @@
       "main": [
         [
           {
-            "node": "Send Email Resend",
+            "node": "IF Email Outbox Inserted",
             "type": "main",
             "index": 0
           }
@@ -702,7 +744,7 @@
       "main": [
         [
           {
-            "node": "IF Provider Evolution",
+            "node": "IF WhatsApp Outbox Inserted",
             "type": "main",
             "index": 0
           }
@@ -787,6 +829,30 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "IF Email Outbox Inserted": {
+      "main": [
+        [
+          {
+            "node": "Send Email Resend",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "IF WhatsApp Outbox Inserted": {
+      "main": [
+        [
+          {
+            "node": "IF Provider Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
@@ -905,7 +971,7 @@
       },
       {
         "parameters": {
-          "jsCode": "function money(value) {\n  const n = Number(value || 0);\n  return n > 0 ? `$${n.toFixed(2)}` : 'pendiente de confirmar';\n}\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '');\n  if (!raw) return '';\n  if (raw.length === 10) return `1${raw}`;\n  if (raw.length === 11 && raw.startsWith('1')) return raw;\n  return raw;\n}\nfunction cadence(attempts, daysOpen) {\n  const n = Number(attempts || 0) + 1;\n  if (n <= 1) return { step: 'dia_1', label: 'Aviso formal amable' };\n  if (n === 2) return { step: 'dia_2', label: 'Recordatorio corto' };\n  if (n === 3) return { step: 'dia_3', label: 'Revision interna de cuenta' };\n  if (n === 4 || Number(daysOpen || 0) >= 5) return { step: 'dia_4', label: 'Ultimo intento automatico' };\n  return { step: 'dia_8_plus', label: 'Seguimiento cada 3 dias' };\n}\nfunction buildMessage(target, channel, cadenceInfo) {\n  const nombre = target.nombre || 'Cliente';\n  const cuenta = target.cuenta_hycite || 'S/N';\n  const monto = money(target.monto_cargo_vuelta);\n  const fecha = target.fecha_cargo_vuelta || 'No registrada';\n  const stop = channel === 'whatsapp' ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.' : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.';\n  const variants = {\n    dia_1: `Estimado/a ${nombre},\\n\\nLe contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente de regularizar: ${monto}\\nFecha de referencia: ${fecha}\\n\\nQueremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.${stop}`,\n    dia_2: `Hola ${nombre}, le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nTenemos opciones de pago disponibles para regularizar el balance de ${monto}. Responda a este mensaje y coordinamos un acuerdo comodo.${stop}`,\n    dia_3: `Estimado/a ${nombre}, su cuenta #${cuenta} continua en revision interna por balance pendiente de ${monto}.\\n\\nNuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.${stop}`,\n    dia_4: `Hola ${nombre}, este es nuestro ultimo intento automatico de seguimiento sobre la cuenta #${cuenta}.\\n\\nQueremos darle oportunidad de establecer un acuerdo de pago comodo por el balance pendiente de ${monto}. Comuniquese con Patricia Caicedo al (786) 291-3042 o responda este mensaje.${stop}`,\n    dia_8_plus: `Hola ${nombre}, seguimos disponibles para ayudarle a regularizar la cuenta Royal Prestige / Hy-Cite #${cuenta}.\\n\\nBalance pendiente: ${monto}. Responda este mensaje para revisar opciones de pago.${stop}`\n  };\n  return variants[cadenceInfo.step] || variants.dia_8_plus;\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json;\n  const cadenceInfo = cadence(t.auto_attempt_count, t.days_since_case_opened);\n  const metaText = `campaign_key=cargo_vuelta_dfp_auto; case_id=${t.case_id}; cadence_step=${cadenceInfo.step}`;\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id;\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID;\n  const scheduledFor = new Date(Date.now() - 1000).toISOString();\n  const emailMessage = buildMessage(t, 'email', cadenceInfo);\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceInfo);\n  const phone = digitsOnly(t.telefono || t.telefono_casa);\n  out.push({ json: { ...t, cadence: cadenceInfo, provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(), normalized_phone: phone, emailOutbox: t.email ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'email', destinatario: t.email, asunto: `Revision de cuenta Royal Prestige #${t.cuenta_hycite || 'S/N'}`, mensaje: emailMessage, mensaje_resuelto: emailMessage, cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null, from_name: 'Equipo de Resolucion CWG', dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, whatsappOutbox: phone ? { owner_id: ownerId, org_id: orgId, contact_tipo: 'cliente', contact_id: t.cliente_id, contexto_tipo: 'cobranza', canal: 'whatsapp', destinatario: phone, mensaje: whatsappMessage, mensaje_resuelto: whatsappMessage, dispatch_provider: 'n8n', status: 'programado', scheduled_for: scheduledFor } : null, gestion: { org_id: orgId, cliente_id: t.cliente_id, case_id: t.case_id, tipo_gestion: 'seguimiento', resultado: 'recordatorio_automatico_cargo_vuelta', notas: `Recordatorio automatico de cargo de vuelta enviado. ${cadenceInfo.label}. ${metaText}` } } });\n}\nreturn out;"
+          "jsCode": "function money(value) {\n  const n = Number(value || 0)\n  return n > 0 ? '$' + n.toFixed(2) : 'pendiente de confirmar'\n}\n\nfunction digitsOnly(value) {\n  const raw = String(value || '').replace(/\\D/g, '')\n  if (!raw) return ''\n  if (raw.length === 10) return '1' + raw\n  if (raw.length === 11 && raw.startsWith('1')) return raw\n  return raw\n}\n\nfunction cadenceLabel(step) {\n  const labels = {\n    formal_amable: 'Aviso formal amable',\n    recordatorio_corto: 'Recordatorio corto',\n    revision_interna: 'Revision interna de cuenta',\n    ultimo_aviso_legal: 'Ultimo aviso legal',\n  }\n  return labels[step] || null\n}\n\nfunction buildAutomationKey(caseId, campaignType, cadenceStep, localDate, channel) {\n  return [caseId, campaignType, cadenceStep, localDate, channel].join(':')\n}\n\nfunction buildMessage(target, channel, cadenceStep) {\n  const nombre = target.nombre || 'Cliente'\n  const cuenta = target.cuenta_hycite || 'S/N'\n  const monto = money(target.monto_cargo_vuelta)\n  const fecha = target.fecha_cargo_vuelta || 'No registrada'\n  const stop = channel === 'whatsapp'\n    ? '\\n\\nResponda ALTO para no recibir mensajes por este medio.'\n    : '\\n\\nSi prefiere no recibir mensajes por este medio, responda ALTO.'\n  const variants = {\n    formal_amable:\n      'Estimado/a ' + nombre + ',\\n\\n' +\n      'Le contactamos del equipo de resolucion de Connection Worldwide Group sobre su cuenta Royal Prestige / Hy-Cite #' + cuenta + '.\\n\\n' +\n      'Balance pendiente de regularizar: ' + monto + '\\n' +\n      'Fecha de referencia: ' + fecha + '\\n\\n' +\n      'Queremos revisar opciones de pago y ayudarle a llegar a un acuerdo comodo antes de que el proceso avance internamente. ' +\n      'Puede responder a este mensaje o contactar a Patricia Caicedo al (786) 291-3042.' + stop,\n    recordatorio_corto:\n      'Hola ' + nombre + ', le damos seguimiento a su cuenta Royal Prestige / Hy-Cite #' + cuenta + '.\\n\\n' +\n      'Tenemos opciones de pago disponibles para regularizar el balance de ' + monto + '. ' +\n      'Responda a este mensaje y coordinamos un acuerdo comodo.' + stop,\n    revision_interna:\n      'Estimado/a ' + nombre + ', su cuenta #' + cuenta + ' continua en revision interna por balance pendiente de ' + monto + '.\\n\\n' +\n      'Nuestro equipo de resolucion quiere hablar con usted para documentar una alternativa de pago antes de escalar el seguimiento operativo.' + stop,\n    ultimo_aviso_legal:\n      'Hola ' + nombre + ', este es nuestro ultimo aviso automatico sobre la cuenta Royal Prestige / Hy-Cite #' + cuenta + '.\\n\\n' +\n      'Balance pendiente de regularizar: ' + monto + '\\n' +\n      'Fecha de referencia: ' + fecha + '\\n\\n' +\n      'Si no logramos documentar una alternativa de pago, el caso puede avanzar a la siguiente revision operativa/legal. ' +\n      'Comuniquese hoy con Patricia Caicedo al (786) 291-3042 o responda este mensaje.' + stop,\n  }\n  return variants[cadenceStep] || null\n}\n\nconst out = []\nfor (const item of $input.all()) {\n  const t = item.json\n  const cadenceStep = typeof t.cadence_step === 'string' ? t.cadence_step.trim() : ''\n  const cadenceStepLabel = cadenceLabel(cadenceStep)\n  if (!cadenceStep || !cadenceStepLabel) {\n    continue\n  }\n\n  const ownerId = $env.COBRANZA_OWNER_ID || t.owner_id\n  const orgId = t.org_id || $env.FLOWSUITE_ORG_ID\n  const scheduledFor = new Date(Date.now() - 1000).toISOString()\n  const localDate = $now.toISODate()\n  const campaignType = 'cargo_vuelta_dfp_auto'\n  const emailMessage = buildMessage(t, 'email', cadenceStep)\n  const whatsappMessage = buildMessage(t, 'whatsapp', cadenceStep)\n  const phone = digitsOnly(t.telefono || t.telefono_casa)\n  const keyBase = campaignType + '; case_id=' + t.case_id + '; cadence_step=' + cadenceStep + '; local_date=' + localDate\n\n  out.push({\n    json: {\n      ...t,\n      cadence: {\n        step: cadenceStep,\n        label: cadenceStepLabel,\n      },\n      provider: String($env.WHATSAPP_PROVIDER || '').toLowerCase(),\n      normalized_phone: phone,\n      emailOutbox: t.email && emailMessage ? {\n        owner_id: ownerId,\n        org_id: orgId,\n        contact_tipo: 'cliente',\n        contact_id: t.cliente_id,\n        contexto_tipo: 'cobranza',\n        canal: 'email',\n        destinatario: t.email,\n        asunto: 'Revision de cuenta Royal Prestige #' + (t.cuenta_hycite || 'S/N'),\n        mensaje: emailMessage,\n        mensaje_resuelto: emailMessage,\n        cc_emails: $env.COBRANZA_CC_EMAIL ? [$env.COBRANZA_CC_EMAIL] : null,\n        from_name: 'Equipo de Resolucion CWG',\n        dispatch_provider: 'n8n',\n        cobranza_automation_key: buildAutomationKey(t.case_id, campaignType, cadenceStep, localDate, 'email'),\n        status: 'programado',\n        scheduled_for: scheduledFor,\n      } : null,\n      whatsappOutbox: phone && whatsappMessage ? {\n        owner_id: ownerId,\n        org_id: orgId,\n        contact_tipo: 'cliente',\n        contact_id: t.cliente_id,\n        contexto_tipo: 'cobranza',\n        canal: 'whatsapp',\n        destinatario: phone,\n        mensaje: whatsappMessage,\n        mensaje_resuelto: whatsappMessage,\n        dispatch_provider: 'n8n',\n        cobranza_automation_key: buildAutomationKey(t.case_id, campaignType, cadenceStep, localDate, 'whatsapp'),\n        status: 'programado',\n        scheduled_for: scheduledFor,\n      } : null,\n      gestion: {\n        org_id: orgId,\n        cliente_id: t.cliente_id,\n        case_id: t.case_id,\n        tipo_gestion: 'seguimiento',\n        resultado: 'recordatorio_automatico_cargo_vuelta',\n        notas: 'Recordatorio automatico de cargo de vuelta preparado. ' + cadenceStepLabel + '. ' + keyBase,\n      },\n    },\n  })\n}\n\nreturn out"
         },
         "id": "cvdfp-0004-build",
         "name": "Build Message Cadence",
@@ -939,7 +1005,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?on_conflict=cobranza_automation_key",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -957,7 +1023,7 @@
               },
               {
                 "name": "Prefer",
-                "value": "return=representation"
+                "value": "resolution=ignore-duplicates,return=representation"
               }
             ]
           },
@@ -973,7 +1039,8 @@
         "position": [
           1260,
           180
-        ]
+        ],
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
@@ -1035,7 +1102,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={\"outbox_message_id\":\"{{ $json.outbox.id }}\",\"org_id\":\"{{ $json.outbox.org_id }}\",\"attempt_number\":{{ $json.outbox.attempt_count || 1 }},\"dispatcher\":\"n8n_resend\",\"status\":\"{{ $json.error_message ? 'failed' : 'sent' }}\",\"request_payload\":{{ JSON.stringify($json.request_payload) }},\"response_payload\":{{ JSON.stringify($json.response_payload) }},\"error_message\":{{ $json.error_message ? JSON.stringify($json.error_message) : 'null' }}}",
+          "jsonBody": "={\"outbox_message_id\":\"{{ $('Insert Email Outbox').item.json.id }}\",\"org_id\":\"{{ $('Insert Email Outbox').item.json.org_id }}\",\"attempt_number\":{{ $('Insert Email Outbox').item.json.attempt_count || 1 }},\"dispatcher\":\"n8n_resend\",\"status\":\"{{ $json.id ? 'sent' : 'failed' }}\",\"request_payload\":{\"to\":\"{{ $('Insert Email Outbox').item.json.destinatario }}\",\"subject\":\"{{ $('Insert Email Outbox').item.json.asunto }}\"},\"response_payload\":{{ JSON.stringify($json) }},\"error_message\":{{ $json.id ? 'null' : JSON.stringify($json.message || $json.error || 'Resend error') }}}",
           "options": {}
         },
         "id": "cvdfp-0008-email-attempt",
@@ -1105,7 +1172,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages",
+          "url": "={{ $env.SUPABASE_URL }}/rest/v1/outbox_messages?on_conflict=cobranza_automation_key",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -1123,7 +1190,7 @@
               },
               {
                 "name": "Prefer",
-                "value": "return=representation"
+                "value": "resolution=ignore-duplicates,return=representation"
               }
             ]
           },
@@ -1139,7 +1206,8 @@
         "position": [
           1260,
           520
-        ]
+        ],
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
@@ -1379,6 +1447,46 @@
           600
         ],
         "notes": "MOCK audit only."
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "boolean": [
+              {
+                "value1": "={{ !!$json.id }}",
+                "value2": true
+              }
+            ]
+          }
+        },
+        "id": "cvdfp-0020-email-outbox-inserted",
+        "name": "IF Email Outbox Inserted",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          1480,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "boolean": [
+              {
+                "value1": "={{ !!$json.id }}",
+                "value2": true
+              }
+            ]
+          }
+        },
+        "id": "cvdfp-0021-whatsapp-outbox-inserted",
+        "name": "IF WhatsApp Outbox Inserted",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          1480,
+          520
+        ]
       }
     ],
     "connections": {
@@ -1463,7 +1571,7 @@
         "main": [
           [
             {
-              "node": "Send Email Resend",
+              "node": "IF Email Outbox Inserted",
               "type": "main",
               "index": 0
             }
@@ -1508,7 +1616,7 @@
         "main": [
           [
             {
-              "node": "IF Provider Evolution",
+              "node": "IF WhatsApp Outbox Inserted",
               "type": "main",
               "index": 0
             }
@@ -1594,10 +1702,34 @@
             }
           ]
         ]
+      },
+      "IF Email Outbox Inserted": {
+        "main": [
+          [
+            {
+              "node": "Send Email Resend",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "IF WhatsApp Outbox Inserted": {
+        "main": [
+          [
+            {
+              "node": "IF Provider Evolution",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
       }
     },
     "authors": "Moises Caicedo",
-    "name": null,
-    "description": null
+    "name": "Cargo de Vuelta / DFP - Cobranza Automatica",
+    "description": "Snapshot local endurecido: usa cadence_step canonico del RPC, agrega idempotencia por cobranza_automation_key y evita despachar ramas cuando el outbox insertado es duplicado o no devuelve fila."
   }
 }

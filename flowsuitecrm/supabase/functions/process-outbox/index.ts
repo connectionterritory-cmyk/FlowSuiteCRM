@@ -76,6 +76,7 @@ const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') ?? ''
 const evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') ?? ''
 
 const telegramToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
+const workerSecret = Deno.env.get('OUTBOX_WORKER_SECRET') ?? ''
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
 
@@ -96,9 +97,14 @@ function getCorsHeaders(req: Request) {
   return {
     'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey, X-Client-Info, x-client-info',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey, X-Client-Info, x-client-info, x-worker-secret',
     'Access-Control-Max-Age': '86400',
   }
+}
+
+function hasValidWorkerSecret(req: Request) {
+  const incoming = req.headers.get('x-worker-secret')?.trim() ?? ''
+  return Boolean(workerSecret) && incoming === workerSecret
 }
 
 function asProviderError(message: string, retryable: boolean) {
@@ -926,7 +932,9 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
         : lockedRow.canal
     const providerError = err as Error & { responseBody?: unknown; requestPayload?: Record<string, unknown> }
 
-    if (lockedRow.canal === 'whatsapp') {
+    const retryable = isRetryableError(err)
+
+    if (lockedRow.canal === 'whatsapp' && !retryable) {
       await insertAttempt({
         row: lockedRow,
         attemptNumber,
@@ -950,7 +958,6 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
       return fetchOutboxResult(row.id, false)
     }
 
-    const retryable = isRetryableError(err)
     if (retryable) {
       const retryAfter = nextRetryAfter()
       await insertAttempt({
@@ -958,8 +965,8 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
         attemptNumber,
         provider,
         status: 'retry_pending',
-        requestPayload: { canal: lockedRow.canal, destinatario },
-        responsePayload: { ok: false, retry_after: retryAfter },
+        requestPayload: providerError.requestPayload ?? { canal: lockedRow.canal, destinatario, tipo_envio: tipoEnvio },
+        responsePayload: providerError.responseBody ?? { ok: false, retry_after: retryAfter },
         errorMessage: errorMsg,
       })
       await updateOutbox(row.id, {
@@ -967,6 +974,7 @@ async function processOutboxRow(row: OutboxMessage, nowIso: string): Promise<Pro
         retry_after: retryAfter,
         error_message: errorMsg,
         provider,
+        provider_response: providerError.responseBody ?? null,
         locked_at: null,
         locked_by: null,
       })
@@ -1004,8 +1012,20 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: getCorsHeaders(req) })
   }
 
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405, req)
+  }
+
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: 'Missing service role configuration' }, 500, req)
+  }
+
+  if (!workerSecret) {
+    return jsonResponse({ error: 'Missing OUTBOX_WORKER_SECRET configuration' }, 500, req)
+  }
+
+  if (!hasValidWorkerSecret(req)) {
+    return jsonResponse({ error: 'Unauthorized' }, 401, req)
   }
 
   let requestedOutboxId: string | null = null

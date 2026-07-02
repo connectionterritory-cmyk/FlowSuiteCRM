@@ -4,6 +4,7 @@ import { Button } from '../../components/Button'
 import { EmptyState } from '../../components/EmptyState'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
+import { dispatchOutboxMessage, isRealOutboxDispatchEnabled } from '../../lib/dispatchOutboxMessage'
 import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/useUsers'
 
@@ -588,11 +589,19 @@ export function InboxPage() {
 
       setMessageInput('')
       setAttachments([])
-      showToast('Mensaje enviado a cola', 'success')
+      showToast(
+        isRealOutboxDispatchEnabled
+          ? 'Mensaje enviado a cola'
+          : 'Mensaje en cola. El dispatch real esta deshabilitado en este entorno.',
+        'success',
+      )
 
-      const { error: invokeError } = await supabase.functions.invoke('process-outbox')
-      if (invokeError) {
-        console.warn('process-outbox invoke warning:', invokeError.message)
+      if (data?.id && isRealOutboxDispatchEnabled) {
+        const dispatchResult = await dispatchOutboxMessage(data.id)
+        if (!dispatchResult.ok) {
+          console.warn('dispatch-outbox-message warning:', dispatchResult.message || dispatchResult.error_message)
+          showToast(dispatchResult.message || dispatchResult.error_message || 'Mensaje en cola; se procesará más tarde.', 'error')
+        }
       }
 
       setPendingOutbound((prev) => prev.filter((row) => row.id !== optimisticId))

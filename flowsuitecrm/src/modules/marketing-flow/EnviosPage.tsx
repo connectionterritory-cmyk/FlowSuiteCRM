@@ -14,6 +14,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/useUsers'
 import { useViewMode } from '../../data/useViewMode'
+import { dispatchOutboxMessage, isRealOutboxDispatchEnabled } from '../../lib/dispatchOutboxMessage'
 
 type CampaignRecord = {
   id: string
@@ -317,9 +318,16 @@ export function EnviosPage() {
         showToast(mkError.message, 'error')
         return
       }
-      const { error: invokeError } = await supabase.functions.invoke('process-outbox')
-      if (invokeError) {
-        showToast('Reintento en cola. El worker lo procesará en breve.')
+      if (!isRealOutboxDispatchEnabled) {
+        showToast('Reintento preparado en cola. El dispatch real esta deshabilitado en este entorno.', 'success')
+        void loadMessages()
+        return
+      }
+      const dispatchResult = await dispatchOutboxMessage(message.outbox_message_id)
+      if (!dispatchResult.ok) {
+        showToast(dispatchResult.message || dispatchResult.error_message || 'No se pudo despachar el reintento.', 'error')
+      } else if (dispatchResult.status === 'enviado') {
+        showToast('Reintento enviado', 'success')
       } else {
         showToast('Reintento en cola', 'success')
       }

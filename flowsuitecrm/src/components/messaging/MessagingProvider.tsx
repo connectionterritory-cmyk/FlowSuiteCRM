@@ -8,6 +8,7 @@ import { resolveTemplate } from '../../lib/messagePlaceholders'
 import { baseTemplates } from '../../lib/whatsappTemplates'
 import { emailTemplates } from '../../lib/emailTemplates'
 import { DEFAULT_SENDER, type EmailSender } from '../../lib/emailSenders'
+import { dispatchOutboxMessage, isRealOutboxDispatchEnabled } from '../../lib/dispatchOutboxMessage'
 
 const normalizePhone = (phone: string): string | null => {
   if (!phone) return null
@@ -30,16 +31,6 @@ const summarizeError = (message?: string | null) => {
   const clean = (message ?? '').trim()
   if (!clean) return 'Error desconocido'
   return clean.length > 140 ? `${clean.slice(0, 137)}...` : clean
-}
-
-type ProcessOutboxResult = {
-  ok?: boolean
-  outbox_id?: string
-  status?: 'borrador' | 'programado' | 'en_proceso' | 'enviado' | 'fallido' | 'retry_pending' | 'cancelado'
-  provider?: string | null
-  provider_message_id?: string | null
-  error_message?: string | null
-  attempt_count?: number
 }
 
 const formatMoney = (value: number | null | undefined) =>
@@ -379,17 +370,16 @@ export function MessagingProvider({
       }
 
       // Envío directo: invocar process-outbox para despachar ahora mismo
-      if (isDirect) {
-        const { data: processResult, error: processError } = await supabase.functions.invoke<ProcessOutboxResult>('process-outbox', {
-          body: { outbox_id: outboxRow.id },
-        })
-        if (processError) {
-          showToast('Mensaje en cola, se enviará en breve')
-          if (onClose) onClose()
+      if (isDirect && isRealOutboxDispatchEnabled) {
+        const processResult = await dispatchOutboxMessage(outboxRow.id)
+
+        if (!processResult.ok) {
+          const message = summarizeError(processResult.message ?? processResult.error_message)
+          showToast(message, 'error')
           return
         }
 
-        if (processResult?.status === 'enviado') {
+        if (processResult.status === 'enviado') {
           const providerLabel = processResult.provider === 'resend'
             ? 'Resend'
             : processResult.provider === 'meta'
@@ -400,18 +390,24 @@ export function MessagingProvider({
           return
         }
 
-        if (processResult?.status === 'fallido') {
+        if (processResult.status === 'fallido') {
           showToast(`No se pudo enviar: ${summarizeError(processResult.error_message)}`, 'error')
           return
         }
 
-        if (processResult?.status === 'retry_pending') {
+        if (processResult.queued || processResult.status === 'retry_pending' || processResult.status === 'programado') {
           showToast('Mensaje quedo en cola para procesamiento.', 'success')
           if (onClose) onClose()
           return
         }
 
         showToast('Mensaje quedo en cola para procesamiento.', 'success')
+        if (onClose) onClose()
+        return
+      }
+
+      if (isDirect && !isRealOutboxDispatchEnabled) {
+        showToast('Mensaje en cola. El dispatch real esta deshabilitado en este entorno.', 'success')
         if (onClose) onClose()
         return
       }

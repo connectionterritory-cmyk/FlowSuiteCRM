@@ -18,6 +18,10 @@ verify_jwt = false
 
 [functions.process-outbox]
 verify_jwt = false
+# process-outbox requires x-worker-secret / OUTBOX_WORKER_SECRET at runtime.
+
+[functions.dispatch-outbox-message]
+verify_jwt = false
 
 [functions.dispatch-campaign]
 verify_jwt = false
