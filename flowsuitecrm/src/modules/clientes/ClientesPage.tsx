@@ -104,6 +104,26 @@ type ServicioResumen = {
   observaciones: string | null
 }
 
+type OrdenHyciteItemResumen = {
+  id: string
+  linea: number | null
+  codigo_articulo: string | null
+  descripcion: string | null
+  cantidad_solicitada: number | null
+  cantidad_enviada: number | null
+}
+
+type OrdenHyciteResumen = {
+  id: string
+  numero_orden_hycite: string
+  fecha_orden: string | null
+  fecha_envio: string | null
+  fecha_entrega: string | null
+  numero_seguimiento: string | null
+  estado_envio: string | null
+  cliente_orden_hycite_items: OrdenHyciteItemResumen[]
+}
+
 type ClienteOpportunitySummary = {
   id: string
   cliente_id: string | null
@@ -453,10 +473,12 @@ export function ClientesPage() {
   const [notasLoading, setNotasLoading] = useState(false)
   const [clienteServicios, setClienteServicios] = useState<ServicioResumen[]>([])
   const [serviciosLoading, setServiciosLoading] = useState(false)
+  const [clienteOrdenesHycite, setClienteOrdenesHycite] = useState<OrdenHyciteResumen[]>([])
+  const [ordenesHyciteLoading, setOrdenesHyciteLoading] = useState(false)
   const [clienteOpportunity, setClienteOpportunity] = useState<ClienteOpportunitySummary | null>(null)
   const [clienteOpportunityLoading, setClienteOpportunityLoading] = useState(false)
   const [clienteOpportunityGuard, setClienteOpportunityGuard] = useState<CarteraOpportunityGuard | null>(null)
-  const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios'>('info')
+  const [detailTab, setDetailTab] = useState<'info' | 'notas' | 'historial' | 'cartera' | 'servicios' | 'ordenes'>('info')
   const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; label: string; rol: string | null }>>([])
   const [citaAssignedOptions, setCitaAssignedOptions] = useState<Array<{ id: string; label: string }>>([])
   const [editingNextAction, setEditingNextAction] = useState(false)
@@ -1136,6 +1158,8 @@ export function ClientesPage() {
         setClienteOpportunity(null)
         setClienteOpportunityGuard(null)
         setServiciosLoading(false)
+        setClienteOrdenesHycite([])
+        setOrdenesHyciteLoading(false)
       })
       return
     }
@@ -1145,10 +1169,11 @@ export function ClientesPage() {
       setNotasLoading(true)
       setServiciosLoading(true)
       setClienteOpportunityLoading(true)
+      setOrdenesHyciteLoading(true)
       setDetailTab('info')
     })
     const loadDetail = async () => {
-      const [detailRes, notasRes, serviciosRes, opportunityRes, guardRes] = await Promise.all([
+      const [detailRes, notasRes, serviciosRes, opportunityRes, guardRes, ordenesHyciteRes] = await Promise.all([
         supabase
           .from('clientes')
           .select(
@@ -1171,6 +1196,14 @@ export function ClientesPage() {
           .limit(3),
         fetchClienteOpportunitySummary(selectedRow.id),
         getCarteraOpportunityGuard(selectedRow.id),
+        supabase
+          .from('cliente_ordenes_hycite')
+          .select(`
+            id, numero_orden_hycite, fecha_orden, fecha_envio, fecha_entrega, numero_seguimiento, estado_envio,
+            cliente_orden_hycite_items(id, linea, codigo_articulo, descripcion, cantidad_solicitada, cantidad_enviada)
+          `)
+          .eq('cliente_id', selectedRow.id)
+          .order('fecha_orden', { ascending: false }),
       ])
       if (!active) return
       if (detailRes.error) {
@@ -1194,10 +1227,16 @@ export function ClientesPage() {
         setClienteOpportunity((opportunityRes.data as ClienteOpportunitySummary | null) ?? null)
       }
       setClienteOpportunityGuard(guardRes)
+      if (ordenesHyciteRes.error) {
+        setClienteOrdenesHycite([])
+      } else {
+        setClienteOrdenesHycite((ordenesHyciteRes.data as OrdenHyciteResumen[]) ?? [])
+      }
       setDetailLoading(false)
       setNotasLoading(false)
       setServiciosLoading(false)
       setClienteOpportunityLoading(false)
+      setOrdenesHyciteLoading(false)
     }
     const handle = window.setTimeout(() => {
       void loadDetail()
@@ -1375,6 +1414,68 @@ export function ClientesPage() {
           Ver todos los servicios
         </Button>
       </div>
+    </div>
+  )
+
+  const ordenesHyciteContent = ordenesHyciteLoading ? (
+    <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Cargando...</span>
+  ) : clienteOrdenesHycite.length === 0 ? (
+    <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Sin órdenes registradas</span>
+  ) : (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+      {clienteOrdenesHycite.map((orden) => {
+        const fecha = orden.fecha_orden ? formatDateValue(orden.fecha_orden) : '-'
+        const entregado = orden.estado_envio?.toLowerCase().includes('delivered') ?? false
+        const items = [...orden.cliente_orden_hycite_items].sort((a, b) => (a.linea ?? 0) - (b.linea ?? 0))
+        return (
+          <div
+            key={orden.id}
+            style={{
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.6rem',
+              background: 'rgba(15,23,42,0.04)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted, #6b7280)' }}>
+                {fecha} · Orden #{orden.numero_orden_hycite}
+              </span>
+              {orden.estado_envio && (
+                <span
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', padding: '0.1rem 0.5rem',
+                    borderRadius: '9999px', fontSize: '0.68rem', fontWeight: 600,
+                    background: entregado ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
+                    color: entregado ? '#10b981' : '#94a3b8',
+                  }}
+                >
+                  {orden.estado_envio}
+                </span>
+              )}
+            </div>
+            {orden.numero_seguimiento && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '0.15rem' }}>
+                Tracking: {orden.numero_seguimiento}
+              </div>
+            )}
+            {items.length > 0 && (
+              <ul style={{ margin: '0.35rem 0 0', paddingLeft: '1.1rem', fontSize: '0.8rem' }}>
+                {items.map((item) => (
+                  <li key={item.id}>
+                    {item.codigo_articulo ? `${item.codigo_articulo} — ` : ''}
+                    {item.descripcion ?? 'Artículo'}
+                    {item.cantidad_solicitada != null ? ` (x${item.cantidad_solicitada})` : ''}
+                    {item.cantidad_enviada != null && item.cantidad_enviada !== item.cantidad_solicitada
+                      ? ` · enviado: ${item.cantidad_enviada}`
+                      : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 
@@ -2437,6 +2538,9 @@ export function ClientesPage() {
           if (detailTab === 'servicios') {
             return [{ label: 'Servicios recientes', value: serviciosContent }]
           }
+          if (detailTab === 'ordenes') {
+            return [{ label: 'Órdenes Hy-Cite', value: ordenesHyciteContent }]
+          }
           {
             // ── helpers locales ───────────────────────────────────────
             const c = selectedClienteDetail
@@ -2736,9 +2840,10 @@ export function ClientesPage() {
           { key: 'notas', label: 'Notas' },
           { key: 'cartera', label: 'Financiamiento del Distribuidor' },
           { key: 'servicios', label: 'Servicios' },
+          { key: 'ordenes', label: 'Órdenes Hy-Cite' },
         ] : undefined}
         activeTab={selectedClienteDetail ? detailTab : undefined}
-        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas' | 'historial' | 'cartera' | 'servicios') : undefined}
+        onTabChange={selectedClienteDetail ? (key) => setDetailTab(key as 'info' | 'notas' | 'historial' | 'cartera' | 'servicios' | 'ordenes') : undefined}
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (

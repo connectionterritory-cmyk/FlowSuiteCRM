@@ -5,12 +5,13 @@ import { usePersonaPerfil } from '../hooks/usePersonaPerfil'
 import { ContactoTimeline } from './ContactoTimeline'
 import { DetailPanel } from './DetailPanel'
 
-type Tab = 'registros' | 'activaciones' | 'historial'
+type Tab = 'registros' | 'activaciones' | 'historial' | 'ordenes'
 
 const TABS = [
   { key: 'registros', label: 'Registros' },
   { key: 'activaciones', label: 'Activaciones' },
   { key: 'historial', label: 'Historial' },
+  { key: 'ordenes', label: 'Órdenes Hy-Cite' },
 ] satisfies { key: Tab; label: string }[]
 
 const estadoBadgeStyle = (estado: string): CSSProperties => ({
@@ -95,6 +96,53 @@ export function PersonaPerfilPanel({ personaId, onClose }: Props) {
             contactoId={id}
             emptyLabel="Sin actividades registradas"
           />
+        ),
+      }))
+    }
+
+    if (activeTab === 'ordenes') {
+      if (perfil.ordenesHycite.length === 0) {
+        return [{ label: 'Órdenes Hy-Cite', value: 'Sin órdenes registradas' }]
+      }
+      return perfil.ordenesHycite.map((o) => ({
+        label: `${o.fecha_orden ? new Date(o.fecha_orden).toLocaleDateString('es') : 'Sin fecha'} · #${o.numero_orden_hycite}`,
+        value: (
+          <div style={rowStyle}>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              {o.estado_envio && (
+                <span style={estadoBadgeStyle(o.estado_envio.toLowerCase().includes('delivered') ? 'actual' : '')}>
+                  {o.estado_envio}
+                </span>
+              )}
+              {o.numero_seguimiento && (
+                <span style={{ fontSize: '0.78rem' }}>Tracking: {o.numero_seguimiento}</span>
+              )}
+            </div>
+            {(o.fecha_envio || o.fecha_entrega) && (
+              <span style={labelStyle}>
+                {o.fecha_envio ? `Enviado: ${new Date(o.fecha_envio).toLocaleDateString('es')}` : ''}
+                {o.fecha_envio && o.fecha_entrega ? ' · ' : ''}
+                {o.fecha_entrega ? `Entregado: ${new Date(o.fecha_entrega).toLocaleDateString('es')}` : ''}
+              </span>
+            )}
+            {o.cliente_orden_hycite_items.length > 0 && (
+              <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.1rem', fontSize: '0.8rem' }}>
+                {o.cliente_orden_hycite_items
+                  .slice()
+                  .sort((a, b) => (a.linea ?? 0) - (b.linea ?? 0))
+                  .map((item) => (
+                    <li key={item.id}>
+                      {item.codigo_articulo ? `${item.codigo_articulo} — ` : ''}
+                      {item.descripcion ?? 'Artículo'}
+                      {item.cantidad_solicitada != null ? ` (x${item.cantidad_solicitada})` : ''}
+                      {item.cantidad_enviada != null && item.cantidad_enviada !== item.cantidad_solicitada
+                        ? ` · enviado: ${item.cantidad_enviada}`
+                        : ''}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
         ),
       }))
     }

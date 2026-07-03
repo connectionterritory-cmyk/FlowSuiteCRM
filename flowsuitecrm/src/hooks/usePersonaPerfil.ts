@@ -50,6 +50,28 @@ export type PersonaActividad = {
   contacto_id: string
 }
 
+export type PersonaOrdenHyciteItem = {
+  id: string
+  linea: number | null
+  codigo_articulo: string | null
+  descripcion: string | null
+  cantidad_solicitada: number | null
+  cantidad_enviada: number | null
+}
+
+export type PersonaOrdenHycite = {
+  id: string
+  cliente_id: string
+  numero_orden_hycite: string
+  fecha_orden: string | null
+  metodo_entrega: string | null
+  fecha_envio: string | null
+  fecha_entrega: string | null
+  numero_seguimiento: string | null
+  estado_envio: string | null
+  cliente_orden_hycite_items: PersonaOrdenHyciteItem[]
+}
+
 export type PersonaPerfil = {
   id: string
   nombre: string | null
@@ -61,6 +83,7 @@ export type PersonaPerfil = {
   embajadores: PersonaEmbajador[]
   activaciones: PersonaActivacion[]
   actividades: PersonaActividad[]
+  ordenesHycite: PersonaOrdenHycite[]
 }
 
 type State = {
@@ -109,8 +132,8 @@ export function usePersonaPerfil(personaId: string | null): State {
       const leadIds = leads.map((l) => l.id)
       const clienteIds = clientes.map((c) => c.id)
 
-      // Queries paralelas: activaciones + historial de contacto_actividades
-      const [activacionesResult, leadActividadesResult, clienteActividadesResult] = await Promise.all([
+      // Queries paralelas: activaciones + historial de contacto_actividades + ordenes hycite
+      const [activacionesResult, leadActividadesResult, clienteActividadesResult, ordenesHyciteResult] = await Promise.all([
         // ci_activaciones para cualquier lead o cliente de esta persona
         leadIds.length > 0 || clienteIds.length > 0
           ? supabase
@@ -149,6 +172,19 @@ export function usePersonaPerfil(personaId: string | null): State {
               .order('fecha_actividad', { ascending: false })
               .limit(30)
           : Promise.resolve({ data: [], error: null }),
+
+        // ordenes hycite de los clientes de esta persona
+        clienteIds.length > 0
+          ? supabase
+              .from('cliente_ordenes_hycite')
+              .select(`
+                id, cliente_id, numero_orden_hycite, fecha_orden, metodo_entrega,
+                fecha_envio, fecha_entrega, numero_seguimiento, estado_envio,
+                cliente_orden_hycite_items(id, linea, codigo_articulo, descripcion, cantidad_solicitada, cantidad_enviada)
+              `)
+              .in('cliente_id', clienteIds)
+              .order('fecha_orden', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
       ])
 
       if (!active) return
@@ -162,6 +198,8 @@ export function usePersonaPerfil(personaId: string | null): State {
         .sort((a, b) => new Date(b.fecha_actividad).getTime() - new Date(a.fecha_actividad).getTime())
         .slice(0, 30)
 
+      const ordenesHycite = (ordenesHyciteResult.data ?? []) as PersonaOrdenHycite[]
+
       setState({
         perfil: {
           id: persona.id,
@@ -174,6 +212,7 @@ export function usePersonaPerfil(personaId: string | null): State {
           embajadores,
           activaciones,
           actividades,
+          ordenesHycite,
         },
         loading: false,
         error: null,
