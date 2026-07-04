@@ -558,19 +558,21 @@ export function ClientesPage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // --- CARTUCHOS: carga IDs de clientes con componentes vencidos o próximos ---
+  // --- CARTUCHOS: carga IDs de clientes con equipos vencidos o próximos ---
+  // Nota: la fecha de cambio se mantiene en equipos_instalados.proxima_cambio
+  // (actualizada desde Cartera al registrar un servicio), no en componentes_equipo
+  // (tabla sin uso real, nunca se escribe ahí desde ningún módulo).
   useEffect(() => {
     if (!configured) return
     const today = new Date().toISOString().split('T')[0]
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
 
-    type CartuchoRow = { equipo?: { cliente?: { id: string } | null } | null }
+    type EquipoRow = { cliente_id: string | null }
 
-    const extractIds = (rows: CartuchoRow[]): Set<string> => {
+    const extractIds = (rows: EquipoRow[]): Set<string> => {
       const ids = new Set<string>()
       for (const row of rows) {
-        const id = row.equipo?.cliente?.id
-        if (id) ids.add(id)
+        if (row.cliente_id) ids.add(row.cliente_id)
       }
       return ids
     }
@@ -578,21 +580,21 @@ export function ClientesPage() {
     void (async () => {
       const [{ data: vData }, { data: pData }] = await Promise.all([
         supabase
-          .from('componentes_equipo')
-          .select('equipo:equipos_instalados(cliente:clientes(id))')
+          .from('equipos_instalados')
+          .select('cliente_id')
           .eq('activo', true)
-          .not('fecha_proximo_cambio', 'is', null)
-          .lte('fecha_proximo_cambio', today),
+          .not('proxima_cambio', 'is', null)
+          .lte('proxima_cambio', today),
         supabase
-          .from('componentes_equipo')
-          .select('equipo:equipos_instalados(cliente:clientes(id))')
+          .from('equipos_instalados')
+          .select('cliente_id')
           .eq('activo', true)
-          .not('fecha_proximo_cambio', 'is', null)
-          .gt('fecha_proximo_cambio', today)
-          .lte('fecha_proximo_cambio', in30),
+          .not('proxima_cambio', 'is', null)
+          .gt('proxima_cambio', today)
+          .lte('proxima_cambio', in30),
       ])
-      setCartuchosVencidosIds(extractIds((vData ?? []) as CartuchoRow[]))
-      setCartuchosProximosIds(extractIds((pData ?? []) as CartuchoRow[]))
+      setCartuchosVencidosIds(extractIds((vData ?? []) as EquipoRow[]))
+      setCartuchosProximosIds(extractIds((pData ?? []) as EquipoRow[]))
     })()
   }, [configured])
 
