@@ -1,4 +1,5 @@
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
@@ -82,13 +83,14 @@ const initialServiceForm = {
   vendedor_id: '',
   fecha_servicio: '',
   hora_cita: '',
-  tipo_servicio: 'cambio_repuesto',
+  tipo_servicio: 'revision',
   observaciones: '',
   venta_id: '',
 }
 
 export function ServicioClientePage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { session } = useAuth()
   const { currentUser, usersById } = useUsers()
   const { showToast } = useToast()
@@ -320,7 +322,7 @@ export function ServicioClientePage() {
       vendedor_id: servicio.vendedor_id ?? '',
       fecha_servicio: servicio.fecha_servicio ?? '',
       hora_cita: normalizeTimeValue(servicio.hora_cita),
-      tipo_servicio: servicio.tipo_servicio ?? 'cambio_repuesto',
+      tipo_servicio: servicio.tipo_servicio ?? 'revision',
       observaciones: servicio.observaciones ?? '',
       venta_id: servicio.venta_id ?? '',
     })
@@ -940,11 +942,23 @@ export function ServicioClientePage() {
           <label className="form-field">
             <span>{t('servicio.form.fields.tipo')}</span>
             <select value={formValues.tipo_servicio} onChange={handleChange('tipo_servicio')}>
-              <option value="cambio_repuesto">{t('servicio.types.cambio_repuesto')}</option>
+              <option value="cambio_repuesto" disabled>{t('servicio.types.cambio_repuesto')} (usar Cartera)</option>
               <option value="revision">{t('servicio.types.revision')}</option>
               <option value="garantia">{t('servicio.types.garantia')}</option>
               <option value="queja">{t('servicio.types.queja')}</option>
             </select>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '0.15rem', display: 'block' }}>
+              Para registrar un cambio de repuesto y actualizar la próxima fecha de cambio,
+              hacelo desde{' '}
+              <button
+                type="button"
+                onClick={() => navigate('/cartera')}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--color-primary, #2563eb)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}
+              >
+                Cartera → Equipos
+              </button>
+              . Aquí no se actualiza esa fecha.
+            </span>
           </label>
           <label className="form-field">
             <span>{t('servicio.form.fields.observaciones')}</span>
