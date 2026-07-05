@@ -171,7 +171,7 @@ export function useHubStats() {
         let tareasQuery = supabase
           .from('crm_tareas')
           .select('id', { count: 'exact', head: true })
-          .eq('completada', false)
+          .eq('estado', 'pendiente')
           .lte('fecha_vencimiento', endDate)
 
         if (scope.kind === 'self' && scope.userId) {
