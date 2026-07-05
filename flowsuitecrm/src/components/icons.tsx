@@ -23,6 +23,200 @@ export function IconDashboard(props: IconProps) {
   )
 }
 
+export function IconCheck(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M4 12.5l5 5 11-11" />
+    </svg>
+  )
+}
+
+export function IconDroplet(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 2.5c3.5 4.2 7 8.3 7 12.2a7 7 0 1 1-14 0c0-3.9 3.5-8 7-12.2Z" />
+    </svg>
+  )
+}
+
+export function IconBottle(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M9.5 2h5v3.2c1.4 1 2 2.3 2 3.8v10a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2V9c0-1.5.6-2.8 2-3.8V2Z" />
+      <path d="M9.5 4.5h5" />
+    </svg>
+  )
+}
+
+export function IconJug(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M7 3h10l1 5-2.2 2v9a2 2 0 0 1-2 2H10.2a2 2 0 0 1-2-2v-9L6 8l1-5Z" />
+      <path d="M8.3 11h7.4" />
+    </svg>
+  )
+}
+
+export function IconSnowflake(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 2.5v19M4 7l16 10M20 7L4 17" />
+      <path d="M8 4.5l4 3 4-3M8 19.5l4-3 4 3M4.5 10l3 2-3 2M19.5 10l-3 2 3 2" />
+    </svg>
+  )
+}
+
+export function IconWrench(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 4.9L3 17.5 6.5 21l6.3-6.3a4 4 0 0 0 4.9-5.4l-2.8 2.8-2.4-2.4 2.2-2.4Z" />
+    </svg>
+  )
+}
+
+export function IconWind(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M3 8h11a2.5 2.5 0 1 0-2.4-3.2" />
+      <path d="M3 12h15a2.5 2.5 0 1 1-2.4 3.2" />
+      <path d="M3 16h8a2 2 0 1 1-1.9 2.6" />
+    </svg>
+  )
+}
+
+export function IconPalette(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6H16a4 4 0 0 0 4-4c0-4.4-3.6-8.2-8-8.2Z" />
+      <circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="7.2" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="8.2" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconFlask(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M9.5 2.5h5M10 3v6.5L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.5V3" />
+      <path d="M7.5 15h9" />
+    </svg>
+  )
+}
+
+export function IconLayers(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 3l9 4.5-9 4.5-9-4.5 9-4.5Z" />
+      <path d="M3 12l9 4.5 9-4.5" />
+      <path d="M3 16.5l9 4.5 9-4.5" />
+    </svg>
+  )
+}
+
+export function IconHeart(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 20.5S3 15.4 3 9.2A4.7 4.7 0 0 1 12 6a4.7 4.7 0 0 1 9 3.2c0 6.2-9 11.3-9 11.3Z" />
+    </svg>
+  )
+}
+
+export function IconBaby(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="6.5" r="3.2" />
+      <path d="M6 20c0-4 2.7-6.5 6-6.5s6 2.5 6 6.5" />
+      <path d="M9.8 6.3c.4.5 1.3.9 2.2.9s1.8-.4 2.2-.9" />
+    </svg>
+  )
+}
+
+export function IconFlame(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M12 2.5c1 2.5-2.5 3.6-2.5 6.6a2.5 2.5 0 0 0 5 0c1.6 1.4 2.5 3 2.5 4.7A5 5 0 0 1 7 13.8c0-4 3.3-6 5-11.3Z" />
+    </svg>
+  )
+}
+
+export function IconSun(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="12" r="4.2" />
+      <path d="M12 2.5v2.3M12 19.2v2.3M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.3M19.2 12h2.3M4.4 19.6L6 18M18 6l1.6-1.6" />
+    </svg>
+  )
+}
+
+export function IconCalendar(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="4.5" width="18" height="16" rx="2" />
+      <path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
+    </svg>
+  )
+}
+
+export function IconHelpCircle(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="12" r="9.2" />
+      <path d="M9.3 9.3a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.1.9-1.1 1.7v.5" />
+      <circle cx="12" cy="17" r="0.2" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconHome(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10v9.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V10" />
+      <path d="M10 20.5V14h4v6.5" />
+    </svg>
+  )
+}
+
+export function IconBuilding(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="1.5" />
+      <path d="M9 7h1.5M13.5 7H15M9 11h1.5M13.5 11H15M9 15h1.5M13.5 15H15" />
+      <path d="M10 21v-3h4v3" />
+    </svg>
+  )
+}
+
+export function IconStore(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M4 9.5 5 4h14l1 5.5" />
+      <path d="M4 9.5a2.3 2.3 0 0 0 4.5.7 2.3 2.3 0 0 0 4.5 0 2.3 2.3 0 0 0 4.5 0 2.3 2.3 0 0 0 4.5-.7" />
+      <path d="M5.5 11v8.5a1 1 0 0 0 1 1H10v-5h4v5h3.5a1 1 0 0 0 1-1V11" />
+    </svg>
+  )
+}
+
+export function IconKey(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <circle cx="8" cy="15" r="4.5" />
+      <path d="M11.2 11.8 20 3M16.5 6.5l2.5 2.5M13.7 9.3l2 2" />
+    </svg>
+  )
+}
+
+export function IconHandshake(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M2.5 12.5 7 8l4 3-2 2.2a1.4 1.4 0 0 0 2 2L14.5 12l3 2.7" />
+      <path d="M21.5 12.5 17 8l-4.5 3.5" />
+      <path d="M7 8 5 6M17 8l2-2" />
+    </svg>
+  )
+}
+
 export function IconTelecom(props: IconProps) {
   return (
     <svg {...baseProps} viewBox="0 0 24 24" {...props}>

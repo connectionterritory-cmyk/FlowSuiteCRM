@@ -127,6 +127,12 @@ export const navItems: NavItem[] = [
         path: '/campo',
         icon: IconNavigation,
       },
+      {
+        key: 'encuestas-agua',
+        labelKey: 'nav.encuestasAgua',
+        path: '/encuestas-agua',
+        icon: IconLeads,
+      },
     ],
   },
   {
