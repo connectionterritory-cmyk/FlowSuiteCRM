@@ -191,6 +191,53 @@ const INTERES_OPTS = [
   { value: 'no',       label: 'No interesa', icon: <IconX width={18} height={18} /> },
 ]
 
+const DECISOR_LABEL: Record<string, string> = {
+  yo: 'Yo',
+  pareja: 'Mi pareja',
+  ambos: 'Ambos',
+  otro: 'Otro',
+}
+
+// ─── Notas para la cita demo ────────────────────────────────────────────────
+// Solo incluye lo que la encuesta realmente capturó — nunca inventa datos.
+
+function buildDemoNotas(survey: WaterSurvey): string {
+  const lines: string[] = ['Encuesta de agua:']
+
+  const fuenteLabel = FUENTE_OPTS.find((o) => o.value === survey.fuente_agua)?.label
+  if (fuenteLabel) lines.push(`- Fuente actual: ${fuenteLabel}`)
+
+  const gastoLabel = GASTO_OPTS.find((o) => o.value === survey.gasto_mensual_agua)?.label
+  if (gastoLabel) lines.push(`- Gasto mensual: ${gastoLabel}`)
+
+  if (survey.preocupaciones && survey.preocupaciones.length > 0) {
+    const labels = survey.preocupaciones
+      .map((p) => PREOCUPACIONES_OPTS.find((o) => o.value === p)?.label ?? p)
+      .join(', ')
+    lines.push(`- Preocupaciones: ${labels}`)
+  }
+
+  const personasLabel = PERSONAS_OPTS.find((o) => o.value === survey.personas_hogar)?.label
+  if (personasLabel) lines.push(`- Personas en casa: ${personasLabel}`)
+
+  if (survey.hay_ninos !== null) lines.push(`- Niños en casa: ${survey.hay_ninos ? 'Sí' : 'No'}`)
+
+  const decisorLabel = survey.decisor ? (DECISOR_LABEL[survey.decisor] ?? survey.decisor) : null
+  if (decisorLabel) lines.push(`- Decisor: ${decisorLabel}`)
+
+  if (survey.decisor_presente !== null) lines.push(`- Decisor presente: ${survey.decisor_presente ? 'Sí' : 'No'}`)
+
+  const interesLabel = INTERES_OPTS.find((o) => o.value === survey.interes_revision)?.label
+  if (interesLabel) lines.push(`- Interés revisión: ${interesLabel}`)
+
+  lines.push(`- Score: ${survey.score}`)
+  lines.push(`- Temperatura: ${TEMP_LABEL[survey.temperatura ?? 'frio']}`)
+
+  if (survey.notas && survey.notas.trim()) lines.push(`- Notas encuesta: ${survey.notas.trim()}`)
+
+  return lines.join('\n')
+}
+
 // ─── ChipBtn ─────────────────────────────────────────────────────────────────
 
 function ChipBtn({
@@ -561,6 +608,7 @@ export function EncuestasAguaPage() {
       contacto_nombre: survey.nombre ?? '',
       contacto_telefono: survey.telefono ?? '',
       direccion: survey.direccion ?? '',
+      notas: buildDemoNotas(survey),
     })
     setCitaOpen(true)
   }, [userId])
