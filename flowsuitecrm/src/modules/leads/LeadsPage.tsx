@@ -133,6 +133,7 @@ const sourceOptions = [
   { value: 'exhibicion', labelKey: 'leads.sources.exhibicion' },
   { value: 'referido', labelKey: 'leads.sources.referido' },
   { value: 'conexiones_infinitas', labelKey: 'leads.sources.conexionesInfinitas' },
+  { value: 'encuesta_agua', labelKey: 'leads.sources.encuestaAgua' },
   { value: 'otro', labelKey: 'leads.sources.otro' },
 ]
 
