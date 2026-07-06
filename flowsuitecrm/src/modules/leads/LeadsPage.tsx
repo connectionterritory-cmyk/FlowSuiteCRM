@@ -19,6 +19,7 @@ import { useViewMode } from '../../data/useViewMode'
 import { useLeadSearch } from '../../hooks/useLeadSearch'
 import { useMessaging } from '../../hooks/useMessaging'
 import { CitaModal, type CitaForm } from '../citas/CitaModal'
+import { buildDemoNotas, type WaterSurvey } from '../encuestas-agua/EncuestasAguaPage'
 import {
   LEAD_PIPELINE_FOLLOWUP_STAGES,
   LEAD_PIPELINE_NEW_STAGES,
@@ -1727,9 +1728,22 @@ export function LeadsPage() {
     )
   }
 
-  const handleAgendarCita = useCallback((lead: LeadRecord) => {
+  const handleAgendarCita = useCallback(async (lead: LeadRecord) => {
     const now = new Date()
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+
+    let notas = ''
+    if (lead.fuente === 'encuesta_agua' && isSupabaseConfigured) {
+      const { data: survey } = await supabase
+        .from('water_surveys')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (survey) notas = buildDemoNotas(survey as WaterSurvey)
+    }
+
     setCitaInitial({
       owner_id: session?.user.id ?? '',
       start_at: local.toISOString().slice(0, 16),
@@ -1740,6 +1754,7 @@ export function LeadsPage() {
       contacto_id: lead.id,
       contacto_nombre: [lead.nombre, lead.apellido].filter(Boolean).join(' '),
       contacto_telefono: lead.telefono ?? '',
+      notas,
     })
     setCitaOpen(true)
   }, [session?.user.id])

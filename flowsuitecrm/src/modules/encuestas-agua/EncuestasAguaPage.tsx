@@ -41,13 +41,17 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WaterSurvey = {
+export type WaterSurvey = {
   id: string
   created_by: string | null
   assigned_to: string | null
   nombre: string | null
   telefono: string | null
   direccion: string | null
+  apartamento: string | null
+  ciudad: string | null
+  estado_region: string | null
+  codigo_postal: string | null
   idioma_preferido: string | null
   tipo_vivienda: string | null
   propiedad: string | null
@@ -78,6 +82,10 @@ type SurveyForm = {
   nombre: string
   telefono: string
   direccion: string
+  apartamento: string
+  ciudad: string
+  estado_region: string
+  codigo_postal: string
   idioma_preferido: string
   tipo_vivienda: string
   propiedad: string
@@ -96,6 +104,10 @@ const EMPTY_FORM: SurveyForm = {
   nombre: '',
   telefono: '',
   direccion: '',
+  apartamento: '',
+  ciudad: '',
+  estado_region: '',
+  codigo_postal: '',
   idioma_preferido: '',
   tipo_vivienda: '',
   propiedad: '',
@@ -201,7 +213,7 @@ const DECISOR_LABEL: Record<string, string> = {
 // ─── Notas para la cita demo ────────────────────────────────────────────────
 // Solo incluye lo que la encuesta realmente capturó — nunca inventa datos.
 
-function buildDemoNotas(survey: WaterSurvey): string {
+export function buildDemoNotas(survey: WaterSurvey): string {
   const lines: string[] = ['Encuesta de agua:']
 
   const fuenteLabel = FUENTE_OPTS.find((o) => o.value === survey.fuente_agua)?.label
@@ -554,6 +566,10 @@ export function EncuestasAguaPage() {
             nombre: survey.nombre,
             telefono,
             direccion: survey.direccion,
+            apartamento: survey.apartamento,
+            ciudad: survey.ciudad,
+            estado_region: survey.estado_region,
+            codigo_postal: survey.codigo_postal,
             tipo_vivienda: survey.tipo_vivienda,
             fuente: 'encuesta_agua',
             owner_id: userId,
@@ -608,6 +624,10 @@ export function EncuestasAguaPage() {
       contacto_nombre: survey.nombre ?? '',
       contacto_telefono: survey.telefono ?? '',
       direccion: survey.direccion ?? '',
+      apartamento: survey.apartamento ?? '',
+      ciudad: survey.ciudad ?? '',
+      estado_region: survey.estado_region ?? '',
+      zip: survey.codigo_postal ?? '',
       notas: buildDemoNotas(survey),
     })
     setCitaOpen(true)
@@ -697,6 +717,10 @@ export function EncuestasAguaPage() {
       nombre:             form.nombre.trim(),
       telefono:           form.telefono.trim(),
       direccion:          form.direccion.trim() || null,
+      apartamento:        form.apartamento.trim() || null,
+      ciudad:             form.ciudad.trim() || null,
+      estado_region:      form.estado_region.trim() || null,
+      codigo_postal:      form.codigo_postal.trim() || null,
       idioma_preferido:   form.idioma_preferido  || null,
       tipo_vivienda:      form.tipo_vivienda      || null,
       propiedad:          form.propiedad          || null,
@@ -876,12 +900,52 @@ export function EncuestasAguaPage() {
                 />
               </label>
               <label className="form-field">
-                <span>Dirección</span>
+                <span>Dirección principal</span>
                 <input
                   type="text"
                   value={form.direccion}
                   onChange={(e) => setField('direccion', e.target.value)}
-                  placeholder="Calle, ciudad"
+                  placeholder="Calle y número"
+                  style={{ fontSize: '16px' }}
+                />
+              </label>
+              <label className="form-field">
+                <span>Apt / Suite</span>
+                <input
+                  type="text"
+                  value={form.apartamento}
+                  onChange={(e) => setField('apartamento', e.target.value)}
+                  placeholder="Opcional"
+                  style={{ fontSize: '16px' }}
+                />
+              </label>
+              <label className="form-field">
+                <span>Ciudad</span>
+                <input
+                  type="text"
+                  value={form.ciudad}
+                  onChange={(e) => setField('ciudad', e.target.value)}
+                  placeholder="Ciudad"
+                  style={{ fontSize: '16px' }}
+                />
+              </label>
+              <label className="form-field">
+                <span>Estado / Región</span>
+                <input
+                  type="text"
+                  value={form.estado_region}
+                  onChange={(e) => setField('estado_region', e.target.value)}
+                  placeholder="CA"
+                  style={{ fontSize: '16px' }}
+                />
+              </label>
+              <label className="form-field">
+                <span>ZIP / Código postal</span>
+                <input
+                  type="text"
+                  value={form.codigo_postal}
+                  onChange={(e) => setField('codigo_postal', e.target.value)}
+                  placeholder="Opcional"
                   style={{ fontSize: '16px' }}
                 />
               </label>
