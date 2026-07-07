@@ -22,6 +22,8 @@ import { useDfpStatementPdf } from './pdf/useDfpStatementPdf'
 
 type EstadoCaso = 'Abierto' | 'En Negociación' | 'Acuerdo' | 'Cerrado'
 
+const HYBRID_DFP_ACCOUNT_STATES = new Set(['activo', 'moroso', 'en_plan', 'reestructurado'])
+
 function parseMontoCargoVueltaInput(value: string): number | null {
   const clean = value.replace(/[$,\s]/g, '').trim()
   if (!clean) return null
@@ -2010,6 +2012,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const safeDfpAccount = dfpAccount?.case_id === caso.id ? dfpAccount : null
   const isDfp = Boolean(safeDfpAccount)
   const classification = classifyCarteraCase(caso, safeDfpAccount)
+  const hideCvResumenSection = safeDfpAccount ? HYBRID_DFP_ACCOUNT_STATES.has((safeDfpAccount.estado ?? '').toLowerCase()) : false
+  const showCvResumenSection = !hideCvResumenSection && (cvResumenes.length > 0 || classification === 'cargo_vuelta_confirmado')
   const saldoBase = caso.monto_devuelto ?? caso.monto_total
   const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
   const hasActivePlan = planes.some(p => p.estado === 'activo')
@@ -2309,7 +2313,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           <ClienteTab cliente={caso.clientes} clienteId={caso.cliente_id} onSaved={handleRefresh} />
         ) : tab === 'estado_cuenta' ? (
           <>
-            {cvResumenes.length > 0 || classification === 'cargo_vuelta_confirmado' ? (
+            {showCvResumenSection ? (
               <CvResumenSection
                 resumenes={cvResumenes}
                 caseId={caso.id}
