@@ -196,8 +196,36 @@ type LedgerEntry = {
   balance_interest_after: number | null
   balance_fees_after: number | null
   balance_total_after: number | null
+  metadata: Record<string, unknown> | null
   created_at: string
 }
+
+type LedgerDisplayEntry =
+  | {
+    kind: 'raw'
+    key: string
+    entry: LedgerEntry
+  }
+  | {
+    kind: 'payment_group'
+    key: string
+    batchId: string
+    effectiveDate: string
+    createdAt: string
+    debitCredit: string
+    totalAmount: number
+    description: string | null
+    breakdown: {
+      principal: number
+      interest: number
+      fee: number
+    }
+    balancePrincipalAfter: number | null
+    balanceInterestAfter: number | null
+    balanceFeesAfter: number | null
+    balanceTotalAfter: number | null
+    entryCount: number
+  }
 
 type DfpStatement = {
   id: string
@@ -1834,7 +1862,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       const [ledgerRes, statementsRes] = await Promise.all([
         supabase
           .from('cob_financial_ledger')
-          .select('id,revolving_account_id,case_id,entry_date,effective_date,entry_type,component_type,debit_credit,amount,description,balance_principal_after,balance_interest_after,balance_fees_after,balance_total_after,created_at')
+          .select('id,revolving_account_id,case_id,entry_date,effective_date,entry_type,component_type,debit_credit,amount,description,balance_principal_after,balance_interest_after,balance_fees_after,balance_total_after,metadata,created_at')
           .eq('revolving_account_id', loadedDfpAccount.id)
           .eq('case_id', caso.id)
           .order('effective_date', { ascending: false })
@@ -3217,6 +3245,7 @@ function EstadoCuentaList({
   onSaved: () => void
 }) {
   const [openStatements, setOpenStatements] = useState<Record<string, boolean>>({})
+  const ledgerDisplayEntries = useMemo(() => groupLedgerEntries(entries), [entries])
 
   if (!account) {
     return <Empty label="Este caso todavía no tiene cuenta DFP/revolving asociada" />
@@ -3329,15 +3358,62 @@ function EstadoCuentaList({
       <p style={{ margin: '0.1rem 0', fontSize: '0.74rem', color: 'var(--color-text-muted)', fontWeight: 700 }}>
         Ledger vivo (transacciones)
       </p>
-      {entries.length === 0 ? (
+      {ledgerDisplayEntries.length === 0 ? (
         <Empty label="La cuenta DFP no tiene movimientos de ledger visibles" />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-          {entries.map(entry => {
+          {ledgerDisplayEntries.map(displayEntry => {
+            if (displayEntry.kind === 'payment_group') {
+              const isCredit = displayEntry.debitCredit === 'credit'
+              const color = isCredit ? '#10b981' : '#ef4444'
+              const breakdownParts = [
+                displayEntry.breakdown.interest > 0 ? `${fmtMonto(displayEntry.breakdown.interest)} a interés` : null,
+                displayEntry.breakdown.principal > 0 ? `${fmtMonto(displayEntry.breakdown.principal)} a principal` : null,
+                displayEntry.breakdown.fee > 0 ? `${fmtMonto(displayEntry.breakdown.fee)} a fees` : null,
+              ].filter(Boolean)
+
+              return (
+                <div key={displayEntry.key} style={{ padding: '0.65rem 0.75rem', borderRadius: '0.5rem', border: `1px solid ${color}33`, background: color + '0a' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-text)' }}>
+                        Pago recibido
+                      </p>
+                      <p style={{ margin: '0.18rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                        {fmtFecha(displayEntry.effectiveDate)} · {isCredit ? 'Crédito' : 'Cargo'}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color, flexShrink: 0 }}>
+                      {isCredit ? '-' : '+'}{fmtMonto(displayEntry.totalAmount)}
+                    </span>
+                  </div>
+                  {breakdownParts.length > 0 && (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>
+                      Aplicado: {breakdownParts.join(', ')}
+                    </p>
+                  )}
+                  {displayEntry.description && (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.73rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                      {displayEntry.description}
+                    </p>
+                  )}
+                  {displayEntry.balanceTotalAfter !== null && (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                      Saldo después: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(displayEntry.balanceTotalAfter)}</strong>
+                      {displayEntry.balancePrincipalAfter !== null && ` · Principal ${fmtMonto(displayEntry.balancePrincipalAfter)}`}
+                      {displayEntry.balanceInterestAfter !== null && ` · Interés ${fmtMonto(displayEntry.balanceInterestAfter)}`}
+                      {displayEntry.balanceFeesAfter !== null && ` · Fees ${fmtMonto(displayEntry.balanceFeesAfter)}`}
+                    </p>
+                  )}
+                </div>
+              )
+            }
+
+            const entry = displayEntry.entry
             const isCredit = entry.debit_credit === 'credit'
             const color = isCredit ? '#10b981' : '#ef4444'
             return (
-              <div key={entry.id} style={{ padding: '0.65rem 0.75rem', borderRadius: '0.5rem', border: `1px solid ${color}33`, background: color + '0a' }}>
+              <div key={displayEntry.key} style={{ padding: '0.65rem 0.75rem', borderRadius: '0.5rem', border: `1px solid ${color}33`, background: color + '0a' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-text)' }}>
@@ -3389,6 +3465,102 @@ function formatLedgerComponent(component: string) {
     fee: 'Fee',
   }
   return map[component] ?? component
+}
+
+function getLedgerBatchId(entry: LedgerEntry): string | null {
+  const value = entry.metadata?.batch_id
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function pickGroupedPaymentRepresentative(entries: LedgerEntry[]): LedgerEntry {
+  return entries.reduce((current, candidate) => {
+    const currentBalance = current.balance_total_after
+    const candidateBalance = candidate.balance_total_after
+    if (currentBalance === null) return candidate
+    if (candidateBalance === null) return current
+
+    if (candidate.debit_credit === 'credit') {
+      return candidateBalance < currentBalance ? candidate : current
+    }
+    return candidateBalance > currentBalance ? candidate : current
+  })
+}
+
+function getLedgerDisplayEffectiveDate(entry: LedgerDisplayEntry): string {
+  return entry.kind === 'payment_group' ? entry.effectiveDate : entry.entry.effective_date
+}
+
+function getLedgerDisplayCreatedAt(entry: LedgerDisplayEntry): string {
+  return entry.kind === 'payment_group' ? entry.createdAt : entry.entry.created_at
+}
+
+function getLedgerDisplayBalanceAfter(entry: LedgerDisplayEntry): number | null {
+  return entry.kind === 'payment_group' ? entry.balanceTotalAfter : entry.entry.balance_total_after
+}
+
+function sortLedgerDisplayEntries(entries: LedgerDisplayEntry[]): LedgerDisplayEntry[] {
+  return [...entries].sort((a, b) => {
+    const effectiveDiff = new Date(getLedgerDisplayEffectiveDate(b)).getTime() - new Date(getLedgerDisplayEffectiveDate(a)).getTime()
+    if (effectiveDiff !== 0) return effectiveDiff
+    const balanceA = getLedgerDisplayBalanceAfter(a)
+    const balanceB = getLedgerDisplayBalanceAfter(b)
+    if (balanceA !== null && balanceB !== null && balanceA !== balanceB) {
+      return balanceB - balanceA
+    }
+
+    return new Date(getLedgerDisplayCreatedAt(a)).getTime() - new Date(getLedgerDisplayCreatedAt(b)).getTime()
+  })
+}
+
+function groupLedgerEntries(entries: LedgerEntry[]): LedgerDisplayEntry[] {
+  const grouped: LedgerDisplayEntry[] = []
+  const seenPaymentBatches = new Set<string>()
+
+  for (const entry of entries) {
+    const batchId = entry.entry_type === 'payment_applied' ? getLedgerBatchId(entry) : null
+
+    if (!batchId) {
+      grouped.push({ kind: 'raw', key: entry.id, entry })
+      continue
+    }
+
+    if (seenPaymentBatches.has(batchId)) continue
+    seenPaymentBatches.add(batchId)
+
+    const batchEntries = entries.filter(candidate =>
+      candidate.entry_type === 'payment_applied' && getLedgerBatchId(candidate) === batchId,
+    )
+    const representative = pickGroupedPaymentRepresentative(batchEntries)
+    const breakdown = batchEntries.reduce(
+      (acc, candidate) => {
+        const amount = Math.abs(Number(candidate.amount ?? 0))
+        if (candidate.component_type === 'interest') acc.interest += amount
+        else if (candidate.component_type === 'principal') acc.principal += amount
+        else if (candidate.component_type === 'fee') acc.fee += amount
+        return acc
+      },
+      { principal: 0, interest: 0, fee: 0 },
+    )
+
+    grouped.push({
+      kind: 'payment_group',
+      key: `payment-batch-${batchId}`,
+      batchId,
+      effectiveDate: representative.effective_date,
+      createdAt: representative.created_at,
+      debitCredit: representative.debit_credit,
+      totalAmount: batchEntries.reduce((sum, candidate) => sum + Math.abs(Number(candidate.amount ?? 0)), 0),
+      description: representative.description,
+      breakdown,
+      balancePrincipalAfter: representative.balance_principal_after,
+      balanceInterestAfter: representative.balance_interest_after,
+      balanceFeesAfter: representative.balance_fees_after,
+      balanceTotalAfter: representative.balance_total_after,
+      entryCount: batchEntries.length,
+    })
+  }
+
+  return sortLedgerDisplayEntries(grouped)
 }
 
 function Empty({ label, icon = '📭' }: { label: string; icon?: string }) {
