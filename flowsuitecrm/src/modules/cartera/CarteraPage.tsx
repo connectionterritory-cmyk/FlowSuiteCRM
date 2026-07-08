@@ -240,6 +240,7 @@ type DfpStatement = {
   compras_periodo: number
   cargos_interes_periodo: number
   pagos_periodo: number
+  otros_creditos: number
   nuevo_balance: number
   pago_minimo: number
   apr_tae: number | null
@@ -1537,7 +1538,6 @@ type CaseContextHeaderProps = {
   cvResumenes: CvResumen[]
   saldo: number
   onGestionar: () => void
-  onGoToStatements: () => void
 }
 
 function CaseContextHeader({
@@ -1550,7 +1550,6 @@ function CaseContextHeader({
   cvResumenes,
   saldo,
   onGestionar,
-  onGoToStatements,
 }: CaseContextHeaderProps) {
   const tone = getClassificationBadgeTone(classification)
   const latestStatement = getLatestStatement(statements)
@@ -1710,23 +1709,6 @@ function CaseContextHeader({
             metaRow('Último statement', 'Sin statement generado', '#d97706')
           )}
         </div>
-        <button
-          type="button"
-          onClick={onGoToStatements}
-          style={{
-            alignSelf: 'flex-end',
-            padding: '0.4rem 1rem',
-            borderRadius: '0.45rem',
-            border: `1px solid ${tone.border}`,
-            background: tone.background,
-            color: tone.color,
-            cursor: 'pointer',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-          }}
-        >
-          Enviar statement
-        </button>
       </div>
     )
   }
@@ -1870,7 +1852,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           .limit(100),
         supabase
           .from('cob_statements')
-          .select('id,org_id,case_id,revolving_account_id,periodo_inicio,periodo_fin,fecha_corte,fecha_vencimiento,balance_previo,compras_periodo,cargos_interes_periodo,pagos_periodo,nuevo_balance,pago_minimo,apr_tae,status,created_at')
+          .select('id,org_id,case_id,revolving_account_id,periodo_inicio,periodo_fin,fecha_corte,fecha_vencimiento,balance_previo,compras_periodo,cargos_interes_periodo,pagos_periodo,otros_creditos,nuevo_balance,pago_minimo,apr_tae,status,created_at')
           .eq('revolving_account_id', loadedDfpAccount.id)
           .eq('case_id', caso.id)
           .order('periodo_fin', { ascending: false })
@@ -2317,7 +2299,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           cvResumenes={cvResumenes}
           saldo={saldo}
           onGestionar={handleNextStepAction}
-          onGoToStatements={() => setTab('estado_cuenta')}
         />
       )}
 
@@ -3305,6 +3286,9 @@ function EstadoCuentaList({
                       <span style={{ color: 'var(--color-text-muted)' }}>Compras/principal: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.compras_periodo)}</strong></span>
                       <span style={{ color: 'var(--color-text-muted)' }}>Interés: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.cargos_interes_periodo)}</strong></span>
                       <span style={{ color: 'var(--color-text-muted)' }}>Pagos: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.pagos_periodo)}</strong></span>
+                      {statement.otros_creditos > 0 && (
+                        <span style={{ color: 'var(--color-text-muted)' }}>Otros créditos: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.otros_creditos)}</strong></span>
+                      )}
                       <span style={{ color: 'var(--color-text-muted)' }}>Nuevo balance: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.nuevo_balance)}</strong></span>
                       <span style={{ color: 'var(--color-text-muted)' }}>Pago mínimo: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(statement.pago_minimo)}</strong></span>
                     </div>
