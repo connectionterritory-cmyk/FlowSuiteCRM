@@ -9,7 +9,7 @@ export const CWG = {
   hours: 'Lunes a Sábado, 9:00 AM - 8:00 PM',
   privacyUrl: 'https://www.connectionww.com/privacy-policy',
   copyright: `© ${new Date().getFullYear()} Connection Worldwide Group. Todos los derechos reservados.`,
-} as const
+}
 
 export const COLORS = {
   navy: '#0f2044',
@@ -28,26 +28,26 @@ export const COLORS = {
   text: '#111827',
   textMuted: '#6b7280',
   gold: '#d4af37',
-} as const
+}
 
 export const FONTS = {
   regular: 'Helvetica',
   bold: 'Helvetica-Bold',
   oblique: 'Helvetica-Oblique',
-} as const
-
-export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  cargo_vuelta: 'Cargo de Vuelta',
-  dfp: 'Cuenta Revolvente',
 }
 
-export const LINE_TYPE_LABEL: Record<string, string> = {
+export const ACCOUNT_TYPE_LABEL = {
+  cargo_vuelta: 'Cargo de Vuelta',
+  dfp: 'DFP / Revolving',
+}
+
+export const LINE_TYPE_LABEL = {
   saldo_apertura: 'Saldo inicial',
   pago: 'Pago',
   credito: 'Crédito',
   ajuste: 'Ajuste',
-  cargo_interes: 'Cargo de interés',
-  cargo_fee: 'Cargo administrativo',
+  cargo_interes: 'Interés',
+  cargo_fee: 'Cargo',
   saldo_cierre: 'Saldo al cierre',
   proximo_pago: 'Próximo pago',
 }

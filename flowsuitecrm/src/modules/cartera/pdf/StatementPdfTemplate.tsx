@@ -221,11 +221,11 @@ function PageHeader({ data, pageNum }: { data: StatementPdfData; pageNum: string
               <Text style={s.headerMetaValue}>{fmtDate(data.approvalDate)}</Text>
             </View>
             <View style={s.headerMetaRow}>
-              <Text style={s.headerMetaLabel}>STATEMENT DATE</Text>
+              <Text style={s.headerMetaLabel}>FECHA DEL ESTADO DE CUENTA</Text>
               <Text style={s.headerMetaValue}>{fmtDate(data.statementDate)}</Text>
             </View>
             <View style={s.headerMetaRow}>
-              <Text style={s.headerMetaLabel}>DUE DATE</Text>
+              <Text style={s.headerMetaLabel}>FECHA DE VENCIMIENTO</Text>
               <Text style={s.headerMetaValue}>{fmtDate(data.dueDate)}</Text>
             </View>
           </>
@@ -385,7 +385,7 @@ function PaymentInfoCol({ data }: { data: StatementPdfData }) {
 
       <View style={s.paymentCard}>
         <View>
-          <Text style={s.paymentCardLabel}>{isCv ? 'Due date / fecha límite' : 'Fecha de próximo pago'}</Text>
+          <Text style={s.paymentCardLabel}>{isCv ? 'Fecha límite de pago' : 'Fecha de próximo pago'}</Text>
           <Text style={s.paymentCardValue}>
             {isCv
               ? fmtDate(data.dueDate ?? data.nextPaymentDate)
@@ -393,26 +393,6 @@ function PaymentInfoCol({ data }: { data: StatementPdfData }) {
           </Text>
         </View>
       </View>
-
-      <View style={[s.paymentCard, { flexDirection: 'column', alignItems: 'flex-start' }]}>
-        <Text style={s.paymentCardLabel}>{isCv ? 'Saldo al statement' : 'Saldo pendiente'}</Text>
-        <Text style={s.paymentCardValueRed}>{fmtMoney(data.pendingBalance)}</Text>
-      </View>
-
-      {isCv && (
-        <>
-          <View style={[s.paymentCard, { flexDirection: 'column', alignItems: 'flex-start' }]}>
-            <Text style={s.paymentCardLabel}>Total estimado a pagar antes del due date</Text>
-            <Text style={s.paymentCardValue}>{fmtMoney(data.projectedDueBalance)}</Text>
-          </View>
-          <View style={s.paymentCard}>
-            <View>
-              <Text style={s.paymentCardLabel}>APR acordado</Text>
-              <Text style={s.paymentCardValue}>{fmtPercentDecimal(data.interestApr)}</Text>
-            </View>
-          </View>
-        </>
-      )}
 
       <View style={s.paymentCard}>
         <View style={{ flex: 1 }}>
@@ -539,7 +519,7 @@ function ClientMessageZone({ data }: { data: StatementPdfData }) {
             : data.agreedMonthlyPayment != null ? fmtMoney(data.agreedMonthlyPayment) : fmtMoney(data.pendingBalance)}
         </Text>
 
-        <Text style={s.couponLabel}>{data.accountType === 'cargo_vuelta' ? 'Due date' : 'Fecha de vencimiento'}</Text>
+        <Text style={s.couponLabel}>Fecha de vencimiento</Text>
         <Text style={s.couponValue}>
           {data.accountType === 'cargo_vuelta'
             ? fmtDate(data.dueDate ?? data.nextPaymentDate)
