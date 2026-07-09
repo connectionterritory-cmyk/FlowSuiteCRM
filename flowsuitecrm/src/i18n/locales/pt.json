@@ -431,6 +431,8 @@
     "emailPlaceholder": "nome@empresa.com",
     "password": "Senha",
     "passwordPlaceholder": "Digite sua senha",
+    "showPassword": "Mostrar senha",
+    "hidePassword": "Ocultar senha",
     "signIn": "Entrar",
     "signingIn": "Entrando...",
     "forgotPassword": "Esqueceu sua senha?",

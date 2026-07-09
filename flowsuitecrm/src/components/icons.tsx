@@ -23,6 +23,25 @@ export function IconDashboard(props: IconProps) {
   )
 }
 
+export function IconEye(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+export function IconEyeOff(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.2A9.4 9.4 0 0 1 12 5c6.4 0 10 7 10 7a15.6 15.6 0 0 1-3.4 4.3M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.2-1" />
+      <path d="M9.5 9.6a3 3 0 0 0 4.2 4.2" />
+    </svg>
+  )
+}
+
 export function IconCheck(props: IconProps) {
   return (
     <svg {...baseProps} viewBox="0 0 24 24" {...props}>

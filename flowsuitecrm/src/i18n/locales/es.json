@@ -462,6 +462,8 @@
     "emailPlaceholder": "correo@empresa.com",
     "password": "Contrasena",
     "passwordPlaceholder": "Escribe tu contrasena",
+    "showPassword": "Mostrar contrasena",
+    "hidePassword": "Ocultar contrasena",
     "signIn": "Iniciar sesion",
     "signingIn": "Ingresando...",
     "forgotPassword": "Olvidaste tu contrasena?",
