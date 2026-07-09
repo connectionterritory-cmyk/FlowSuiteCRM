@@ -309,11 +309,11 @@ const MARTHA_STATEMENT_GUARD_UNTIL = '2026-07-25'
 const MARTHA_STATEMENT_GUARD_MESSAGE = 'Bloqueado hasta el cierre de ciclo real (25 de julio de 2026) - ver runbook en docs/cartera/. No generar manualmente antes de esa fecha.'
 
 type CarteraClassification =
-  | 'dfp_confirmado'
-  | 'cargo_vuelta_confirmado'
-  | 'hibrido_revisar'
-  | 'dfp_incompleto_revisar'
+  | 'financiamiento_activo'
+  | 'pendiente_acuerdo'
   | 'sin_clasificar'
+
+const ACTIVE_FOLLOWUP_DFP_STATES = new Set(['activo', 'moroso', 'en_plan', 'reestructurado'])
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -394,26 +394,19 @@ function classifyCarteraCase(
   caseItem: Pick<Case, 'tipo_caso'>,
   dfpAccount: Pick<DfpAccount, 'id'> | null | undefined,
 ): CarteraClassification {
-  const tipo = caseItem.tipo_caso
   const hasDfp = Boolean(dfpAccount)
 
-  if (tipo === 'dfp' && hasDfp) return 'dfp_confirmado'
-  if (tipo === 'cargo_vuelta' && !hasDfp) return 'cargo_vuelta_confirmado'
-  if (tipo === 'cargo_vuelta' && hasDfp) return 'hibrido_revisar'
-  if (tipo === 'dfp' && !hasDfp) return 'dfp_incompleto_revisar'
+  if (hasDfp) return 'financiamiento_activo'
+  if (caseItem.tipo_caso === 'cargo_vuelta' || caseItem.tipo_caso === 'dfp') return 'pendiente_acuerdo'
   return 'sin_clasificar'
 }
 
 function getClassificationLabel(classification: CarteraClassification) {
   switch (classification) {
-    case 'dfp_confirmado':
-      return 'DFP'
-    case 'cargo_vuelta_confirmado':
-      return 'Cargo de vuelta'
-    case 'hibrido_revisar':
-      return 'Híbrido · revisar clasificación'
-    case 'dfp_incompleto_revisar':
-      return 'DFP incompleto · revisar'
+    case 'financiamiento_activo':
+      return 'Financiamiento activo'
+    case 'pendiente_acuerdo':
+      return 'Pendiente de acuerdo'
     case 'sin_clasificar':
     default:
       return 'Sin clasificación'
@@ -422,27 +415,25 @@ function getClassificationLabel(classification: CarteraClassification) {
 
 function getClassificationBadgeTone(classification: CarteraClassification) {
   switch (classification) {
-    case 'dfp_confirmado':
+    case 'financiamiento_activo':
       return { background: 'rgba(59,130,246,0.16)', color: '#2563eb', border: '#2563eb44' }
-    case 'cargo_vuelta_confirmado':
+    case 'pendiente_acuerdo':
       return { background: 'rgba(100,116,139,0.2)', color: '#475569', border: '#47556944' }
-    case 'hibrido_revisar':
-      return { background: 'rgba(217,119,6,0.16)', color: '#b45309', border: '#b4530944' }
-    case 'dfp_incompleto_revisar':
-      return { background: 'rgba(220,38,38,0.12)', color: '#dc2626', border: '#dc262644' }
     case 'sin_clasificar':
     default:
       return { background: 'rgba(107,114,128,0.16)', color: '#6b7280', border: '#6b728044' }
   }
 }
 
-function isFinancialDfpAvailable(classification: CarteraClassification) {
-  return classification === 'dfp_confirmado' || classification === 'hibrido_revisar'
+function getCaseOriginLabel(tipoCaso: Case['tipo_caso']) {
+  if (tipoCaso === 'cargo_vuelta') return 'Origen: devuelto por Hy-Cite'
+  if (tipoCaso === 'dfp') return 'Origen: financiado directo'
+  return 'Origen: pendiente de clasificar'
 }
 
 
 function shouldShowStatementActions(classification: CarteraClassification) {
-  return isFinancialDfpAvailable(classification)
+  return classification === 'financiamiento_activo'
 }
 
 
@@ -1552,6 +1543,7 @@ function CaseContextHeader({
   onGestionar,
 }: CaseContextHeaderProps) {
   const tone = getClassificationBadgeTone(classification)
+  const originLabel = getCaseOriginLabel(caso.tipo_caso)
   const latestStatement = getLatestStatement(statements)
   const latestCvResumen = cvResumenes[0] ?? null
   const lastGestion = gestiones[0] ?? null
@@ -1590,11 +1582,15 @@ function CaseContextHeader({
     )
   }
 
-  if (classification === 'cargo_vuelta_confirmado') {
+  if (classification === 'financiamiento_activo') {
     return (
-      <div style={{ padding: '0.65rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.45rem', background: 'rgba(100,116,139,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Cuenta devuelta por HyCite</p>
+      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(59,130,246,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Cuenta revolving con financiamiento activo</p>
+            <p style={{ margin: '0.18rem 0 0', fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>{originLabel}</p>
+          </div>
           <ClassificationBadge classification={classification} />
         </div>
         {ptpVencido && (
@@ -1604,101 +1600,10 @@ function CaseContextHeader({
             </span>
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '0.4rem' }}>
-          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: `1px solid ${saldo > 0 ? '#dc262630' : '#10b98130'}`, background: saldo > 0 ? 'rgba(220,38,38,0.04)' : 'rgba(16,185,129,0.04)' }}>
-            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Balance</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
-              {metaRow('Por recuperar', fmtMonto(saldo), saldo > 0 ? '#dc2626' : '#10b981')}
-              {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
-              {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
-            </div>
-          </div>
-          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
-            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seguimiento</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
-              {metaRow('Calendario CV', caso.cv_statement_schedule_status ?? 'Pendiente', 'var(--color-text-muted)')}
-              {metaRow(
-                'Última gestión',
-                lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión',
-                lastGestion ? 'var(--color-text)' : '#d97706',
-              )}
-              {metaRow(
-                'Último resumen',
-                latestCvResumen
-                  ? fmtFecha(latestCvResumen.fecha_corte)
-                  : caso.cv_statement_generated_at
-                    ? fmtFecha(caso.cv_statement_generated_at)
-                    : 'Sin resumen generado',
-                latestCvResumen || caso.cv_statement_generated_at ? 'var(--color-text)' : 'var(--color-text-muted)',
-              )}
-            </div>
-          </div>
-          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
-            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Documentos</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
-              {metaRow('APR CV', fmtPercentOrPending(caso.cv_interest_apr), caso.cv_interest_apr == null ? '#d97706' : 'var(--color-text)')}
-              {metaRow('Approval date', caso.cv_approval_date ? fmtFecha(caso.cv_approval_date) : 'Sin aprobación', caso.cv_approval_date ? 'var(--color-text)' : 'var(--color-text-muted)')}
-              {metaRow('Statement date', caso.cv_statement_date ? fmtFecha(caso.cv_statement_date) : 'Sin statement', caso.cv_statement_date ? 'var(--color-text)' : 'var(--color-text-muted)')}
-              {metaRow('Due date', caso.cv_due_date ? fmtFecha(caso.cv_due_date) : 'Sin vencimiento', caso.cv_due_date ? 'var(--color-text)' : 'var(--color-text-muted)')}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (classification === 'hibrido_revisar') {
-    return (
-      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(217,119,6,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-          <div>
-            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
-            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Caso híbrido: recovery + DFP</p>
-          </div>
-          <ClassificationBadge classification={classification} />
-        </div>
-        <div style={{ padding: '0.4rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.3)' }}>
-          <p style={{ margin: 0, fontSize: '0.73rem', color: '#92400e', lineHeight: 1.45 }}>
-            Este caso está marcado como Cargo de vuelta, pero tiene cuenta DFP/revolving y statements. Revisa la clasificación antes de tomar decisiones financieras.
-          </p>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(100,116,139,0.25)', background: 'rgba(100,116,139,0.07)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-            <p style={{ margin: '0 0 0.25rem', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.04em' }}>Recuperación</p>
-            {metaRow('Balance', fmtMonto(caso.monto_devuelto ?? caso.monto_total))}
-            {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
-            {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
-          </div>
-          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid rgba(59,130,246,0.25)', background: 'rgba(59,130,246,0.07)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-            <p style={{ margin: '0 0 0.25rem', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#2563eb', letterSpacing: '0.04em' }}>DFP</p>
-            {safeDfpAccount ? (
-              <>
-                {metaRow('Balance financiero', fmtMonto(safeDfpAccount.saldo_total_actual), '#2563eb')}
-                {latestStatement && metaRow('Statement', formatStatementPeriod(latestStatement))}
-                {latestStatement?.fecha_vencimiento && metaRow('Vence', fmtFecha(latestStatement.fecha_vencimiento))}
-              </>
-            ) : (
-              <span style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>Sin datos DFP</span>
-            )}
-          </div>
-        </div>
-        {primaryBtn('Revisar cuenta', onGestionar)}
-      </div>
-    )
-  }
-
-  if (classification === 'dfp_confirmado') {
-    return (
-      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(59,130,246,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-          <div>
-            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
-            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Cuenta DFP financiada directamente</p>
-          </div>
-          <ClassificationBadge classification={classification} />
-        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.65rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
           {safeDfpAccount && metaRow('Balance financiero', fmtMonto(safeDfpAccount.saldo_total_actual), tone.color)}
+          {metaRow('Estado operativo', caso.estado, estadoColor(caso.estado))}
+          {metaRow('Última gestión', lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión', lastGestion ? 'var(--color-text)' : '#d97706')}
           {latestStatement ? (
             <>
               {metaRow('Pago mínimo', fmtMonto(latestStatement.pago_minimo))}
@@ -1713,22 +1618,66 @@ function CaseContextHeader({
     )
   }
 
-  // dfp_incompleto_revisar | sin_clasificar
-  return (
-    <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: tone.background }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Tipo de cuenta</p>
-          <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Caso requiere revisión</p>
+  if (classification === 'pendiente_acuerdo') {
+    return (
+      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: 'rgba(100,116,139,0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Estado del caso</p>
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Caso listo para crear acuerdo revolving</p>
+            <p style={{ margin: '0.18rem 0 0', fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>{originLabel}</p>
+          </div>
+          <ClassificationBadge classification={classification} />
         </div>
-        <ClassificationBadge classification={classification} />
+        {ptpVencido && (
+          <div style={{ padding: '0.28rem 0.6rem', borderRadius: '0.4rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#dc2626' }}>
+              PTP vencido: {fmtMonto(ptpVencido.monto)} · {fmtFecha(ptpVencido.fecha_compromiso)}
+            </span>
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '0.4rem' }}>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: `1px solid ${saldo > 0 ? '#dc262630' : '#10b98130'}`, background: saldo > 0 ? 'rgba(220,38,38,0.04)' : 'rgba(16,185,129,0.04)' }}>
+            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Balance</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
+              {metaRow('Pendiente por activar', fmtMonto(saldo), saldo > 0 ? '#dc2626' : '#10b981')}
+              {metaRow('Días vencido', `${caso.dias_vencido}d`, diasColor(caso.dias_vencido))}
+              {metaRow('Estado', caso.estado, estadoColor(caso.estado))}
+            </div>
+          </div>
+          <div style={{ padding: '0.5rem 0.6rem', borderRadius: '0.45rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+            <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seguimiento</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
+              {metaRow('Última gestión', lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión', lastGestion ? 'var(--color-text)' : '#d97706')}
+              {metaRow('PTP abierto', ptps.some(p => p.estado === 'pendiente' || p.estado === 'vencido') ? 'Sí' : 'No', ptps.some(p => p.estado === 'pendiente' || p.estado === 'vencido') ? '#d97706' : 'var(--color-text-muted)')}
+              {metaRow('Último resumen CV', latestCvResumen ? fmtFecha(latestCvResumen.fecha_corte) : 'No aplica todavía', latestCvResumen ? 'var(--color-text)' : 'var(--color-text-muted)')}
+            </div>
+          </div>
+        </div>
       </div>
-      <p style={{ margin: 0, fontSize: '0.77rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-        Este caso necesita clasificación administrativa antes de generar documentos automáticos.
-      </p>
-      {primaryBtn('Revisar clasificación', onGestionar)}
-    </div>
-  )
+    )
+  }
+
+  if (classification === 'sin_clasificar') {
+    return (
+      <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '0.55rem', background: tone.background }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: tone.color, opacity: 0.8 }}>Estado del caso</p>
+            <p style={{ margin: '0.1rem 0 0', fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.2 }}>Caso pendiente de clasificación operativa</p>
+            <p style={{ margin: '0.18rem 0 0', fontSize: '0.74rem', color: 'var(--color-text-muted)' }}>{originLabel}</p>
+          </div>
+          <ClassificationBadge classification={classification} />
+        </div>
+        <p style={{ margin: 0, fontSize: '0.77rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+          Este caso todavía no entra en un flujo operativo de financiamiento activo ni de acuerdo pendiente.
+        </p>
+        {primaryBtn('Revisar caso', onGestionar)}
+      </div>
+    )
+  }
+
+  return null
 }
 
 type DetailTab = 'historial' | 'estado_cuenta' | 'gestiones' | 'ptps' | 'pagos' | 'plan' | 'cliente' | 'equipos'
@@ -2023,7 +1972,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const isDfp = Boolean(safeDfpAccount)
   const classification = classifyCarteraCase(caso, safeDfpAccount)
   const hideCvResumenSection = safeDfpAccount ? HYBRID_DFP_ACCOUNT_STATES.has((safeDfpAccount.estado ?? '').toLowerCase()) : false
-  const showCvResumenSection = !hideCvResumenSection && (cvResumenes.length > 0 || classification === 'cargo_vuelta_confirmado')
+  const showCvResumenSection = !hideCvResumenSection && cvResumenes.length > 0
   const saldoBase = caso.monto_devuelto ?? caso.monto_total
   const saldo = safeDfpAccount ? safeDfpAccount.saldo_total_actual : saldoBase - totalPagado
   const hasActivePlan = planes.some(p => p.estado === 'activo')
@@ -2148,11 +2097,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               <span key={ch.label} style={{ padding: '0.15rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: ch.color + '22', color: ch.color, border: `1px solid ${ch.color}44` }}>{ch.label}</span>
             ))}
           </div>
-          {classification === 'hibrido_revisar' && (
-            <p style={{ margin: '0 0 0.45rem', fontSize: '0.75rem', fontWeight: 600, color: '#b45309' }}>
-              Este caso está marcado como Cargo de vuelta, pero tiene cuenta revolving y statements. Revisa la clasificación antes de tomar decisiones financieras.
-            </p>
-          )}
           <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
             {/* Saldo Hy-Cite siempre como referencia */}
           {cliente?.saldo_actual !== undefined && cliente?.saldo_actual !== null && (
@@ -2332,21 +2276,19 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
                 onRefresh={handleRefresh}
               />
             ) : null}
-            {(safeDfpAccount || classification !== 'cargo_vuelta_confirmado') && (
-              <EstadoCuentaList
-                account={safeDfpAccount}
-                entries={ledgerEntries}
-                statements={statements}
-                statementLinesById={statementLinesById}
-                caseId={caso.id}
-                caseEstado={caso.estado}
-                clienteId={caso.cliente_id}
-                cliente={cliente}
-                orgId={orgId}
-                currentUserId={currentUserId}
-                onSaved={handleRefresh}
-              />
-            )}
+            <EstadoCuentaList
+              account={safeDfpAccount}
+              entries={ledgerEntries}
+              statements={statements}
+              statementLinesById={statementLinesById}
+              caseId={caso.id}
+              caseEstado={caso.estado}
+              clienteId={caso.cliente_id}
+              cliente={cliente}
+              orgId={orgId}
+              currentUserId={currentUserId}
+              onSaved={handleRefresh}
+            />
           </>
         ) : tab === 'gestiones' ? (
           <GestionesList gestiones={gestiones} usersById={usersById} />
@@ -4260,18 +4202,14 @@ function KpiCard({
 
 function CarteraEmptyState({
   urgentCount,
-  reviewCount,
   ptpVencidoCount,
   acuerdoActivoCount,
   onViewUrgent,
-  onViewReview,
 }: {
   urgentCount: number
-  reviewCount: number
   ptpVencidoCount: number
   acuerdoActivoCount: number
   onViewUrgent: () => void
-  onViewReview: () => void
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', minHeight: '100%', padding: '1.5rem', gap: '1rem' }}>
@@ -4284,23 +4222,15 @@ function CarteraEmptyState({
       <div style={{ padding: '1rem 1.1rem', borderRadius: '0.9rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(15,118,110,0.08), rgba(37,99,235,0.05))' }}>
         <p style={{ margin: '0 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-text)' }}>Workspace de cartera</p>
         <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-          Revisa urgentes, clasificaciones mixtas y acuerdos activos antes de abrir un caso.
+          Revisa urgentes, PTP vencidos y acuerdos activos antes de abrir un caso.
         </p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
         <KpiCard label="Urgentes" value={String(urgentCount)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
-        <KpiCard label="Híbridos / revisar" value={String(reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
         <KpiCard label="PTP vencidos" value={String(ptpVencidoCount)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
         <KpiCard label="Acuerdos activos" value={String(acuerdoActivoCount)} tone={{ border: '#10b98144', text: '#059669', bg: 'rgba(16,185,129,0.08)' }} />
       </div>
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          onClick={onViewReview}
-          style={{ padding: '0.55rem 0.9rem', borderRadius: '0.55rem', border: '1px solid #b4530944', background: 'rgba(217,119,6,0.1)', color: '#b45309', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
-        >
-          Ver híbridos
-        </button>
         <button
           type="button"
           onClick={onViewUrgent}
@@ -4340,9 +4270,8 @@ type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: st
 
 type CarteraPrimaryTab =
   | 'todos'
-  | 'cargo_vuelta'
+  | 'por_activar'
   | 'dfp'
-  | 'hibridos'
   | 'acuerdos_activos'
   | 'urgentes'
   | 'cerrados'
@@ -4376,6 +4305,7 @@ export function CarteraPage() {
   const [lastGestionByCase, setLastGestionByCase] = useState<Record<string, LastGestionInfo>>({})
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
   const [dfpCaseIdSet, setDfpCaseIdSet] = useState<Set<string>>(new Set())
+  const [activeAgreementCaseIdSet, setActiveAgreementCaseIdSet] = useState<Set<string>>(new Set())
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
   const [pageSize, setPageSize] = useState<CarteraPageSize>(loadCarteraPageSize)
   const [currentPage, setCurrentPage] = useState(1)
@@ -4406,6 +4336,7 @@ export function CarteraPage() {
       console.error('[CarteraPage] error cargando casos:', casesError)
       setCases([])
       setDfpCaseIdSet(new Set())
+      setActiveAgreementCaseIdSet(new Set())
       setLoading(false)
       return
     }
@@ -4420,6 +4351,7 @@ export function CarteraPage() {
     if (clienteIds.length === 0) {
       setCases(baseCases)
       setDfpCaseIdSet(new Set())
+      setActiveAgreementCaseIdSet(new Set())
       setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
@@ -4434,6 +4366,7 @@ export function CarteraPage() {
       console.error('[CarteraPage] error cargando clientes de casos:', clientesError)
       setCases(baseCases)
       setDfpCaseIdSet(new Set())
+      setActiveAgreementCaseIdSet(new Set())
       setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
@@ -4453,23 +4386,33 @@ export function CarteraPage() {
     if (caseIds.length > 0) {
       const { data: revolvingRows, error: revolvingError } = await supabase
         .from('cob_revolving_accounts')
-        .select('case_id')
+        .select('case_id,estado')
         .in('case_id', caseIds)
 
       if (revolvingError) {
         console.error('[CarteraPage] error cargando cuentas DFP:', revolvingError)
         setDfpCaseIdSet(new Set())
+        setActiveAgreementCaseIdSet(new Set())
       } else {
+        const typedRows = (revolvingRows ?? []) as { case_id: string | null; estado: string | null }[]
         setDfpCaseIdSet(
           new Set(
-            ((revolvingRows ?? []) as { case_id: string | null }[])
+            typedRows
               .map((row) => row.case_id)
               .filter((caseId): caseId is string => Boolean(caseId)),
+          ),
+        )
+        setActiveAgreementCaseIdSet(
+          new Set(
+            typedRows
+              .filter((row) => row.case_id && row.estado && ACTIVE_FOLLOWUP_DFP_STATES.has(row.estado))
+              .map((row) => row.case_id as string),
           ),
         )
       }
     } else {
       setDfpCaseIdSet(new Set())
+      setActiveAgreementCaseIdSet(new Set())
     }
 
     setCases(loadedCases)
@@ -4522,6 +4465,8 @@ export function CarteraPage() {
     return opts.sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [cases, usersById])
 
+  const hasActiveAgreement = (caseId: string) => activeAgreementCaseIdSet.has(caseId)
+
   const matchesQuickFilter = (c: Case, key: QuickFilterKey): boolean => {
     const todayStr = todayYmd()
     switch (key) {
@@ -4537,7 +4482,7 @@ export function CarteraPage() {
       case 'sin_gestion': return !lastGestionByCase[c.id]
       case 'ptp_vencido': return ptpVencidoSet.has(c.id)
       case 'en_negociacion': return c.estado === 'En Negociación'
-      case 'acuerdo_activo': return c.estado === 'Acuerdo'
+      case 'acuerdo_activo': return hasActiveAgreement(c.id)
       case '90_mas': return c.dias_vencido >= 90
       case 'alto_monto': return (c.monto_devuelto ?? c.monto_total) >= 500
       case 'cerrado': return c.estado === 'Cerrado'
@@ -4551,7 +4496,7 @@ export function CarteraPage() {
     }
     return counts
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, lastGestionByCase, ptpVencidoSet])
+  }, [cases, lastGestionByCase, ptpVencidoSet, activeAgreementCaseIdSet])
 
   const classificationByCaseId = useMemo(() => {
     const map = new Map<string, CarteraClassification>()
@@ -4566,16 +4511,12 @@ export function CarteraPage() {
     switch (tab) {
       case 'todos':
         return true
-      case 'cargo_vuelta':
-        return classification === 'cargo_vuelta_confirmado'
+      case 'por_activar':
+        return classification === 'pendiente_acuerdo'
       case 'dfp':
-        return classification === 'dfp_confirmado'
-      case 'hibridos':
-        return classification === 'hibrido_revisar'
-          || classification === 'dfp_incompleto_revisar'
-          || classification === 'sin_clasificar'
+        return classification === 'financiamiento_activo'
       case 'acuerdos_activos':
-        return c.estado === 'Acuerdo'
+        return hasActiveAgreement(c.id)
       case 'urgentes':
         return matchesQuickFilter(c, 'ptp_vencido')
           || matchesQuickFilter(c, 'sin_gestion')
@@ -4587,19 +4528,14 @@ export function CarteraPage() {
   }
 
   const kpiMetrics = useMemo(() => {
-    const cargoConfirmado = cases.filter(c => (classificationByCaseId.get(c.id) ?? 'sin_clasificar') === 'cargo_vuelta_confirmado')
-    const reviewCases = cases.filter(c => {
+    const casesPorActivar = cases.filter(c => (classificationByCaseId.get(c.id) ?? 'sin_clasificar') === 'pendiente_acuerdo')
+    const activeFinancing = cases.filter(c => (classificationByCaseId.get(c.id) ?? 'sin_clasificar') === 'financiamiento_activo')
+    const followupRelated = cases.filter(c => {
       const classification = classificationByCaseId.get(c.id) ?? 'sin_clasificar'
-      return classification === 'hibrido_revisar'
-        || classification === 'dfp_incompleto_revisar'
-        || classification === 'sin_clasificar'
+      return classification === 'pendiente_acuerdo'
     })
-    const recoveryRelated = cases.filter(c => {
-      const classification = classificationByCaseId.get(c.id) ?? 'sin_clasificar'
-      return classification === 'cargo_vuelta_confirmado' || classification === 'hibrido_revisar'
-    })
-    const balancePendienteRecuperar = cargoConfirmado.reduce((sum, c) => sum + Number(c.monto_devuelto ?? c.monto_total ?? 0), 0)
-    const ptpVencidos = recoveryRelated.filter(c => ptpVencidoSet.has(c.id)).length
+    const balancePendienteActivar = casesPorActivar.reduce((sum, c) => sum + Number(c.monto_devuelto ?? c.monto_total ?? 0), 0)
+    const ptpVencidos = followupRelated.filter(c => ptpVencidoSet.has(c.id)).length
     const urgentes = cases.filter(c =>
       ptpVencidoSet.has(c.id)
       || !lastGestionByCase[c.id]
@@ -4607,18 +4543,18 @@ export function CarteraPage() {
       || (c.monto_devuelto ?? c.monto_total) >= 500,
     ).length
     const cerrados = cases.filter(c => c.estado === 'Cerrado').length
-    const acuerdosActivos = cases.filter(c => c.estado === 'Acuerdo').length
+    const acuerdosActivos = cases.filter(c => hasActiveAgreement(c.id)).length
 
     return {
-      cargoConfirmadoCount: cargoConfirmado.length,
-      reviewCount: reviewCases.length,
-      balancePendienteRecuperar,
+      casesPorActivarCount: casesPorActivar.length,
+      activeFinancingCount: activeFinancing.length,
+      balancePendienteActivar,
       ptpVencidos,
       urgentes,
       cerrados,
       acuerdosActivos,
     }
-  }, [cases, classificationByCaseId, lastGestionByCase, ptpVencidoSet])
+  }, [cases, classificationByCaseId, lastGestionByCase, ptpVencidoSet, activeAgreementCaseIdSet])
 
   const filtered = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -4634,7 +4570,7 @@ export function CarteraPage() {
       return true
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, busqueda, responsableFiltro, quickFilter, primaryTab, lastGestionByCase, ptpVencidoSet, dfpCaseIdSet])
+  }, [cases, busqueda, responsableFiltro, quickFilter, primaryTab, lastGestionByCase, ptpVencidoSet, dfpCaseIdSet, activeAgreementCaseIdSet])
 
   // Reset to page 1 whenever the filtered set changes (filter, search, tab)
   useEffect(() => { setCurrentPage(1) }, [busqueda, responsableFiltro, quickFilter, primaryTab])
@@ -4719,27 +4655,24 @@ export function CarteraPage() {
           <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.4rem' }}>
             {([
               'todos',
-              'cargo_vuelta',
+              'por_activar',
               'dfp',
-              'hibridos',
               'acuerdos_activos',
               'urgentes',
               'cerrados',
             ] as const).map(t => {
               const labels: Record<CarteraPrimaryTab, string> = {
                 todos: 'Todos',
-                cargo_vuelta: 'Cargo de vuelta',
+                por_activar: 'Por activar',
                 dfp: 'DFP',
-                hibridos: 'Híbridos / revisar',
                 acuerdos_activos: 'Acuerdos activos',
                 urgentes: 'Urgentes',
                 cerrados: 'Cerrados',
               }
               const colors: Record<CarteraPrimaryTab, string> = {
                 todos: '#6b7280',
-                cargo_vuelta: '#475569',
+                por_activar: '#475569',
                 dfp: '#2563eb',
-                hibridos: '#b45309',
                 acuerdos_activos: '#10b981',
                 urgentes: '#dc2626',
                 cerrados: '#6b7280',
@@ -4764,9 +4697,9 @@ export function CarteraPage() {
           {metricsOpen && (
             <div style={{ padding: '0 0.75rem 0.65rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.45rem' }}>
-                <KpiCard label="Cargo de vuelta confirmado" value={String(kpiMetrics.cargoConfirmadoCount)} tone={{ border: '#47556933', text: '#475569', bg: 'rgba(100,116,139,0.08)' }} />
-                <KpiCard label="Híbridos / revisar" value={String(kpiMetrics.reviewCount)} tone={{ border: '#b4530944', text: '#b45309', bg: 'rgba(217,119,6,0.08)' }} />
-                <KpiCard label="Balance por recuperar" value={fmtMonto(kpiMetrics.balancePendienteRecuperar)} tone={{ border: '#0f766e33', text: '#0f766e', bg: 'rgba(15,118,110,0.08)' }} />
+                <KpiCard label="Casos por activar" value={String(kpiMetrics.casesPorActivarCount)} tone={{ border: '#47556933', text: '#475569', bg: 'rgba(100,116,139,0.08)' }} />
+                <KpiCard label="Financiamiento activo" value={String(kpiMetrics.activeFinancingCount)} tone={{ border: '#2563eb44', text: '#2563eb', bg: 'rgba(59,130,246,0.08)' }} />
+                <KpiCard label="Balance por activar" value={fmtMonto(kpiMetrics.balancePendienteActivar)} tone={{ border: '#0f766e33', text: '#0f766e', bg: 'rgba(15,118,110,0.08)' }} />
                 <KpiCard label="PTP vencidos" value={String(kpiMetrics.ptpVencidos)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
                 <KpiCard label="Casos urgentes" value={String(kpiMetrics.urgentes)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
                 <KpiCard label="Casos cerrados" value={String(kpiMetrics.cerrados)} tone={{ border: '#6b728044', text: '#6b7280', bg: 'rgba(107,114,128,0.08)' }} />
@@ -4839,23 +4772,20 @@ export function CarteraPage() {
               const hasPtpVencido = ptpVencidoSet.has(c.id)
               const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
               const tone = getClassificationBadgeTone(classification)
-              const primaryMetricLabel = classification === 'dfp_confirmado'
+              const primaryMetricLabel = classification === 'financiamiento_activo'
                 ? 'Balance financiero'
-                : 'Balance por recuperar'
+                : 'Balance por activar'
               const primaryMetricValue = displayAmountPositive ? fmtMonto(displayAmount) : 'Pendiente de capturar'
               const lastGestionText = lastG
                 ? `${lastG.tipo_gestion}${lastG.resultado ? ` · ${lastG.resultado}` : ''} · ${fmtFecha(lastG.created_at)}`
                 : 'Sin gestion'
+              const originLabel = getCaseOriginLabel(c.tipo_caso)
               const classificationHint = (() => {
                 switch (classification) {
-                  case 'cargo_vuelta_confirmado':
-                    return 'Cuenta devuelta por HyCite'
-                  case 'hibrido_revisar':
-                    return 'Recovery + DFP'
-                  case 'dfp_confirmado':
-                    return 'Cuenta financiada directamente'
-                  case 'dfp_incompleto_revisar':
-                    return 'Requiere revisar la cuenta DFP'
+                  case 'financiamiento_activo':
+                    return 'Cuenta con financiamiento activo'
+                  case 'pendiente_acuerdo':
+                    return 'Listo para crear acuerdo revolving'
                   case 'sin_clasificar':
                   default:
                     return 'Requiere revisión administrativa'
@@ -4891,11 +4821,12 @@ export function CarteraPage() {
                         <div style={{ marginTop: '0.12rem', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.71rem', color: 'var(--color-text-muted)' }}>
                           {c.clientes?.hycite_id && <span>#{c.clientes.hycite_id}</span>}
                           <span>{classificationHint}</span>
+                          <span>{originLabel}</span>
                         </div>
                       </div>
                       <div style={{ flexShrink: 0, textAlign: 'right', minWidth: '120px' }}>
                         <p style={{ margin: 0, fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{primaryMetricLabel}</p>
-                        <p style={{ margin: '0.14rem 0 0', fontSize: '0.92rem', fontWeight: 800, color: !displayAmountPositive ? '#d97706' : classification === 'hibrido_revisar' ? '#b45309' : classification === 'dfp_confirmado' ? '#0f766e' : dColor }}>
+                        <p style={{ margin: '0.14rem 0 0', fontSize: '0.92rem', fontWeight: 800, color: !displayAmountPositive ? '#d97706' : classification === 'financiamiento_activo' ? '#0f766e' : dColor }}>
                           {primaryMetricValue}
                         </p>
                       </div>
@@ -5068,13 +4999,8 @@ export function CarteraPage() {
         ) : (
           <CarteraEmptyState
             urgentCount={kpiMetrics.urgentes}
-            reviewCount={kpiMetrics.reviewCount}
             ptpVencidoCount={kpiMetrics.ptpVencidos}
             acuerdoActivoCount={kpiMetrics.acuerdosActivos}
-            onViewReview={() => {
-              setPrimaryTab('hibridos')
-              setQuickFilter(null)
-            }}
             onViewUrgent={() => {
               setPrimaryTab('urgentes')
               setQuickFilter(null)
