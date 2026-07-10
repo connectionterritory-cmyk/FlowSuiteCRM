@@ -1528,6 +1528,7 @@ type CaseContextHeaderProps = {
   statements: DfpStatement[]
   cvResumenes: CvResumen[]
   saldo: number
+  invitationSentAt: string | null
   onGestionar: () => void
 }
 
@@ -1540,6 +1541,7 @@ function CaseContextHeader({
   statements,
   cvResumenes,
   saldo,
+  invitationSentAt,
   onGestionar,
 }: CaseContextHeaderProps) {
   const tone = getClassificationBadgeTone(classification)
@@ -1649,6 +1651,7 @@ function CaseContextHeader({
             <p style={{ margin: '0 0 0.3rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seguimiento</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.16rem' }}>
               {metaRow('Última gestión', lastGestion ? `${lastGestion.tipo_gestion} · ${fmtFecha(lastGestion.created_at)}` : 'Sin gestión', lastGestion ? 'var(--color-text)' : '#d97706')}
+              {invitationSentAt && metaRow('Invitacion enviada', fmtFecha(invitationSentAt), '#0891b2')}
               {metaRow('PTP abierto', ptps.some(p => p.estado === 'pendiente' || p.estado === 'vencido') ? 'Sí' : 'No', ptps.some(p => p.estado === 'pendiente' || p.estado === 'vencido') ? '#d97706' : 'var(--color-text-muted)')}
               {metaRow('Último resumen CV', latestCvResumen ? fmtFecha(latestCvResumen.fecha_corte) : 'No aplica todavía', latestCvResumen ? 'var(--color-text)' : 'var(--color-text-muted)')}
             </div>
@@ -1689,6 +1692,7 @@ type CaseDetailProps = {
   currentUserId: string | null
   usersById: Record<string, { nombre_completo?: string; email?: string } | undefined>
   onCaseUpdated: () => void
+  invitationSentAt: string | null
   hasPrevious: boolean
   hasNext: boolean
   onPrevious: () => void
@@ -1711,7 +1715,7 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
   return map[tipo] ?? tipo
 }
 
-function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated, hasPrevious, hasNext, onPrevious, onNext }: CaseDetailProps) {
+function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated, invitationSentAt, hasPrevious, hasNext, onPrevious, onNext }: CaseDetailProps) {
   const { openEmail, openWhatsapp, openSms } = useMessaging()
   const [tab, setTab] = useState<DetailTab>('historial')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
@@ -2104,6 +2108,11 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text-muted)' }}>{fmtMonto(cliente.saldo_actual)}</strong>
             </span>
           )}
+          {invitationSentAt && classification === 'pendiente_acuerdo' && (
+            <span>
+              Invitacion enviada: <strong style={{ color: '#0891b2' }}>{fmtFecha(invitationSentAt)}</strong>
+            </span>
+          )}
           {/* Monto CV oficial */}
           {caso.monto_devuelto !== null && caso.monto_devuelto !== undefined && caso.monto_devuelto > 0 ? (
             <span>Monto CV oficial: <strong style={{ color: 'var(--color-text)' }}>{fmtMonto(caso.monto_devuelto)}</strong></span>
@@ -2242,6 +2251,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
           statements={statements}
           cvResumenes={cvResumenes}
           saldo={saldo}
+          invitationSentAt={invitationSentAt}
           onGestionar={handleNextStepAction}
         />
       )}
@@ -4250,6 +4260,7 @@ type QuickFilterKey =
   | 'sin_gestion'
   | 'ptp_vencido'
   | 'en_negociacion'
+  | 'invitacion_enviada'
   | 'acuerdo_activo'
   | '90_mas'
   | 'alto_monto'
@@ -4260,6 +4271,7 @@ const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: 
   { key: 'sin_gestion', label: 'Sin gestión', color: '#f59e0b', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
   { key: 'ptp_vencido', label: 'PTP vencido', color: '#dc2626', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
   { key: 'en_negociacion', label: 'En negociación', color: '#f59e0b', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+  { key: 'invitacion_enviada', label: 'Invitacion enviada', color: '#0891b2', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> },
   { key: 'acuerdo_activo', label: 'Acuerdo activo', color: '#10b981', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
   { key: '90_mas', label: '90+ días', color: '#7c3aed', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
   { key: 'alto_monto', label: 'Alto monto', color: '#ea580c', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
@@ -4267,6 +4279,7 @@ const QUICK_FILTERS: { key: QuickFilterKey; label: string; color: string; icon: 
 ]
 
 type LastGestionInfo = { created_at: string; tipo_gestion: string; resultado: string | null }
+type InvitationLogInfo = { emailSentAt: string | null }
 
 type CarteraPrimaryTab =
   | 'todos'
@@ -4306,6 +4319,7 @@ export function CarteraPage() {
   const [ptpVencidoSet, setPtpVencidoSet] = useState<Set<string>>(new Set())
   const [dfpCaseIdSet, setDfpCaseIdSet] = useState<Set<string>>(new Set())
   const [activeAgreementCaseIdSet, setActiveAgreementCaseIdSet] = useState<Set<string>>(new Set())
+  const [invitationSentByCase, setInvitationSentByCase] = useState<Record<string, InvitationLogInfo>>({})
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
   const [pageSize, setPageSize] = useState<CarteraPageSize>(loadCarteraPageSize)
   const [currentPage, setCurrentPage] = useState(1)
@@ -4337,6 +4351,7 @@ export function CarteraPage() {
       setCases([])
       setDfpCaseIdSet(new Set())
       setActiveAgreementCaseIdSet(new Set())
+      setInvitationSentByCase({})
       setLoading(false)
       return
     }
@@ -4352,6 +4367,7 @@ export function CarteraPage() {
       setCases(baseCases)
       setDfpCaseIdSet(new Set())
       setActiveAgreementCaseIdSet(new Set())
+      setInvitationSentByCase({})
       setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
@@ -4367,6 +4383,7 @@ export function CarteraPage() {
       setCases(baseCases)
       setDfpCaseIdSet(new Set())
       setActiveAgreementCaseIdSet(new Set())
+      setInvitationSentByCase({})
       setSelectedCase((prev) => prev ? (baseCases.find((row) => row.id === prev.id) ?? null) : null)
       setLoading(false)
       return
@@ -4384,10 +4401,20 @@ export function CarteraPage() {
 
     const caseIds = loadedCases.map((row) => row.id)
     if (caseIds.length > 0) {
-      const { data: revolvingRows, error: revolvingError } = await supabase
-        .from('cob_revolving_accounts')
-        .select('case_id,estado')
-        .in('case_id', caseIds)
+      const [{ data: revolvingRows, error: revolvingError }, { data: invitationRows, error: invitationError }] = await Promise.all([
+        supabase
+          .from('cob_revolving_accounts')
+          .select('case_id,estado')
+          .in('case_id', caseIds),
+        supabase
+          .from('statement_delivery_logs')
+          .select('case_id,email_sent_at,created_at')
+          .eq('document_type', 'invitacion_acuerdo')
+          .eq('email_status', 'sent')
+          .in('case_id', caseIds)
+          .order('email_sent_at', { ascending: false })
+          .order('created_at', { ascending: false }),
+      ])
 
       if (revolvingError) {
         console.error('[CarteraPage] error cargando cuentas DFP:', revolvingError)
@@ -4410,9 +4437,24 @@ export function CarteraPage() {
           ),
         )
       }
+
+      if (invitationError) {
+        console.error('[CarteraPage] error cargando invitaciones de acuerdo:', invitationError)
+        setInvitationSentByCase({})
+      } else {
+        const invitationByCase: Record<string, InvitationLogInfo> = {}
+        for (const row of (invitationRows ?? []) as { case_id: string | null; email_sent_at: string | null; created_at: string }[]) {
+          if (!row.case_id || invitationByCase[row.case_id]) continue
+          invitationByCase[row.case_id] = {
+            emailSentAt: row.email_sent_at ?? row.created_at,
+          }
+        }
+        setInvitationSentByCase(invitationByCase)
+      }
     } else {
       setDfpCaseIdSet(new Set())
       setActiveAgreementCaseIdSet(new Set())
+      setInvitationSentByCase({})
     }
 
     setCases(loadedCases)
@@ -4466,9 +4508,12 @@ export function CarteraPage() {
   }, [cases, usersById])
 
   const hasActiveAgreement = (caseId: string) => activeAgreementCaseIdSet.has(caseId)
+  const getInvitationSentAt = (caseId: string) => invitationSentByCase[caseId]?.emailSentAt ?? null
+  const hasInvitationSent = (caseId: string) => Boolean(getInvitationSentAt(caseId))
 
   const matchesQuickFilter = (c: Case, key: QuickFilterKey): boolean => {
     const todayStr = todayYmd()
+    const classification = classifyCarteraCase(c, dfpCaseIdSet.has(c.id) ? { id: c.id } : null)
     switch (key) {
       case 'para_llamar_hoy': {
         if (c.estado === 'Cerrado') return false
@@ -4482,6 +4527,7 @@ export function CarteraPage() {
       case 'sin_gestion': return !lastGestionByCase[c.id]
       case 'ptp_vencido': return ptpVencidoSet.has(c.id)
       case 'en_negociacion': return c.estado === 'En Negociación'
+      case 'invitacion_enviada': return classification === 'pendiente_acuerdo' && hasInvitationSent(c.id)
       case 'acuerdo_activo': return hasActiveAgreement(c.id)
       case '90_mas': return c.dias_vencido >= 90
       case 'alto_monto': return (c.monto_devuelto ?? c.monto_total) >= 500
@@ -4496,7 +4542,7 @@ export function CarteraPage() {
     }
     return counts
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, lastGestionByCase, ptpVencidoSet, activeAgreementCaseIdSet])
+  }, [cases, lastGestionByCase, ptpVencidoSet, activeAgreementCaseIdSet, invitationSentByCase, dfpCaseIdSet])
 
   const classificationByCaseId = useMemo(() => {
     const map = new Map<string, CarteraClassification>()
@@ -4570,7 +4616,7 @@ export function CarteraPage() {
       return true
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, busqueda, responsableFiltro, quickFilter, primaryTab, lastGestionByCase, ptpVencidoSet, dfpCaseIdSet, activeAgreementCaseIdSet])
+  }, [cases, busqueda, responsableFiltro, quickFilter, primaryTab, lastGestionByCase, ptpVencidoSet, dfpCaseIdSet, activeAgreementCaseIdSet, invitationSentByCase])
 
   // Reset to page 1 whenever the filtered set changes (filter, search, tab)
   useEffect(() => { setCurrentPage(1) }, [busqueda, responsableFiltro, quickFilter, primaryTab])
@@ -4779,6 +4825,7 @@ export function CarteraPage() {
               const lastGestionText = lastG
                 ? `${lastG.tipo_gestion}${lastG.resultado ? ` · ${lastG.resultado}` : ''} · ${fmtFecha(lastG.created_at)}`
                 : 'Sin gestion'
+              const invitationSentAt = getInvitationSentAt(c.id)
               const originLabel = getCaseOriginLabel(c.tipo_caso)
               const classificationHint = (() => {
                 switch (classification) {
@@ -4842,6 +4889,11 @@ export function CarteraPage() {
                       <p style={{ margin: 0, fontSize: '0.68rem', color: lastG ? 'var(--color-text-muted)' : '#b45309', fontWeight: lastG ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {lastGestionText}
                       </p>
+                      {invitationSentAt && (
+                        <p style={{ margin: '0.2rem 0 0', fontSize: '0.68rem', color: '#0891b2', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          Invitacion enviada: {fmtFecha(invitationSentAt)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -4991,6 +5043,7 @@ export function CarteraPage() {
             currentUserId={currentUserId}
             usersById={usersById as Record<string, { nombre_completo?: string } | undefined>}
             onCaseUpdated={handleCaseUpdated}
+            invitationSentAt={getInvitationSentAt(selectedCase.id)}
             hasPrevious={hasPrevious}
             hasNext={hasNext}
             onPrevious={handlePrevious}
