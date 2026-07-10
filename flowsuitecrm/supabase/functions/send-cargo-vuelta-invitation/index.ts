@@ -188,7 +188,7 @@ Deno.serve(async (req: Request) => {
     from: resendFrom,
     to: emailTo,
     subject:
-      '⚖️ Su cuenta Royal Prestige podria ser remitida al departamento legal. Formalice un acuerdo de pago hoy. / Your Royal Prestige account may be referred to our legal department - Set up a payment agreement today.',
+      'Accion requerida: formaliza tu acuerdo de pago Royal Prestige / Action required: formalize your Royal Prestige payment agreement',
     html: buildEmailHtml(data),
     text: buildTextBody(data),
   }
