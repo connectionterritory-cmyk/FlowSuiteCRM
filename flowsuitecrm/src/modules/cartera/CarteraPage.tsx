@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
@@ -7,9 +8,6 @@ import { RegistrarGestionModal, type GestionContactoRef, type GestionDraft, type
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useMessaging } from '../../hooks/useMessaging'
 import type { MessagingChannel, MessagingContact } from '../../types/messaging'
-import { emailTemplates } from '../../lib/emailTemplates'
-import { buildWhatsappUrl, baseTemplates as whatsappTemplates } from '../../lib/whatsappTemplates'
-import { resolveTemplate } from '../../lib/messagePlaceholders'
 import {
   calculateInstallmentAmount,
   calculatePaymentPlanSummary,
@@ -301,9 +299,6 @@ type HistorialEvent = {
   actor: string | null
 }
 
-const DFP_STATEMENT_EMAIL_TEMPLATE_ID = 'cartera.estado_cuenta_dfp'
-const DFP_STATEMENT_WHATSAPP_TEMPLATE_ID = 'cartera.estado_cuenta_dfp'
-const CARTERA_OFFICE_PHONE = '786-291-3042'
 const MARTHA_OCON_CASE_ID = '0bea0f30-a593-419b-8bfa-4f5f49996621'
 const MARTHA_OCON_REVOLVING_ACCOUNT_ID = 'b94f97c5-a1a1-4597-8d56-7eb36fff9eab'
 const MARTHA_STATEMENT_GUARD_UNTIL = '2026-07-25'
@@ -362,14 +357,6 @@ function fmtFechaUsaFromIso(iso: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
   if (!m) return iso
   return `${m[2]}/${m[3]}/${m[1]}`
-}
-
-function fmtMontoOrFallback(value: number | null | undefined) {
-  return typeof value === 'number' && Number.isFinite(value) ? fmtMonto(value) : 'No disponible'
-}
-
-function fmtFechaOrFallback(value: string | null | undefined) {
-  return value ? fmtFecha(value) : 'No disponible'
 }
 
 function fmtPercentOrPending(value: number | null | undefined) {
@@ -455,33 +442,6 @@ function ClassificationBadge({ classification }: { classification: CarteraClassi
       {getClassificationLabel(classification)}
     </span>
   )
-}
-
-function buildDfpStatementTemplateVariables(statement: DfpStatement, nombre: string) {
-  return {
-    nombre,
-    periodo: formatStatementPeriod(statement),
-    balance_previo: fmtMontoOrFallback(statement.balance_previo),
-    compras_periodo: fmtMontoOrFallback(statement.compras_periodo),
-    cargos_interes: fmtMontoOrFallback(statement.cargos_interes_periodo),
-    pagos_periodo: fmtMontoOrFallback(statement.pagos_periodo),
-    nuevo_balance: fmtMontoOrFallback(statement.nuevo_balance),
-    pago_minimo: fmtMontoOrFallback(statement.pago_minimo),
-    fecha_vencimiento: fmtFechaOrFallback(statement.fecha_vencimiento),
-    telefono_oficina: CARTERA_OFFICE_PHONE,
-  }
-}
-
-function buildMailtoUrl({
-  to,
-  subject,
-  body,
-}: {
-  to: string
-  subject: string
-  body: string
-}) {
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
 function normalizeFechaYmdOrUsa(value: string): string | null {
@@ -2725,6 +2685,15 @@ function GenerarStatementButton({ account, caseId }: { account: DfpAccount; case
   )
 }
 
+type SendStatementResult = {
+  ok?: boolean
+  skipped?: boolean
+  reason?: string
+  email_to?: string | null
+  error?: string
+  details?: string
+}
+
 function EnviarStatementButton({
   caseId,
   clienteId,
@@ -2744,6 +2713,7 @@ function EnviarStatementButton({
 }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const latestStatement = useMemo(() => getLatestStatement(statements), [statements])
   const statementGuard = useMemo(
@@ -2751,27 +2721,20 @@ function EnviarStatementButton({
     [caseId, latestStatement?.revolving_account_id],
   )
 
-  const registerStatementGestion = useCallback(async (channel: 'email' | 'whatsapp', statement: DfpStatement) => {
+  const registerStatementGestion = useCallback(async (statement: DfpStatement) => {
     if (!currentUserId) return
-    setSaving(true)
-    const { error } = await supabase.from('cob_gestiones').insert({
+    await supabase.from('cob_gestiones').insert({
       org_id: orgId,
       cliente_id: clienteId,
       case_id: caseId,
-      tipo_gestion: channel === 'email' ? 'Email' : 'WhatsApp',
+      tipo_gestion: 'Email',
       resultado: 'mensaje_enviado',
-      notas: `Estado de cuenta DFP enviado por ${channel} · período ${formatStatementPeriod(statement)}`,
+      notas: `Estado de cuenta DFP enviado por email (real) · período ${formatStatementPeriod(statement)}`,
       gestionado_por: currentUserId,
     })
-    setSaving(false)
-    if (error) {
-      window.alert(`No se pudo registrar la gestión: ${error.message}`)
-      return
-    }
-    onSaved()
-  }, [caseId, clienteId, currentUserId, onSaved, orgId])
+  }, [caseId, clienteId, currentUserId, orgId])
 
-  const handleSend = useCallback(async (channel: 'email' | 'whatsapp') => {
+  const handleConfirmSend = useCallback(async () => {
     if (statementGuard.active) {
       window.alert(statementGuard.message)
       return
@@ -2780,53 +2743,50 @@ function EnviarStatementButton({
       window.alert('Primero genera un estado de cuenta.')
       return
     }
+    if (!cliente?.email?.trim()) {
+      window.alert('Este cliente no tiene email registrado.')
+      return
+    }
 
-    const nombre = nombreCliente(cliente)
-    const variables = buildDfpStatementTemplateVariables(latestStatement, nombre)
+    setSaving(true)
+    setResult(null)
+    try {
+      const { data, error } = await supabase.functions.invoke<SendStatementResult>('send-cv-statement', {
+        body: { statement_id: latestStatement.id },
+      })
 
-    if (channel === 'email') {
-      const template = emailTemplates.find((item) => item.id === DFP_STATEMENT_EMAIL_TEMPLATE_ID)
-      const email = cliente?.email?.trim()
-      if (!template) {
-        window.alert('No se encontró el template de email para estado de cuenta.')
+      if (error) {
+        let message = error.message
+        if (error instanceof FunctionsHttpError) {
+          try {
+            const body = await error.context.json() as { error?: string; details?: string } | null
+            message = body?.details || body?.error || error.message
+          } catch { /* keep default message */ }
+        }
+        setResult({ ok: false, message })
         return
       }
-      if (!email) {
-        window.alert('Este cliente no tiene email registrado.')
+
+      if (!data?.ok) {
+        setResult({ ok: false, message: data?.details || data?.error || 'No se pudo enviar el estado de cuenta.' })
         return
       }
-      const subject = resolveTemplate(template.subject, variables).text
-      const body = resolveTemplate(template.message, variables).text
-      window.location.href = buildMailtoUrl({ to: email, subject, body })
-      if (window.confirm('¿Deseas registrar esta gestión de envío por email en el historial del caso?')) {
-        await registerStatementGestion('email', latestStatement)
-      }
-      setOpen(false)
-      return
-    }
 
-    const template = whatsappTemplates.find((item) => item.id === DFP_STATEMENT_WHATSAPP_TEMPLATE_ID)
-    const phone = cliente?.telefono?.trim() || cliente?.telefono_casa?.trim() || ''
-    if (!template) {
-      window.alert('No se encontró el template de WhatsApp para estado de cuenta.')
-      return
+      if (!data.skipped) {
+        await registerStatementGestion(latestStatement)
+      }
+
+      setResult({
+        ok: true,
+        message: data.skipped
+          ? 'Este estado de cuenta ya había sido enviado anteriormente.'
+          : `Estado de cuenta enviado por email real a ${data.email_to ?? cliente.email}.`,
+      })
+      onSaved()
+    } finally {
+      setSaving(false)
     }
-    if (!phone) {
-      window.alert('Este cliente no tiene teléfono registrado.')
-      return
-    }
-    const body = resolveTemplate(template.message, variables).text
-    const whatsappUrl = buildWhatsappUrl(phone, body)
-    if (!whatsappUrl) {
-      window.alert('El teléfono del cliente no es válido para WhatsApp.')
-      return
-    }
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-    if (window.confirm('¿Deseas registrar esta gestión de envío por WhatsApp en el historial del caso?')) {
-      await registerStatementGestion('whatsapp', latestStatement)
-    }
-    setOpen(false)
-  }, [cliente, latestStatement, registerStatementGestion, statementGuard.active, statementGuard.message])
+  }, [cliente, latestStatement, onSaved, registerStatementGestion, statementGuard.active, statementGuard.message])
 
   if (!open) {
     return (
@@ -2840,6 +2800,7 @@ function EnviarStatementButton({
               window.alert('Primero genera un estado de cuenta.')
               return
             }
+            setResult(null)
             setOpen(true)
           }}
           style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #0f766e44', background: '#0f766e18', color: '#0f766e', cursor: statementGuard.active ? 'not-allowed' : 'pointer', opacity: statementGuard.active ? 0.5 : 1 }}
@@ -2859,24 +2820,24 @@ function EnviarStatementButton({
     <div style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text)' }}>Enviar estado de cuenta</p>
       <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-        Se usará el statement más reciente: {latestStatement ? formatStatementPeriod(latestStatement) : 'No disponible'}.
+        Se enviará el statement más reciente por email real: {latestStatement ? formatStatementPeriod(latestStatement) : 'No disponible'}.
       </p>
+      <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text)' }}>
+        Destinatario esperado: <strong>{cliente?.email?.trim() || 'sin email registrado'}</strong>
+      </p>
+      {result && (
+        <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: result.ok ? '#059669' : '#dc2626' }}>
+          {result.message}
+        </p>
+      )}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={() => void handleSend('email')}
-          disabled={saving}
+          onClick={() => void handleConfirmSend()}
+          disabled={saving || !cliente?.email?.trim()}
           style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb18', color: '#2563eb', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}
         >
-          Email
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleSend('whatsapp')}
-          disabled={saving}
-          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #16a34a44', background: '#16a34a18', color: '#16a34a', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}
-        >
-          WhatsApp
+          {saving ? 'Enviando…' : 'Confirmar envío real'}
         </button>
         <button
           type="button"
@@ -3369,6 +3330,90 @@ function CrearAcuerdoRevolvingModal({
   )
 }
 
+type DeliveryLogRow = {
+  id: string
+  document_type: string
+  email_to: string | null
+  email_status: string
+  email_sent_at: string | null
+  pdf_storage_path: string | null
+  created_at: string
+}
+
+const DELIVERY_DOCUMENT_TYPE_LABEL: Record<string, string> = {
+  dfp_statement: 'Statement mensual',
+  recibo_pago: 'Recibo de pago',
+  invitacion_acuerdo: 'Invitación a formalizar acuerdo',
+}
+
+function deliveryStatusBadge(status: string): { label: string; bg: string; color: string } {
+  const value = status.toLowerCase()
+  if (value === 'sent') return { label: 'SENT', bg: 'rgba(16,185,129,0.16)', color: '#059669' }
+  if (value === 'test_sent') return { label: 'TEST_SENT', bg: 'rgba(37,99,235,0.16)', color: '#2563eb' }
+  if (value === 'failed') return { label: 'FAILED', bg: 'rgba(220,38,38,0.16)', color: '#dc2626' }
+  return { label: status.toUpperCase(), bg: 'rgba(107,114,128,0.16)', color: '#6b7280' }
+}
+
+function HistorialEnviosSection({ caseId, refreshToken }: { caseId: string; refreshToken: number }) {
+  const [logs, setLogs] = useState<DeliveryLogRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    supabase
+      .from('statement_delivery_logs')
+      .select('id,document_type,email_to,email_status,email_sent_at,pdf_storage_path,created_at')
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) {
+          console.error('[HistorialEnviosSection] error cargando statement_delivery_logs:', error)
+          setLogs([])
+        } else {
+          setLogs((data ?? []) as DeliveryLogRow[])
+        }
+        setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [caseId, refreshToken])
+
+  return (
+    <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+      <p style={{ margin: '0 0 0.6rem', fontSize: '0.76rem', fontWeight: 800, color: 'var(--color-text)' }}>Historial de envíos</p>
+      {loading ? (
+        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Cargando…</p>
+      ) : logs.length === 0 ? (
+        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+          Todavía no hay envíos registrados para este caso.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          {logs.map(log => {
+            const badge = deliveryStatusBadge(log.email_status)
+            const label = DELIVERY_DOCUMENT_TYPE_LABEL[log.document_type] ?? log.document_type
+            const fecha = log.email_sent_at ?? log.created_at
+            return (
+              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.6rem', padding: '0.5rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)' }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text)' }}>{label}</p>
+                  <p style={{ margin: '0.15rem 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                    {log.email_to ?? 'sin destinatario'} · {fmtFecha(fecha.slice(0, 10))} · PDF: {log.pdf_storage_path ? 'Generado' : '—'}
+                  </p>
+                </div>
+                <span style={{ padding: '0.1rem 0.4rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 800, background: badge.bg, color: badge.color, flexShrink: 0 }}>
+                  {badge.label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EstadoCuentaList({
   account,
   entries,
@@ -3398,6 +3443,7 @@ function EstadoCuentaList({
 }) {
   const [openStatements, setOpenStatements] = useState<Record<string, boolean>>({})
   const [createRevolvingOpen, setCreateRevolvingOpen] = useState(false)
+  const [historialVersion, setHistorialVersion] = useState(0)
   const ledgerDisplayEntries = useMemo(() => groupLedgerEntries(entries), [entries])
 
   if (!account) {
@@ -3434,7 +3480,10 @@ function EstadoCuentaList({
             currentUserId={currentUserId}
             cliente={cliente}
             statements={statements}
-            onSaved={onSaved}
+            onSaved={() => {
+              setHistorialVersion(v => v + 1)
+              onSaved()
+            }}
           />
           <GenerarStatementButton account={account} caseId={caseId} />
         </div>
@@ -3530,6 +3579,7 @@ function EstadoCuentaList({
           </div>
         )}
       </div>
+      <HistorialEnviosSection caseId={caseId} refreshToken={historialVersion} />
       <p style={{ margin: '0.1rem 0', fontSize: '0.74rem', color: 'var(--color-text-muted)', fontWeight: 700 }}>
         Ledger vivo (transacciones)
       </p>
