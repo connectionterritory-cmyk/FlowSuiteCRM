@@ -339,6 +339,17 @@ function parseYmdLocal(ymd: string) {
   return new Date(Number(year), Number(month) - 1, Number(day))
 }
 
+function computeFirstChargeDate(startYmd: string, preferredDay: number): string {
+  const start = parseYmdLocal(startYmd)
+  const y = start.getFullYear()
+  const m = start.getMonth()
+  const daysInMonth = new Date(y, m + 1, 0).getDate()
+  const clampedDay = Math.min(preferredDay, daysInMonth)
+  const candidate = new Date(y, m, clampedDay)
+  const target = candidate >= start ? candidate : new Date(y, m + 1, Math.min(preferredDay, new Date(y, m + 2, 0).getDate()))
+  return `${target.getFullYear()}-${pad2(target.getMonth() + 1)}-${pad2(target.getDate())}`
+}
+
 function nombreCliente(c: Case['clientes']) {
   if (!c) return '—'
   return [c.nombre, c.apellido].filter(Boolean).join(' ') || '—'
@@ -3142,6 +3153,8 @@ function CrearAcuerdoRevolvingModal({
   const [montoMensual, setMontoMensual] = useState('')
   const [plazoMeses, setPlazoMeses] = useState('12')
   const [fechaInicio, setFechaInicio] = useState(todayYmd())
+  const [diaCobro, setDiaCobro] = useState('15')
+  const [pagaConTarjeta, setPagaConTarjeta] = useState(false)
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3153,6 +3166,8 @@ function CrearAcuerdoRevolvingModal({
     setMontoMensual('')
     setPlazoMeses('12')
     setFechaInicio(todayYmd())
+    setDiaCobro('15')
+    setPagaConTarjeta(false)
     setNotas('')
     setSaving(false)
     setError(null)
@@ -3208,6 +3223,12 @@ function CrearAcuerdoRevolvingModal({
       return
     }
 
+    const diaCobroNumber = Number(diaCobro)
+    if (!Number.isInteger(diaCobroNumber) || diaCobroNumber < 1 || diaCobroNumber > 31) {
+      setError('El día de pago preferido debe ser un número entre 1 y 31.')
+      return
+    }
+
     if (agreementType === 'monto_fijo' && (!Number.isFinite(montoMensualNumber) || montoMensualNumber <= 0)) {
       setError('Ingresa un monto mensual válido.')
       return
@@ -3218,17 +3239,26 @@ function CrearAcuerdoRevolvingModal({
       return
     }
 
+    const montoBaseMensual = agreementType === 'monto_fijo' ? montoMensualNumber : montoMensualEstimado
+    if (!montoBaseMensual || !Number.isFinite(montoBaseMensual) || montoBaseMensual <= 0) {
+      setError('No se pudo determinar el monto mensual acordado. Revisa el plazo y el APR.')
+      return
+    }
+
     setSaving(true)
     setError(null)
 
     try {
       const aprDecimal = Number((aprNumber / 100).toFixed(5))
       const scheduleDay = Number(fechaInicio.slice(-2))
+      const fechaPrimerCobro = computeFirstChargeDate(fechaInicio, diaCobroNumber)
       const notesParts = [
         `Crear acuerdo revolving UI · cliente ${clienteNombre || clienteId}`,
         `balance ${fmtMonto(balance)}`,
         `apr ${aprNumber.toFixed(2)}%`,
         `inicio ${fechaInicio}`,
+        `día de pago ${diaCobroNumber}`,
+        pagaConTarjeta ? 'paga con tarjeta' : null,
         agreementType === 'monto_fijo'
           ? `monto fijo mensual ${fmtMonto(montoMensualNumber)}`
           : `plazo ${plazoMesesNumber} meses${montoMensualEstimado ? ` · cuota estimada ${fmtMonto(montoMensualEstimado)}` : ''}`,
@@ -3250,13 +3280,45 @@ function CrearAcuerdoRevolvingModal({
         .update({
           agreement_date: fechaInicio,
           statement_closing_day: scheduleDay,
-          customer_preferred_payment_day: scheduleDay,
+          customer_preferred_payment_day: diaCobroNumber,
           min_days_statement_to_due: 21,
         })
         .eq('id', accountId)
 
       if (updateError) {
         throw new Error(`La cuenta se creó (${accountId}) pero falló la configuración inicial: ${updateError.message}`)
+      }
+
+      const { error: acuerdoError } = await supabase.rpc('fn_cob_acuerdo_crear', {
+        p_payload: {
+          cliente_id: clienteId,
+          cargo_vuelta_case_id: caseId,
+          revolving_account_id: accountId,
+          monto_base_mensual: Number(montoBaseMensual.toFixed(2)),
+          porcentaje_cargo_autorizado: 0,
+          monto_total_cobro: Number(balance.toFixed(2)),
+          frecuencia: 'mensual',
+          dia_cobro_preferido: diaCobroNumber,
+          fecha_primer_cobro: fechaPrimerCobro,
+          notas: notesParts,
+          metadata: { paga_con_tarjeta: pagaConTarjeta },
+        },
+      })
+
+      if (acuerdoError) {
+        throw new Error(`La cuenta se creó (${accountId}) pero falló el registro formal del acuerdo: ${acuerdoError.message}`)
+      }
+
+      const { error: emailError } = await supabase.functions.invoke('send-agreement-confirmation', {
+        body: {
+          case_id: caseId,
+          monto_mensual: Number(montoBaseMensual.toFixed(2)),
+          dia_cobro: diaCobroNumber,
+          apr: aprDecimal,
+        },
+      })
+      if (emailError) {
+        console.error('[CrearAcuerdoRevolvingModal] no se pudo enviar la confirmación por email:', emailError)
       }
 
       onSaved({ accountId })
@@ -3325,6 +3387,14 @@ function CrearAcuerdoRevolvingModal({
           <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Día de pago preferido del cliente *</span>
+          <input type="number" min="1" max="31" value={diaCobro} onChange={e => setDiaCobro(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={pagaConTarjeta} onChange={e => setPagaConTarjeta(e.target.checked)} style={{ accentColor: '#2563eb' }} />
+          <span style={{ fontSize: '0.85rem', color: 'var(--color-text)' }}>¿Paga con tarjeta?</span>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Notas</span>
           <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Condiciones o contexto del acuerdo..." style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: '56px' }} />
         </label>
@@ -3347,6 +3417,7 @@ const DELIVERY_DOCUMENT_TYPE_LABEL: Record<string, string> = {
   dfp_statement: 'Statement mensual',
   recibo_pago: 'Recibo de pago',
   invitacion_acuerdo: 'Invitación a formalizar acuerdo',
+  acuerdo_confirmacion: 'Confirmación de acuerdo',
 }
 
 function deliveryStatusBadge(status: string): { label: string; bg: string; color: string } {
