@@ -11,6 +11,7 @@ import { emailTemplates } from '../../lib/emailTemplates'
 import { buildWhatsappUrl, baseTemplates as whatsappTemplates } from '../../lib/whatsappTemplates'
 import { resolveTemplate } from '../../lib/messagePlaceholders'
 import {
+  calculateInstallmentAmount,
   calculatePaymentPlanSummary,
   generateInstallmentSchedule,
   validatePaymentPlanInput,
@@ -2295,6 +2296,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               caseEstado={caso.estado}
               clienteId={caso.cliente_id}
               cliente={cliente}
+              balanceFinanciar={saldoBase}
               orgId={orgId}
               currentUserId={currentUserId}
               onSaved={handleRefresh}
@@ -3152,6 +3154,221 @@ function DfpStatementPdfActions({
   )
 }
 
+type CrearAcuerdoRevolvingModalProps = {
+  open: boolean
+  caseId: string
+  clienteId: string
+  clienteNombre: string
+  balanceFinanciar: number
+  onClose: () => void
+  onSaved: (result: { accountId: string }) => void
+}
+
+function CrearAcuerdoRevolvingModal({
+  open,
+  caseId,
+  clienteId,
+  clienteNombre,
+  balanceFinanciar,
+  onClose,
+  onSaved,
+}: CrearAcuerdoRevolvingModalProps) {
+  const [aprPct, setAprPct] = useState('18')
+  const [agreementType, setAgreementType] = useState<'monto_fijo' | 'plazo_meses'>('monto_fijo')
+  const [montoMensual, setMontoMensual] = useState('')
+  const [plazoMeses, setPlazoMeses] = useState('12')
+  const [fechaInicio, setFechaInicio] = useState(todayYmd())
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setAprPct('18')
+    setAgreementType('monto_fijo')
+    setMontoMensual('')
+    setPlazoMeses('12')
+    setFechaInicio(todayYmd())
+    setNotas('')
+    setSaving(false)
+    setError(null)
+  }, [open])
+
+  const balance = Number.isFinite(balanceFinanciar) ? Number(balanceFinanciar) : 0
+  const aprNumber = Number(aprPct)
+  const plazoMesesNumber = Number(plazoMeses)
+  const montoMensualNumber = Number(montoMensual)
+
+  const montoMensualEstimado = useMemo(() => {
+    if (agreementType !== 'plazo_meses') return null
+    if (!Number.isFinite(balance) || balance <= 0) return null
+    if (!Number.isInteger(plazoMesesNumber) || plazoMesesNumber < 1 || plazoMesesNumber > 120) return null
+    if (!Number.isFinite(aprNumber) || aprNumber < 10 || aprNumber > 24) return null
+    return calculateInstallmentAmount({
+      principal: balance,
+      tasa_anual_pct: aprNumber,
+      numero_cuotas: plazoMesesNumber,
+    })
+  }, [agreementType, aprNumber, balance, plazoMesesNumber])
+
+  const plazoEstimado = useMemo(() => {
+    if (agreementType !== 'monto_fijo') return null
+    if (!Number.isFinite(balance) || balance <= 0) return null
+    if (!Number.isFinite(montoMensualNumber) || montoMensualNumber <= 0) return null
+    if (!Number.isFinite(aprNumber) || aprNumber < 10 || aprNumber > 24) return null
+
+    const r = aprNumber / 100 / 12
+    if (r === 0) return Math.min(120, Math.max(1, Math.ceil(balance / montoMensualNumber)))
+
+    const interesPrimerPeriodo = balance * r
+    if (montoMensualNumber <= interesPrimerPeriodo) return null
+
+    const n = -Math.log(1 - (r * balance) / montoMensualNumber) / Math.log(1 + r)
+    if (!Number.isFinite(n) || n <= 0) return null
+    return Math.min(120, Math.max(1, Math.ceil(n)))
+  }, [agreementType, aprNumber, balance, montoMensualNumber])
+
+  const handleSave = async () => {
+    if (!Number.isFinite(balance) || balance <= 0) {
+      setError('El caso debe tener un balance oficial mayor a 0 antes de crear la cuenta revolving.')
+      return
+    }
+
+    if (!Number.isFinite(aprNumber) || aprNumber < 10 || aprNumber > 24) {
+      setError('APR inválido. Usa un valor entre 10 y 24.')
+      return
+    }
+
+    if (!fechaInicio) {
+      setError('La fecha de inicio del acuerdo es obligatoria.')
+      return
+    }
+
+    if (agreementType === 'monto_fijo' && (!Number.isFinite(montoMensualNumber) || montoMensualNumber <= 0)) {
+      setError('Ingresa un monto mensual válido.')
+      return
+    }
+
+    if (agreementType === 'plazo_meses' && (!Number.isInteger(plazoMesesNumber) || plazoMesesNumber < 1 || plazoMesesNumber > 120)) {
+      setError('Ingresa un plazo válido entre 1 y 120 meses.')
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+
+    try {
+      const aprDecimal = Number((aprNumber / 100).toFixed(5))
+      const scheduleDay = Number(fechaInicio.slice(-2))
+      const notesParts = [
+        `Crear acuerdo revolving UI · cliente ${clienteNombre || clienteId}`,
+        `balance ${fmtMonto(balance)}`,
+        `apr ${aprNumber.toFixed(2)}%`,
+        `inicio ${fechaInicio}`,
+        agreementType === 'monto_fijo'
+          ? `monto fijo mensual ${fmtMonto(montoMensualNumber)}`
+          : `plazo ${plazoMesesNumber} meses${montoMensualEstimado ? ` · cuota estimada ${fmtMonto(montoMensualEstimado)}` : ''}`,
+        notas.trim() || null,
+      ].filter(Boolean).join(' | ')
+
+      const { data: accountId, error: accountError } = await supabase.rpc('fn_crear_revolving_account_cargo_vuelta', {
+        p_case_id: caseId,
+        p_apr: aprDecimal,
+        p_notes: notesParts,
+      })
+
+      if (accountError || !accountId) {
+        throw new Error(accountError?.message ?? 'No se pudo crear la cuenta revolving.')
+      }
+
+      const { error: updateError } = await supabase
+        .from('cob_revolving_accounts')
+        .update({
+          agreement_date: fechaInicio,
+          statement_closing_day: scheduleDay,
+          customer_preferred_payment_day: scheduleDay,
+          min_days_statement_to_due: 21,
+        })
+        .eq('id', accountId)
+
+      if (updateError) {
+        throw new Error(`La cuenta se creó (${accountId}) pero falló la configuración inicial: ${updateError.message}`)
+      }
+
+      onSaved({ accountId })
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear la cuenta revolving.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="Crear acuerdo revolving"
+      onClose={onClose}
+      size="sm"
+      actions={(
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.875rem' }}>Cancelar</button>
+          <button type="button" onClick={() => void handleSave()} disabled={saving} style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', background: '#2563eb', color: '#fff', cursor: saving ? 'wait' : 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Creando…' : 'Crear acuerdo revolving'}
+          </button>
+        </div>
+      )}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>APR (%) *</span>
+          <input type="number" min="10" max="24" step="0.01" value={aprPct} onChange={e => setAprPct(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Balance a financiar ($)</span>
+          <input type="text" value={fmtMonto(balance)} readOnly style={{ ...INPUT_STYLE, opacity: 0.8, cursor: 'not-allowed' }} />
+          <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+            Se toma del monto oficial del caso para crear la cuenta revolving.
+          </span>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Tipo de acuerdo *</span>
+          <select value={agreementType} onChange={e => setAgreementType(e.target.value as 'monto_fijo' | 'plazo_meses')} style={INPUT_STYLE}>
+            <option value="monto_fijo">Monto fijo mensual</option>
+            <option value="plazo_meses">Plazo en meses</option>
+          </select>
+        </label>
+        {agreementType === 'monto_fijo' ? (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Monto mensual acordado *</span>
+            <input type="number" min="0.01" step="0.01" value={montoMensual} onChange={e => setMontoMensual(e.target.value)} style={INPUT_STYLE} />
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              Plazo estimado: {plazoEstimado ?? '—'} meses
+            </span>
+          </label>
+        ) : (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Plazo en meses *</span>
+            <input type="number" min="1" max="120" value={plazoMeses} onChange={e => setPlazoMeses(e.target.value)} style={INPUT_STYLE} />
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              Cuota estimada: {montoMensualEstimado ? fmtMonto(montoMensualEstimado) : '—'}
+            </span>
+          </label>
+        )}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Fecha de inicio del acuerdo *</span>
+          <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} style={INPUT_STYLE} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <span style={LABEL_STYLE}>Notas</span>
+          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Condiciones o contexto del acuerdo..." style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: '56px' }} />
+        </label>
+      </div>
+    </Modal>
+  )
+}
+
 function EstadoCuentaList({
   account,
   entries,
@@ -3161,6 +3378,7 @@ function EstadoCuentaList({
   caseEstado,
   clienteId,
   cliente,
+  balanceFinanciar,
   orgId,
   currentUserId,
   onSaved,
@@ -3173,15 +3391,36 @@ function EstadoCuentaList({
   caseEstado: string
   clienteId: string
   cliente: Case['clientes']
+  balanceFinanciar: number
   orgId: string
   currentUserId: string | null
   onSaved: () => void
 }) {
   const [openStatements, setOpenStatements] = useState<Record<string, boolean>>({})
+  const [createRevolvingOpen, setCreateRevolvingOpen] = useState(false)
   const ledgerDisplayEntries = useMemo(() => groupLedgerEntries(entries), [entries])
 
   if (!account) {
-    return <Empty label="Este caso todavía no tiene cuenta DFP/revolving asociada" />
+    return (
+      <>
+        <Empty
+          label="Este caso todavía no tiene cuenta DFP/revolving asociada"
+          actionLabel="Crear acuerdo revolving"
+          onAction={() => setCreateRevolvingOpen(true)}
+        />
+        <CrearAcuerdoRevolvingModal
+          open={createRevolvingOpen}
+          caseId={caseId}
+          clienteId={clienteId}
+          clienteNombre={nombreCliente(cliente)}
+          balanceFinanciar={balanceFinanciar}
+          onClose={() => setCreateRevolvingOpen(false)}
+          onSaved={() => {
+            onSaved()
+          }}
+        />
+      </>
+    )
   }
 
   return (
@@ -3499,11 +3738,20 @@ function groupLedgerEntries(entries: LedgerEntry[]): LedgerDisplayEntry[] {
   return sortLedgerDisplayEntries(grouped)
 }
 
-function Empty({ label, icon = '📭' }: { label: string; icon?: string }) {
+function Empty({ label, icon = '📭', actionLabel, onAction }: { label: string; icon?: string; actionLabel?: string; onAction?: () => void }) {
   return (
-    <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+    <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
       <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>{label}</p>
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          style={{ padding: '0.45rem 0.95rem', borderRadius: '0.45rem', border: '1px solid #2563eb44', background: '#2563eb18', color: '#2563eb', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   )
 }
