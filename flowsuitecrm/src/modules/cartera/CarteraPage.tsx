@@ -1943,7 +1943,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const hasActivePlan = planes.some(p => p.estado === 'activo')
   const hasPendingOrOverduePtp = ptps.some(p => p.estado === 'pendiente' || p.estado === 'vencido')
   const hasPagosPrevios = pagos.filter(p => p.estado !== 'rechazado' && p.estado !== 'reversado').length > 0
-  const showRegistrarPago = hasActivePlan || hasPagosPrevios || hasPendingOrOverduePtp
+  const showRegistrarPago = isDfp || hasActivePlan || hasPagosPrevios || hasPendingOrOverduePtp
   const montoCvPendiente = !isDfp && (caso.monto_devuelto === null || caso.monto_devuelto === undefined || caso.monto_devuelto === 0)
   const recAction = (() => {
     const today = todayYmd()
