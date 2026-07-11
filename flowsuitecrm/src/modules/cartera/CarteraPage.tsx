@@ -1953,7 +1953,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     if (montoCvPendiente && !hasActivePlan) return { label: 'Capturar monto CV', color: '#b45309', onClick: () => setCapturarMontoOpen(true) }
     if (gestiones.length === 0) return { label: 'Registrar contacto', color: '#3b82f6', onClick: () => setGestionOpen(true) }
     if (hasActivePlan) return { label: 'Registrar gestión', color: '#3b82f6', onClick: () => setGestionOpen(true) }
-    return { label: 'Crear acuerdo', color: '#7c3aed', onClick: () => setPlanOpen(true) }
+    if (!isDfp) return { label: 'Crear acuerdo', color: '#7c3aed', onClick: () => setPlanOpen(true) }
+    return { label: 'Registrar gestión', color: '#3b82f6', onClick: () => setGestionOpen(true) }
   })()
   const cliente = caso.clientes
   const contactName = nombreCliente(cliente)
@@ -2168,7 +2169,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               <MasMenuItem label="Carta por SMS" onClick={() => { openCarta('sms'); setMoreMenuOpen(false) }} disabled={!cliente?.telefono} />
               <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
               <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cuenta / acuerdo</p>
-              <MasMenuItem label="Crear acuerdo" onClick={() => { setPlanOpen(true); setMoreMenuOpen(false) }} />
+              {!isDfp && (
+                <MasMenuItem label="Crear acuerdo" onClick={() => { setPlanOpen(true); setMoreMenuOpen(false) }} />
+              )}
               <MasMenuItem label="Registrar PTP" onClick={() => { setPtpOpen(true); setMoreMenuOpen(false) }} />
               <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
               <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Escalación</p>
@@ -4495,16 +4498,39 @@ function KpiCard({
   label,
   value,
   tone,
+  onClick,
 }: {
   label: string
   value: string
   tone: { border: string; text: string; bg: string }
+  onClick?: () => void
 }) {
+  const [hovered, setHovered] = useState(false)
+  const interactive = typeof onClick === 'function'
+  const Component = interactive ? 'button' : 'div'
+
   return (
-    <div style={{ padding: '0.7rem 0.8rem', borderRadius: '0.6rem', border: `1px solid ${tone.border}`, background: tone.bg }}>
+    <Component
+      type={interactive ? 'button' : undefined}
+      onClick={onClick}
+      onMouseEnter={interactive ? () => setHovered(true) : undefined}
+      onMouseLeave={interactive ? () => setHovered(false) : undefined}
+      style={{
+        padding: '0.7rem 0.8rem',
+        borderRadius: '0.6rem',
+        border: `1px solid ${tone.border}`,
+        background: tone.bg,
+        width: '100%',
+        textAlign: 'left',
+        cursor: interactive ? 'pointer' : 'default',
+        boxShadow: interactive && hovered ? `0 10px 24px ${tone.border}` : 'none',
+        transform: interactive && hovered ? 'translateY(-1px)' : 'translateY(0)',
+        transition: 'transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease',
+      }}
+    >
       <p style={{ margin: '0 0 0.25rem', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>{label}</p>
       <p style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: tone.text }}>{value}</p>
-    </div>
+    </Component>
   )
 }
 
@@ -4513,11 +4539,15 @@ function CarteraEmptyState({
   ptpVencidoCount,
   acuerdoActivoCount,
   onViewUrgent,
+  onViewPtpVencido,
+  onViewAcuerdoActivo,
 }: {
   urgentCount: number
   ptpVencidoCount: number
   acuerdoActivoCount: number
   onViewUrgent: () => void
+  onViewPtpVencido: () => void
+  onViewAcuerdoActivo: () => void
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', minHeight: '100%', padding: '1.5rem', gap: '1rem' }}>
@@ -4534,9 +4564,9 @@ function CarteraEmptyState({
         </p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-        <KpiCard label="Urgentes" value={String(urgentCount)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} />
-        <KpiCard label="PTP vencidos" value={String(ptpVencidoCount)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} />
-        <KpiCard label="Acuerdos activos" value={String(acuerdoActivoCount)} tone={{ border: '#10b98144', text: '#059669', bg: 'rgba(16,185,129,0.08)' }} />
+        <KpiCard label="Urgentes" value={String(urgentCount)} tone={{ border: '#dc262644', text: '#dc2626', bg: 'rgba(220,38,38,0.06)' }} onClick={onViewUrgent} />
+        <KpiCard label="PTP vencidos" value={String(ptpVencidoCount)} tone={{ border: '#7c3aed44', text: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }} onClick={onViewPtpVencido} />
+        <KpiCard label="Acuerdos activos" value={String(acuerdoActivoCount)} tone={{ border: '#10b98144', text: '#059669', bg: 'rgba(16,185,129,0.08)' }} onClick={onViewAcuerdoActivo} />
       </div>
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
         <button
@@ -5355,6 +5385,14 @@ export function CarteraPage() {
             onViewUrgent={() => {
               setPrimaryTab('urgentes')
               setQuickFilter(null)
+            }}
+            onViewPtpVencido={() => {
+              setPrimaryTab('todos')
+              setQuickFilter('ptp_vencido')
+            }}
+            onViewAcuerdoActivo={() => {
+              setPrimaryTab('todos')
+              setQuickFilter('acuerdo_activo')
             }}
           />
         )}
