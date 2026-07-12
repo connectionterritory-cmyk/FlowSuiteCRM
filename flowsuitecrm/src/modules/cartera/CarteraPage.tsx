@@ -850,7 +850,7 @@ type PlanModalProps = {
   onSaved: () => void
 }
 
-function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PlanModalProps) {
+export function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClose, onSaved }: PlanModalProps) {
   const [modoCalculo, setModoCalculo] = useState<'cuotas' | 'pago_minimo'>('cuotas')
   const [balanceInicial, setBalanceInicial] = useState('')
   const [tasaAnual, setTasaAnual] = useState('0')
@@ -1703,7 +1703,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const [loading, setLoading] = useState(false)
   const [ptpOpen, setPtpOpen] = useState(false)
   const [pagoOpen, setPagoOpen] = useState(false)
-  const [planOpen, setPlanOpen] = useState(false)
   const [gestionOpen, setGestionOpen] = useState(false)
   const [capturarMontoOpen, setCapturarMontoOpen] = useState(false)
   const [cierreOpen, setCierreOpen] = useState(false)
@@ -1964,7 +1963,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
     if (montoCvPendiente && !hasActivePlan) return { label: 'Capturar monto CV', color: '#b45309', onClick: () => setCapturarMontoOpen(true) }
     if (gestiones.length === 0) return { label: 'Registrar contacto', color: '#3b82f6', onClick: () => setGestionOpen(true) }
     if (hasActivePlan) return { label: 'Registrar gestión', color: '#3b82f6', onClick: () => setGestionOpen(true) }
-    if (!isDfp) return { label: 'Crear acuerdo', color: '#7c3aed', onClick: () => setPlanOpen(true) }
+    if (!isDfp) return { label: 'Crear acuerdo revolving', color: '#2563eb', onClick: () => setTab('estado_cuenta') }
     return { label: 'Registrar gestión', color: '#3b82f6', onClick: () => setGestionOpen(true) }
   })()
   const cliente = caso.clientes
@@ -2180,9 +2179,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               <MasMenuItem label="Carta por SMS" onClick={() => { openCarta('sms'); setMoreMenuOpen(false) }} disabled={!cliente?.telefono} />
               <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
               <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cuenta / acuerdo</p>
-              {!isDfp && (
-                <MasMenuItem label="Crear acuerdo" onClick={() => { setPlanOpen(true); setMoreMenuOpen(false) }} />
-              )}
               <MasMenuItem label="Registrar PTP" onClick={() => { setPtpOpen(true); setMoreMenuOpen(false) }} />
               <div style={{ height: '1px', background: 'var(--color-border)', margin: '0.3rem 0' }} />
               <p style={{ margin: '0.25rem 0.8rem 0.15rem', fontSize: '0.58rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Escalación</p>
@@ -2302,7 +2298,6 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       />
       <PTPModal open={ptpOpen} caseId={caso.id} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
       <PagoModal open={pagoOpen} caseId={caso.id} ptps={ptps} dfpAccountId={safeDfpAccount?.id ?? null} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
-      <PlanModal open={planOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} currentUserId={currentUserId} onClose={() => setPlanOpen(false)} onSaved={handleRefresh} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
 
       {/* Confirmación cierre de caso */}
