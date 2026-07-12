@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
 import { Modal } from '../../components/Modal'
@@ -256,6 +257,51 @@ type DfpStatementLine = {
   description: string
   amount: number
   metadata: { original_amount?: number } | null
+}
+
+type TutorialStepId =
+  | 'workspace_intro'
+  | 'workspace_por_activar'
+  | 'workspace_case_pending'
+  | 'detail_estado_cuenta_tab'
+  | 'detail_create_agreement_cta'
+  | 'modal_revolving_terms'
+  | 'modal_revolving_setup'
+  | 'detail_registrar_pago_cta'
+  | 'modal_pago_core_fields'
+  | 'modal_pago_support_fields'
+  | 'detail_ledger'
+  | 'detail_generar_statement_cta'
+  | 'detail_generar_statement_period'
+  | 'detail_enviar_statement_cta'
+  | 'detail_enviar_statement_confirm'
+  | 'detail_historial_envios'
+
+type TutorialTargetId =
+  | 'workspace-por-activar-tab'
+  | 'workspace-case-pending'
+  | 'detail-tab-estado-cuenta'
+  | 'detail-create-agreement-cta'
+  | 'modal-revolving-terms'
+  | 'modal-revolving-setup'
+  | 'detail-registrar-pago-cta'
+  | 'modal-pago-core-fields'
+  | 'modal-pago-support-fields'
+  | 'detail-ledger'
+  | 'detail-generar-statement-cta'
+  | 'detail-generar-statement-period'
+  | 'detail-enviar-statement-cta'
+  | 'detail-enviar-statement-confirm'
+  | 'detail-historial-envios'
+
+type TutorialPlacement = 'top' | 'right' | 'bottom' | 'left' | 'center'
+
+type TutorialStepConfig = {
+  id: TutorialStepId
+  title: string
+  description: string
+  targetId: TutorialTargetId | null
+  placement: TutorialPlacement
 }
 
 type CvResumen = {
@@ -685,9 +731,11 @@ type PagoModalProps = {
   dfpAccountId?: string | null
   onClose: () => void
   onSaved: () => void
+  tutorialStepId?: TutorialStepId | null
+  tutorialActive?: boolean
 }
 
-function PagoModal({ open, caseId, ptps, dfpAccountId, onClose, onSaved }: PagoModalProps) {
+function PagoModal({ open, caseId, ptps, dfpAccountId, onClose, onSaved, tutorialStepId, tutorialActive }: PagoModalProps) {
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState(todayYmd())
   const [metodo, setMetodo] = useState('cash')
@@ -770,35 +818,39 @@ function PagoModal({ open, caseId, ptps, dfpAccountId, onClose, onSaved }: PagoM
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Monto recibido *</span>
-          <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Fecha pago *</span>
-          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Método de pago</span>
-          <select value={metodo} onChange={e => setMetodo(e.target.value)} style={INPUT_STYLE}>
-            <option value="cash">Cash</option>
-            <option value="check">Check</option>
-            <option value="zelle">Zelle</option>
-            <option value="ach">ACH</option>
-            <option value="card">Card</option>
-            <option value="hycite">Hycite</option>
-            <option value="wire">Wire</option>
-            <option value="otro">Otro</option>
-          </select>
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Referencia / N° confirmación</span>
-          <input type="text" value={referenciaExterna} onChange={e => setReferenciaExterna(e.target.value)} placeholder="Ej. TRF-123456" style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Comprobante URL (opcional)</span>
-          <input type="url" value={comprobanteUrl} onChange={e => setComprobanteUrl(e.target.value)} placeholder="https://..." style={INPUT_STYLE} />
-        </label>
+        <div data-tour-id={tutorialActive && tutorialStepId === 'modal_pago_core_fields' ? 'modal-pago-core-fields' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Monto recibido *</span>
+            <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Fecha pago *</span>
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={INPUT_STYLE} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Método de pago</span>
+            <select value={metodo} onChange={e => setMetodo(e.target.value)} style={INPUT_STYLE}>
+              <option value="cash">Cash</option>
+              <option value="check">Check</option>
+              <option value="zelle">Zelle</option>
+              <option value="ach">ACH</option>
+              <option value="card">Card</option>
+              <option value="hycite">Hycite</option>
+              <option value="wire">Wire</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+        </div>
+        <div data-tour-id={tutorialActive && tutorialStepId === 'modal_pago_support_fields' ? 'modal-pago-support-fields' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Referencia / N° confirmación</span>
+            <input type="text" value={referenciaExterna} onChange={e => setReferenciaExterna(e.target.value)} placeholder="Ej. TRF-123456" style={INPUT_STYLE} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Comprobante URL (opcional)</span>
+            <input type="url" value={comprobanteUrl} onChange={e => setComprobanteUrl(e.target.value)} placeholder="https://..." style={INPUT_STYLE} />
+          </label>
+        </div>
         {ptpsPendientes.length === 1 && (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer', padding: '0.6rem 0.65rem', borderRadius: '0.45rem', border: `1px solid ${ptpId ? '#10b98155' : 'var(--color-border)'}`, background: ptpId ? '#10b98108' : 'transparent' }}>
             <input
@@ -1669,6 +1721,8 @@ type CaseDetailProps = {
   hasNext: boolean
   onPrevious: () => void
   onNext: () => void
+  tutorialStepId: TutorialStepId | null
+  tutorialActive: boolean
 }
 
 function formatGestionTipo(tipo: GestionDraft['tipo']) {
@@ -1687,7 +1741,7 @@ function formatGestionTipo(tipo: GestionDraft['tipo']) {
   return map[tipo] ?? tipo
 }
 
-function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated, invitationSentAt, hasPrevious, hasNext, onPrevious, onNext }: CaseDetailProps) {
+function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated, invitationSentAt, hasPrevious, hasNext, onPrevious, onNext, tutorialStepId, tutorialActive }: CaseDetailProps) {
   const { openEmail, openWhatsapp, openSms } = useMessaging()
   const [tab, setTab] = useState<DetailTab>('historial')
   const [gestiones, setGestiones] = useState<Gestion[]>([])
@@ -1711,6 +1765,36 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   const detailLoadSeq = useRef(0)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const moreMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!tutorialActive || !tutorialStepId) {
+      setPagoOpen(false)
+      return
+    }
+
+    const estadoCuentaSteps = new Set<TutorialStepId>([
+      'detail_estado_cuenta_tab',
+      'detail_create_agreement_cta',
+      'modal_revolving_terms',
+      'modal_revolving_setup',
+      'detail_registrar_pago_cta',
+      'modal_pago_core_fields',
+      'modal_pago_support_fields',
+      'detail_ledger',
+      'detail_generar_statement_cta',
+      'detail_generar_statement_period',
+      'detail_enviar_statement_cta',
+      'detail_enviar_statement_confirm',
+      'detail_historial_envios',
+    ])
+    const paymentSteps = new Set<TutorialStepId>([
+      'modal_pago_core_fields',
+      'modal_pago_support_fields',
+    ])
+
+    if (estadoCuentaSteps.has(tutorialStepId)) setTab('estado_cuenta')
+    setPagoOpen(paymentSteps.has(tutorialStepId))
+  }, [tutorialActive, tutorialStepId])
 
   const loadDetail = async () => {
     const loadSeq = detailLoadSeq.current + 1
@@ -2166,7 +2250,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         )}
         {/* Registrar pago — solo cuando hay contexto de pago */}
         {showRegistrarPago && (
-          <ActionBtn label="Registrar pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} />
+          <ActionBtn label="Registrar pago" color="#10b981" onClick={() => setPagoOpen(true)} disabled={loading} dataTourId="detail-registrar-pago-cta" />
         )}
         {/* Más — dropdown agrupado */}
         <div ref={moreMenuRef} style={{ position: 'relative', marginLeft: 'auto' }}>
@@ -2231,6 +2315,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
       <div style={{ padding: '0 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            data-tour-id={t.key === 'estado_cuenta' ? 'detail-tab-estado-cuenta' : undefined}
             style={{ padding: '0.55rem 0.9rem', border: 'none', borderBottom: tab === t.key ? '2px solid #3b82f6' : '2px solid transparent', background: 'transparent', color: tab === t.key ? '#3b82f6' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
             {t.label}
           </button>
@@ -2270,6 +2355,8 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
               orgId={orgId}
               currentUserId={currentUserId}
               onSaved={handleRefresh}
+              tutorialStepId={tutorialStepId}
+              tutorialActive={tutorialActive}
             />
           </>
         ) : tab === 'gestiones' ? (
@@ -2297,7 +2384,7 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
         origenId={caso.id}
       />
       <PTPModal open={ptpOpen} caseId={caso.id} onClose={() => setPtpOpen(false)} onSaved={handleRefresh} />
-      <PagoModal open={pagoOpen} caseId={caso.id} ptps={ptps} dfpAccountId={safeDfpAccount?.id ?? null} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} />
+      <PagoModal open={pagoOpen} caseId={caso.id} ptps={ptps} dfpAccountId={safeDfpAccount?.id ?? null} onClose={() => setPagoOpen(false)} onSaved={handleRefresh} tutorialStepId={tutorialStepId} tutorialActive={tutorialActive} />
       <CapturarMontoModal open={capturarMontoOpen} caseId={caso.id} clienteId={caso.cliente_id} orgId={orgId} saldoHycite={caso.clientes?.saldo_actual ?? null} onClose={() => setCapturarMontoOpen(false)} onSaved={handleRefresh} />
 
       {/* Confirmación cierre de caso */}
@@ -2333,9 +2420,9 @@ function CaseDetail({ caso, orgId, role, currentUserId, usersById, onCaseUpdated
   )
 }
 
-function ActionBtn({ label, color, onClick, disabled = false }: { label: string; color: string; onClick: () => void; disabled?: boolean }) {
+function ActionBtn({ label, color, onClick, disabled = false, dataTourId }: { label: string; color: string; onClick: () => void; disabled?: boolean; dataTourId?: TutorialTargetId }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled}
+    <button type="button" onClick={onClick} disabled={disabled} data-tour-id={dataTourId}
       style={{ padding: '0.28rem 0.65rem', borderRadius: '0.4rem', border: `1px solid ${color}38`, background: color + '0e', color, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.74rem', fontWeight: 600, opacity: disabled ? 0.4 : 1 }}>
       {label}
     </button>
@@ -2586,7 +2673,7 @@ function lastCompleteMonth(): { inicio: string; fin: string } {
   }
 }
 
-function GenerarStatementButton({ account, caseId }: { account: DfpAccount; caseId: string }) {
+function GenerarStatementButton({ account, caseId, tutorialStepId, tutorialActive }: { account: DfpAccount; caseId: string; tutorialStepId?: TutorialStepId | null; tutorialActive?: boolean }) {
   const defaults = lastCompleteMonth()
   const [open, setOpen] = useState(false)
   const [periodoInicio, setPeriodoInicio] = useState(defaults.inicio)
@@ -2595,6 +2682,19 @@ function GenerarStatementButton({ account, caseId }: { account: DfpAccount; case
   const [error, setError] = useState<string | null>(null)
   const [successId, setSuccessId] = useState<string | null>(null)
   const statementGuard = useMemo(() => getMarthaStatementGuard(caseId, account.id), [account.id, caseId])
+
+  useEffect(() => {
+    if (!tutorialActive) {
+      setOpen(false)
+      return
+    }
+    const shouldOpen = tutorialStepId === 'detail_generar_statement_period'
+    setOpen(shouldOpen)
+    if (shouldOpen) {
+      setError(null)
+      setSuccessId(null)
+    }
+  }, [tutorialActive, tutorialStepId])
 
   function handleOpen() {
     if (statementGuard.active) return
@@ -2625,7 +2725,7 @@ function GenerarStatementButton({ account, caseId }: { account: DfpAccount; case
 
   if (!open) {
     return (
-      <div title={statementGuard.message ?? undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
+      <div data-tour-id={tutorialActive && tutorialStepId === 'detail_generar_statement_cta' ? 'detail-generar-statement-cta' : undefined} title={statementGuard.message ?? undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
         <button
           onClick={handleOpen}
           disabled={statementGuard.active}
@@ -2643,7 +2743,7 @@ function GenerarStatementButton({ account, caseId }: { account: DfpAccount; case
   }
 
   return (
-    <div style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+    <div data-tour-id={tutorialActive && tutorialStepId === 'detail_generar_statement_period' ? 'detail-generar-statement-period' : undefined} style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text)' }}>Generar estado de cuenta</p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
         <div>
@@ -2711,6 +2811,8 @@ function EnviarStatementButton({
   cliente,
   statements,
   onSaved,
+  tutorialStepId,
+  tutorialActive,
 }: {
   caseId: string
   clienteId: string
@@ -2719,6 +2821,8 @@ function EnviarStatementButton({
   cliente: Case['clientes']
   statements: DfpStatement[]
   onSaved: () => void
+  tutorialStepId?: TutorialStepId | null
+  tutorialActive?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -2729,6 +2833,16 @@ function EnviarStatementButton({
     () => getMarthaStatementGuard(caseId, latestStatement?.revolving_account_id ?? null),
     [caseId, latestStatement?.revolving_account_id],
   )
+
+  useEffect(() => {
+    if (!tutorialActive) {
+      setOpen(false)
+      return
+    }
+    const shouldOpen = tutorialStepId === 'detail_enviar_statement_confirm'
+    setOpen(shouldOpen)
+    if (shouldOpen) setResult(null)
+  }, [tutorialActive, tutorialStepId])
 
   const registerStatementGestion = useCallback(async (statement: DfpStatement) => {
     if (!currentUserId) return
@@ -2799,7 +2913,7 @@ function EnviarStatementButton({
 
   if (!open) {
     return (
-      <div title={statementGuard.message ?? undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
+      <div data-tour-id={tutorialActive && tutorialStepId === 'detail_enviar_statement_cta' ? 'detail-enviar-statement-cta' : undefined} title={statementGuard.message ?? undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
         <button
           type="button"
           disabled={statementGuard.active}
@@ -2826,7 +2940,7 @@ function EnviarStatementButton({
   }
 
   return (
-    <div style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+    <div data-tour-id={tutorialActive && tutorialStepId === 'detail_enviar_statement_confirm' ? 'detail-enviar-statement-confirm' : undefined} style={{ padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text)' }}>Enviar estado de cuenta</p>
       <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
         Se enviará el statement más reciente por email real: {latestStatement ? formatStatementPeriod(latestStatement) : 'No disponible'}.
@@ -3132,6 +3246,8 @@ type CrearAcuerdoRevolvingModalProps = {
   balanceFinanciar: number
   onClose: () => void
   onSaved: (result: { accountId: string }) => void
+  tutorialStepId?: TutorialStepId | null
+  tutorialActive?: boolean
 }
 
 function CrearAcuerdoRevolvingModal({
@@ -3142,6 +3258,8 @@ function CrearAcuerdoRevolvingModal({
   balanceFinanciar,
   onClose,
   onSaved,
+  tutorialStepId,
+  tutorialActive,
 }: CrearAcuerdoRevolvingModalProps) {
   const [aprPct, setAprPct] = useState('18')
   const [agreementType, setAgreementType] = useState<'monto_fijo' | 'plazo_meses'>('monto_fijo')
@@ -3342,57 +3460,61 @@ function CrearAcuerdoRevolvingModal({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>APR (%) *</span>
-          <input type="number" min="10" max="24" step="0.01" value={aprPct} onChange={e => setAprPct(e.target.value)} style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Balance a financiar ($)</span>
-          <input type="text" value={fmtMonto(balance)} readOnly style={{ ...INPUT_STYLE, opacity: 0.8, cursor: 'not-allowed' }} />
-          <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-            Se toma del monto oficial del caso para crear la cuenta revolving.
-          </span>
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Tipo de acuerdo *</span>
-          <select value={agreementType} onChange={e => setAgreementType(e.target.value as 'monto_fijo' | 'plazo_meses')} style={INPUT_STYLE}>
-            <option value="monto_fijo">Monto fijo mensual</option>
-            <option value="plazo_meses">Plazo en meses</option>
-          </select>
-        </label>
-        {agreementType === 'monto_fijo' ? (
+        <div data-tour-id={tutorialActive && tutorialStepId === 'modal_revolving_terms' ? 'modal-revolving-terms' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <span style={LABEL_STYLE}>Monto mensual acordado *</span>
-            <input type="number" min="0.01" step="0.01" value={montoMensual} onChange={e => setMontoMensual(e.target.value)} style={INPUT_STYLE} />
+            <span style={LABEL_STYLE}>APR (%) *</span>
+            <input type="number" min="10" max="24" step="0.01" value={aprPct} onChange={e => setAprPct(e.target.value)} style={INPUT_STYLE} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Balance a financiar ($)</span>
+            <input type="text" value={fmtMonto(balance)} readOnly style={{ ...INPUT_STYLE, opacity: 0.8, cursor: 'not-allowed' }} />
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-              Plazo estimado: {plazoEstimado ?? '—'} meses
+              Se toma del monto oficial del caso para crear la cuenta revolving.
             </span>
           </label>
-        ) : (
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <span style={LABEL_STYLE}>Plazo en meses *</span>
-            <input type="number" min="1" max="120" value={plazoMeses} onChange={e => setPlazoMeses(e.target.value)} style={INPUT_STYLE} />
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-              Cuota estimada: {montoMensualEstimado ? fmtMonto(montoMensualEstimado) : '—'}
-            </span>
+            <span style={LABEL_STYLE}>Tipo de acuerdo *</span>
+            <select value={agreementType} onChange={e => setAgreementType(e.target.value as 'monto_fijo' | 'plazo_meses')} style={INPUT_STYLE}>
+              <option value="monto_fijo">Monto fijo mensual</option>
+              <option value="plazo_meses">Plazo en meses</option>
+            </select>
           </label>
-        )}
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Fecha de inicio del acuerdo *</span>
-          <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Día de pago preferido del cliente *</span>
-          <input type="number" min="1" max="31" value={diaCobro} onChange={e => setDiaCobro(e.target.value)} style={INPUT_STYLE} />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={pagaConTarjeta} onChange={e => setPagaConTarjeta(e.target.checked)} style={{ accentColor: '#2563eb' }} />
-          <span style={{ fontSize: '0.85rem', color: 'var(--color-text)' }}>¿Paga con tarjeta?</span>
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <span style={LABEL_STYLE}>Notas</span>
-          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Condiciones o contexto del acuerdo..." style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: '56px' }} />
-        </label>
+          {agreementType === 'monto_fijo' ? (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <span style={LABEL_STYLE}>Monto mensual acordado *</span>
+              <input type="number" min="0.01" step="0.01" value={montoMensual} onChange={e => setMontoMensual(e.target.value)} style={INPUT_STYLE} />
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                Plazo estimado: {plazoEstimado ?? '—'} meses
+              </span>
+            </label>
+          ) : (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <span style={LABEL_STYLE}>Plazo en meses *</span>
+              <input type="number" min="1" max="120" value={plazoMeses} onChange={e => setPlazoMeses(e.target.value)} style={INPUT_STYLE} />
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                Cuota estimada: {montoMensualEstimado ? fmtMonto(montoMensualEstimado) : '—'}
+              </span>
+            </label>
+          )}
+        </div>
+        <div data-tour-id={tutorialActive && tutorialStepId === 'modal_revolving_setup' ? 'modal-revolving-setup' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Fecha de inicio del acuerdo *</span>
+            <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} style={INPUT_STYLE} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Día de pago preferido del cliente *</span>
+            <input type="number" min="1" max="31" value={diaCobro} onChange={e => setDiaCobro(e.target.value)} style={INPUT_STYLE} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={pagaConTarjeta} onChange={e => setPagaConTarjeta(e.target.checked)} style={{ accentColor: '#2563eb' }} />
+            <span style={{ fontSize: '0.85rem', color: 'var(--color-text)' }}>¿Paga con tarjeta?</span>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <span style={LABEL_STYLE}>Notas</span>
+            <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Condiciones o contexto del acuerdo..." style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: '56px' }} />
+          </label>
+        </div>
       </div>
     </Modal>
   )
@@ -3423,7 +3545,7 @@ function deliveryStatusBadge(status: string): { label: string; bg: string; color
   return { label: status.toUpperCase(), bg: 'rgba(107,114,128,0.16)', color: '#6b7280' }
 }
 
-function HistorialEnviosSection({ caseId, refreshToken }: { caseId: string; refreshToken: number }) {
+function HistorialEnviosSection({ caseId, refreshToken, tutorialStepId, tutorialActive }: { caseId: string; refreshToken: number; tutorialStepId?: TutorialStepId | null; tutorialActive?: boolean }) {
   const [logs, setLogs] = useState<DeliveryLogRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -3449,7 +3571,7 @@ function HistorialEnviosSection({ caseId, refreshToken }: { caseId: string; refr
   }, [caseId, refreshToken])
 
   return (
-    <div style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
+    <div data-tour-id={tutorialActive && tutorialStepId === 'detail_historial_envios' ? 'detail-historial-envios' : undefined} style={{ padding: '0.7rem 0.85rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'var(--color-card)' }}>
       <p style={{ margin: '0 0 0.6rem', fontSize: '0.76rem', fontWeight: 800, color: 'var(--color-text)' }}>Historial de envíos</p>
       {loading ? (
         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Cargando…</p>
@@ -3496,6 +3618,8 @@ function EstadoCuentaList({
   orgId,
   currentUserId,
   onSaved,
+  tutorialStepId,
+  tutorialActive,
 }: {
   account: DfpAccount | null
   entries: LedgerEntry[]
@@ -3509,11 +3633,22 @@ function EstadoCuentaList({
   orgId: string
   currentUserId: string | null
   onSaved: () => void
+  tutorialStepId?: TutorialStepId | null
+  tutorialActive?: boolean
 }) {
   const [openStatements, setOpenStatements] = useState<Record<string, boolean>>({})
   const [createRevolvingOpen, setCreateRevolvingOpen] = useState(false)
   const [historialVersion, setHistorialVersion] = useState(0)
   const ledgerDisplayEntries = useMemo(() => groupLedgerEntries(entries), [entries])
+
+  useEffect(() => {
+    if (!tutorialActive) {
+      setCreateRevolvingOpen(false)
+      return
+    }
+    const shouldOpenCreate = tutorialStepId === 'modal_revolving_terms' || tutorialStepId === 'modal_revolving_setup'
+    setCreateRevolvingOpen(shouldOpenCreate)
+  }, [tutorialActive, tutorialStepId])
 
   if (!account) {
     return (
@@ -3522,6 +3657,7 @@ function EstadoCuentaList({
           label="Este caso todavía no tiene cuenta DFP/revolving asociada"
           actionLabel="Crear acuerdo revolving"
           onAction={() => setCreateRevolvingOpen(true)}
+          dataTourId={tutorialActive && tutorialStepId === 'detail_create_agreement_cta' ? 'detail-create-agreement-cta' : undefined}
         />
         <CrearAcuerdoRevolvingModal
           open={createRevolvingOpen}
@@ -3533,6 +3669,8 @@ function EstadoCuentaList({
           onSaved={() => {
             onSaved()
           }}
+          tutorialStepId={tutorialStepId}
+          tutorialActive={tutorialActive}
         />
       </>
     )
@@ -3553,8 +3691,10 @@ function EstadoCuentaList({
               setHistorialVersion(v => v + 1)
               onSaved()
             }}
+            tutorialStepId={tutorialStepId}
+            tutorialActive={tutorialActive}
           />
-          <GenerarStatementButton account={account} caseId={caseId} />
+          <GenerarStatementButton account={account} caseId={caseId} tutorialStepId={tutorialStepId} tutorialActive={tutorialActive} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
           <DfpMetric label="Principal" value={fmtMonto(account.saldo_principal_actual)} color="#2563eb" />
@@ -3648,8 +3788,8 @@ function EstadoCuentaList({
           </div>
         )}
       </div>
-      <HistorialEnviosSection caseId={caseId} refreshToken={historialVersion} />
-      <p style={{ margin: '0.1rem 0', fontSize: '0.74rem', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+      <HistorialEnviosSection caseId={caseId} refreshToken={historialVersion} tutorialStepId={tutorialStepId} tutorialActive={tutorialActive} />
+      <p data-tour-id={tutorialActive && tutorialStepId === 'detail_ledger' ? 'detail-ledger' : undefined} style={{ margin: '0.1rem 0', fontSize: '0.74rem', color: 'var(--color-text-muted)', fontWeight: 700 }}>
         Ledger vivo (transacciones)
       </p>
       {ledgerDisplayEntries.length === 0 ? (
@@ -3857,9 +3997,9 @@ function groupLedgerEntries(entries: LedgerEntry[]): LedgerDisplayEntry[] {
   return sortLedgerDisplayEntries(grouped)
 }
 
-function Empty({ label, icon = '📭', actionLabel, onAction }: { label: string; icon?: string; actionLabel?: string; onAction?: () => void }) {
+function Empty({ label, icon = '📭', actionLabel, onAction, dataTourId }: { label: string; icon?: string; actionLabel?: string; onAction?: () => void; dataTourId?: TutorialTargetId }) {
   return (
-    <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
+    <div data-tour-id={dataTourId} style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
       <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>{label}</p>
       {actionLabel && onAction && (
@@ -4695,6 +4835,231 @@ function loadCarteraPageSize(): CarteraPageSize {
   return 10
 }
 
+function tutorialSelector(targetId: TutorialTargetId): string {
+  return `[data-tour-id="${targetId}"]`
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function computeTutorialPopoverStyle(rect: DOMRect | null, placement: TutorialPlacement): React.CSSProperties {
+  const width = Math.min(340, window.innerWidth - 32)
+  if (!rect || placement === 'center') {
+    return {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width,
+    }
+  }
+
+  const gap = 18
+  const base: React.CSSProperties = { position: 'fixed', width }
+
+  if (placement === 'top') {
+    return {
+      ...base,
+      top: Math.max(16, rect.top - gap),
+      left: clamp(rect.left + rect.width / 2, width / 2 + 16, window.innerWidth - width / 2 - 16),
+      transform: 'translate(-50%, -100%)',
+    }
+  }
+
+  if (placement === 'left') {
+    return {
+      ...base,
+      top: clamp(rect.top + rect.height / 2, 90, window.innerHeight - 90),
+      left: Math.max(16, rect.left - gap),
+      transform: 'translate(-100%, -50%)',
+    }
+  }
+
+  if (placement === 'right') {
+    return {
+      ...base,
+      top: clamp(rect.top + rect.height / 2, 90, window.innerHeight - 90),
+      left: Math.min(window.innerWidth - 16, rect.right + gap),
+      transform: 'translate(0, -50%)',
+    }
+  }
+
+  return {
+    ...base,
+    top: Math.min(window.innerHeight - 16, rect.bottom + gap),
+    left: clamp(rect.left + rect.width / 2, width / 2 + 16, window.innerWidth - width / 2 - 16),
+    transform: 'translate(-50%, 0)',
+  }
+}
+
+function TutorialOverlay({
+  open,
+  step,
+  stepIndex,
+  totalSteps,
+  onBack,
+  onNext,
+  onClose,
+}: {
+  open: boolean
+  step: TutorialStepConfig | null
+  stepIndex: number
+  totalSteps: number
+  onBack: () => void
+  onNext: () => void
+  onClose: () => void
+}) {
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
+  const [targetMissing, setTargetMissing] = useState(false)
+
+  useEffect(() => {
+    if (!open || !step?.targetId) {
+      setTargetRect(null)
+      setTargetMissing(false)
+      return
+    }
+
+    let rafId = 0
+    let timeoutId: number | null = null
+    let attempts = 0
+
+    const update = () => {
+      const target = document.querySelector(tutorialSelector(step.targetId!))
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+        const refreshRect = () => {
+          setTargetRect(target.getBoundingClientRect())
+          setTargetMissing(false)
+        }
+        refreshRect()
+        const handleReposition = () => refreshRect()
+        window.addEventListener('resize', handleReposition)
+        window.addEventListener('scroll', handleReposition, true)
+        return () => {
+          window.removeEventListener('resize', handleReposition)
+          window.removeEventListener('scroll', handleReposition, true)
+        }
+      }
+
+      attempts += 1
+      if (attempts >= 24) {
+        setTargetRect(null)
+        setTargetMissing(true)
+        return () => undefined
+      }
+
+      rafId = window.requestAnimationFrame(update)
+      return () => undefined
+    }
+
+    let cleanup = update()
+    timeoutId = window.setTimeout(() => {
+      cleanup?.()
+      cleanup = update()
+    }, 220)
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId)
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+      cleanup?.()
+    }
+  }, [open, step?.id, step?.targetId])
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowRight' || event.key === 'Enter') onNext()
+      if (event.key === 'ArrowLeft') onBack()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onBack, onClose, onNext, open])
+
+  if (!open || !step || typeof document === 'undefined') return null
+
+  const popoverStyle = computeTutorialPopoverStyle(targetRect, targetRect ? step.placement : 'center')
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1600, pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.45)' }} />
+      {targetRect && (
+        <div
+          style={{
+            position: 'fixed',
+            top: Math.max(6, targetRect.top - 6),
+            left: Math.max(6, targetRect.left - 6),
+            width: targetRect.width + 12,
+            height: targetRect.height + 12,
+            borderRadius: '0.9rem',
+            border: '2px solid #60a5fa',
+            boxShadow: '0 0 0 9999px rgba(15, 23, 42, 0.35)',
+            transition: 'top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease',
+          }}
+        />
+      )}
+      <div
+        style={{
+          ...popoverStyle,
+          pointerEvents: 'auto',
+          background: '#ffffff',
+          color: '#0f172a',
+          borderRadius: '0.95rem',
+          border: '1px solid rgba(148, 163, 184, 0.35)',
+          boxShadow: '0 22px 60px rgba(15, 23, 42, 0.28)',
+          padding: '1rem 1rem 0.9rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.55rem' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#2563eb' }}>
+            Tutorial interactivo
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            data-tour-action="close"
+            style={{ border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 800 }}
+          >
+            ✕
+          </button>
+        </div>
+        <p style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+          {step.title}
+        </p>
+        <p style={{ margin: 0, fontSize: '0.8rem', lineHeight: 1.45, color: '#475569' }}>
+          {targetMissing ? 'Este paso no está visible con los datos actuales, pero puedes seguir con el resto del tour.' : step.description}
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginTop: '0.9rem' }}>
+          <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+            Paso {stepIndex + 1} de {totalSteps}
+          </span>
+          <div style={{ display: 'flex', gap: '0.45rem' }}>
+            <button
+              type="button"
+              onClick={onBack}
+              data-tour-action="back"
+              disabled={stepIndex === 0}
+              style={{ padding: '0.48rem 0.8rem', borderRadius: '0.55rem', border: '1px solid rgba(148, 163, 184, 0.45)', background: '#fff', color: stepIndex === 0 ? '#94a3b8' : '#334155', cursor: stepIndex === 0 ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
+            >
+              Atrás
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              data-tour-action="next"
+              style={{ padding: '0.48rem 0.8rem', borderRadius: '0.55rem', border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
+            >
+              {stepIndex === totalSteps - 1 ? 'Cerrar' : 'Siguiente'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export function CarteraPage() {
   const { isMobile, isTablet } = useBreakpoint()
   const { usersById } = useUsers()
@@ -4719,6 +5084,8 @@ export function CarteraPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const detailPanelRef = useRef<HTMLDivElement>(null)
   const [metricsOpen, setMetricsOpen] = useState(false)
+  const [tutorialOpen, setTutorialOpen] = useState(false)
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0)
 
   const loadCases = async () => {
     setLoading(true)
@@ -4946,6 +5313,26 @@ export function CarteraPage() {
     return map
   }, [cases, dfpCaseIdSet])
 
+  const pendingAgreementCases = useMemo(
+    () => cases.filter(c => (classificationByCaseId.get(c.id) ?? 'sin_clasificar') === 'pendiente_acuerdo'),
+    [cases, classificationByCaseId],
+  )
+
+  const activeFinancingCases = useMemo(
+    () => cases.filter(c => (classificationByCaseId.get(c.id) ?? 'sin_clasificar') === 'financiamiento_activo'),
+    [cases, classificationByCaseId],
+  )
+
+  const tutorialPendingCase = useMemo(() => {
+    if (selectedCase && (classificationByCaseId.get(selectedCase.id) ?? 'sin_clasificar') === 'pendiente_acuerdo') return selectedCase
+    return pendingAgreementCases[0] ?? null
+  }, [classificationByCaseId, pendingAgreementCases, selectedCase])
+
+  const tutorialActiveCase = useMemo(() => {
+    if (selectedCase && (classificationByCaseId.get(selectedCase.id) ?? 'sin_clasificar') === 'financiamiento_activo') return selectedCase
+    return activeFinancingCases[0] ?? null
+  }, [activeFinancingCases, classificationByCaseId, selectedCase])
+
   const matchesPrimaryTab = (c: Case, tab: CarteraPrimaryTab): boolean => {
     const classification = classificationByCaseId.get(c.id) ?? 'sin_clasificar'
     switch (tab) {
@@ -5050,6 +5437,198 @@ export function CarteraPage() {
     if (hasNext) setSelectedCase(filtered[currentIndex + 1])
   }
 
+  const pendingTutorialPage = useMemo(() => {
+    if (!tutorialPendingCase) return 1
+    const index = pendingAgreementCases.findIndex(c => c.id === tutorialPendingCase.id)
+    if (index < 0) return 1
+    return Math.floor(index / pageSize) + 1
+  }, [pageSize, pendingAgreementCases, tutorialPendingCase])
+
+  const tutorialSteps = useMemo<TutorialStepConfig[]>(() => ([
+    {
+      id: 'workspace_intro',
+      title: 'Tour de Financiamiento del Distribuidor',
+      description: 'Te guiaremos por el flujo real: ubicar un caso por activar, revisar el acuerdo, registrar pagos, generar statements y confirmar envíos.',
+      targetId: null,
+      placement: 'center',
+    },
+    {
+      id: 'workspace_por_activar',
+      title: 'Empieza por Por activar',
+      description: 'Este filtro reúne los casos listos para crear un acuerdo revolving. Úsalo para encontrar rápido a quién todavía no se le ha formalizado la cuenta.',
+      targetId: 'workspace-por-activar-tab',
+      placement: 'bottom',
+    },
+    {
+      id: 'workspace_case_pending',
+      title: 'Elige un caso sin acuerdo activo',
+      description: 'Aquí verás un caso real pendiente de formalizar. Desde esta fila puedes entrar al detalle y continuar con la creación del acuerdo.',
+      targetId: 'workspace-case-pending',
+      placement: 'right',
+    },
+    {
+      id: 'detail_estado_cuenta_tab',
+      title: 'Abre Estado de cuenta',
+      description: 'Esta pestaña concentra la creación del acuerdo, el ledger financiero, los statements y el historial de envíos del cliente.',
+      targetId: 'detail-tab-estado-cuenta',
+      placement: 'bottom',
+    },
+    {
+      id: 'detail_create_agreement_cta',
+      title: 'Crear acuerdo revolving',
+      description: 'Cuando el caso aún no tiene cuenta DFP/revolving, este botón abre el formulario correcto para formalizar el financiamiento.',
+      targetId: 'detail-create-agreement-cta',
+      placement: 'bottom',
+    },
+    {
+      id: 'modal_revolving_terms',
+      title: 'Define los términos base',
+      description: 'Aquí capturas el APR, el balance a financiar, el tipo de acuerdo y el monto mensual o plazo. Son las reglas principales del acuerdo.',
+      targetId: 'modal-revolving-terms',
+      placement: 'right',
+    },
+    {
+      id: 'modal_revolving_setup',
+      title: 'Configura el cobro y el contexto',
+      description: 'Completa la fecha de inicio, el día de pago preferido, si paga con tarjeta y cualquier nota útil para operación.',
+      targetId: 'modal-revolving-setup',
+      placement: 'right',
+    },
+    {
+      id: 'detail_registrar_pago_cta',
+      title: 'Registrar pago',
+      description: 'En un caso con cuenta activa, este botón abre el registro de pagos reales. No ejecuta nada por sí solo; solo te muestra dónde operar.',
+      targetId: 'detail-registrar-pago-cta',
+      placement: 'bottom',
+    },
+    {
+      id: 'modal_pago_core_fields',
+      title: 'Campos principales del pago',
+      description: 'Captura monto, fecha y método de pago. Si el método es tarjeta, el sistema aplica automáticamente el fee del 4%.',
+      targetId: 'modal-pago-core-fields',
+      placement: 'right',
+    },
+    {
+      id: 'modal_pago_support_fields',
+      title: 'Referencia y soporte',
+      description: 'Usa estos campos para guardar confirmaciones, referencias y notas del pago. Ayudan a auditoría y seguimiento posterior.',
+      targetId: 'modal-pago-support-fields',
+      placement: 'right',
+    },
+    {
+      id: 'detail_ledger',
+      title: 'Ledger vivo',
+      description: 'Aquí ves el historial financiero completo del caso: pagos, movimientos y cómo cambia el saldo en tiempo real.',
+      targetId: 'detail-ledger',
+      placement: 'bottom',
+    },
+    {
+      id: 'detail_generar_statement_cta',
+      title: 'Generar statement',
+      description: 'Este botón prepara el snapshot histórico del período. Sirve para producir el estado de cuenta que luego se enviará al cliente.',
+      targetId: 'detail-generar-statement-cta',
+      placement: 'bottom',
+    },
+    {
+      id: 'detail_generar_statement_period',
+      title: 'Revisa el período y la fecha de corte',
+      description: 'Confirma las fechas antes de generar. El statement usará ese rango como período y tomará la fecha final como fecha de corte.',
+      targetId: 'detail-generar-statement-period',
+      placement: 'left',
+    },
+    {
+      id: 'detail_enviar_statement_cta',
+      title: 'Enviar estado de cuenta',
+      description: 'Cuando ya existe un statement reciente, este botón abre la confirmación para mandar un correo real al cliente.',
+      targetId: 'detail-enviar-statement-cta',
+      placement: 'bottom',
+    },
+    {
+      id: 'detail_enviar_statement_confirm',
+      title: 'Confirma antes de enviar',
+      description: 'La confirmación muestra el período y el destinatario esperado. Úsala para validar que el envío real va al email correcto.',
+      targetId: 'detail-enviar-statement-confirm',
+      placement: 'left',
+    },
+    {
+      id: 'detail_historial_envios',
+      title: 'Historial de envíos',
+      description: 'Aquí confirmas qué se le ha enviado al cliente: acuerdo, recibos de pago y statements. Es la auditoría final del flujo.',
+      targetId: 'detail-historial-envios',
+      placement: 'top',
+    },
+  ]), [])
+
+  const activeTutorialStep = tutorialOpen ? tutorialSteps[tutorialStepIndex] ?? null : null
+
+  useEffect(() => {
+    if (!tutorialOpen || !activeTutorialStep) return
+
+    switch (activeTutorialStep.id) {
+      case 'workspace_intro':
+      case 'workspace_por_activar':
+      case 'workspace_case_pending':
+        setPrimaryTab('por_activar')
+        setQuickFilter(null)
+        setSelectedCase(null)
+        setMobileView('list')
+        setCurrentPage(pendingTutorialPage)
+        break
+      case 'detail_estado_cuenta_tab':
+      case 'detail_create_agreement_cta':
+      case 'modal_revolving_terms':
+      case 'modal_revolving_setup':
+        if (tutorialPendingCase) {
+          setPrimaryTab('por_activar')
+          setQuickFilter(null)
+          setCurrentPage(pendingTutorialPage)
+          setSelectedCase(tutorialPendingCase)
+          setMobileView('detail')
+        }
+        break
+      default:
+        if (tutorialActiveCase) {
+          setPrimaryTab('dfp')
+          setQuickFilter(null)
+          setSelectedCase(tutorialActiveCase)
+          setMobileView('detail')
+        }
+        break
+    }
+  }, [activeTutorialStep, pendingTutorialPage, tutorialActiveCase, tutorialOpen, tutorialPendingCase])
+
+  const startTutorial = useCallback(() => {
+    if (loading) {
+      window.alert('Espera a que termine de cargar la cartera antes de iniciar el tutorial.')
+      return
+    }
+    if (!tutorialPendingCase || !tutorialActiveCase) {
+      window.alert('Para correr el tour completo necesitas al menos un caso "Por activar" y un caso con financiamiento activo.')
+      return
+    }
+    setTutorialStepIndex(0)
+    setTutorialOpen(true)
+  }, [loading, tutorialActiveCase, tutorialPendingCase])
+
+  const closeTutorial = useCallback(() => {
+    setTutorialOpen(false)
+    setTutorialStepIndex(0)
+  }, [])
+
+  const handleTutorialNext = useCallback(() => {
+    setTutorialStepIndex(prev => {
+      if (prev >= tutorialSteps.length - 1) {
+        setTutorialOpen(false)
+        return 0
+      }
+      return prev + 1
+    })
+  }, [tutorialSteps.length])
+
+  const handleTutorialBack = useCallback(() => {
+    setTutorialStepIndex(prev => Math.max(0, prev - 1))
+  }, [])
+
   const showListPane = !isMobile || mobileView === 'list' || !selectedCase
   const showDetailPane = !isMobile || (mobileView === 'detail' && selectedCase)
 
@@ -5067,11 +5646,22 @@ export function CarteraPage() {
                 DFP, cargo de vuelta, acuerdos de pago y seguimiento de cartera
               </p>
             </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-              {loading ? '…' : filtered.length === cases.length
-                ? `${cases.length} casos`
-                : `${filtered.length} de ${cases.length}`}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={startTutorial}
+                disabled={loading}
+                title={loading ? 'Espera a que carguen los casos para iniciar el tutorial.' : undefined}
+                style={{ padding: '0.28rem 0.65rem', borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb12', color: '#2563eb', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 700, opacity: loading ? 0.55 : 1 }}
+              >
+                Ver tutorial
+              </button>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                {loading ? '…' : filtered.length === cases.length
+                  ? `${cases.length} casos`
+                  : `${filtered.length} de ${cases.length}`}
+              </span>
+            </div>
           </div>
           <input
             type="search"
@@ -5120,6 +5710,7 @@ export function CarteraPage() {
               const active = primaryTab === t
               return (
                 <button key={t} type="button" onClick={() => setPrimaryTab(t)}
+                  data-tour-id={t === 'por_activar' ? 'workspace-por-activar-tab' : undefined}
                   style={{ padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: `1px solid ${active ? colors[t] : 'var(--color-border)'}`, background: active ? colors[t] + '22' : 'transparent', color: active ? colors[t] : 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                   {labels[t]}
                 </button>
@@ -5237,6 +5828,7 @@ export function CarteraPage() {
                   key={c.id}
                   type="button"
                   onClick={() => handleSelectCase(c)}
+                  data-tour-id={tutorialPendingCase?.id === c.id ? 'workspace-case-pending' : undefined}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -5442,6 +6034,8 @@ export function CarteraPage() {
             hasNext={hasNext}
             onPrevious={handlePrevious}
             onNext={handleNext}
+            tutorialStepId={activeTutorialStep?.id ?? null}
+            tutorialActive={tutorialOpen}
           />
         ) : (
           <CarteraEmptyState
@@ -5463,6 +6057,15 @@ export function CarteraPage() {
           />
         )}
       </div>
+      <TutorialOverlay
+        open={tutorialOpen}
+        step={activeTutorialStep}
+        stepIndex={tutorialStepIndex}
+        totalSteps={tutorialSteps.length}
+        onBack={handleTutorialBack}
+        onNext={handleTutorialNext}
+        onClose={closeTutorial}
+      />
     </div>
   )
 }
