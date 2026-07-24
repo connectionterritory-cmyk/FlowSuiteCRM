@@ -66,25 +66,25 @@ function NearbyRow({ contact, onSelectContact }: { contact: NearbyContact; onSel
       tabIndex={onSelectContact ? 0 : undefined}
       onClick={onSelectContact ? handleSelect : undefined}
       onKeyDown={onSelectContact ? handleKeyDown : undefined}
-      style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--color-surface-raised, #e5e7eb)', borderRadius: '0.5rem', cursor: onSelectContact ? 'pointer' : 'default', border: onSelectContact ? '1px solid #d1d5db' : '1px solid transparent', transition: 'background 120ms ease, border-color 120ms ease' }}
+      style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--card-bg)', borderRadius: '0.5rem', cursor: onSelectContact ? 'pointer' : 'default', border: onSelectContact ? '1px solid var(--card-border)' : '1px solid transparent', transition: 'background 120ms ease, border-color 120ms ease' }}
     >
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#111827' }}>{contact.nombre}</span>
+          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{contact.nombre}</span>
           {contact.dist != null && (
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', background: '#f3f4f6', borderRadius: '9999px', padding: '0.05rem 0.4rem', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', background: 'var(--color-surface-strong)', borderRadius: '9999px', padding: '0.05rem 0.4rem', whiteSpace: 'nowrap' }}>
               {contact.dist.toFixed(1)} mi
             </span>
           )}
         </div>
-        <div style={{ fontSize: '0.78rem', color: '#374151' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)' }}>
           {contact.tipo === 'lead' ? 'Prospecto' : 'Cliente'}{contact.telefono ? ` · ${contact.telefono}` : ''}
         </div>
         {contact.direccion && (
-          <div style={{ fontSize: '0.78rem', color: '#374151' }}>{contact.direccion}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)' }}>{contact.direccion}</div>
         )}
         {onSelectContact && (
-          <div style={{ fontSize: '0.72rem', color: '#4b5563', fontWeight: 600, marginTop: '0.2rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #94a3b8)', fontWeight: 600, marginTop: '0.2rem' }}>
             Click para editar
           </div>
         )}
@@ -249,7 +249,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
           maxWidth: '540px',
           maxHeight: '80vh',
           overflowY: 'auto',
-          background: 'var(--color-surface, #fff)',
+          background: 'var(--card-bg)',
           borderRadius: '1rem 1rem 0 0',
           boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
           zIndex: 1001,
@@ -259,7 +259,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ fontSize: '1rem', color: '#111827' }}>Cercanos · {contactoNombre}</strong>
+          <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Cercanos · {contactoNombre}</strong>
           <Button variant="ghost" onClick={onClose}>✕</Button>
         </div>
 
@@ -273,19 +273,19 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
             🗺 Abrir en Maps
           </a>
         ) : (
-          <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
+          <div style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.875rem' }}>
             No hay dirección disponible para navegar.
           </div>
         )}
 
         {loading && (
-          <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
+          <div style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.875rem' }}>
             Buscando contactos cercanos...
           </div>
         )}
 
         {!loading && nearbyData && nearbyData.mode === 'zip' && !hasZipOrCity && (
-          <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
+          <div style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.875rem' }}>
             No hay suficientes datos de ubicación para sugerir contactos cercanos.
           </div>
         )}
@@ -294,7 +294,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             {nearbyData.byDist.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
                   Cercanos · menos de {NEARBY_RADIUS_MILES} mi
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
@@ -304,7 +304,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
             )}
             {nearbyData.byZipLeads.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
                   Prospectos · mismo ZIP
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
@@ -313,7 +313,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
               </div>
             )}
             {nearbyData.byDist.length === 0 && nearbyData.byZipLeads.length === 0 && (
-              <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
+              <div style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.875rem' }}>
                 No se encontraron contactos en un radio de {NEARBY_RADIUS_MILES} millas.
               </div>
             )}
@@ -324,10 +324,10 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             {nearbyData.byZip.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>
                   CERCANOS POR ZIP CODE · {zip}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '0.4rem' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary, #64748b)', marginBottom: '0.4rem' }}>
                   Aproximado por ZIP. Verifica tiempo en Maps.
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
@@ -337,7 +337,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
             )}
             {nearbyData.byCity.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
                   CERCANOS POR CIUDAD · {ciudad}
                 </div>
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
@@ -346,7 +346,7 @@ export function NearbyContactsPanel({ contactoNombre, mapsUrl, zip, ciudad, base
               </div>
             )}
             {nearbyData.byZip.length === 0 && nearbyData.byCity.length === 0 && (
-              <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>
+              <div style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.875rem' }}>
                 No se encontraron contactos con el mismo ZIP o ciudad.
               </div>
             )}

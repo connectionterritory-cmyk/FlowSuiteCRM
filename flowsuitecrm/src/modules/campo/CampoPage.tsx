@@ -94,9 +94,9 @@ function FieldCard({ item, onNearby }: { item: FieldItem; onNearby: (item: Field
   })
   const addressLabel = [item.direccion, item.ciudad, item.estado_region, item.zip].filter(Boolean).join(', ')
   return (
-    <div style={{ background: 'var(--color-surface, #fff)', border: '1px solid #e5e7eb', borderRadius: '0.625rem', padding: '0.875rem 1rem', display: 'grid', gap: '0.35rem' }}>
+    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '0.625rem', padding: '0.875rem 1rem', display: 'grid', gap: '0.35rem' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#111827', flex: 1, minWidth: 0, lineHeight: 1.3 }}>{item.nombre}</span>
+        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', flex: 1, minWidth: 0, lineHeight: 1.3 }}>{item.nombre}</span>
         <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: TIPO_BG[item.tipo], borderRadius: '9999px', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
           {TIPO_LABEL[item.tipo]}
         </span>
@@ -107,15 +107,15 @@ function FieldCard({ item, onNearby }: { item: FieldItem; onNearby: (item: Field
         )}
       </div>
       {item.start_at && (
-        <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)' }}>
           🕐 {formatHora(item.start_at)}{item.estado ? ` · ${item.estado}` : ''}
         </div>
       )}
       {item.telefono && (
-        <div style={{ fontSize: '0.8rem', color: '#374151' }}>📞 {item.telefono}</div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>📞 {item.telefono}</div>
       )}
       {addressLabel && (
-        <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.4 }}>{addressLabel}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.4 }}>{addressLabel}</div>
       )}
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
         {waUrl && (
@@ -132,7 +132,7 @@ function FieldCard({ item, onNearby }: { item: FieldItem; onNearby: (item: Field
           <button
             type="button"
             onClick={() => onNearby(item)}
-            style={{ padding: '0.3rem 0.7rem', background: 'transparent', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+            style={{ padding: '0.3rem 0.7rem', background: 'transparent', color: 'var(--text-secondary, #94a3b8)', border: '1px solid var(--card-border)', borderRadius: '0.375rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
           >
             Cercanos
           </button>
@@ -321,13 +321,13 @@ export function CampoPage() {
     fontSize: '0.8rem',
     fontWeight: 600,
     cursor: 'pointer',
-    border: active ? 'none' : '1px solid #d1d5db',
+    border: active ? 'none' : '1px solid var(--card-border)',
     background: active ? 'var(--color-primary, #2563eb)' : 'transparent',
-    color: active ? '#fff' : '#374151',
+    color: active ? '#fff' : 'var(--text-primary)',
   })
 
   const sectionHeader = (label: string, count: number) => (
-    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
       {label} · {count}
     </div>
   )
@@ -365,19 +365,19 @@ export function CampoPage() {
           placeholder="ZIP"
           value={filterZip}
           onChange={e => setFilterZip(e.target.value)}
-          style={{ padding: '0.3rem 0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.82rem', width: '80px', outline: 'none' }}
+          style={{ padding: '0.3rem 0.6rem', border: '1px solid var(--card-border)', borderRadius: '0.375rem', fontSize: '0.82rem', width: '80px', outline: 'none', background: 'var(--card-bg)', color: 'var(--text-primary)' }}
         />
         <input
           type="text"
           placeholder="Ciudad"
           value={filterCiudad}
           onChange={e => setFilterCiudad(e.target.value)}
-          style={{ padding: '0.3rem 0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.82rem', width: '120px', outline: 'none' }}
+          style={{ padding: '0.3rem 0.6rem', border: '1px solid var(--card-border)', borderRadius: '0.375rem', fontSize: '0.82rem', width: '120px', outline: 'none', background: 'var(--card-bg)', color: 'var(--text-primary)' }}
         />
         <button
           type="button"
           onClick={() => void load()}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: '#374151' }}
+          style={{ padding: '0.3rem 0.75rem', border: '1px solid var(--card-border)', borderRadius: '0.375rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--text-primary)' }}
         >
           Buscar
         </button>
