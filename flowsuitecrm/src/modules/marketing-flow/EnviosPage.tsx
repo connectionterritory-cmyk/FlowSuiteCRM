@@ -321,7 +321,8 @@ export function EnviosPage() {
         body: { outbox_id: message.outbox_message_id },
       })
       if (invokeError) {
-        showToast('Reintento en cola. El worker lo procesará en breve.')
+        showToast(invokeError.message || 'No se pudo reintentar el mensaje', 'error')
+        return
       } else {
         showToast('Reintento en cola', 'success')
       }

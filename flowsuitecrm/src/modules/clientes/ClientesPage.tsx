@@ -527,8 +527,13 @@ export function ClientesPage() {
         activo: boolean | null
         codigo_vendedor?: string | null
         codigo_distribuidor?: string | null
+        organizacion?: string | null
       }>) ?? [])
-        .filter((user) => (user.rol === 'vendedor' || user.rol === 'distribuidor') && user.activo !== false)
+        .filter((user) => {
+          const isAssignableRole = user.rol === 'vendedor' || user.rol === 'distribuidor'
+          const isActive = user.activo !== false
+          return isAssignableRole && isActive
+        })
         .map((user) => ({
           id: user.id,
           label: [

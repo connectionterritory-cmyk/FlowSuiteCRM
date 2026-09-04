@@ -103,6 +103,7 @@ interface MessagingState {
   // UI Helpers
   sending: boolean
   variables: Record<string, string>
+  contextType?: MessagingContextType
 }
 
 const MessagingContext = createContext<MessagingState | undefined>(undefined)
@@ -487,7 +488,8 @@ export function MessagingProvider({
       resolveMessage,
       refreshTemplates,
       sending,
-      variables
+      variables,
+      contextType,
     }}>
       {children}
     </MessagingContext.Provider>

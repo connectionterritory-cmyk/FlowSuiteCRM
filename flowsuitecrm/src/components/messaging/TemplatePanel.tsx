@@ -9,15 +9,16 @@ import {
 } from '../icons'
 
 export function TemplatePanel() {
-  const { 
-    systemTemplates, 
-    cloudTemplates, 
-    setMessage, 
+  const {
+    systemTemplates,
+    cloudTemplates,
+    setMessage,
     setSubject,
     loadingTemplates,
     deleteTemplate,
     saveTemplate,
-    activeChannel
+    activeChannel,
+    contextType,
   } = useMessaging()
 
   const [search, setSearch] = useState('')
@@ -43,14 +44,25 @@ export function TemplatePanel() {
 
   const filteredTemplates = useMemo(() => {
     const list = tab === 'cloud' ? unifiedCloudTemplates : systemTemplates
-    if (!search.trim()) return list
-    const q = search.toLowerCase()
-    return list.filter(t => 
-      t.label.toLowerCase().includes(q) || 
-      t.message.toLowerCase().includes(q) ||
-      t.category.toLowerCase().includes(q)
-    )
-  }, [tab, unifiedCloudTemplates, systemTemplates, search])
+    const q = search.trim().toLowerCase()
+    const filtered = q
+      ? list.filter(t =>
+          t.label.toLowerCase().includes(q) ||
+          t.message.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q)
+        )
+      : list
+    // When no custom search, sort contextType matches to the top
+    if (!q && contextType) {
+      const ctx = contextType.toLowerCase()
+      return [...filtered].sort((a, b) => {
+        const aMatch = a.category.toLowerCase() === ctx ? 0 : 1
+        const bMatch = b.category.toLowerCase() === ctx ? 0 : 1
+        return aMatch - bMatch
+      })
+    }
+    return filtered
+  }, [tab, unifiedCloudTemplates, systemTemplates, search, contextType])
 
   const handleSelect = (t: UnifiedTemplate) => {
     setMessage(t.message)
