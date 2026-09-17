@@ -107,11 +107,19 @@ type ReferidorOption = {
 }
 
 // Alinea con HoyPage.tsx: mismo umbral de fecha para "Sin gestionar" (nuevo, sin próxima acción,
-// creado antes de la medianoche local de hace 7 días).
+// creado antes de la medianoche local de hace 7 días). Se construye la medianoche LOCAL y se
+// convierte a un instante absoluto vía toISOString() (con "Z"): un string sin huso horario tipo
+// "2026-01-01T00:00:00" se interpretaría como UTC en la base de datos, no como medianoche local,
+// corriendo el corte varias horas y moviendo registros cercanos al límite al grupo equivocado.
 function getUnmanagedCutoffIso(): string {
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-  return `${sevenDaysAgo.toLocaleDateString('en-CA')}T00:00:00`
+  return new Date(
+    sevenDaysAgo.getFullYear(),
+    sevenDaysAgo.getMonth(),
+    sevenDaysAgo.getDate(),
+    0, 0, 0, 0,
+  ).toISOString()
 }
 
 // PostgREST puede limitar las filas por respuesta (el tope real del proyecto puede ser menor a
@@ -580,10 +588,13 @@ export function LeadsPage() {
         }
       }
 
-      const buildMobileQuery = (from: number, to: number) => {
+      const buildMobileQuery = (range?: { from: number; to: number }) => {
         let query = supabase
           .from('leads')
-          .select('id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, deleted_at', { count: 'exact' })
+          .select(
+            'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, deleted_at',
+            isUnmanagedView ? { count: 'exact' } : undefined,
+          )
           .is('deleted_at', null)
 
         if (isUnmanagedView) {
@@ -611,17 +622,33 @@ export function LeadsPage() {
           }
         }
 
-        return query.range(from, to)
+        return range ? query.range(range.from, range.to) : query
       }
 
-      const { rows, error: fetchError } = await fetchAllLeadRows<LeadMobileRecord>((from, to) =>
-        buildMobileQuery(from, to),
-      )
+      if (isUnmanagedView) {
+        const { rows, error: fetchError } = await fetchAllLeadRows<LeadMobileRecord>((from, to) =>
+          buildMobileQuery({ from, to }),
+        )
+
+        if (fetchError) {
+          setError(fetchError.message)
+          setMobileLeadsData([])
+        } else {
+          setMobileLeadsData(rows)
+          const ids = rows.map((lead) => lead.id)
+          await loadLastActivity(ids)
+        }
+        setLoading(false)
+        return
+      }
+
+      const { data, error: fetchError } = await buildMobileQuery()
 
       if (fetchError) {
         setError(fetchError.message)
         setMobileLeadsData([])
       } else {
+        const rows = (data as LeadMobileRecord[] | null) ?? []
         setMobileLeadsData(rows)
         const ids = rows.map((lead) => lead.id)
         await loadLastActivity(ids)
@@ -642,10 +669,14 @@ export function LeadsPage() {
       return
     }
 
-    const buildLeadQuery = (selectClause: string, from: number, to: number) => {
+    const buildLeadQuery = (selectClause: string, range?: { from: number; to: number }) => {
+      // El conteo exacto y la paginación exhaustiva solo son necesarios en "Sin gestionar"
+      // (para no perder filas si el proyecto limita las respuestas de PostgREST). La vista
+      // normal mantiene una sola consulta, como antes, para no multiplicar round-trips en
+      // cuentas con muchos prospectos.
       let query = supabase
         .from('leads')
-        .select(selectClause, { count: 'exact' })
+        .select(selectClause, isUnmanagedView ? { count: 'exact' } : undefined)
 
       if (isUnmanagedView) {
         // "Sin gestionar" es siempre sobre prospectos activos, sin importar el estado de Papelera:
@@ -681,23 +712,43 @@ export function LeadsPage() {
         }
       }
 
-      return query.range(from, to)
+      return range ? query.range(range.from, range.to) : query
     }
 
-    let result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_EXTENDED_SELECT, from, to))
-    if (result.error && isMissingLeadAddressColumnError(result.error.message)) {
-      result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_BASE_SELECT, from, to))
+    if (isUnmanagedView) {
+      let result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_EXTENDED_SELECT, { from, to }))
+      if (result.error && isMissingLeadAddressColumnError(result.error.message)) {
+        result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_BASE_SELECT, { from, to }))
+      }
+      // Fallback nivel 2: referidor_tipo/referidor_id no existen (migración 0069 no aplicada)
+      if (result.error && isMissingLeadReferidorColumnError(result.error.message)) {
+        result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_COMPAT_SELECT, { from, to }))
+      }
+
+      if (result.error) {
+        setError(result.error.message)
+        setLeads([])
+      } else {
+        setLeads(result.rows)
+      }
+      setLoading(false)
+      return
+    }
+
+    let { data, error: fetchError } = await buildLeadQuery(LEADS_EXTENDED_SELECT)
+    if (fetchError && isMissingLeadAddressColumnError(fetchError.message)) {
+      ;({ data, error: fetchError } = await buildLeadQuery(LEADS_BASE_SELECT))
     }
     // Fallback nivel 2: referidor_tipo/referidor_id no existen (migración 0069 no aplicada)
-    if (result.error && isMissingLeadReferidorColumnError(result.error.message)) {
-      result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_COMPAT_SELECT, from, to))
+    if (fetchError && isMissingLeadReferidorColumnError(fetchError.message)) {
+      ;({ data, error: fetchError } = await buildLeadQuery(LEADS_COMPAT_SELECT))
     }
 
-    if (result.error) {
-      setError(result.error.message)
+    if (fetchError) {
+      setError(fetchError.message)
       setLeads([])
     } else {
-      setLeads(result.rows)
+      setLeads((data as LeadRecord[] | null) ?? [])
     }
     setLoading(false)
   }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id, isMobile, isUnmanagedView, loadLastActivity])

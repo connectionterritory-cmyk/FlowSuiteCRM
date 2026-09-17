@@ -543,7 +543,16 @@ export function HoyPage() {
 
     const sevenDaysAgo = new Date(today)
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    const sevenDaysAgoIso = sevenDaysAgo.toLocaleDateString('en-CA')
+    // Medianoche LOCAL de "hace 7 días", convertida a un instante absoluto (con offset UTC
+    // explícito vía toISOString). Un string tipo "2026-01-01T00:00:00" sin huso se interpretaría
+    // como UTC en la base de datos, no como medianoche local, y podía correr el corte varias
+    // horas y mover registros cercanos al límite al grupo equivocado.
+    const sevenDaysAgoMidnightIso = new Date(
+      sevenDaysAgo.getFullYear(),
+      sevenDaysAgo.getMonth(),
+      sevenDaysAgo.getDate(),
+      0, 0, 0, 0,
+    ).toISOString()
 
     // 90 days ago for reactivation
     const ninetyDaysAgo = new Date(today)
@@ -591,7 +600,7 @@ export function HoyPage() {
         .select(baseLeadSelect)
         .eq('vendedor_id', vendedorId)
         .eq('estado_pipeline', 'nuevo')
-        .gte('created_at', `${sevenDaysAgoIso}T00:00:00`)
+        .gte('created_at', sevenDaysAgoMidnightIso)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(8),
@@ -601,7 +610,7 @@ export function HoyPage() {
         .select(baseLeadSelect, { count: 'exact' })
         .eq('vendedor_id', vendedorId)
         .eq('estado_pipeline', 'nuevo')
-        .lt('created_at', `${sevenDaysAgoIso}T00:00:00`)
+        .lt('created_at', sevenDaysAgoMidnightIso)
         .is('next_action_date', null)
         .is('deleted_at', null)
         .order('created_at', { ascending: true })
