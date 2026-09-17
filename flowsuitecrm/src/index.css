@@ -6699,3 +6699,28 @@ body.theme-light .inbox-bubble.outbound {
     border-top: 1px solid var(--card-border);
   }
 }
+
+/* Hoy · enlace secundario "Ver todos" */
+.hoy-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary, #2563eb);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.hoy-link-btn:hover {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 8%, transparent);
+}
+
+.hoy-link-btn svg {
+  flex: 0 0 auto;
+}
