@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/useAuth'
 import { useUsers } from '../../data/useUsers'
 import { useToast } from '../useToast'
 import type { MessagingChannel, MessagingContact, MessagingContextType } from '../../types/messaging'
-import { resolveTemplate } from '../../lib/messagePlaceholders'
+import { extractPlaceholders, resolveTemplate } from '../../lib/messagePlaceholders'
 import { baseTemplates } from '../../lib/whatsappTemplates'
 import { emailTemplates } from '../../lib/emailTemplates'
 import { DEFAULT_SENDER, type EmailSender } from '../../lib/emailSenders'
@@ -93,6 +93,7 @@ interface MessagingState {
 
   // UI Helpers
   sending: boolean
+  missingVariables: string[]
   variables: Record<string, string>
 }
 
@@ -193,7 +194,7 @@ export function MessagingProvider({
       telefono_oficina: initialContact?.telefonoOficina || '',
     }
 
-    return vars
+    return Object.fromEntries(Object.entries(vars).map(([key, value]) => [key, value.trim()]))
   }, [initialContact, currentUser])
 
   const resolveMessage = useCallback((template: string) => {
@@ -201,6 +202,21 @@ export function MessagingProvider({
     const result = resolveTemplate(template, variables)
     return typeof result === 'string' ? result : (result.text || '')
   }, [variables])
+
+  const resolvedDraft = useMemo(() => {
+    const body = resolveTemplate(message, variables)
+    const emailSubject = resolveTemplate(activeChannel === 'email' ? subject : '', variables)
+    return {
+      body: body.text,
+      subject: emailSubject.text,
+      missing: Array.from(new Set([
+        ...body.missing,
+        ...emailSubject.missing,
+        ...extractPlaceholders(body.text),
+        ...extractPlaceholders(emailSubject.text),
+      ])),
+    }
+  }, [message, subject, activeChannel, variables])
 
   const systemTemplates = useMemo<UnifiedTemplate[]>(() => {
     if (activeChannel === 'email') {
@@ -273,7 +289,11 @@ export function MessagingProvider({
     if (sending) return
     setSending(true)
     try {
-      const resolved = resolveMessage(message)
+      if (resolvedDraft.missing.length > 0) {
+        showToast(`Completa las variables antes de enviar: ${resolvedDraft.missing.join(', ')}.`, 'error')
+        return
+      }
+      const resolved = resolvedDraft.body
       const isDirect = !scheduledFor
       const emailRecipient = initialContact?.email?.trim() ?? ''
       const phoneRecipient = initialContact?.telefono?.trim() ?? ''
@@ -337,7 +357,7 @@ export function MessagingProvider({
           contexto_tipo: contextType ?? 'ad_hoc',
           canal: activeChannel,
           destinatario: activeChannel === 'email' ? emailRecipient : (activeChannel === 'telegram' ? initialContact?.telegramChatId : phoneRecipient),
-          asunto: activeChannel === 'email' ? subject : null,
+          asunto: activeChannel === 'email' ? resolvedDraft.subject : null,
           mensaje: message,
           mensaje_resuelto: resolved,
           attachment_urls: attachmentUrls,
@@ -483,6 +503,7 @@ export function MessagingProvider({
       resolveMessage,
       refreshTemplates,
       sending,
+      missingVariables: resolvedDraft.missing,
       variables
     }}>
       {children}
