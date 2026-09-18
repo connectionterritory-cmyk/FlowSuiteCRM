@@ -4652,10 +4652,16 @@ body.theme-light .hub-action-card.is-secondary {
 
 .hoy-hero-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-top: -22px;
   padding: 0 2px;
+}
+
+@media (max-width: 720px) {
+  .hoy-hero-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .hoy-action-card {
@@ -4682,6 +4688,10 @@ body.theme-light .hub-action-card.is-secondary {
   border-top: 3px solid var(--accent);
 }
 
+.hoy-action-card.red {
+  border-top: 3px solid var(--accent);
+}
+
 .hoy-action-card.green {
   border-top: 3px solid var(--accent);
 }
@@ -4692,6 +4702,7 @@ body.theme-light .hub-action-card.is-secondary {
 
 .hoy-action-card-icon {
   font-size: 1.5rem;
+  color: var(--accent);
 }
 
 .hoy-action-card-label {
@@ -6698,6 +6709,196 @@ body.theme-light .inbox-bubble.outbound {
     border-left: 0;
     border-top: 1px solid var(--card-border);
   }
+}
+
+/* Mi Día: mantenimiento de clientes */
+.hoy-page .hoy-maintenance-section {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+}
+
+.hoy-page .hoy-maintenance-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.hoy-page .hoy-maintenance-heading-sub {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.hoy-page .hoy-maintenance-widget {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.hoy-page .hoy-traffic-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.hoy-page .hoy-traffic-card:hover {
+  border-color: var(--accent);
+}
+
+.hoy-page .hoy-traffic-card:active {
+  transform: scale(0.98);
+}
+
+.hoy-page .hoy-traffic-card.active {
+  border-color: var(--accent);
+}
+
+.hoy-page .hoy-traffic-info {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hoy-page .hoy-traffic-count {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.hoy-page .hoy-traffic-label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.hoy-page .hoy-traffic-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.hoy-page .hoy-maintenance-filters {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.hoy-page .hoy-maintenance-filters:hover {
+  background: rgba(59, 130, 246, 0.13);
+  border-color: #3b82f6;
+}
+
+.hoy-page .hoy-maintenance-filters-action {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  opacity: 0.75;
+}
+
+/* Mi Día: seguimientos vencidos */
+.hoy-page .hoy-task-status-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.hoy-page .hoy-task-due {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.hoy-page .hoy-task-chevron-icon {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.65;
+  font-size: 1.2rem;
+}
+
+.hoy-page .hoy-task-item {
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+
+.hoy-page .hoy-task-item:hover {
+  border-color: var(--accent);
+}
+
+.hoy-page .hoy-task-item:active {
+  transform: scale(0.995);
+}
+
+.hoy-page .seller-lead-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.hoy-page .seller-task-location {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.hoy-page .seller-task-location svg {
+  flex: 0 0 auto;
+}
+
+.hoy-page .hoy-agenda-body .item-type,
+.hoy-page .hoy-agenda-body .item-address {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hoy-page .hoy-agenda-body .item-type svg,
+.hoy-page .hoy-agenda-body .item-address svg {
+  flex: 0 0 auto;
+}
+
+.hoy-page .hoy-agenda-actions .action-btn,
+.hoy-page .m-actions .action-btn,
+.hoy-page .hoy-actions-body .btn,
+.hoy-page .form-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Hoy · enlace secundario "Ver todos" */
