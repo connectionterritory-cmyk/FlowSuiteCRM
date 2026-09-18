@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../../components/Button'
@@ -12,6 +12,25 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
 import { getContactTable } from '../../lib/contactRefs'
 import { normalizeTimeValue } from '../../lib/timeUtils'
+import {
+  IconCalendar,
+  IconCalendarCheck,
+  IconCalendarClock,
+  IconCheck,
+  IconClock,
+  IconDroplet,
+  IconHelpCircle,
+  IconLeads,
+  IconNavigation,
+  IconPhone,
+  IconPipeline,
+  IconRestore,
+  IconSales,
+  IconWallet,
+  IconWhatsapp,
+  IconWrench,
+  IconX,
+} from '../../components/icons'
 
 type LeadRow = {
   id: string
@@ -1165,7 +1184,7 @@ export function HoyPage() {
     setRescheduleSaving(false)
   }
 
-  const renderLeadListItem = (lead: LeadRow, icon: string, iconClass: string) => {
+  const renderLeadListItem = (lead: LeadRow, icon: ReactNode, iconClass: string) => {
     const lastActivityAt = resolveLastActivityAt(lead)
     const urgent = isUrgent(lastActivityAt)
     const managerName = usersById[lead.vendedor_id || lead.owner_id || ''] || ''
@@ -1175,7 +1194,9 @@ export function HoyPage() {
         <div className="hoy-item-content">
           <div className="hoy-item-title">{getLeadName(lead)}</div>
           <div className="hoy-item-subtitle">
-            {lead.next_action || t('hoy.noAction')} - {relativeDayLabel(lead.next_action_date)}
+            {lead.next_action
+              ? `${lead.next_action}${lead.next_action_date ? ` · ${relativeDayLabel(lead.next_action_date)}` : ''}`
+              : 'Sin próxima acción'}
             {managerName && <span style={{ opacity: 0.7 }}> · {managerName}</span>}
           </div>
         </div>
@@ -1190,17 +1211,20 @@ export function HoyPage() {
     const managerName = usersById[lead.vendedor_id || lead.owner_id || ''] || ''
     return (
       <div key={lead.id} className={`hoy-task-item ${urgent ? 'alert' : ''}`.trim()} onClick={() => openActions(lead)}>
-        <div className={`hoy-task-checkbox ${lead.estado_pipeline === 'cierre' ? 'checked' : ''}`} />
+        <div className="hoy-task-status-icon">
+          <IconHelpCircle width={18} height={18} />
+        </div>
         <div className="hoy-item-content">
           <div className="hoy-item-title">{getLeadName(lead)}</div>
           <div className="hoy-item-subtitle">
             {lead.next_action || t('hoy.noAction')}
             {managerName && <span style={{ opacity: 0.7 }}> · {managerName}</span>}
           </div>
+          <div className="hoy-task-due">
+            {relativeDayLabel(lead.next_action_date)}
+          </div>
         </div>
-        <div className="hoy-item-chevron">
-          <input type="checkbox" checked={lead.estado_pipeline === 'cierre'} readOnly style={{ opacity: 0, position: 'absolute' }} />
-        </div>
+        <div className="hoy-task-chevron-icon">›</div>
       </div>
     )
   }
@@ -1233,22 +1257,25 @@ export function HoyPage() {
               </div>
             )}
             {(task.direccion || task.ciudad || task.estado_region) && (
-              <div className="seller-section-sub">📍 {[task.direccion, task.ciudad, task.estado_region].filter(Boolean).join(', ')}</div>
+              <div className="seller-section-sub seller-task-location">
+                <IconNavigation width={14} height={14} />
+                <span>{[task.direccion, task.ciudad, task.estado_region].filter(Boolean).join(', ')}</span>
+              </div>
             )}
           </div>
         </div>
         <div className="seller-lead-actions">
           <Button variant="ghost" onClick={() => handleCall(task.contacto_telefono)}>
-            📞 {t('hoy.call')}
+            <IconPhone width={16} height={16} /> {t('hoy.call')}
           </Button>
           <Button variant="ghost" onClick={() => handleWhatsappTask(task)}>
-            💬 {t('hoy.whatsapp')}
+            <IconWhatsapp width={16} height={16} /> {t('hoy.whatsapp')}
           </Button>
           <Button variant="ghost" onClick={() => handleMaps(task)}>
-            📍 Mapas
+            <IconNavigation width={16} height={16} /> Mapas
           </Button>
           <Button type="button" onClick={() => handleCompleteTask(task)} disabled={taskSavingId === task.id}>
-            ✅ {taskSavingId === task.id ? t('common.saving') : 'Completar'}
+            <IconCheck width={16} height={16} /> {taskSavingId === task.id ? t('common.saving') : 'Completar'}
           </Button>
         </div>
       </div>
@@ -1278,32 +1305,43 @@ export function HoyPage() {
           <p>{t('hoy.subtitle') || 'Resumen de Hoy'}</p>
         </div>
         <div className="hoy-notification-bell" onClick={loadData} style={{ cursor: 'pointer' }}>
-          🔔
+          <IconCalendarClock width={19} height={19} />
         </div>
       </header>
 
-      {/* ── Hero Action Grid ─────────────────────────────── */}
+      {/* ── Prioridades comerciales del día ───────────────── */}
       <div className="hoy-hero-grid">
+        <div className="hoy-action-card red">
+          <div className="hoy-action-card-icon-wrapper">
+            <IconHelpCircle className="hoy-action-card-icon" width={24} height={24} />
+          </div>
+          <span className="hoy-action-card-count">
+            {overdueLeads.length + crmTasks.filter((task) => task.fecha_vencimiento < todayIso).length}
+          </span>
+          <span className="hoy-action-card-label">Vencidos</span>
+        </div>
         <div className="hoy-action-card orange">
           <div className="hoy-action-card-icon-wrapper">
-            <span className="hoy-action-card-icon">📅</span>
+            <IconCalendarCheck className="hoy-action-card-icon" width={24} height={24} />
           </div>
-          <span className="hoy-action-card-count">{todayLeads.length}</span>
-          <span className="hoy-action-card-label">{t('hoy.statsActions') || 'Acciones'}</span>
+          <span className="hoy-action-card-count">
+            {todayLeads.length + crmTasks.filter((task) => task.fecha_vencimiento === todayIso).length}
+          </span>
+          <span className="hoy-action-card-label">Hoy</span>
         </div>
         <div className="hoy-action-card green">
           <div className="hoy-action-card-icon-wrapper">
-            <span className="hoy-action-card-icon">👥</span>
+            <IconLeads className="hoy-action-card-icon" width={24} height={24} />
           </div>
           <span className="hoy-action-card-count">{newLeads.length}</span>
-          <span className="hoy-action-card-label">{t('hoy.newLeads') || 'Nuevos prospectos'}</span>
+          <span className="hoy-action-card-label">Nuevos</span>
         </div>
         <div className="hoy-action-card blue">
           <div className="hoy-action-card-icon-wrapper">
-            <span className="hoy-action-card-icon">🚩</span>
+            <IconPipeline className="hoy-action-card-icon" width={24} height={24} />
           </div>
           <span className="hoy-action-card-count">{closingOpps.length}</span>
-          <span className="hoy-action-card-label">{t('hoy.statsClosing') || 'Cierres'}</span>
+          <span className="hoy-action-card-label">Por cerrar</span>
         </div>
       </div>
 
@@ -1313,7 +1351,7 @@ export function HoyPage() {
           <span className="hoy-kpi-label">{t('hoy.monthlyProduction') || 'Producción del mes'}</span>
           <span className="hoy-kpi-value">{formatCurrency(salesSummary.total)}</span>
           <div className="hoy-kpi-trend">
-            <div style={{ marginLeft: 'auto', opacity: 0.5 }}>📈</div>
+            <div style={{ marginLeft: 'auto', opacity: 0.5 }}><IconSales width={18} height={18} /></div>
           </div>
         </div>
         <div className="hoy-premium-kpi-card">
@@ -1326,56 +1364,48 @@ export function HoyPage() {
       </div>
 
       {/* ── Maintenance Traffic Light Widget ──────────────── */}
-      <div className="hoy-maintenance-widget">
-        <div
-          className={`hoy-traffic-card red ${filtroMantenimiento === 'rojo' ? 'active' : ''}`}
-          onClick={() => setFiltroMantenimiento(filtroMantenimiento === 'rojo' ? 'todos' : 'rojo')}
-        >
-          <span className="hoy-traffic-icon">🔴</span>
-          <div className="hoy-traffic-info">
-            <span className="hoy-traffic-count">{mantenimientoStats.rojo}</span>
-            <span className="hoy-traffic-label">Vencidos</span>
+      <section className="hoy-maintenance-section">
+        <div className="hoy-maintenance-heading">
+          <span>Mantenimiento de clientes</span>
+          <span className="hoy-maintenance-heading-sub">Filtros y cambios programados</span>
+        </div>
+        <div className="hoy-maintenance-widget">
+          <div
+            className={`hoy-traffic-card red ${filtroMantenimiento === 'rojo' ? 'active' : ''}`}
+            onClick={() => setFiltroMantenimiento(filtroMantenimiento === 'rojo' ? 'todos' : 'rojo')}
+          >
+            <span className="hoy-traffic-icon"><IconWrench width={18} height={18} /></span>
+            <div className="hoy-traffic-info">
+              <span className="hoy-traffic-count">{mantenimientoStats.rojo}</span>
+              <span className="hoy-traffic-label">Vencidos</span>
+            </div>
+          </div>
+          <div
+            className={`hoy-traffic-card yellow ${filtroMantenimiento === 'amarillo' ? 'active' : ''}`}
+            onClick={() => setFiltroMantenimiento(filtroMantenimiento === 'amarillo' ? 'todos' : 'amarillo')}
+          >
+            <span className="hoy-traffic-icon"><IconCalendarClock width={18} height={18} /></span>
+            <div className="hoy-traffic-info">
+              <span className="hoy-traffic-count">{mantenimientoStats.amarillo}</span>
+              <span className="hoy-traffic-label">Próximos</span>
+            </div>
           </div>
         </div>
-        <div
-          className={`hoy-traffic-card yellow ${filtroMantenimiento === 'amarillo' ? 'active' : ''}`}
-          onClick={() => setFiltroMantenimiento(filtroMantenimiento === 'amarillo' ? 'todos' : 'amarillo')}
-        >
-          <span className="hoy-traffic-icon">🟡</span>
-          <div className="hoy-traffic-info">
-            <span className="hoy-traffic-count">{mantenimientoStats.amarillo}</span>
-            <span className="hoy-traffic-label">Próximos</span>
-          </div>
-        </div>
-      </div>
 
-      {/* ── Filtros de agua atención card ─────────────────── */}
-      {filtrosAtencionCount > 0 && (
-        <button
-          type="button"
-          onClick={() => navigate('/telemercadeo/filtros')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.6rem',
-            padding: '0.6rem 1rem',
-            borderRadius: '0.5rem',
-            border: '1px solid rgba(59,130,246,0.35)',
-            background: 'rgba(59,130,246,0.08)',
-            color: '#3b82f6',
-            cursor: 'pointer',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            textAlign: 'left',
-          }}
-        >
-          <span style={{ fontSize: '1rem' }}>💧</span>
-          <span>
-            <strong>{filtrosAtencionCount}</strong> filtro{filtrosAtencionCount !== 1 ? 's' : ''} requieren atención
-          </span>
-          <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '0.75rem' }}>Ver →</span>
-        </button>
-      )}
+        {filtrosAtencionCount > 0 && (
+          <button
+            type="button"
+            className="hoy-maintenance-filters"
+            onClick={() => navigate('/telemercadeo/filtros')}
+          >
+            <IconDroplet width={16} height={16} />
+            <span>
+              <strong>{filtrosAtencionCount}</strong> filtro{filtrosAtencionCount !== 1 ? 's' : ''} requieren atención
+            </span>
+            <span className="hoy-maintenance-filters-action">Ver ›</span>
+          </button>
+        )}
+      </section>
 
       {error && <div className="form-error">{error}</div>}
 
@@ -1410,65 +1440,20 @@ export function HoyPage() {
         </div>
       )}
 
-      {/* ── Cumpleaños hoy ────────────────────────────────── */}
-      {!loading && birthdays.length > 0 && (
+      {/* ── Necesita tu atención ───────────────────────────── */}
+      {!loading && crmTasks.length > 0 && (
         <section className="seller-section">
           <div className="seller-section-header">
-            <h3>{t('hoy.birthdays')}</h3>
-            <span className="seller-count">{birthdays.length}</span>
+            <h3>Tareas de seguimiento</h3>
+            <span className={`seller-count ${crmTasks.some((task) => task.fecha_vencimiento < todayIso) ? 'alert' : ''}`.trim()}>
+              {crmTasks.length}
+            </span>
           </div>
-          {birthdays.map((c) => {
-            const name = getClientName(c)
-            return (
-              <div key={c.id} className="seller-card seller-lead birthday">
-                <div className="seller-lead-main">
-                  <div>
-                    <div className="seller-lead-name">{name}</div>
-                    <div className="seller-lead-meta">
-                      <span className="seller-pill variant-info">{t('hoy.birthdayToday')}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="seller-lead-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
-                    {t('hoy.call')}
-                  </Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>
-                    {t('hoy.whatsapp')}
-                  </Button>
-                </div>
-              </div>
-            )
-          })}
+          <div className="seller-section-sub">Asignadas para hoy o vencidas</div>
+          <div className="seller-opps">
+            {crmTasks.map(renderCrmTaskCard)}
+          </div>
         </section>
-      )}
-
-      {/* ── Cobranzas List Item ──────────────────────────── */}
-      {!loading && cobranzas.length > 0 && (
-        <div className="hoy-list-item" onClick={() => setCobranzasOpen(true)} style={{ marginTop: '16px' }}>
-          <div className="hoy-list-item-icon orange">💸</div>
-          <div className="hoy-item-content">
-            <div className="hoy-item-title">{t('hoy.cobranzas')}</div>
-            <div className="hoy-item-subtitle">
-              {cobranzas.length} {t('hoy.statsCobranzas')} · {formatCurrency(totalMoroso || 0)}
-            </div>
-          </div>
-          <div className="hoy-item-badge pink">{cobranzas.length}</div>
-          <div className="hoy-item-chevron">›</div>
-        </div>
-      )}
-
-      {/* ── Reactivación List Item ────────────────────────── */}
-      {!loading && reactivacion.length > 0 && (
-        <div className="hoy-list-item" onClick={() => setReactivacionOpen(true)}>
-          <div className="hoy-list-item-icon blue">🔁</div>
-          <div className="hoy-item-content">
-            <div className="hoy-item-title">{t('hoy.reactivacion') || 'Sin pedido reciente'}</div>
-            <div className="hoy-item-subtitle">{t('hoy.reactivacionSub') || 'Clientes sin pedido en 90+ días'}</div>
-          </div>
-          <div className="hoy-item-badge">{reactivacion.length}</div>
-          <div className="hoy-item-chevron">›</div>
-        </div>
       )}
 
       {/* ── Mi Agenda de Hoy (Unified) ────────────────────── */}
@@ -1480,7 +1465,11 @@ export function HoyPage() {
           </div>
           <div className="hoy-agenda-grid">
             {agenda.map((item) => {
-              const typeIcon = item.tipo === 'servicio' ? '🔧' : item.tipo === 'cita' ? '📅' : '✨'
+              const typeIcon = item.tipo === 'servicio'
+                ? <IconWrench width={15} height={15} />
+                : item.tipo === 'cita'
+                  ? <IconCalendarCheck width={15} height={15} />
+                  : <IconSales width={15} height={15} />
               const typeLabel = item.tipo === 'servicio' ? 'Servicio Técnico' : item.tipo === 'cita' ? 'Cita' : 'Demostración'
               const colorClass = item.tipo === 'servicio' ? 'blue' : item.tipo === 'cita' ? 'purple' : 'green'
               const routeMsg = `Hola ${item.cliente_nombre}, soy ${greetingName}, voy en camino para tu ${item.subtipo || typeLabel} de hoy.`
@@ -1499,7 +1488,7 @@ export function HoyPage() {
                     <div className="item-sub">{item.subtipo}</div>
                     {item.direccion && (
                       <div className="item-address" style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '2px' }}>
-                        📍 {item.direccion}{item.ciudad ? `, ${item.ciudad}` : ''}
+                        <IconNavigation width={14} height={14} /> {item.direccion}{item.ciudad ? `, ${item.ciudad}` : ''}
                       </div>
                     )}
                     {item.notas && <div className="item-notes">{item.notas}</div>}
@@ -1510,14 +1499,14 @@ export function HoyPage() {
                       onClick={() => handleWhatsAppQuick(item.cliente_telefono, routeMsg)}
                       title="Confirmar Ruta"
                     >
-                      💬 Ruta
+                      <IconWhatsapp width={16} height={16} /> Ruta
                     </button>
                     <button
                       className="action-btn maps"
                       onClick={() => handleMaps(item)}
                       title="Ver en Mapas"
                     >
-                      📍 Mapas
+                      <IconNavigation width={16} height={16} /> Mapas
                     </button>
                     {item.tipo === 'servicio' && (
                       <button
@@ -1526,7 +1515,7 @@ export function HoyPage() {
                         onClick={() => handleOpenEditAgenda(item)}
                         title="Editar cita"
                       >
-                        ✏️ Editar
+                        <IconCalendarClock width={16} height={16} /> Editar
                       </button>
                     )}
                     {item.tipo === 'cita' && (
@@ -1536,7 +1525,7 @@ export function HoyPage() {
                         onClick={() => navigate('/citas')}
                         title="Ver en Citas"
                       >
-                        📅 Ver en Citas
+                        <IconCalendarCheck width={16} height={16} /> Ver en Citas
                       </button>
                     )}
                   </div>
@@ -1554,22 +1543,7 @@ export function HoyPage() {
             <span className="hoy-view-all">{t('common.viewAll') || 'Ver Todas'} ›</span>
           </div>
           <div className="hoy-list-container">
-            {todayLeads.map((lead) => renderLeadListItem(lead, '👤', 'blue'))}
-          </div>
-        </section>
-      )}
-
-      {!loading && crmTasks.length > 0 && (
-        <section className="seller-section">
-          <div className="seller-section-header">
-            <h3>Tareas de seguimiento</h3>
-            <span className={`seller-count ${crmTasks.some((task) => task.fecha_vencimiento < todayIso) ? 'alert' : ''}`.trim()}>
-              {crmTasks.length}
-            </span>
-          </div>
-          <div className="seller-section-sub">Asignadas para hoy o vencidas</div>
-          <div className="seller-opps">
-            {crmTasks.map(renderCrmTaskCard)}
+            {todayLeads.map((lead) => renderLeadListItem(lead, <IconLeads width={18} height={18} />, 'blue'))}
           </div>
         </section>
       )}
@@ -1615,6 +1589,67 @@ export function HoyPage() {
         </section>
       )}
 
+      {/* ── Cumpleaños hoy ────────────────────────────────── */}
+      {!loading && birthdays.length > 0 && (
+        <section className="seller-section">
+          <div className="seller-section-header">
+            <h3>{t('hoy.birthdays')}</h3>
+            <span className="seller-count">{birthdays.length}</span>
+          </div>
+          {birthdays.map((c) => {
+            const name = getClientName(c)
+            return (
+              <div key={c.id} className="seller-card seller-lead birthday">
+                <div className="seller-lead-main">
+                  <div>
+                    <div className="seller-lead-name">{name}</div>
+                    <div className="seller-lead-meta">
+                      <span className="seller-pill variant-info">{t('hoy.birthdayToday')}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="seller-lead-actions">
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>
+                    <IconPhone width={16} height={16} /> {t('hoy.call')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>
+                    <IconWhatsapp width={16} height={16} /> {t('hoy.whatsapp')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {/* ── Cobranzas List Item ──────────────────────────── */}
+      {!loading && cobranzas.length > 0 && (
+        <div className="hoy-list-item" onClick={() => setCobranzasOpen(true)} style={{ marginTop: '16px' }}>
+          <div className="hoy-list-item-icon orange"><IconWallet width={20} height={20} /></div>
+          <div className="hoy-item-content">
+            <div className="hoy-item-title">{t('hoy.cobranzas')}</div>
+            <div className="hoy-item-subtitle">
+              {cobranzas.length} {t('hoy.statsCobranzas')} · {formatCurrency(totalMoroso || 0)}
+            </div>
+          </div>
+          <div className="hoy-item-badge pink">{cobranzas.length}</div>
+          <div className="hoy-item-chevron">›</div>
+        </div>
+      )}
+
+      {/* ── Reactivación List Item ────────────────────────── */}
+      {!loading && reactivacion.length > 0 && (
+        <div className="hoy-list-item" onClick={() => setReactivacionOpen(true)}>
+          <div className="hoy-list-item-icon blue"><IconRestore width={20} height={20} /></div>
+          <div className="hoy-item-content">
+            <div className="hoy-item-title">{t('hoy.reactivacion') || 'Sin pedido reciente'}</div>
+            <div className="hoy-item-subtitle">{t('hoy.reactivacionSub') || 'Clientes sin pedido en 90+ días'}</div>
+          </div>
+          <div className="hoy-item-badge">{reactivacion.length}</div>
+          <div className="hoy-item-chevron">›</div>
+        </div>
+      )}
+
       {/* ── Maintenance List filtered by Traffic Light ───── */}
       {!loading && mantenimientos.length > 0 && (filtroMantenimiento !== 'todos' || mantenimientos.length > 0) && (
         <section className="hoy-list-section maintenance-section">
@@ -1655,13 +1690,13 @@ export function HoyPage() {
                         className="action-btn wa"
                         onClick={() => handleWhatsAppQuick(cliente?.telefono ?? null, alertMsg)}
                       >
-                        💬 Contactar
+                        <IconWhatsapp width={16} height={16} /> Contactar
                       </button>
                       <button
                         className="action-btn maps"
                         onClick={() => handleMaps(cliente ?? {})}
                       >
-                        📍 Ubicar
+                        <IconNavigation width={16} height={16} /> Ubicar
                       </button>
                     </div>
                   </div>
@@ -1678,7 +1713,7 @@ export function HoyPage() {
             <h3>{t('hoy.newLeads')}</h3>
           </div>
           <div className="hoy-list-container">
-            {newLeads.map((lead) => renderLeadListItem(lead, '✨', 'green'))}
+            {newLeads.map((lead) => renderLeadListItem(lead, <IconLeads width={18} height={18} />, 'green'))}
           </div>
         </section>
       )}
@@ -1695,7 +1730,7 @@ export function HoyPage() {
                 className="hoy-link-btn"
                 onClick={() => navigate('/leads?view=sin-gestionar')}
               >
-                Ver todos ›
+                Ver todos <span aria-hidden="true">›</span>
               </button>
             </div>
           </div>
@@ -1703,7 +1738,7 @@ export function HoyPage() {
             Prospectos con más de 7 días sin próxima acción
           </div>
           <div className="hoy-list-container">
-            {unmanagedLeads.map((lead) => renderLeadListItem(lead, '⚠️', 'orange'))}
+            {unmanagedLeads.map((lead) => renderLeadListItem(lead, <IconHelpCircle width={18} height={18} />, 'orange'))}
           </div>
         </section>
       )}
@@ -1739,8 +1774,8 @@ export function HoyPage() {
                   </div>
                 </div>
                 <div className="hoy-modal-row-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>💬</Button>
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}><IconPhone width={16} height={16} /></Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}><IconWhatsapp width={16} height={16} /></Button>
                 </div>
               </div>
             )
@@ -1774,13 +1809,13 @@ export function HoyPage() {
                   </div>
                 </div>
                 <div className="hoy-modal-row-actions">
-                  <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}>📞</Button>
+                  <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}><IconPhone width={16} height={16} /></Button>
                   <Button
                     variant="ghost"
                     onClick={() => handleWhatsappCliente({ id: cliente?.id ?? '', nombre: name, telefono: cliente?.telefono ?? null })}
                     disabled={!cliente?.id}
                   >
-                    💬
+                    <IconWhatsapp width={16} height={16} />
                   </Button>
                 </div>
               </div>
@@ -1816,8 +1851,8 @@ export function HoyPage() {
                   </div>
                 </div>
                 <div className="hoy-modal-row-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}>📞</Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}>💬</Button>
+                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}><IconPhone width={16} height={16} /></Button>
+                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}><IconWhatsapp width={16} height={16} /></Button>
                 </div>
               </div>
             )
@@ -1846,7 +1881,7 @@ export function HoyPage() {
                 </p>
               </div>
               <button type="button" className="icon-button" onClick={closeActions} aria-label="Close">
-                x
+                <IconX width={19} height={19} />
               </button>
             </header>
             <div className="hoy-actions-body">
@@ -1857,7 +1892,7 @@ export function HoyPage() {
                   closeActions()
                 }}
               >
-                📞 {t('hoy.call')}
+                <IconPhone width={17} height={17} /> {t('hoy.call')}
               </Button>
               <Button
                 variant="ghost"
@@ -1866,7 +1901,7 @@ export function HoyPage() {
                   closeActions()
                 }}
               >
-                💬 {t('hoy.whatsapp')}
+                <IconWhatsapp width={17} height={17} /> {t('hoy.whatsapp')}
               </Button>
               <Button
                 variant="ghost"
@@ -1875,10 +1910,10 @@ export function HoyPage() {
                   closeActions()
                 }}
               >
-                🗓️ {t('hoy.reschedule')}
+                <IconCalendarClock width={17} height={17} /> {t('hoy.reschedule')}
               </Button>
               <Button variant="primary" onClick={() => handleCheckIn(actionsLead)} disabled={checkinSaving}>
-                📍 {checkinSaving ? t('common.saving') : 'Check-in'}
+                <IconNavigation width={17} height={17} /> {checkinSaving ? t('common.saving') : 'Check-in'}
               </Button>
             </div>
           </div>
@@ -1902,7 +1937,7 @@ export function HoyPage() {
       >
         <form id="hoy-edit-agenda-form" className="form-grid" onSubmit={handleSubmitEditAgenda}>
           <label className="form-field">
-            <span>📅 Fecha</span>
+            <span><IconCalendar width={15} height={15} /> Fecha</span>
             <input
               type="date"
               value={editAgendaValues.fecha}
@@ -1910,7 +1945,7 @@ export function HoyPage() {
             />
           </label>
           <label className="form-field">
-            <span>⏰ Hora</span>
+            <span><IconClock width={15} height={15} /> Hora</span>
             <input
               type="time"
               value={normalizeTimeValue(editAgendaValues.hora)}
