@@ -6712,7 +6712,7 @@ body.theme-light .inbox-bubble.outbound {
 }
 
 /* Mi Día: mantenimiento de clientes */
-.hoy-maintenance-section {
+.hoy-page .hoy-maintenance-section {
   margin-top: 14px;
   padding: 14px 16px;
   background: var(--card-bg);
@@ -6720,7 +6720,7 @@ body.theme-light .inbox-bubble.outbound {
   border-radius: 16px;
 }
 
-.hoy-maintenance-heading {
+.hoy-page .hoy-maintenance-heading {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -6730,19 +6730,19 @@ body.theme-light .inbox-bubble.outbound {
   font-weight: 700;
 }
 
-.hoy-maintenance-heading-sub {
+.hoy-page .hoy-maintenance-heading-sub {
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 500;
 }
 
-.hoy-maintenance-widget {
+.hoy-page .hoy-maintenance-widget {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.hoy-traffic-card {
+.hoy-page .hoy-traffic-card {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -6755,41 +6755,41 @@ body.theme-light .inbox-bubble.outbound {
   transition: transform 0.12s, border-color 0.12s, background 0.12s;
 }
 
-.hoy-traffic-card:hover {
+.hoy-page .hoy-traffic-card:hover {
   border-color: var(--accent);
 }
 
-.hoy-traffic-card:active {
+.hoy-page .hoy-traffic-card:active {
   transform: scale(0.98);
 }
 
-.hoy-traffic-card.active {
+.hoy-page .hoy-traffic-card.active {
   border-color: var(--accent);
 }
 
-.hoy-traffic-info {
+.hoy-page .hoy-traffic-info {
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
 
-.hoy-traffic-count {
+.hoy-page .hoy-traffic-count {
   font-size: 1.05rem;
   font-weight: 800;
 }
 
-.hoy-traffic-label {
+.hoy-page .hoy-traffic-label {
   color: var(--text-muted);
   font-size: 0.78rem;
   font-weight: 600;
 }
 
-.hoy-traffic-icon {
+.hoy-page .hoy-traffic-icon {
   flex-shrink: 0;
   color: var(--accent);
 }
 
-.hoy-maintenance-filters {
+.hoy-page .hoy-maintenance-filters {
   width: 100%;
   display: flex;
   align-items: center;
@@ -6808,12 +6808,12 @@ body.theme-light .inbox-bubble.outbound {
   transition: background 0.12s, border-color 0.12s;
 }
 
-.hoy-maintenance-filters:hover {
+.hoy-page .hoy-maintenance-filters:hover {
   background: rgba(59, 130, 246, 0.13);
   border-color: #3b82f6;
 }
 
-.hoy-maintenance-filters-action {
+.hoy-page .hoy-maintenance-filters-action {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -6822,7 +6822,7 @@ body.theme-light .inbox-bubble.outbound {
 }
 
 /* Mi Día: seguimientos vencidos */
-.hoy-task-status-icon {
+.hoy-page .hoy-task-status-icon {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
@@ -6834,14 +6834,14 @@ body.theme-light .inbox-bubble.outbound {
   color: #ef4444;
 }
 
-.hoy-task-due {
+.hoy-page .hoy-task-due {
   margin-top: 4px;
   font-size: 0.72rem;
   font-weight: 700;
   color: #ef4444;
 }
 
-.hoy-task-chevron-icon {
+.hoy-page .hoy-task-chevron-icon {
   margin-left: auto;
   flex-shrink: 0;
   color: var(--text-muted);
@@ -6849,53 +6849,53 @@ body.theme-light .inbox-bubble.outbound {
   font-size: 1.2rem;
 }
 
-.hoy-task-item {
+.hoy-page .hoy-task-item {
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s, transform 0.12s;
 }
 
-.hoy-task-item:hover {
+.hoy-page .hoy-task-item:hover {
   border-color: var(--accent);
 }
 
-.hoy-task-item:active {
+.hoy-page .hoy-task-item:active {
   transform: scale(0.995);
 }
 
-.seller-lead-actions .btn {
+.hoy-page .seller-lead-actions .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
 }
 
-.seller-task-location {
+.hoy-page .seller-task-location {
   display: flex;
   align-items: center;
   gap: 5px;
   margin-top: 6px;
 }
 
-.seller-task-location svg {
+.hoy-page .seller-task-location svg {
   flex: 0 0 auto;
 }
 
-.hoy-agenda-body .item-type,
-.hoy-agenda-body .item-address {
+.hoy-page .hoy-agenda-body .item-type,
+.hoy-page .hoy-agenda-body .item-address {
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
-.hoy-agenda-body .item-type svg,
-.hoy-agenda-body .item-address svg {
+.hoy-page .hoy-agenda-body .item-type svg,
+.hoy-page .hoy-agenda-body .item-address svg {
   flex: 0 0 auto;
 }
 
-.hoy-agenda-actions .action-btn,
-.m-actions .action-btn,
-.hoy-actions-body .btn,
-.seller-home .form-field > span {
+.hoy-page .hoy-agenda-actions .action-btn,
+.hoy-page .m-actions .action-btn,
+.hoy-page .hoy-actions-body .btn,
+.hoy-page .form-field > span {
   display: inline-flex;
   align-items: center;
   gap: 6px;

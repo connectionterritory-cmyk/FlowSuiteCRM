@@ -187,6 +187,16 @@ export function IconHelpCircle(props: IconProps) {
   )
 }
 
+export function IconAlertCircle(props: IconProps) {
+  return (
+    <svg {...baseProps} viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="12" r="9.2" />
+      <path d="M12 7.5v6" />
+      <circle cx="12" cy="17" r="0.2" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function IconHome(props: IconProps) {
   return (
     <svg {...baseProps} viewBox="0 0 24 24" {...props}>

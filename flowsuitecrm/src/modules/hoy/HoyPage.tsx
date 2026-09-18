@@ -8,18 +8,20 @@ import { useToast } from '../../components/useToast'
 import { useAuth } from '../../auth/useAuth'
 import { useMessaging } from '../../hooks/useMessaging'
 import { useUsers } from '../../data/useUsers'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { buildMapsNavUrl } from '../../lib/addressUtils'
 import { getContactTable } from '../../lib/contactRefs'
 import { normalizeTimeValue } from '../../lib/timeUtils'
+import { countFollowUpActions, excludeContactsCoveredByTasks, TASK_TYPE_LABELS } from './followUpCounts'
 import {
+  IconAlertCircle,
   IconCalendar,
   IconCalendarCheck,
   IconCalendarClock,
   IconCheck,
   IconClock,
   IconDroplet,
-  IconHelpCircle,
   IconLeads,
   IconNavigation,
   IconPhone,
@@ -175,16 +177,6 @@ type HoyTask = CrmTaskRow & {
   codigo_postal: string | null
 }
 
-const TASK_TYPE_LABELS: Record<string, string> = {
-  llamada: 'Llamada',
-  visita: 'Visita',
-  enviar_material: 'Enviar material',
-  reagendar_cita: 'Reagendar cita',
-  seguimiento: 'Seguimiento',
-  cobro: 'Cobro',
-  otro: 'Otro',
-}
-
 const TASK_ACTIVITY_TYPES: Record<string, 'llamada' | 'visita' | 'seguimiento' | 'envio_material'> = {
   llamada: 'llamada',
   visita: 'visita',
@@ -212,6 +204,7 @@ export function HoyPage() {
   const { showToast } = useToast()
   const { openWhatsapp, ModalRenderer } = useMessaging()
   const { currentUser, usersById } = useUsers()
+  const { isMobile } = useBreakpoint()
   const configured = isSupabaseConfigured
   const isMasterAdmin = useMemo(() => session?.user?.email === 'royalflorida@gmail.com', [session?.user?.email])
   const isAdmin = useMemo(() => currentUser?.rol === 'admin' || isMasterAdmin, [currentUser?.rol, isMasterAdmin])
@@ -280,6 +273,19 @@ export function HoyPage() {
     d.setDate(d.getDate() + 15)
     return d.toLocaleDateString('en-CA')
   }, [today])
+
+  const followUpCounts = useMemo(
+    () => countFollowUpActions([...overdueLeads, ...todayLeads], crmTasks, todayIso),
+    [overdueLeads, todayLeads, crmTasks, todayIso]
+  )
+
+  // Un lead cuya next_action ya está representada por una tarjeta en "Tareas de
+  // seguimiento" no se repite aquí (mismo criterio que followUpCounts, para no
+  // mostrar la misma acción dos veces sin ocultar leads sin tarea asociada).
+  const pendingLeadsWithoutTask = useMemo(
+    () => excludeContactsCoveredByTasks(overdueLeads, crmTasks),
+    [overdueLeads, crmTasks]
+  )
 
   const greetingName = useMemo(
     () => currentUser?.nombre?.split(' ')[0] || session?.user.email?.split('@')[0] || '',
@@ -1212,7 +1218,7 @@ export function HoyPage() {
     return (
       <div key={lead.id} className={`hoy-task-item ${urgent ? 'alert' : ''}`.trim()} onClick={() => openActions(lead)}>
         <div className="hoy-task-status-icon">
-          <IconHelpCircle width={18} height={18} />
+          <IconAlertCircle width={18} height={18} />
         </div>
         <div className="hoy-item-content">
           <div className="hoy-item-title">{getLeadName(lead)}</div>
@@ -1289,8 +1295,35 @@ export function HoyPage() {
       maximumFractionDigits: 0,
     }).format(value)
 
+  // Se renderiza una sola vez por breakpoint (nunca ambas a la vez), colocada en el
+  // DOM en distinta posición según isMobile. Así el orden visual y el de foco/lector
+  // de pantalla coinciden en ambos casos, sin duplicar el contenido interactivo.
+  const unmanagedSection = !loading && unmanagedLeads.length > 0 && (
+    <section className="hoy-list-section">
+      <div className="hoy-list-header">
+        <h3>Sin gestionar</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="seller-count">{unmanagedLeadsCount}</span>
+          <button
+            type="button"
+            className="hoy-link-btn"
+            onClick={() => navigate('/leads?view=sin-gestionar')}
+          >
+            Ver todos <span aria-hidden="true">›</span>
+          </button>
+        </div>
+      </div>
+      <div className="seller-section-sub">
+        Prospectos con más de 7 días sin próxima acción
+      </div>
+      <div className="hoy-list-container">
+        {unmanagedLeads.map((lead) => renderLeadListItem(lead, <IconAlertCircle width={18} height={18} />, 'orange'))}
+      </div>
+    </section>
+  )
+
   return (
-    <div className="page-stack seller-home">
+    <div className="page-stack seller-home hoy-page">
       {!configured && (
         <EmptyState
           title={t('dashboard.missingConfigTitle')}
@@ -1313,35 +1346,35 @@ export function HoyPage() {
       <div className="hoy-hero-grid">
         <div className="hoy-action-card red">
           <div className="hoy-action-card-icon-wrapper">
-            <IconHelpCircle className="hoy-action-card-icon" width={24} height={24} />
+            <IconAlertCircle className="hoy-action-card-icon" width={24} height={24} />
           </div>
           <span className="hoy-action-card-count">
-            {overdueLeads.length + crmTasks.filter((task) => task.fecha_vencimiento < todayIso).length}
+            {followUpCounts.overdue}
           </span>
-          <span className="hoy-action-card-label">Vencidos</span>
+          <span className="hoy-action-card-label">{t('hoy.statsOverdueLabel')}</span>
         </div>
         <div className="hoy-action-card orange">
           <div className="hoy-action-card-icon-wrapper">
             <IconCalendarCheck className="hoy-action-card-icon" width={24} height={24} />
           </div>
           <span className="hoy-action-card-count">
-            {todayLeads.length + crmTasks.filter((task) => task.fecha_vencimiento === todayIso).length}
+            {followUpCounts.today}
           </span>
-          <span className="hoy-action-card-label">Hoy</span>
+          <span className="hoy-action-card-label">{t('hoy.statsTodayLabel')}</span>
         </div>
         <div className="hoy-action-card green">
           <div className="hoy-action-card-icon-wrapper">
             <IconLeads className="hoy-action-card-icon" width={24} height={24} />
           </div>
           <span className="hoy-action-card-count">{newLeads.length}</span>
-          <span className="hoy-action-card-label">Nuevos</span>
+          <span className="hoy-action-card-label">{t('hoy.statsNewLabel')}</span>
         </div>
         <div className="hoy-action-card blue">
           <div className="hoy-action-card-icon-wrapper">
             <IconPipeline className="hoy-action-card-icon" width={24} height={24} />
           </div>
           <span className="hoy-action-card-count">{closingOpps.length}</span>
-          <span className="hoy-action-card-label">Por cerrar</span>
+          <span className="hoy-action-card-label">{t('hoy.statsClosingLabel')}</span>
         </div>
       </div>
 
@@ -1548,14 +1581,17 @@ export function HoyPage() {
         </section>
       )}
 
+      {/* ── Unmanaged leads (solo móvil: antes de Tareas Pendientes) ─ */}
+      {isMobile && unmanagedSection}
+
       {/* ── Tareas Pendientes ─────────────────────────────── */}
-      {!loading && overdueLeads.length > 0 && (
+      {!loading && pendingLeadsWithoutTask.length > 0 && (
         <section className="hoy-list-section">
           <div className="hoy-list-header">
             <h3>{t('hoy.pendingTasks') || 'Tareas Pendientes'}</h3>
           </div>
           <div className="hoy-list-container">
-            {overdueLeads.map(renderTaskItem)}
+            {pendingLeadsWithoutTask.map(renderTaskItem)}
           </div>
         </section>
       )}
@@ -1718,30 +1754,8 @@ export function HoyPage() {
         </section>
       )}
 
-      {/* ── Unmanaged leads ───────────────────────────────── */}
-      {!loading && unmanagedLeads.length > 0 && (
-        <section className="hoy-list-section">
-          <div className="hoy-list-header">
-            <h3>Sin gestionar</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span className="seller-count">{unmanagedLeadsCount}</span>
-              <button
-                type="button"
-                className="hoy-link-btn"
-                onClick={() => navigate('/leads?view=sin-gestionar')}
-              >
-                Ver todos <span aria-hidden="true">›</span>
-              </button>
-            </div>
-          </div>
-          <div className="seller-section-sub">
-            Prospectos con más de 7 días sin próxima acción
-          </div>
-          <div className="hoy-list-container">
-            {unmanagedLeads.map((lead) => renderLeadListItem(lead, <IconHelpCircle width={18} height={18} />, 'orange'))}
-          </div>
-        </section>
-      )}
+      {/* ── Unmanaged leads (escritorio: posición original) ─ */}
+      {!isMobile && unmanagedSection}
 
 
       {/* ── Cobranzas modal ───────────────────────────────── */}
@@ -1774,8 +1788,8 @@ export function HoyPage() {
                   </div>
                 </div>
                 <div className="hoy-modal-row-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}><IconPhone width={16} height={16} /></Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}><IconWhatsapp width={16} height={16} /></Button>
+                  <Button variant="ghost" aria-label={t('hoy.callContact', { name })} onClick={() => handleCall(c.telefono)}><IconPhone aria-hidden="true" width={16} height={16} /></Button>
+                  <Button variant="ghost" aria-label={t('hoy.whatsappContact', { name })} onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}><IconWhatsapp aria-hidden="true" width={16} height={16} /></Button>
                 </div>
               </div>
             )
@@ -1809,13 +1823,14 @@ export function HoyPage() {
                   </div>
                 </div>
                 <div className="hoy-modal-row-actions">
-                  <Button variant="ghost" onClick={() => handleCall(cliente?.telefono ?? null)}><IconPhone width={16} height={16} /></Button>
+                  <Button variant="ghost" aria-label={t('hoy.callContact', { name })} onClick={() => handleCall(cliente?.telefono ?? null)}><IconPhone aria-hidden="true" width={16} height={16} /></Button>
                   <Button
                     variant="ghost"
+                    aria-label={t('hoy.whatsappContact', { name })}
                     onClick={() => handleWhatsappCliente({ id: cliente?.id ?? '', nombre: name, telefono: cliente?.telefono ?? null })}
                     disabled={!cliente?.id}
                   >
-                    <IconWhatsapp width={16} height={16} />
+                    <IconWhatsapp aria-hidden="true" width={16} height={16} />
                   </Button>
                 </div>
               </div>
@@ -1851,8 +1866,8 @@ export function HoyPage() {
                   </div>
                 </div>
                 <div className="hoy-modal-row-actions">
-                  <Button variant="ghost" onClick={() => handleCall(c.telefono)}><IconPhone width={16} height={16} /></Button>
-                  <Button variant="ghost" onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}><IconWhatsapp width={16} height={16} /></Button>
+                  <Button variant="ghost" aria-label={t('hoy.callContact', { name })} onClick={() => handleCall(c.telefono)}><IconPhone aria-hidden="true" width={16} height={16} /></Button>
+                  <Button variant="ghost" aria-label={t('hoy.whatsappContact', { name })} onClick={() => handleWhatsappCliente({ id: c.id, nombre: name, telefono: c.telefono })}><IconWhatsapp aria-hidden="true" width={16} height={16} /></Button>
                 </div>
               </div>
             )
