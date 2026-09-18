@@ -52,7 +52,7 @@ export function MessagePreview() {
   }
 
   return (
-    <div style={previewContainerStyle}>
+    <div className="message-preview" style={previewContainerStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: 'var(--text-muted)' }}>
         <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', background: 'var(--color-surface-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <SendIcon style={{ width: 14, height: 14 }} />
@@ -90,7 +90,7 @@ export function MessagePreview() {
             {/* Subject if Email */}
             {activeChannel === 'email' && subject && (
               <div style={{ marginBottom: '8px', fontWeight: 700, fontSize: '0.75rem', borderBottom: '1px solid rgba(0,0,0,0.1)', paddingBottom: '4px' }}>
-                Asunto: {subject}
+                Asunto: {resolveMessage(subject)}
               </div>
             )}
 

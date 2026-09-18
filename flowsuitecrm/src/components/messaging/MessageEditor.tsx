@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useLayoutEffect, useRef } from 'react'
 import { useMessaging } from './MessagingProvider'
 import { InsertFieldDropdown } from '../InsertFieldDropdown'
 import { AttachmentManager } from './AttachmentManager'
@@ -26,6 +26,32 @@ export function MessageEditor() {
   } = useMessaging()
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Expand the mobile draft so the page scroll exposes the complete message.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const resize = () => {
+      textarea.style.height = ''
+      if (window.matchMedia('(max-width: 767px)').matches && textarea.clientWidth) {
+        textarea.style.height = `${textarea.scrollHeight}px`
+      }
+    }
+    let previousWidth = -1
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth !== previousWidth) {
+        previousWidth = textarea.clientWidth
+        resize()
+      }
+    })
+    resize()
+    observer.observe(textarea)
+    window.addEventListener('resize', resize)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', resize)
+    }
+  }, [message])
 
   const insertText = (text: string) => {
     if (!textareaRef.current) {
@@ -113,11 +139,12 @@ export function MessageEditor() {
   }
 
   return (
-    <div style={editorContainerStyle}>
+    <div className="message-editor" style={editorContainerStyle}>
       {activeChannel === 'email' && (
         <>
           {/* Selector de remitente */}
           <select
+            aria-label="Remitente"
             value={emailSender.id}
             onChange={(e) => {
               const found = EMAIL_SENDERS.find(s => s.id === e.target.value)
@@ -140,6 +167,7 @@ export function MessageEditor() {
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
+            aria-label="Asunto del correo"
             placeholder="Asunto del correo..."
             style={inputStyle}
           />
@@ -157,7 +185,7 @@ export function MessageEditor() {
         boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
       }}>
         {/* Toolbar */}
-        <div style={toolbarStyle}>
+        <div className="message-editor-toolbar" style={toolbarStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button type="button" onClick={() => applyFormat('bold')} style={toolbarButtonStyle} title="Negrita">
               <BoldIcon style={{ width: 16, height: 16 }} />
@@ -175,6 +203,7 @@ export function MessageEditor() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--color-input)', padding: '4px 8px', borderRadius: '8px' }}>
             <ClockIcon style={{ width: 14, height: 14, color: 'var(--text-muted)' }} />
             <input
+              aria-label="Programar envío"
               type="datetime-local"
               value={scheduledFor}
               onChange={(e) => setScheduledFor(e.target.value)}
@@ -185,6 +214,7 @@ export function MessageEditor() {
 
         {/* Textarea */}
         <textarea
+          aria-label="Contenido del mensaje"
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}

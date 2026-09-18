@@ -8,7 +8,7 @@ import {
   PlusIcon
 } from '../icons'
 
-export function TemplatePanel() {
+export function TemplatePanel({ onSelect }: { onSelect?: () => void }) {
   const { 
     systemTemplates, 
     cloudTemplates, 
@@ -55,6 +55,7 @@ export function TemplatePanel() {
   const handleSelect = (t: UnifiedTemplate) => {
     setMessage(t.message)
     if (t.subject) setSubject(t.subject)
+    onSelect?.()
   }
 
   const handleSave = async () => {
@@ -96,7 +97,7 @@ export function TemplatePanel() {
   })
 
   return (
-    <div style={panelStyle}>
+    <div className="message-template-panel" style={panelStyle}>
       {/* Tabs */}
       <div style={tabContainerStyle}>
         <button
@@ -150,6 +151,15 @@ export function TemplatePanel() {
           filteredTemplates.map((t) => (
             <div 
               key={t.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Usar plantilla: ${t.label}`}
+              onKeyDown={(event) => {
+                if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault()
+                  handleSelect(t)
+                }
+              }}
               onClick={() => handleSelect(t)}
               style={{
                 padding: '0.75rem',
@@ -174,6 +184,7 @@ export function TemplatePanel() {
                 </span>
                 {t.source === 'cloud' && (
                   <button 
+                    aria-label={`Eliminar plantilla: ${t.label}`}
                     onClick={(e) => { e.stopPropagation(); deleteTemplate(t.id); }}
                     style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
                   >
