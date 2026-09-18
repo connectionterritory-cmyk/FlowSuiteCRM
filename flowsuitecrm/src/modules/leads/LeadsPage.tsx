@@ -1,5 +1,6 @@
 import { type ChangeEvent, type CSSProperties, type FormEvent, type ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableRow } from '../../components/DataTable'
 import { Button } from '../../components/Button'
@@ -105,6 +106,101 @@ type ReferidorOption = {
   telefono: string | null
 }
 
+// Alinea con HoyPage.tsx: mismo umbral de fecha para "Sin gestionar" (nuevo, sin próxima acción,
+// creado antes de la medianoche local de hace 7 días). Se construye la medianoche LOCAL y se
+// convierte a un instante absoluto vía toISOString() (con "Z"): un string sin huso horario tipo
+// "2026-01-01T00:00:00" se interpretaría como UTC en la base de datos, no como medianoche local,
+// corriendo el corte varias horas y moviendo registros cercanos al límite al grupo equivocado.
+function getUnmanagedCutoffIso(): string {
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  return new Date(
+    sevenDaysAgo.getFullYear(),
+    sevenDaysAgo.getMonth(),
+    sevenDaysAgo.getDate(),
+    0, 0, 0, 0,
+  ).toISOString()
+}
+
+// PostgREST puede limitar las filas por respuesta (el tope real del proyecto puede ser menor a
+// 1000); usamos un tamaño de página conservador y nos apoyamos en el conteo exacto ({ count:
+// 'exact' } en el select) para saber cuándo detenernos, en vez de asumir cuántas filas trae cada
+// página.
+const LEADS_PAGE_SIZE = 500
+
+async function fetchAllLeadRows<T>(
+  buildQuery: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>,
+): Promise<{ rows: T[]; error: { message: string } | null }> {
+  const rows: T[] = []
+  let from = 0
+  let total: number | null = null
+
+  for (;;) {
+    const { data, error, count } = await buildQuery(from, from + LEADS_PAGE_SIZE - 1)
+    if (error) return { rows, error }
+    if (typeof count === 'number') total = count
+
+    const page = (data as T[] | null) ?? []
+    // Sin filas nuevas no hay avance posible: cortar aquí evita un bucle infinito
+    // si el conteo reportado no coincidiera con lo realmente devuelto.
+    if (page.length === 0) break
+
+    rows.push(...page)
+    // Avanzamos según las filas recibidas, no según el tamaño de página solicitado,
+    // para no asumir que el servidor siempre entrega el bloque completo pedido.
+    from += page.length
+
+    const doneByCount = total !== null && rows.length >= total
+    const doneByShortPage = total === null && page.length < LEADS_PAGE_SIZE
+    if (doneByCount || doneByShortPage) break
+  }
+
+  return { rows, error: null }
+}
+
+// Banner "Sin gestionar": mismos azules de marca de FlowSuiteCRM (--accent / --accent-strong),
+// con colores fijos (no dependen de --text-primary) para que el contraste se mantenga en claro/oscuro.
+const UNMANAGED_ACCENT = '#1d4ed8' // var(--accent-strong)
+const UNMANAGED_ACCENT_HOVER = '#1e3a8a' // azul más oscuro para hover/activo
+const UNMANAGED_BG = '#eff6ff'
+const UNMANAGED_BORDER = '#bfdbfe'
+const UNMANAGED_TEXT = '#1e3a8a'
+
+function UnmanagedBannerButton({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const emphasized = hover || focused
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={{
+        background: emphasized ? UNMANAGED_ACCENT_HOVER : UNMANAGED_ACCENT,
+        color: '#fff',
+        border: `1px solid ${UNMANAGED_ACCENT_HOVER}`,
+        borderRadius: '999px',
+        padding: '0.5rem 1rem',
+        fontWeight: 600,
+        fontSize: '0.8rem',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        boxShadow: focused ? '0 0 0 3px rgba(37, 99, 235, 0.4)' : 'none',
+        transition: 'background 0.15s ease, box-shadow 0.15s ease',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 const initialForm = {
   id: undefined as string | undefined,
   nombre: '',
@@ -187,6 +283,9 @@ const leadFormHintStyle: CSSProperties = {
 
 export function LeadsPage() {
   const { t } = useTranslation()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const isUnmanagedView = searchParams.get('view') === 'sin-gestionar'
   const { session } = useAuth()
   const { usersById } = useUsers()
   const { viewMode: scopeMode, hasDistribuidorScope, distributionUserIds } = useViewMode()
@@ -478,29 +577,72 @@ export function LeadsPage() {
     setLoading(true)
     setError(null)
     if (isMobile && session?.user.id) {
-      let query = supabase
-        .from('leads')
-        .select('id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, deleted_at')
-        .is('deleted_at', null)
-        .order('next_action_date', { ascending: true, nullsFirst: false })
-        .order('updated_at', { ascending: false })
-
-      if (role === 'telemercadeo') {
-        query = query.eq('estado_pipeline', 'nuevo')
-      }
-      if (role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) {
-        query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
-      } else if (hasDistribuidorScope && scopeMode === 'distributor') {
+      // "Sin gestionar" es siempre el alcance estricto del vendedor actual (igual que HoyPage),
+      // sin importar el modo Distribuidor.
+      if (!isUnmanagedView && hasDistribuidorScope && scopeMode === 'distributor') {
         const scopedIds = Array.from(new Set([...distributionUserIds, session.user.id]))
         if (scopedIds.length === 0) {
           setMobileLeadsData([])
           setLoading(false)
           return
         }
-        query = query.or(`owner_id.in.(${scopedIds.join(',')}),vendedor_id.in.(${scopedIds.join(',')})`)
       }
 
-      const { data, error: fetchError } = await query
+      const buildMobileQuery = (range?: { from: number; to: number }) => {
+        let query = supabase
+          .from('leads')
+          .select(
+            'id, nombre, apellido, telefono, estado_pipeline, next_action, next_action_date, updated_at, created_at, deleted_at',
+            isUnmanagedView ? { count: 'exact' } : undefined,
+          )
+          .is('deleted_at', null)
+
+        if (isUnmanagedView) {
+          query = query
+            .eq('vendedor_id', session.user.id)
+            .eq('estado_pipeline', 'nuevo')
+            .lt('created_at', getUnmanagedCutoffIso())
+            .is('next_action_date', null)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+        } else {
+          query = query
+            .order('next_action_date', { ascending: true, nullsFirst: false })
+            .order('updated_at', { ascending: false })
+            .order('id', { ascending: false })
+
+          if (role === 'telemercadeo') {
+            query = query.eq('estado_pipeline', 'nuevo')
+          }
+          if (role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) {
+            query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+          } else if (hasDistribuidorScope && scopeMode === 'distributor') {
+            const scopedIds = Array.from(new Set([...distributionUserIds, session.user.id]))
+            query = query.or(`owner_id.in.(${scopedIds.join(',')}),vendedor_id.in.(${scopedIds.join(',')})`)
+          }
+        }
+
+        return range ? query.range(range.from, range.to) : query
+      }
+
+      if (isUnmanagedView) {
+        const { rows, error: fetchError } = await fetchAllLeadRows<LeadMobileRecord>((from, to) =>
+          buildMobileQuery({ from, to }),
+        )
+
+        if (fetchError) {
+          setError(fetchError.message)
+          setMobileLeadsData([])
+        } else {
+          setMobileLeadsData(rows)
+          const ids = rows.map((lead) => lead.id)
+          await loadLastActivity(ids)
+        }
+        setLoading(false)
+        return
+      }
+
+      const { data, error: fetchError } = await buildMobileQuery()
 
       if (fetchError) {
         setError(fetchError.message)
@@ -515,33 +657,82 @@ export function LeadsPage() {
       return
     }
 
-    if (hasDistribuidorScope && scopeMode === 'distributor' && distributionUserIds.length === 0) {
+    if (!isUnmanagedView && hasDistribuidorScope && scopeMode === 'distributor' && distributionUserIds.length === 0) {
       setLeads([])
       setLoading(false)
       return
     }
 
-    const buildLeadQuery = (selectClause: string) => {
+    if (isUnmanagedView && !session?.user.id) {
+      setLeads([])
+      setLoading(false)
+      return
+    }
+
+    const buildLeadQuery = (selectClause: string, range?: { from: number; to: number }) => {
+      // El conteo exacto y la paginación exhaustiva solo son necesarios en "Sin gestionar"
+      // (para no perder filas si el proyecto limita las respuestas de PostgREST). La vista
+      // normal mantiene una sola consulta, como antes, para no multiplicar round-trips en
+      // cuentas con muchos prospectos.
       let query = supabase
         .from('leads')
-        .select(selectClause)
-        .order('created_at', { ascending: false })
-      if (viewMode === 'trash') {
+        .select(selectClause, isUnmanagedView ? { count: 'exact' } : undefined)
+
+      if (isUnmanagedView) {
+        // "Sin gestionar" es siempre sobre prospectos activos, sin importar el estado de Papelera:
+        // ignoramos viewMode aquí a propósito para que nunca se mezcle con la vista de eliminados.
+        query = query.is('deleted_at', null)
+      } else if (viewMode === 'trash') {
         query = query.not('deleted_at', 'is', null)
       } else {
         query = query.is('deleted_at', null)
       }
-      if (role === 'telemercadeo') {
-        query = query.eq('estado_pipeline', 'nuevo')
+
+      if (isUnmanagedView && session?.user.id) {
+        // Mismo criterio exacto que la tarjeta "Sin gestionar" de HoyPage: vendedor propio,
+        // estado nuevo, creado antes de hace 7 días y sin próxima acción.
+        query = query
+          .eq('vendedor_id', session.user.id)
+          .eq('estado_pipeline', 'nuevo')
+          .lt('created_at', getUnmanagedCutoffIso())
+          .is('next_action_date', null)
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+      } else {
+        query = query.order('created_at', { ascending: false }).order('id', { ascending: false })
+        if (role === 'telemercadeo') {
+          query = query.eq('estado_pipeline', 'nuevo')
+        }
+        if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
+          query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+        }
+        if (hasDistribuidorScope && scopeMode === 'distributor') {
+          const ids = distributionUserIds.join(',')
+          query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
+        }
       }
-      if ((role === 'vendedor' || (hasDistribuidorScope && scopeMode === 'seller')) && session?.user.id) {
-        query = query.or(`vendedor_id.eq.${session.user.id},and(vendedor_id.is.null,owner_id.eq.${session.user.id})`)
+
+      return range ? query.range(range.from, range.to) : query
+    }
+
+    if (isUnmanagedView) {
+      let result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_EXTENDED_SELECT, { from, to }))
+      if (result.error && isMissingLeadAddressColumnError(result.error.message)) {
+        result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_BASE_SELECT, { from, to }))
       }
-      if (hasDistribuidorScope && scopeMode === 'distributor') {
-        const ids = distributionUserIds.join(',')
-        query = query.or(`owner_id.in.(${ids}),vendedor_id.in.(${ids})`)
+      // Fallback nivel 2: referidor_tipo/referidor_id no existen (migración 0069 no aplicada)
+      if (result.error && isMissingLeadReferidorColumnError(result.error.message)) {
+        result = await fetchAllLeadRows<LeadRecord>((from, to) => buildLeadQuery(LEADS_COMPAT_SELECT, { from, to }))
       }
-      return query
+
+      if (result.error) {
+        setError(result.error.message)
+        setLeads([])
+      } else {
+        setLeads(result.rows)
+      }
+      setLoading(false)
+      return
     }
 
     let { data, error: fetchError } = await buildLeadQuery(LEADS_EXTENDED_SELECT)
@@ -560,7 +751,7 @@ export function LeadsPage() {
       setLeads((data as LeadRecord[] | null) ?? [])
     }
     setLoading(false)
-  }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id, isMobile, loadLastActivity])
+  }, [configured, role, viewMode, scopeMode, hasDistribuidorScope, distributionUserIds, session?.user.id, isMobile, isUnmanagedView, loadLastActivity])
 
   useEffect(() => {
     if (!configured || leads.length === 0) {
@@ -646,6 +837,15 @@ export function LeadsPage() {
       setViewMode('active')
     }
   }, [canDeleteLeads, viewMode])
+
+  // "Sin gestionar" es siempre sobre prospectos activos y sin el chip móvil previo aplicado;
+  // al salir de la vista, Papelera y los chips quedan disponibles de nuevo sin efectos residuales.
+  useEffect(() => {
+    if (isUnmanagedView) {
+      setViewMode('active')
+      setMobileFilter('mine')
+    }
+  }, [isUnmanagedView])
 
   useEffect(() => {
     if (configured) loadLeads()
@@ -891,6 +1091,7 @@ export function LeadsPage() {
   // --- FILTRADO ---
   const leadsFiltrados = useMemo(() => {
     const todayKey = formatDateKey(new Date())
+    const unmanagedCutoffIso = getUnmanagedCutoffIso()
     const terminalStages = ['descartado', 'cierre']
     return leads.filter((lead) => {
       const searchValue = busqueda.trim().toLowerCase()
@@ -936,9 +1137,16 @@ export function LeadsPage() {
         (dateValue &&
           (!filtroFechaDesde || dateValue >= filtroFechaDesde) &&
           (!filtroFechaHasta || dateValue <= filtroFechaHasta))
-      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha && matchFrios
+      const matchUnmanaged =
+        !isUnmanagedView ||
+        (stage === 'nuevo' &&
+          !!lead.created_at &&
+          lead.created_at < unmanagedCutoffIso &&
+          !lead.next_action_date)
+
+      return matchBusqueda && matchEstado && matchFuente && matchOwner && matchVencido && matchFecha && matchFrios && matchUnmanaged
     })
-  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFrios, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, normalizeStage, formatDateKey, getLeadVendedorKey, getFuenteLabel])
+  }, [leads, busqueda, filtroEstado, filtroFuente, filtroOwner, filtroVencido, filtroFrios, filtroFechaCampo, filtroFechaDesde, filtroFechaHasta, isUnmanagedView, normalizeStage, formatDateKey, getLeadVendedorKey, getFuenteLabel])
 
   // --- ORDENACIÓN ---
   const handleSort = (colIndex: number) => {
@@ -1578,18 +1786,42 @@ export function LeadsPage() {
 
         {error && <div className="form-error">{error}</div>}
 
-        <div className="seller-chips">
-          {chips.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              className={`seller-chip ${mobileFilter === chip.key ? 'active' : ''}`.trim()}
-              onClick={() => setMobileFilter(chip.key)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+        {isUnmanagedView && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              padding: '0.625rem 0.875rem',
+              borderRadius: '0.5rem',
+              background: UNMANAGED_BG,
+              border: `1px solid ${UNMANAGED_BORDER}`,
+              color: UNMANAGED_TEXT,
+              fontSize: '0.85rem',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>
+              Sin gestionar — {mobileLeads.length} {mobileLeads.length === 1 ? 'prospecto' : 'prospectos'}
+            </span>
+            <UnmanagedBannerButton label="Ver todos" onClick={() => navigate('/leads')} />
+          </div>
+        )}
+
+        {!isUnmanagedView && (
+          <div className="seller-chips">
+            {chips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                className={`seller-chip ${mobileFilter === chip.key ? 'active' : ''}`.trim()}
+                onClick={() => setMobileFilter(chip.key)}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading && (
           <div className="seller-skeleton-grid">
@@ -1776,6 +2008,8 @@ export function LeadsPage() {
               <Button
                 variant="ghost"
                 type="button"
+                disabled={isUnmanagedView}
+                title={isUnmanagedView ? 'Sal de "Sin gestionar" para usar la Papelera' : undefined}
                 onClick={() => setViewMode((prev) => (prev === 'trash' ? 'active' : 'trash'))}
               >
                 {viewMode === 'trash' ? 'Ver activos' : 'Papelera'}
@@ -1798,40 +2032,64 @@ export function LeadsPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      {/* ESTADÍSTICAS — tarjetas clickables con estado activo */}
-      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
-        {[
-          { label: 'Total', value: stats.total, color: '#3b82f6', active: !cantFiltrosActivos, onClick: limpiarFiltros },
-          { label: 'Nuevos', value: stats.nuevo, color: '#6366f1', active: filtroEstado === 'nuevo', onClick: () => { limpiarFiltros(); setFiltroEstado('nuevo') } },
-          { label: 'En proceso', value: stats.enProceso, color: '#f59e0b', active: filtroEstado === 'en_proceso', onClick: () => { limpiarFiltros(); setFiltroEstado('en_proceso') } },
-          { label: 'Descartados', value: stats.descartado, color: '#6b7280', active: filtroEstado === 'descartado', onClick: () => { limpiarFiltros(); setFiltroEstado('descartado') } },
-          { label: '⏰ Seguimientos', value: stats.vencidos, color: stats.vencidos > 0 ? '#ef4444' : '#10b981', active: filtroVencido, onClick: () => { limpiarFiltros(); setFiltroVencido(true) } },
-          ...(stats.frios > 0 ? [{ label: '🧊 Leads fríos', value: stats.frios, color: '#0ea5e9', active: filtroFrios, onClick: () => { limpiarFiltros(); setFiltroFrios(true) } }] : []),
-        ].map((s) => (
-          <div
-            key={s.label}
-            role="button"
-            tabIndex={0}
-            onClick={s.onClick}
-            onKeyDown={(e) => e.key === 'Enter' && s.onClick()}
-            title="Click para filtrar"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '0.625rem 1rem',
-              background: s.active ? `${s.color}15` : 'var(--color-surface, #f9fafb)',
-              borderRadius: '0.5rem',
-              border: `1px solid ${s.active ? s.color : 'var(--color-border, #e5e7eb)'}`,
-              borderLeft: `3px solid ${s.color}`,
-              cursor: 'pointer',
-              minWidth: '100px',
-            }}
-          >
-            <span style={{ fontSize: '1.375rem', fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value}</span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>{s.label}</span>
-          </div>
-        ))}
-      </div>
+      {isUnmanagedView && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            padding: '0.625rem 1rem',
+            borderRadius: '0.5rem',
+            background: UNMANAGED_BG,
+            border: `1px solid ${UNMANAGED_BORDER}`,
+            color: UNMANAGED_TEXT,
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>
+            Sin gestionar — {leadsFiltrados.length} {leadsFiltrados.length === 1 ? 'prospecto' : 'prospectos'}
+          </span>
+          <UnmanagedBannerButton label="Ver todos los prospectos" onClick={() => navigate('/leads')} />
+        </div>
+      )}
+
+      {/* ESTADÍSTICAS — tarjetas clickables con estado activo. Ocultas en "Sin gestionar":
+          repetirían el conteo del banner y "Leads fríos" podría leerse como otra categoría. */}
+      {!isUnmanagedView && (
+        <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
+          {[
+            { label: 'Total', value: stats.total, color: '#3b82f6', active: !cantFiltrosActivos, onClick: limpiarFiltros },
+            { label: 'Nuevos', value: stats.nuevo, color: '#6366f1', active: filtroEstado === 'nuevo', onClick: () => { limpiarFiltros(); setFiltroEstado('nuevo') } },
+            { label: 'En proceso', value: stats.enProceso, color: '#f59e0b', active: filtroEstado === 'en_proceso', onClick: () => { limpiarFiltros(); setFiltroEstado('en_proceso') } },
+            { label: 'Descartados', value: stats.descartado, color: '#6b7280', active: filtroEstado === 'descartado', onClick: () => { limpiarFiltros(); setFiltroEstado('descartado') } },
+            { label: '⏰ Seguimientos', value: stats.vencidos, color: stats.vencidos > 0 ? '#ef4444' : '#10b981', active: filtroVencido, onClick: () => { limpiarFiltros(); setFiltroVencido(true) } },
+            ...(stats.frios > 0 ? [{ label: '🧊 Leads fríos', value: stats.frios, color: '#0ea5e9', active: filtroFrios, onClick: () => { limpiarFiltros(); setFiltroFrios(true) } }] : []),
+          ].map((s) => (
+            <div
+              key={s.label}
+              role="button"
+              tabIndex={0}
+              onClick={s.onClick}
+              onKeyDown={(e) => e.key === 'Enter' && s.onClick()}
+              title="Click para filtrar"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                padding: '0.625rem 1rem',
+                background: s.active ? `${s.color}15` : 'var(--color-surface, #f9fafb)',
+                borderRadius: '0.5rem',
+                border: `1px solid ${s.active ? s.color : 'var(--color-border, #e5e7eb)'}`,
+                borderLeft: `3px solid ${s.color}`,
+                cursor: 'pointer',
+                minWidth: '100px',
+              }}
+            >
+              <span style={{ fontSize: '1.375rem', fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #6b7280)', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* BÚSQUEDA — hero element */}
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>

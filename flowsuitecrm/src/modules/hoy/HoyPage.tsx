@@ -205,6 +205,8 @@ export function HoyPage() {
   const [overdueLeads, setOverdueLeads] = useState<LeadRow[]>([])
   const [todayLeads, setTodayLeads] = useState<LeadRow[]>([])
   const [newLeads, setNewLeads] = useState<LeadRow[]>([])
+  const [unmanagedLeads, setUnmanagedLeads] = useState<LeadRow[]>([])
+  const [unmanagedLeadsCount, setUnmanagedLeadsCount] = useState(0)
   const [closingOpps, setClosingOpps] = useState<OpportunityRow[]>([])
   const [salesSummary, setSalesSummary] = useState<SalesSummary>({ total: 0, count: 0 })
   const [referidosStats, setReferidosStats] = useState({ activos: 0, enProceso: 0 })
@@ -273,11 +275,12 @@ export function HoyPage() {
       todayLeads.length === 0 &&
       closingOpps.length === 0 &&
       newLeads.length === 0 &&
+      unmanagedLeads.length === 0 &&
       cobranzas.length === 0 &&
       birthdays.length === 0 &&
       agenda.length === 0 &&
       crmTasks.length === 0,
-    [loading, overdueLeads, todayLeads, closingOpps, newLeads, cobranzas, birthdays, agenda, crmTasks]
+    [loading, overdueLeads, todayLeads, closingOpps, newLeads, unmanagedLeads, cobranzas, birthdays, agenda, crmTasks]
   )
 
   const totalMoroso = useMemo(
@@ -538,6 +541,19 @@ export function HoyPage() {
     todayPlus7.setDate(todayPlus7.getDate() + 7)
     const todayPlus7Iso = todayPlus7.toISOString().split('T')[0]
 
+    const sevenDaysAgo = new Date(today)
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    // Medianoche LOCAL de "hace 7 días", convertida a un instante absoluto (con offset UTC
+    // explícito vía toISOString). Un string tipo "2026-01-01T00:00:00" sin huso se interpretaría
+    // como UTC en la base de datos, no como medianoche local, y podía correr el corte varias
+    // horas y mover registros cercanos al límite al grupo equivocado.
+    const sevenDaysAgoMidnightIso = new Date(
+      sevenDaysAgo.getFullYear(),
+      sevenDaysAgo.getMonth(),
+      sevenDaysAgo.getDate(),
+      0, 0, 0, 0,
+    ).toISOString()
+
     // 90 days ago for reactivation
     const ninetyDaysAgo = new Date(today)
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
@@ -548,6 +564,7 @@ export function HoyPage() {
       overdueRes,
       todayRes,
       newRes,
+      unmanagedRes,
       oppsRes,
       salesRes,
       referidosRes,
@@ -577,13 +594,26 @@ export function HoyPage() {
         .eq('next_action_date', todayIso)
         .is('deleted_at', null)
         .order('next_action_date', { ascending: true }),
+      // Nuevos: prospectos creados durante los últimos 7 días
       supabase
         .from('leads')
         .select(baseLeadSelect)
         .eq('vendedor_id', vendedorId)
         .eq('estado_pipeline', 'nuevo')
+        .gte('created_at', sevenDaysAgoMidnightIso)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
+        .limit(8),
+      // Sin gestionar: siguen como nuevos después de 7 días y no tienen próxima acción
+      supabase
+        .from('leads')
+        .select(baseLeadSelect, { count: 'exact' })
+        .eq('vendedor_id', vendedorId)
+        .eq('estado_pipeline', 'nuevo')
+        .lt('created_at', sevenDaysAgoMidnightIso)
+        .is('next_action_date', null)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
         .limit(8),
       supabase
         .from('oportunidades')
@@ -691,11 +721,12 @@ export function HoyPage() {
         .lte('fecha_vencimiento', todayIso),
     ])
 
-    if (overdueRes.error || todayRes.error || newRes.error || oppsRes.error || salesRes.error) {
+    if (overdueRes.error || todayRes.error || newRes.error || unmanagedRes.error || oppsRes.error || salesRes.error) {
       setError(
         overdueRes.error?.message ||
         todayRes.error?.message ||
         newRes.error?.message ||
+        unmanagedRes.error?.message ||
         oppsRes.error?.message ||
         salesRes.error?.message ||
         t('common.noData')
@@ -736,6 +767,7 @@ export function HoyPage() {
     }))
 
     const newLeadsData = ((newRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
+    const unmanagedLeadsData = ((unmanagedRes.data as LeadRow[] | null) ?? []).map(l => ({ ...l, is_cliente: false }))
     const oppsData = (oppsRes.data as OpportunityRow[] | null) ?? []
     const ventasRows = (salesRes.data as { monto: number }[] | null) ?? []
 
@@ -750,6 +782,8 @@ export function HoyPage() {
     setOverdueLeads(allOverdue)
     setTodayLeads(allToday)
     setNewLeads(newLeadsData)
+    setUnmanagedLeads(unmanagedLeadsData)
+    setUnmanagedLeadsCount(unmanagedRes.count ?? unmanagedLeadsData.length)
     setClosingOpps(oppsData)
     setSalesSummary({
       total: ventasRows.reduce((acc: number, row: { monto: number }) => acc + (row.monto ?? 0), 0),
@@ -820,7 +854,7 @@ export function HoyPage() {
       setCrmTasks(hydratedTasks)
     }
 
-    const leadIds = [...overdueLeadsData, ...todayLeadsData, ...newLeadsData].map((lead) => lead.id)
+    const leadIds = [...overdueLeadsData, ...todayLeadsData, ...newLeadsData, ...unmanagedLeadsData].map((lead) => lead.id)
     await loadLastActivity(leadIds)
 
     setLoading(false)
@@ -1645,6 +1679,31 @@ export function HoyPage() {
           </div>
           <div className="hoy-list-container">
             {newLeads.map((lead) => renderLeadListItem(lead, '✨', 'green'))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Unmanaged leads ───────────────────────────────── */}
+      {!loading && unmanagedLeads.length > 0 && (
+        <section className="hoy-list-section">
+          <div className="hoy-list-header">
+            <h3>Sin gestionar</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="seller-count">{unmanagedLeadsCount}</span>
+              <button
+                type="button"
+                className="hoy-link-btn"
+                onClick={() => navigate('/leads?view=sin-gestionar')}
+              >
+                Ver todos ›
+              </button>
+            </div>
+          </div>
+          <div className="seller-section-sub">
+            Prospectos con más de 7 días sin próxima acción
+          </div>
+          <div className="hoy-list-container">
+            {unmanagedLeads.map((lead) => renderLeadListItem(lead, '⚠️', 'orange'))}
           </div>
         </section>
       )}
