@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase/client'
 import { isMissingLeadAddressColumnError } from '../lib/leadsSchema'
+import { LeadConversionAction } from './LeadConversionAction'
 import { ContactoTimeline } from './ContactoTimeline'
 import { useToast } from './useToast'
 import { saveGestion } from './gestionUtils'
@@ -190,6 +191,7 @@ export function CalificacionPanel({
   const { showToast } = useToast()
   const { openGestionModal, openCitaModal } = useModalHost()
   const [formValues, setFormValues] = useState(initialForm)
+  const [savedFormValues, setSavedFormValues] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showActions, setShowActions] = useState(false)
@@ -228,6 +230,7 @@ export function CalificacionPanel({
     if (!lead) return
     startTransition(() => {
       setFormValues(buildInitialFormValues(lead))
+      setSavedFormValues(buildInitialFormValues(lead))
       setShowActions(false)
       setParsedAddr(null)
       setActiveTab('resumen')
@@ -749,6 +752,7 @@ export function CalificacionPanel({
       setError(updateError.message)
       showToast(updateError.message, 'error')
     } else {
+      setSavedFormValues({ ...formValues })
       await onSaved()
       showToast(t('toast.success'))
       setShowActions(true)
@@ -842,6 +846,21 @@ export function CalificacionPanel({
               >
                 + Gestión
               </button>
+              {!isDeleted && (
+                <LeadConversionAction
+                  key={lead.id}
+                  leadId={lead.id}
+                  leadName={[formValues.nombre, formValues.apellido].filter(Boolean).join(' ') || fullName}
+                  disabled={saving || JSON.stringify(formValues) !== JSON.stringify(savedFormValues)}
+                  onConverted={async () => {
+                    try {
+                      await onSaved()
+                    } finally {
+                      onClose()
+                    }
+                  }}
+                />
+              )}
               {onAgendarCita && !isDeleted && (
                 <button
                   type="button"

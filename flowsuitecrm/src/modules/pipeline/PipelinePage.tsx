@@ -13,7 +13,7 @@ import { useViewMode } from '../../data/useViewMode'
 import { EmptyState } from '../../components/EmptyState'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { useMessaging } from '../../hooks/useMessaging'
-import { normalizeLeadStage } from '../../constants/pipeline'
+import { LEAD_PIPELINE_TERMINAL_STAGES, normalizePipelineStage as normalizeStage } from '../../constants/pipeline'
 
 type LeadCard = {
   id: string
@@ -124,7 +124,7 @@ export function PipelinePage() {
     () => ['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'],
     []
   )
-  const terminalStages = useMemo(() => ['descartado', 'cierre'], [])
+  const terminalStages = LEAD_PIPELINE_TERMINAL_STAGES
 
   const fuenteLabels = useMemo(
     () => ({
@@ -220,13 +220,6 @@ export function PipelinePage() {
     }, 0)
     return () => window.clearTimeout(handle)
   }, [configured, loadLeads])
-
-  const normalizeStage = (stage: string | null): string => {
-    let s = normalizeLeadStage(stage)
-    if (!s || s === 'otro') s = 'nuevo'
-    if (!['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'].includes(s)) s = 'descartado'
-    return s
-  }
 
   const groupedLeads = useMemo(() => {
     const groups: Record<string, LeadCard[]> = {}

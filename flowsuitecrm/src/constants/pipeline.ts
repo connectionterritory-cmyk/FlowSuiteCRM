@@ -1,5 +1,8 @@
 import type { TFunction } from 'i18next'
 
+// Shared with PipelinePage and lead conversion: keep the existing terminal stages.
+export const LEAD_PIPELINE_TERMINAL_STAGES: readonly string[] = ['descartado', 'cierre']
+
 export const LEAD_PIPELINE_FALLBACK_STAGES = ['demo', 'cierre'] as const
 export const LEAD_PIPELINE_FOLLOWUP_STAGES = ['contactado', 'cita', 'demo'] as const
 export const LEAD_PIPELINE_NEW_STAGES = ['nuevo'] as const
@@ -32,4 +35,12 @@ export const getLeadStageBadgeVariant = (stage: string | null | undefined): Lead
   if (normalized === 'contactado' || normalized === 'nuevo') return 'info'
   if (normalized === 'descartado') return 'neutral'
   return 'neutral'
+}
+
+// Preserve PipelinePage's normalization, including legacy and unknown stages.
+export const normalizePipelineStage = (stage?: string | null): string => {
+  let normalized = normalizeLeadStage(stage)
+  if (!normalized || normalized === 'otro') normalized = 'nuevo'
+  if (!['nuevo', 'contactado', 'cita', 'demo', 'cierre', 'descartado'].includes(normalized)) normalized = 'descartado'
+  return normalized
 }
