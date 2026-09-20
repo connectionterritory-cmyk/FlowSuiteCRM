@@ -76,9 +76,14 @@ const supabaseUrl =
   ''
 
 const serviceRoleKey =
+  process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SERVICE_ROLE_KEY ||
   ''
+
+if (!serviceRoleKey.trim()) {
+  throw new Error('Falta SUPABASE_SECRET_KEY, SUPABASE_SERVICE_ROLE_KEY o SERVICE_ROLE_KEY en el entorno')
+}
 
 const serviceSupabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },

@@ -1,3 +1,4 @@
+import { getSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts'
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 
@@ -10,7 +11,7 @@ type SendEmailPayload = {
 }
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const serviceRoleKey = getSupabaseAdminKey()
 const resendKey = Deno.env.get('RESEND_API_KEY') ?? ''
 const resendFrom = Deno.env.get('RESEND_FROM_EMAIL') ?? 'Royal Prestige <cobranza@flowiadigital.com>'
 
