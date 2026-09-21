@@ -196,6 +196,7 @@ export function VentasPage() {
   const [selectedVentaItems, setSelectedVentaItems] = useState<VentaItem[]>([])
   const [selectedVentaTransacciones, setSelectedVentaTransacciones] = useState<VentaTransaccion[]>([])
   const [detailTab, setDetailTab] = useState<'resumen' | 'articulos' | 'transacciones'>('resumen')
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const configured = isSupabaseConfigured
   const sessionUserId = session?.user.id ?? null
   const sessionOrgId = useMemo(() => {
@@ -615,6 +616,48 @@ export function VentasPage() {
     }
   }
 
+  const canDecideAprobacion = currentRole === 'admin' || currentRole === 'distribuidor'
+
+  const decidirAprobacionVenta = async (ventaId: string, decision: 'aprobada' | 'rechazada', cuenta: string | null) => {
+    setDecisionSubmitting(true)
+    const { error: rpcError } = await supabase.rpc('fn_aprobar_rechazar_venta', {
+      p_venta_id: ventaId,
+      p_estado_aprobacion: decision,
+      p_numero_cuenta_financiera: cuenta,
+    })
+    if (rpcError) {
+      showToast(rpcError.message, 'error')
+      setDecisionSubmitting(false)
+      return
+    }
+    await loadVentas()
+    await loadVentaDetails(ventaId)
+    const { data: refreshedVenta } = await supabase
+      .from('ventas')
+      .select('id, numero_nota_pedido, cliente_id, lead_id, estado_aprobacion, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
+      .eq('id', ventaId)
+      .maybeSingle()
+    if (refreshedVenta) setSelectedVenta(refreshedVenta as VentaRecord)
+    showToast(decision === 'aprobada' ? 'Orden aprobada.' : 'Orden rechazada.', 'success')
+    setDecisionSubmitting(false)
+  }
+
+  const handleAprobarVenta = async (venta: VentaRecord) => {
+    const cuenta = window.prompt('Número de cuenta financiera para aprobar la orden:')
+    if (cuenta === null) return
+    const cuentaTrim = cuenta.trim()
+    if (!cuentaTrim) {
+      showToast('El número de cuenta financiera es requerido para aprobar.', 'error')
+      return
+    }
+    await decidirAprobacionVenta(venta.id, 'aprobada', cuentaTrim)
+  }
+
+  const handleRechazarVenta = async (venta: VentaRecord) => {
+    if (!window.confirm('¿Rechazar esta orden? Esta acción no se puede deshacer.')) return
+    await decidirAprobacionVenta(venta.id, 'rechazada', null)
+  }
+
   const vendedorName = session?.user.id ? (usersById[session.user.id] ?? session.user.id) : '-'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1005,7 +1048,7 @@ export function VentasPage() {
           rows={rows}
           emptyLabel={emptyLabel}
           onRowClick={handleRowClick}
-          sortableColumns={[3, 6]}
+          sortableColumns={[3, 6, 7]}
           sortColIndex={sortCol ?? undefined}
           sortDir={sortDir}
           onSort={handleSort}
@@ -1351,6 +1394,27 @@ export function VentasPage() {
         title={selectedVenta ? `Venta ${selectedVenta.numero_nota_pedido || selectedVenta.id.slice(0, 8)}` : ''}
         onClose={() => setSelectedVenta(null)}
         size="lg"
+        actions={
+          canDecideAprobacion && selectedVenta?.estado_aprobacion === 'pendiente_aprobacion' ? (
+            <>
+              <Button
+                variant="ghost"
+                type="button"
+                disabled={decisionSubmitting}
+                onClick={() => selectedVenta && void handleRechazarVenta(selectedVenta)}
+              >
+                Rechazar
+              </Button>
+              <Button
+                type="button"
+                disabled={decisionSubmitting}
+                onClick={() => selectedVenta && void handleAprobarVenta(selectedVenta)}
+              >
+                {decisionSubmitting ? 'Procesando…' : 'Aprobar'}
+              </Button>
+            </>
+          ) : undefined
+        }
       >
         {selectedVenta && (
           <>
