@@ -16,6 +16,8 @@ import { toCanonicalContactDraft } from '../../lib/contactRefs'
 type VentaRecord = {
   id: string
   numero_nota_pedido: string | null
+  lead_id: string | null
+  estado_aprobacion: 'no_aplica' | 'pendiente_aprobacion' | 'aprobada' | 'rechazada'
   cliente_id: string | null
   vendedor_id: string | null
   producto_id: string | null
@@ -143,6 +145,13 @@ function tipoBadgeStyle(tipo: string | null): { background: string; color: strin
   return { background: '#f3f4f6', color: '#6b7280' }
 }
 
+const aprobacionLabel = (estado: VentaRecord['estado_aprobacion']) => ({
+  no_aplica: 'No aplica',
+  pendiente_aprobacion: 'Pendiente de aprobación',
+  aprobada: 'Aprobada',
+  rechazada: 'Rechazada',
+})[estado] ?? '—'
+
 function estadoBadgeStyle(estado: string | null): { background: string; color: string } {
   switch (estado) {
     case 'borrador': return { background: '#f3f4f6', color: '#6b7280' }
@@ -175,7 +184,6 @@ export function VentasPage() {
   const [submitting, setSubmitting] = useState(false)
   const [ventaOwnerType, setVentaOwnerType] = useState<'cliente' | 'prospecto'>('cliente')
   const [prospectoId, setProspectoId] = useState('')
-  const [prospectoCuenta, setProspectoCuenta] = useState('')
   const [clienteFormOpen, setClienteFormOpen] = useState(false)
   const [clienteFormValues, setClienteFormValues] = useState(initialClienteForm)
   const [clienteFormError, setClienteFormError] = useState<string | null>(null)
@@ -222,7 +230,7 @@ export function VentasPage() {
     setError(null)
     let query = supabase
       .from('ventas')
-      .select('id, numero_nota_pedido, cliente_id, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
+      .select('id, numero_nota_pedido, cliente_id, lead_id, estado_aprobacion, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
       .order('created_at', { ascending: false })
     if ((currentRole === 'vendedor' || (hasDistribuidorScope && viewMode === 'seller')) && sessionUserId) {
       query = query.eq('vendedor_id', sessionUserId)
@@ -316,6 +324,10 @@ export function VentasPage() {
     )
   }, [clientes])
 
+  const leadMap = useMemo(() => new Map(
+    leads.map((lead) => [lead.id, [lead.nombre, lead.apellido].filter(Boolean).join(' ') || lead.id]),
+  ), [leads])
+
   const productoMap = useMemo(() => {
     return new Map(productos.map((p) => [p.id, { nombre: p.nombre ?? p.id, codigo: p.codigo ?? '', precio: p.precio ?? 0 }]))
   }, [productos])
@@ -328,7 +340,7 @@ export function VentasPage() {
   const ventasFiltradas = useMemo(() => {
     return ventas.filter((v) => {
       const nota = (v.numero_nota_pedido ?? '').toLowerCase()
-      const clienteNombre = v.cliente_id ? (clienteMap.get(v.cliente_id) ?? '').toLowerCase() : ''
+      const clienteNombre = (v.cliente_id ? clienteMap.get(v.cliente_id) ?? '' : v.lead_id ? leadMap.get(v.lead_id) ?? v.lead_id : '').toLowerCase()
       const matchBusqueda = !busqueda || nota.includes(busqueda.toLowerCase()) || clienteNombre.includes(busqueda.toLowerCase())
       const matchTipo = filtroTipo === 'todos' || v.tipo_movimiento === filtroTipo
       const matchEstado = filtroEstado === 'todos' || v.estado === filtroEstado
@@ -337,7 +349,7 @@ export function VentasPage() {
       const matchHasta = !filtroFechaHasta || (v.fecha_venta ?? '') <= filtroFechaHasta
       return matchBusqueda && matchTipo && matchEstado && matchVendedor && matchDesde && matchHasta
     })
-  }, [ventas, busqueda, filtroTipo, filtroEstado, filtroVendedor, filtroFechaDesde, filtroFechaHasta, clienteMap])
+  }, [ventas, busqueda, filtroTipo, filtroEstado, filtroVendedor, filtroFechaDesde, filtroFechaHasta, clienteMap, leadMap])
 
   const handleSort = (colIndex: number) => {
     if (sortCol === colIndex) {
@@ -357,6 +369,9 @@ export function VentasPage() {
         valA = a.total ?? a.monto ?? 0
         valB = b.total ?? b.monto ?? 0
       } else if (sortCol === 6) {
+        valA = aprobacionLabel(a.estado_aprobacion)
+        valB = aprobacionLabel(b.estado_aprobacion)
+      } else if (sortCol === 7) {
         valA = a.fecha_venta ?? ''
         valB = b.fecha_venta ?? ''
       }
@@ -381,7 +396,7 @@ export function VentasPage() {
     return ventasOrdenadas.map((venta) => {
       const tipoLabel = venta.tipo_movimiento ? t(`ventas.tipo.${venta.tipo_movimiento}`) : '-'
       const estadoLabel = venta.estado ? t(`ventas.estado.${venta.estado}`) : '-'
-      const clienteLabel = venta.cliente_id ? clienteMap.get(venta.cliente_id) ?? venta.cliente_id : '-'
+      const clienteLabel = venta.cliente_id ? clienteMap.get(venta.cliente_id) ?? venta.cliente_id : venta.lead_id ? `Prospecto: ${leadMap.get(venta.lead_id) ?? venta.lead_id}` : '-'
       const vendedorLabel = venta.vendedor_id ? usersById[venta.vendedor_id] ?? venta.vendedor_id : '-'
       const monto = venta.total ?? venta.monto ?? 0
       return {
@@ -393,6 +408,7 @@ export function VentasPage() {
           monto != null ? numberFormat.format(monto) : '-',
           tipoLabel,
           estadoLabel,
+          aprobacionLabel(venta.estado_aprobacion),
           venta.fecha_venta ?? '-',
         ],
         detail: [
@@ -401,6 +417,7 @@ export function VentasPage() {
           { label: t('ventas.fields.vendedorId'), value: vendedorLabel },
           { label: t('ventas.fields.tipoMovimiento'), value: tipoLabel },
           { label: t('ventas.fields.estado'), value: estadoLabel },
+          { label: 'Aprobación', value: aprobacionLabel(venta.estado_aprobacion) },
           { label: t('ventas.fields.subtotal'), value: numberFormat.format(venta.subtotal ?? 0) },
           { label: t('ventas.fields.impuesto'), value: numberFormat.format(venta.impuesto ?? 0) },
           { label: t('ventas.fields.cargoEnvio'), value: numberFormat.format(venta.cargo_envio ?? 0) },
@@ -412,7 +429,7 @@ export function VentasPage() {
         ],
       }
     })
-  }, [clienteMap, numberFormat, t, usersById, ventasOrdenadas])
+  }, [clienteMap, leadMap, numberFormat, t, usersById, ventasOrdenadas])
 
   const emptyLabel = loading ? t('common.loading') : t('common.noData')
 
@@ -423,6 +440,7 @@ export function VentasPage() {
     { label: t('ventas.columns.monto'), priority: 2 },
     { label: t('ventas.columns.tipo'), priority: 3 },
     { label: t('ventas.columns.estado'), priority: 4 },
+    { label: 'Aprobación', priority: 4 },
     { label: t('ventas.columns.fecha'), priority: 7 },
   ], [t])
 
@@ -445,14 +463,15 @@ export function VentasPage() {
   ].filter(Boolean).length
 
   const exportarCSV = () => {
-    const headers = ['Nota Pedido', 'Cliente', 'Vendedor', 'Monto', 'Tipo', 'Estado', 'Fecha']
+    const headers = ['Nota Pedido', 'Cliente', 'Vendedor', 'Monto', 'Tipo', 'Estado', 'Aprobación', 'Fecha']
     const csvRows = ventasFiltradas.map((v) => [
       v.numero_nota_pedido ?? '',
-      v.cliente_id ? clienteMap.get(v.cliente_id) ?? '' : '',
+      v.cliente_id ? clienteMap.get(v.cliente_id) ?? '' : v.lead_id ? leadMap.get(v.lead_id) ?? v.lead_id : '',
       v.vendedor_id ? usersById[v.vendedor_id] ?? v.vendedor_id : '',
       v.total ?? v.monto ?? 0,
       v.tipo_movimiento ? t(`ventas.tipo.${v.tipo_movimiento}`) : '',
       v.estado ? t(`ventas.estado.${v.estado}`) : '',
+      aprobacionLabel(v.estado_aprobacion),
       v.fecha_venta ?? '',
     ])
     const csv = [headers, ...csvRows]
@@ -478,7 +497,6 @@ export function VentasPage() {
     setLeadDropdownOpen(false)
     setVentaOwnerType('cliente')
     setProspectoId('')
-    setProspectoCuenta('')
     setFormError(null)
     setFormStep(1)
     setFormOpen(true)
@@ -489,7 +507,6 @@ export function VentasPage() {
     setVentaOwnerType(value)
     if (value === 'cliente') {
       setProspectoId('')
-      setProspectoCuenta('')
       setLeadSearch('')
       setLeadDropdownOpen(false)
     } else {
@@ -617,8 +634,6 @@ export function VentasPage() {
 
     if (ventaOwnerType === 'prospecto') {
       if (!prospectoId) { setFormError(t('ventas.errors.selectProspecto')); setSubmitting(false); return }
-      const cuenta = prospectoCuenta.trim()
-      if (!cuenta) { setFormError(t('ventas.errors.accountRequired')); setSubmitting(false); return }
     }
 
     for (const item of formItems) {
@@ -658,7 +673,6 @@ export function VentasPage() {
       owner_type: ventaOwnerType === 'prospecto' ? 'lead' : 'cliente',
       cliente_id: ventaOwnerType === 'cliente' ? toNull(formValues.cliente_id) : null,
       lead_id: ventaOwnerType === 'prospecto' ? toNull(prospectoId) : null,
-      numero_cuenta_financiera: ventaOwnerType === 'prospecto' ? toNull(prospectoCuenta) : null,
       vendedor_id: vendedorId,
       numero_nota_pedido: toNull(formValues.numero_nota_pedido),
       tipo_movimiento: formValues.tipo_movimiento,
@@ -686,7 +700,6 @@ export function VentasPage() {
 
     setFormOpen(false)
     setProspectoId('')
-    setProspectoCuenta('')
     setVentaOwnerType('cliente')
     await loadOptions()
     await loadVentas()
@@ -951,7 +964,7 @@ export function VentasPage() {
             </div>
           ) : (
             ventasOrdenadas.map((venta) => {
-              const clienteLabel = venta.cliente_id ? clienteMap.get(venta.cliente_id) ?? '-' : '-'
+              const clienteLabel = venta.cliente_id ? clienteMap.get(venta.cliente_id) ?? '-' : venta.lead_id ? `Prospecto: ${leadMap.get(venta.lead_id) ?? venta.lead_id}` : '-'
               const tipoLabel = venta.tipo_movimiento ? t(`ventas.tipo.${venta.tipo_movimiento}`) : '-'
               const estadoLabel = venta.estado ? t(`ventas.estado.${venta.estado}`) : '-'
               const vendedorLabel = venta.vendedor_id ? usersById[venta.vendedor_id] ?? '-' : '-'
@@ -973,6 +986,7 @@ export function VentasPage() {
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
                       <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...badgeStyle }}>{tipoLabel}</span>
                       <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...estadoStyle }}>{estadoLabel}</span>
+                      <span>{aprobacionLabel(venta.estado_aprobacion)}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1003,10 +1017,11 @@ export function VentasPage() {
         title={t('ventas.detailsTitle')}
         items={selectedVenta ? [
           { label: t('ventas.fields.numeroNotaPedido'), value: selectedVenta.numero_nota_pedido ?? '-' },
-          { label: t('ventas.fields.clienteId'), value: selectedVenta.cliente_id ? clienteMap.get(selectedVenta.cliente_id) ?? '-' : '-' },
+          { label: t('ventas.fields.clienteId'), value: selectedVenta.cliente_id ? clienteMap.get(selectedVenta.cliente_id) ?? '-' : selectedVenta.lead_id ? `Prospecto: ${leadMap.get(selectedVenta.lead_id) ?? selectedVenta.lead_id}` : '-' },
           { label: t('ventas.fields.vendedorId'), value: selectedVenta.vendedor_id ? usersById[selectedVenta.vendedor_id] ?? '-' : '-' },
           { label: t('ventas.fields.tipoMovimiento'), value: selectedVenta.tipo_movimiento ? t(`ventas.tipo.${selectedVenta.tipo_movimiento}`) : '-' },
           { label: t('ventas.fields.estado'), value: selectedVenta.estado ? t(`ventas.estado.${selectedVenta.estado}`) : '-' },
+          { label: 'Aprobación', value: aprobacionLabel(selectedVenta.estado_aprobacion) },
           { label: t('ventas.fields.total'), value: numberFormat.format(selectedVenta.total ?? selectedVenta.monto ?? 0) },
           { label: t('ventas.fields.fechaVenta'), value: selectedVenta.fecha_venta ?? '-' },
         ] : []}
@@ -1167,10 +1182,7 @@ export function VentasPage() {
                       })()}
                     </div>
                   </label>
-                  <label className="form-field">
-                    <span>{t('ventas.fields.numeroCuentaFinanciera')}</span>
-                    <input value={prospectoCuenta} onChange={(e) => setProspectoCuenta(e.target.value)} />
-                  </label>
+                  <p className="form-hint">La orden quedará pendiente de aprobación. La cuenta financiera se solicitará al aprobarla; el prospecto aún no se convertirá en cliente.</p>
                 </>
               )}
               <label className="form-field">
@@ -1366,7 +1378,8 @@ export function VentasPage() {
 
             {detailTab === 'resumen' && (
               <div className="form-grid">
-                <div className="form-field"><span>Cliente</span><strong>{selectedVenta.cliente_id ? clienteMap.get(selectedVenta.cliente_id) ?? '-' : '-'}</strong></div>
+                <div className="form-field"><span>Aprobación</span><strong>{aprobacionLabel(selectedVenta.estado_aprobacion)}</strong></div>
+                <div className="form-field"><span>Cliente</span><strong>{selectedVenta.cliente_id ? clienteMap.get(selectedVenta.cliente_id) ?? '-' : selectedVenta.lead_id ? `Prospecto: ${leadMap.get(selectedVenta.lead_id) ?? selectedVenta.lead_id}` : '-'}</strong></div>
                 <div className="form-field"><span>Vendedor</span><strong>{selectedVenta.vendedor_id ? usersById[selectedVenta.vendedor_id] ?? '-' : '-'}</strong></div>
                 <div className="form-field"><span>Tipo</span><strong>{selectedVenta.tipo_movimiento ? t(`ventas.tipo.${selectedVenta.tipo_movimiento}`) : '-'}</strong></div>
                 <div className="form-field"><span>Estado</span><span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, ...estadoBadgeStyle(selectedVenta.estado) }}>{selectedVenta.estado ? t(`ventas.estado.${selectedVenta.estado}`) : '-'}</span></div>

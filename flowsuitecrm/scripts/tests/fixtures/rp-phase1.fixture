@@ -1,0 +1,360 @@
+-- Isolated fixture: production column types, conversion implementation and sales RLS
+-- inspected read-only 2026-09-20. Synthetic records only; not a full schema dump.
+CREATE ROLE anon; CREATE ROLE authenticated;
+CREATE SCHEMA auth;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
+CREATE TYPE public.usuario_rol AS ENUM ('admin','distribuidor','vendedor','telemercadeo','supervisor_telemercadeo','embajador');
+CREATE TYPE public.venta_tipo_movimiento AS ENUM ('venta_inicial','agregado');
+CREATE TYPE public.lead_estado_pipeline AS ENUM ('nuevo','contactado','calificado','descartado','cita','demo','cierre');
+CREATE TABLE public.usuarios (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "codigo_vendedor" text,
+ "codigo_distribuidor" text,
+ "nombre" text,
+ "apellido" text,
+ "email" text,
+ "telefono" text,
+ "rol" usuario_rol,
+ "distribuidor_padre_id" uuid,
+ "activo" boolean,
+ "created_at" timestamp with time zone,
+ "updated_at" timestamp with time zone,
+ "organizacion" text,
+ "reclutador_codigo" text,
+ "foto_url" text,
+ "ciudad" text,
+ "estado_region" text,
+ "timezone" text,
+ "pais" text,
+ "org_id" uuid,
+ "es_agente_seguros" boolean
+);
+CREATE TABLE public.leads (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "nombre" text,
+ "apellido" text,
+ "email" text,
+ "telefono" text,
+ "fuente" text,
+ "programa_id" uuid,
+ "embajador_id" uuid,
+ "owner_id" uuid,
+ "estado_pipeline" lead_estado_pipeline,
+ "next_action" text,
+ "next_action_date" date,
+ "created_at" timestamp with time zone,
+ "updated_at" timestamp with time zone,
+ "estado_civil" text,
+ "nombre_conyuge" text,
+ "telefono_conyuge" text,
+ "situacion_laboral" text,
+ "ninos_en_casa" boolean,
+ "cantidad_ninos" integer,
+ "tiene_productos_rp" boolean,
+ "tipo_vivienda" text,
+ "whatsapp_mensaje_enviado_at" timestamp with time zone,
+ "vendedor_id" uuid,
+ "referido_por_cliente_id" uuid,
+ "deleted_at" timestamp with time zone,
+ "deleted_by" uuid,
+ "deleted_reason" text,
+ "updated_by" uuid,
+ "last_reassigned_by" uuid,
+ "last_reassigned_at" timestamp with time zone,
+ "fecha_nacimiento" date,
+ "direccion" text,
+ "ciudad" text,
+ "estado_region" text,
+ "codigo_postal" text,
+ "apartamento" text,
+ "referidor_tipo" text,
+ "referidor_id" uuid,
+ "persona_id" uuid,
+ "run_id" text,
+ "file_id_origen" text,
+ "file_name_origen" text,
+ "confianza_ocr" text,
+ "fuente_import" text,
+ "import_file_name" text,
+ "import_drive_url" text,
+ "org_id" uuid,
+ "lugar_trabajo" text,
+ "telefono_trabajo" text,
+ "mejor_hora_llamar" text,
+ "notas_extraidas" text,
+ "whatsapp_opt_in" boolean,
+ "whatsapp_no_molestar" boolean,
+ "whatsapp_ultimo_envio_at" timestamp with time zone,
+ "whatsapp_consent_source" text,
+ "whatsapp_consented_at" timestamp with time zone
+);
+CREATE TABLE public.clientes (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "nombre" text,
+ "apellido" text,
+ "email" text,
+ "telefono" text,
+ "direccion" text,
+ "numero_cuenta_financiera" text,
+ "saldo_actual" numeric(12,2),
+ "estado_morosidad" text,
+ "vendedor_id" uuid,
+ "distribuidor_id" uuid,
+ "fecha_nacimiento" date,
+ "activo" boolean,
+ "created_at" timestamp with time zone,
+ "updated_at" timestamp with time zone,
+ "tipo_cliente" text,
+ "estado_cuenta" text,
+ "nivel" integer,
+ "monto_moroso" numeric,
+ "fecha_ultimo_pedido" date,
+ "dias_atraso" integer,
+ "elegible_addon" boolean,
+ "origen" text,
+ "hycite_id" text,
+ "telefono_casa" text,
+ "notas_internas" text,
+ "ultimo_contacto_at" timestamp with time zone,
+ "codigo_vendedor_hycite" text,
+ "codigo_dist_hycite" text,
+ "ciudad" text,
+ "estado_region" text,
+ "codigo_postal" text,
+ "ultima_fecha_pago" date,
+ "next_action_date" date,
+ "next_action" text,
+ "lat" numeric,
+ "lng" numeric,
+ "org_id" uuid,
+ "persona_id" uuid,
+ "estado_operativo" text,
+ "telegram_chat_id" text,
+ "credito_disponible" numeric(12,2),
+ "metodo_pago" text,
+ "fecha_orden" date,
+ "fecha_cierre" date,
+ "fuente_import" text,
+ "import_file_name" text,
+ "import_drive_url" text,
+ "apartamento" text,
+ "tipo_cuenta_hycite" text,
+ "pago_minimo_mensual" numeric(12,2),
+ "factor_ingresos" numeric(12,2),
+ "estado_cuenta_raw" text,
+ "vendedor_hycite_nombre" text,
+ "whatsapp_opt_in" boolean,
+ "whatsapp_no_molestar" boolean,
+ "whatsapp_ultimo_envio_at" timestamp with time zone,
+ "whatsapp_consent_source" text,
+ "whatsapp_consented_at" timestamp with time zone,
+ "geocoded_at" timestamp with time zone,
+ "geocode_status" text,
+ "geocode_provider" text,
+ "formatted_address" text,
+ "geocode_error" text
+);
+CREATE TABLE public.ventas (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "numero_nota_pedido" text,
+ "cliente_id" uuid,
+ "vendedor_id" uuid,
+ "producto_id" uuid,
+ "tipo_movimiento" venta_tipo_movimiento,
+ "monto" numeric(12,2),
+ "fecha_venta" date,
+ "created_at" timestamp with time zone,
+ "updated_at" timestamp with time zone,
+ "estado" text,
+ "subtotal" numeric(12,2),
+ "impuesto" numeric(12,2),
+ "cargo_envio" numeric(12,2),
+ "descuento" numeric(12,2),
+ "total" numeric(12,2),
+ "pago_inicial" numeric(12,2),
+ "saldo_pendiente" numeric(12,2),
+ "dir_facturacion_nombre" text,
+ "dir_facturacion_direccion" text,
+ "dir_facturacion_ciudad" text,
+ "dir_facturacion_estado" text,
+ "dir_facturacion_zip" text,
+ "dir_facturacion_email" text,
+ "dir_envio_nombre" text,
+ "dir_envio_direccion" text,
+ "dir_envio_ciudad" text,
+ "dir_envio_estado" text,
+ "dir_envio_zip" text,
+ "dir_envio_igual_facturacion" boolean,
+ "notas" text,
+ "org_id" uuid
+);
+CREATE TABLE public.venta_items (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "org_id" uuid,
+ "venta_id" uuid,
+ "linea" integer,
+ "producto_id" uuid,
+ "codigo_articulo" text,
+ "descripcion" text,
+ "cantidad" integer,
+ "precio_unitario" numeric(12,2),
+ "subtotal" numeric(12,2),
+ "created_at" timestamp with time zone
+);
+CREATE TABLE public.venta_transacciones (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "org_id" uuid,
+ "venta_id" uuid,
+ "fecha" date,
+ "descripcion" text,
+ "cantidad" numeric(12,2),
+ "saldo" numeric(12,2),
+ "created_at" timestamp with time zone
+);
+CREATE TABLE public.tele_vendedor_assignments (
+ "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ "tele_id" uuid,
+ "vendedor_id" uuid,
+ "created_at" timestamp with time zone
+);
+CREATE OR REPLACE FUNCTION public.fn_convertir_lead_a_cliente(p_lead_id uuid, p_actor_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_lead record;
+  v_cliente_id uuid;
+begin
+  -- Lock the row so a concurrent call blocks here instead of racing past this check.
+  select * into v_lead from leads where id = p_lead_id and deleted_at is null for update;
+  if not found then
+    return jsonb_build_object('error', 'lead_not_found');
+  end if;
+
+  if v_lead.estado_pipeline in ('cierre', 'descartado') then
+    return jsonb_build_object('error', 'lead_not_active');
+  end if;
+
+  insert into clientes (
+    nombre, apellido, email, telefono, direccion, ciudad, estado_region, codigo_postal, apartamento,
+    vendedor_id, org_id, persona_id, fecha_nacimiento,
+    origen, fecha_cierre, activo, saldo_actual, monto_moroso, dias_atraso,
+    whatsapp_opt_in, whatsapp_no_molestar, whatsapp_consent_source, whatsapp_consented_at
+  )
+  values (
+    v_lead.nombre, v_lead.apellido, v_lead.email, v_lead.telefono, v_lead.direccion, v_lead.ciudad, v_lead.estado_region, v_lead.codigo_postal, v_lead.apartamento,
+    v_lead.vendedor_id, v_lead.org_id, v_lead.persona_id, v_lead.fecha_nacimiento,
+    'lead_convertido', current_date, true, 0, 0, 0,
+    v_lead.whatsapp_opt_in, v_lead.whatsapp_no_molestar, v_lead.whatsapp_consent_source, v_lead.whatsapp_consented_at
+  )
+  returning id into v_cliente_id;
+
+  update leads
+     set estado_pipeline = 'cierre',
+         updated_at = now(),
+         updated_by = coalesce(p_actor_id, updated_by)
+   where id = p_lead_id;
+
+  return jsonb_build_object('cliente_id', v_cliente_id, 'lead_id', p_lead_id);
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+  select exists (
+    select 1 from public.usuarios
+    where id = auth.uid() and rol = 'admin'
+  );
+$function$;
+
+CREATE OR REPLACE FUNCTION public.is_distribuidor()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+  select exists (
+    select 1 from public.usuarios
+    where id = auth.uid() and rol = 'distribuidor'
+  );
+$function$;
+
+CREATE OR REPLACE FUNCTION public.is_distribuidor_of(vendor_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+  select exists (
+    select 1 from public.usuarios u
+    where u.id = vendor_id
+      and u.distribuidor_padre_id = auth.uid()
+  );
+$function$;
+ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.venta_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.venta_transacciones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "venta_items_inherit_ventas" ON public.venta_items FOR ALL TO authenticated USING (((org_id IS NOT NULL) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND (EXISTS ( SELECT 1
+   FROM ventas v
+  WHERE ((v.id = venta_items.venta_id) AND (v.org_id = venta_items.org_id)))))) WITH CHECK (((org_id IS NOT NULL) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND (EXISTS ( SELECT 1
+   FROM ventas v
+  WHERE ((v.id = venta_items.venta_id) AND (v.org_id = venta_items.org_id))))));
+CREATE POLICY "venta_transacciones_inherit_ventas" ON public.venta_transacciones FOR ALL TO authenticated USING (((org_id IS NOT NULL) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND (EXISTS ( SELECT 1
+   FROM ventas v
+  WHERE ((v.id = venta_transacciones.venta_id) AND (v.org_id = venta_transacciones.org_id)))))) WITH CHECK (((org_id IS NOT NULL) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND (EXISTS ( SELECT 1
+   FROM ventas v
+  WHERE ((v.id = venta_transacciones.venta_id) AND (v.org_id = venta_transacciones.org_id))))));
+CREATE POLICY "ventas_admin_all" ON public.ventas FOR ALL TO authenticated USING ((is_admin() AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))))) WITH CHECK ((is_admin() AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid())))));
+CREATE POLICY "ventas_distribuidor_all" ON public.ventas FOR ALL TO authenticated USING ((is_distribuidor() AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND ((vendedor_id = auth.uid()) OR is_distribuidor_of(vendedor_id) OR (EXISTS ( SELECT 1
+   FROM clientes c
+  WHERE ((c.id = ventas.cliente_id) AND (c.org_id = ventas.org_id) AND ((c.distribuidor_id = auth.uid()) OR (c.vendedor_id = auth.uid()) OR is_distribuidor_of(c.vendedor_id)))))))) WITH CHECK ((is_distribuidor() AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND ((vendedor_id = auth.uid()) OR is_distribuidor_of(vendedor_id) OR (EXISTS ( SELECT 1
+   FROM clientes c
+  WHERE ((c.id = ventas.cliente_id) AND (c.org_id = ventas.org_id) AND ((c.distribuidor_id = auth.uid()) OR (c.vendedor_id = auth.uid()) OR is_distribuidor_of(c.vendedor_id))))))));
+CREATE POLICY "ventas_supervisor_tele_read" ON public.ventas FOR SELECT TO authenticated USING (((EXISTS ( SELECT 1
+   FROM usuarios u
+  WHERE ((u.id = auth.uid()) AND (u.rol = 'supervisor_telemercadeo'::usuario_rol)))) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid())))));
+CREATE POLICY "ventas_tele_read" ON public.ventas FOR SELECT TO authenticated USING (((EXISTS ( SELECT 1
+   FROM usuarios u
+  WHERE ((u.id = auth.uid()) AND (u.rol = 'telemercadeo'::usuario_rol)))) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))) AND (EXISTS ( SELECT 1
+   FROM (clientes c
+     JOIN tele_vendedor_assignments t ON ((t.tele_id = auth.uid())))
+  WHERE ((c.id = ventas.cliente_id) AND (c.org_id = ventas.org_id) AND ((t.vendedor_id = c.vendedor_id) OR (t.vendedor_id = c.distribuidor_id)))))));
+CREATE POLICY "ventas_vendedor_all" ON public.ventas FOR ALL TO authenticated USING (((EXISTS ( SELECT 1
+   FROM usuarios u
+  WHERE ((u.id = auth.uid()) AND (u.rol = 'vendedor'::usuario_rol)))) AND (vendedor_id = auth.uid()) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid()))))) WITH CHECK (((EXISTS ( SELECT 1
+   FROM usuarios u
+  WHERE ((u.id = auth.uid()) AND (u.rol = 'vendedor'::usuario_rol)))) AND (vendedor_id = auth.uid()) AND (org_id = ( SELECT u.org_id
+   FROM usuarios u
+  WHERE (u.id = auth.uid())))));
+GRANT USAGE ON SCHEMA public, auth TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
