@@ -252,6 +252,7 @@ export function VentasPage() {
       setVentas(data ?? [])
     }
     setLoading(false)
+    return fetchError
   }, [configured, currentRole, sessionUserId, distributionUserIds, hasDistribuidorScope, viewMode])
 
   const loadOptions = useCallback(async () => {
@@ -291,6 +292,7 @@ export function VentasPage() {
     setProductos(productosResult.data ?? [])
     setLeads((leadsResult.data as LeadOption[]) ?? [])
     setLoadingOptions(false)
+    return clientesResult.error ?? productosResult.error ?? leadsResult.error
   }, [configured, currentOrgId, currentRole, sessionUserId, hasDistribuidorScope, viewMode, distributionUserIds])
 
   const loadVentaDetails = useCallback(async (ventaId: string) => {
@@ -300,6 +302,7 @@ export function VentasPage() {
     ])
     setSelectedVentaItems(itemsResult.data ?? [])
     setSelectedVentaTransacciones(transaccionesResult.data ?? [])
+    return itemsResult.error ?? transaccionesResult.error
   }, [])
 
   useEffect(() => {
@@ -609,6 +612,7 @@ export function VentasPage() {
   const prevStep = () => setFormStep((s) => Math.max(s - 1, 1))
 
   const handleRowClick = async (row: DataTableRow) => {
+    if (decisionSubmitting) return
     const venta = ventas.find((v) => v.id === row.id)
     if (venta) {
       setSelectedVenta(venta)
@@ -620,26 +624,38 @@ export function VentasPage() {
 
   const decidirAprobacionVenta = async (ventaId: string, decision: 'aprobada' | 'rechazada', cuenta: string | null) => {
     setDecisionSubmitting(true)
-    const { error: rpcError } = await supabase.rpc('fn_aprobar_rechazar_venta', {
-      p_venta_id: ventaId,
-      p_estado_aprobacion: decision,
-      p_numero_cuenta_financiera: cuenta,
-    })
-    if (rpcError) {
-      showToast(rpcError.message, 'error')
+    let decisionGuardada = false
+    try {
+      const { data: resultado, error: rpcError } = await supabase.rpc('fn_aprobar_rechazar_venta', {
+        p_venta_id: ventaId,
+        p_estado_aprobacion: decision,
+        p_numero_cuenta_financiera: cuenta,
+      })
+      if (rpcError) throw rpcError
+      decisionGuardada = true
+      // La decisión confirmada sigue visible aunque falle el refresco posterior.
+      const actualizarDecision = (venta: VentaRecord): VentaRecord => venta.id === ventaId
+        ? { ...venta, estado_aprobacion: resultado.estado_aprobacion, cliente_id: resultado.cliente_id }
+        : venta
+      setVentas((prev) => prev.map(actualizarDecision))
+      setSelectedVenta((prev) => prev ? actualizarDecision(prev) : prev)
+      const refreshErrors = await Promise.all([loadVentas(), loadOptions(), loadVentaDetails(ventaId)])
+      const refreshError = refreshErrors.find(Boolean)
+      if (refreshError) throw refreshError
+      const { data: refreshedVenta, error: detailError } = await supabase
+        .from('ventas')
+        .select('id, numero_nota_pedido, cliente_id, lead_id, estado_aprobacion, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
+        .eq('id', ventaId)
+        .maybeSingle()
+      if (detailError || !refreshedVenta) throw detailError ?? new Error('Orden no disponible')
+      setSelectedVenta((prev) => prev?.id === ventaId ? refreshedVenta as VentaRecord : prev)
+      showToast(decision === 'aprobada' ? 'Orden aprobada.' : 'Orden rechazada.', 'success')
+    } catch (error) {
+      const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Error de conexión'
+      showToast(decisionGuardada ? `Decisión guardada, pero no se pudo actualizar la vista. Recarga la página. ${message}` : message, 'error')
+    } finally {
       setDecisionSubmitting(false)
-      return
     }
-    await loadVentas()
-    await loadVentaDetails(ventaId)
-    const { data: refreshedVenta } = await supabase
-      .from('ventas')
-      .select('id, numero_nota_pedido, cliente_id, lead_id, estado_aprobacion, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
-      .eq('id', ventaId)
-      .maybeSingle()
-    if (refreshedVenta) setSelectedVenta(refreshedVenta as VentaRecord)
-    showToast(decision === 'aprobada' ? 'Orden aprobada.' : 'Orden rechazada.', 'success')
-    setDecisionSubmitting(false)
   }
 
   const handleAprobarVenta = async (venta: VentaRecord) => {
@@ -1068,7 +1084,7 @@ export function VentasPage() {
           { label: t('ventas.fields.total'), value: numberFormat.format(selectedVenta.total ?? selectedVenta.monto ?? 0) },
           { label: t('ventas.fields.fechaVenta'), value: selectedVenta.fecha_venta ?? '-' },
         ] : []}
-        onClose={() => setSelectedVenta(null)}
+        onClose={() => { if (!decisionSubmitting) setSelectedVenta(null) }}
       />
 
       <Modal
@@ -1392,7 +1408,7 @@ export function VentasPage() {
       <Modal
         open={Boolean(selectedVenta)}
         title={selectedVenta ? `Venta ${selectedVenta.numero_nota_pedido || selectedVenta.id.slice(0, 8)}` : ''}
-        onClose={() => setSelectedVenta(null)}
+        onClose={() => { if (!decisionSubmitting) setSelectedVenta(null) }}
         size="lg"
         actions={
           canDecideAprobacion && selectedVenta?.estado_aprobacion === 'pendiente_aprobacion' ? (
