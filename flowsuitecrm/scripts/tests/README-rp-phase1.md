@@ -6,6 +6,7 @@ sintéticos. No utiliza credenciales ni conexiones de Supabase.
 ```sh
 npm install --prefix /tmp/rp-phase1-test @electric-sql/pglite@0.5.8
 PGLITE_MODULE=/tmp/rp-phase1-test/node_modules/@electric-sql/pglite/dist/index.js node scripts/tests/rp-phase1.mjs
+PGLITE_MODULE=/tmp/rp-phase1-test/node_modules/@electric-sql/pglite/dist/index.js node scripts/tests/rp-phase1.mjs --existing-conversion
 node node_modules/typescript/bin/tsc -b
 node node_modules/vite/bin/vite.js build
 ```
@@ -16,6 +17,53 @@ implementación de conversión consultadas en producción el 20 de septiembre de
 usuarios/clientes/leads. La concurrencia entre conexiones requiere validación
 posterior en un Postgres completo; aquí se prueban reintentos secuenciales,
 índice único, transacciones, rollback, permisos y RLS de ventas y sus hijos.
+
+## Reconciliación previa (entornos sin la función)
+
+La secuencia completa es `20260919012125_create_fn_convertir_lead_a_cliente.sql`
+(NO-OP de solo comentarios), `20260920162341_reconcile_fn_convertir_lead_a_cliente.sql`
+y `20260920162342_rp_lead_order_approval_phase1.sql`. La reconciliación tiene versión propia,
+posterior a 20260919012125 y anterior a Fase 1. La migración de Fase 1 permanece
+sin cambios. El timestamp se eligió expresamente para este prerrequisito local;
+la CLI instalada falla con código 139, como se documentó al crear Fase 1.
+
+La reconciliación instala mediante CREATE OR REPLACE la definición consultada
+en producción, incluido el cuerpo exacto con MD5
+`d7e46a5c18298d9dc3ee8593bd6ed08b`, SECURITY DEFINER y search_path=public.
+No añade auth.uid(), autorización ni lógica RP. Inmediatamente revoca EXECUTE
+a PUBLIC, anon y authenticated dentro de la misma transacción, tanto al crear
+como al reconciliar una función existente. Por ello no habilitar conversiones
+entre las dos migraciones: quedan indisponibles hasta aplicar Fase 1.
+
+El modo por defecto de las pruebas elimina la función de la fixture para modelar
+staging, verifica ausencia incluso después del NO-OP, instala reconciliación, comprueba hash/atributos y
+deniega invocaciones reales como anon/authenticated. Luego aplica Fase 1 sin
+cambios, verifica recuperación de EXECUTE para authenticated y ejecuta el flujo
+RP completo. `--existing-conversion` repite la suite desde una función existente
+como producción y con 20260919012125 ya registrada en un ledger local de prueba:
+se omite el NO-OP y se empieza directamente por 20260920162341. Se comprueban
+las versiones realmente ejecutadas y el historial resultante en ambos escenarios.
+Esto modela la selección por versión; no ejecuta la CLI ni modifica historial remoto.
+Ambos modos prueban reejecución segura y conservación del OID.
+Si existe una definición distinta, la reconciliación falla sin sobrescribirla;
+esto también impide degradar accidentalmente una Fase 1 ya instalada.
+
+La copia stale se conserva byte por byte en
+`supabase/migrations-archive/20260919012125_create_fn_convertir_lead_a_cliente.sql.disabled`,
+fuera del directorio activo. No ejecutarla. Producción registra 20260919012125,
+pero staging no. El archivo activo 20260919012125 ahora es un NO-OP: conserva
+la versión local para producción y permite registrarla sin reinstalar SQL stale
+en staging. El original archivado no cambia. No usar migration repair ni borrar
+registros remotos; aún se debe verificar el plan real de migraciones antes de un
+despliegue, porque las pruebas usan un ledger local y no la CLI.
+
+Rollback de esta reconciliación, solo como procedimiento futuro: si creó una
+función antes ausente y Fase 1 aún no se aplicó, retirar la función únicamente
+tras revisar dependencias; si la función ya existía, restaurar sus ACL previas
+desde respaldo (el cuerpo no cambia). Si Fase 1 se aplicó, primero seguir su
+rollback manual documentado abajo; su estado inmediatamente anterior ahora es
+la función reconciliada con ejecución API revocada. No reponer permisos públicos
+de la función sin autorización como una forma de reactivar la aplicación.
 
 ## Decisiones y revisión antes de un futuro despliegue
 
@@ -49,11 +97,11 @@ posterior en un Postgres completo; aquí se prueban reintentos secuenciales,
   convertir al aprobar utiliza el `cierre` que ya establece la función existente.
 - Las órdenes RP no se eliminan por DML; se conserva la decisión y el vínculo
   para evitar borrar una orden rechazada y eludir la aprobación manualmente.
-- No ejecutar el backfill untracked `20260919012125`: su cuerpo no coincide con
-  producción. Esta migración compara el MD5 del cuerpo instalado con la versión
+- No ejecutar el SQL stale archivado `20260919012125...sql.disabled`: su cuerpo
+  no coincide con producción. El archivo activo de esa versión es solo comentarios. Esta migración compara el MD5 del cuerpo instalado con la versión
   leída de producción: d7e46a5c18298d9dc3ee8593bd6ed08b. Ante cualquier drift,
   falla antes de reemplazar la función. Antes de un despliegue, resolver ese
-  archivo por separado; no incluirlo tal como está ni ejecutar su backfill.
+  historial del entorno; nunca reinstalar el SQL archivado.
 - Aplicar la migración antes del frontend en un futuro despliegue coordinado:
   la consulta de ventas solicita las dos columnas nuevas. No hay nueva pantalla
   de aprobación; la operación queda disponible mediante RPC.

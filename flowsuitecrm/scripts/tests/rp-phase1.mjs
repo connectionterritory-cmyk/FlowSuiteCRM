@@ -5,7 +5,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite')
 const db = new PGlite()
+const existingConversion = process.argv.includes('--existing-conversion')
 const file = (path) => readFileSync(new URL('../../' + path, import.meta.url), 'utf8')
+const historicalNoop = file('supabase/migrations/20260919012125_create_fn_convertir_lead_a_cliente.sql')
+const reconciliation = file('supabase/migrations/20260920162341_reconcile_fn_convertir_lead_a_cliente.sql')
+const productionHash = 'd7e46a5c18298d9dc3ee8593bd6ed08b'
 let checks = 0
 const eq = (a, b) => { assert.deepEqual(a, b); checks++ }
 const fail = async (fn, pattern) => { await assert.rejects(fn, pattern); checks++ }
@@ -26,11 +30,62 @@ const decide = async (sale, state, account = null) => (await q(
   'SELECT public.fn_aprobar_rechazar_venta($1, $2, $3) result', [sale, state, account],
 ))[0].result
 try {
+  // Only line comments/blank lines are allowed in the historical placeholder.
+  eq(historicalNoop.split('\n').every(line => !line.trim() || line.trimStart().startsWith('--')), true)
   await db.exec(file('scripts/tests/fixtures/rp-phase1.fixture'))
-  const original = (await q("SELECT oid, prosrc FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0]
-  await db.exec(file('supabase/migrations/20260920162342_rp_lead_order_approval_phase1.sql'))
+  // Local ledger models the applied-version decision; no remote history is touched.
+  await db.exec('CREATE SCHEMA supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY)')
+  const executedVersions = []
+  const applyPending = async (version, sql) => {
+    if ((await q('SELECT version FROM supabase_migrations.schema_migrations WHERE version=$1',[version])).length) return
+    await db.exec(sql)
+    await q('INSERT INTO supabase_migrations.schema_migrations(version) VALUES ($1)',[version])
+    executedVersions.push(version)
+  }
+  if (existingConversion) await q('INSERT INTO supabase_migrations.schema_migrations(version) VALUES ($1)',['20260919012125'])
+  // Default models staging: all prerequisites exist, but conversion is absent.
+  // The second invocation exercises reconciliation against existing production.
+  const fixtureOriginal = (await q("SELECT oid, prosrc FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0]
+  if (!existingConversion) {
+    await db.exec('DROP FUNCTION public.fn_convertir_lead_a_cliente(uuid,uuid)')
+    eq((await q("SELECT to_regprocedure('public.fn_convertir_lead_a_cliente(uuid,uuid)') AS fn"))[0].fn, null)
+  }
+  await applyPending('20260919012125', historicalNoop)
+  eq(executedVersions, existingConversion ? [] : ['20260919012125'])
+  if (!existingConversion) eq((await q("SELECT to_regprocedure('public.fn_convertir_lead_a_cliente(uuid,uuid)') AS fn"))[0].fn,null)
+  else eq((await q("SELECT prosrc FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0].prosrc,fixtureOriginal.prosrc)
+  await applyPending('20260920162341', reconciliation)
+  const original = (await q("SELECT oid, prosrc, md5(prosrc) AS hash, prosecdef, proconfig, proargnames, pronargdefaults FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0]
+  eq(original.hash, productionHash)
+  eq(original.prosrc, fixtureOriginal.prosrc)
+  eq(original.prosecdef, true)
+  eq(original.proconfig, ['search_path=public'])
+  eq(original.proargnames, ['p_lead_id','p_actor_id'])
+  eq(original.pronargdefaults, 1)
+  if (existingConversion) eq(original.oid, fixtureOriginal.oid)
+  for (const role of ['anon','authenticated']) {
+    eq((await q("SELECT has_function_privilege($1, 'public.fn_convertir_lead_a_cliente(uuid,uuid)', 'EXECUTE') AS allowed",[role]))[0].allowed, false)
+    await db.exec(`SET ROLE ${role}`)
+    await fail(()=>q('SELECT public.fn_convertir_lead_a_cliente($1,$2)',[id(10),id(2)]),/permission denied/)
+    await db.exec('RESET ROLE')
+  }
+  eq((await q("SELECT EXISTS (SELECT 1 FROM pg_proc p, LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS public_execute"))[0].public_execute,false)
+  // Reapplying while still at the intermediate version preserves OID and body.
+  await db.exec(reconciliation)
+  eq((await q("SELECT oid FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0].oid,original.oid)
+  eq((await q("SELECT md5(prosrc) AS hash FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0].hash,productionHash)
+  await applyPending('20260920162342',file('supabase/migrations/20260920162342_rp_lead_order_approval_phase1.sql'))
+  eq(executedVersions,existingConversion ? ['20260920162341','20260920162342'] : ['20260919012125','20260920162341','20260920162342'])
+  eq((await q('SELECT version FROM supabase_migrations.schema_migrations ORDER BY version')).map(row=>row.version),['20260919012125','20260920162341','20260920162342'])
   const canonical = (await q("SELECT oid, prosrc FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0]
   eq(canonical.oid, original.oid)
+  eq(canonical.prosrc.includes('auth.uid()'), true)
+  eq((await q("SELECT has_function_privilege('authenticated', 'public.fn_convertir_lead_a_cliente(uuid,uuid)', 'EXECUTE') AS allowed"))[0].allowed,true)
+  eq((await q("SELECT has_function_privilege('anon', 'public.fn_convertir_lead_a_cliente(uuid,uuid)', 'EXECUTE') AS allowed"))[0].allowed,false)
+  // A late replay of reconciliation must not downgrade the protected function.
+  await fail(()=>db.exec(reconciliation),/difiere de la base canónica/)
+  await db.exec('ROLLBACK')
+  eq((await q("SELECT prosrc FROM pg_proc WHERE oid='public.fn_convertir_lead_a_cliente(uuid,uuid)'::regprocedure"))[0].prosrc,canonical.prosrc)
   eq((await q("SELECT count(*)::int n FROM pg_proc WHERE proname='fn_convertir_lead_a_cliente'"))[0].n, 1)
   eq((await q("SELECT count(*)::int n FROM pg_namespace WHERE nspname='rp_private'"))[0].n, 0)
   eq(canonical.prosrc.includes('for update'), true)
@@ -193,9 +248,11 @@ try {
   const staleDb = new PGlite()
   try {
     await staleDb.exec(file('scripts/tests/fixtures/rp-phase1.fixture').replace('deleted_at is null for update', 'deleted_at is null'))
+    await fail(()=>staleDb.exec(reconciliation),/difiere de la base canónica/)
+    await staleDb.exec('ROLLBACK')
     await fail(()=>staleDb.exec(file('supabase/migrations/20260920162342_rp_lead_order_approval_phase1.sql')), /definición reconciliada/)
   } finally { await staleDb.close() }
-  console.log(`PASS: ${checks} assertions (migration, approval, rejection, idempotency, permissions/RLS, finances, rollback)`)
+  console.log(`PASS: ${checks} assertions (${existingConversion ? 'historical version already applied; reconcile → phase1' : 'historical no-op → reconcile → phase1'} ; migration, approval, rejection, idempotency, permissions/RLS, finances, rollback)`)
 } catch(error) {
   console.error(error.message, error.detail ?? '', error.where ?? '')
   process.exitCode=1

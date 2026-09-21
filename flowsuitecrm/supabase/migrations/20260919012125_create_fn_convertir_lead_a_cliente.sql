@@ -1,0 +1,8 @@
+-- NO-OP: esta versión ya está registrada en producción.
+-- Se conserva este archivo únicamente para mantener continuidad del historial.
+-- El SQL histórico original está archivado, byte por byte, en:
+-- ../migrations-archive/20260919012125_create_fn_convertir_lead_a_cliente.sql.disabled
+-- No debe reinstalarse: carece de las protecciones posteriores de conversión.
+-- La definición canónica se instala mediante la migración de versión propia:
+-- 20260920162341_reconcile_fn_convertir_lead_a_cliente.sql
+-- Este archivo contiene solo comentarios; no modifica schema, permisos ni datos.

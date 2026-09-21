@@ -1,0 +1,47 @@
+-- Backfill: fn_convertir_lead_a_cliente already exists in production but was never
+-- tracked in migration history. This migration documents it as-is (verified via
+-- pg_get_functiondef against production on 2026-09-18) so `supabase migration list`
+-- and local history match reality. CREATE OR REPLACE is idempotent — safe to apply
+-- even though the function already exists live.
+--
+-- Rollback: DROP FUNCTION IF EXISTS public.fn_convertir_lead_a_cliente(uuid, uuid);
+-- (only if no frontend code depends on it yet — check before dropping in prod).
+
+CREATE OR REPLACE FUNCTION public.fn_convertir_lead_a_cliente(p_lead_id uuid, p_actor_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_lead record;
+  v_cliente_id uuid;
+begin
+  select * into v_lead from leads where id = p_lead_id and deleted_at is null;
+  if not found then
+    return jsonb_build_object('error', 'lead_not_found');
+  end if;
+
+  insert into clientes (
+    nombre, apellido, email, telefono, direccion, ciudad, estado_region, codigo_postal, apartamento,
+    vendedor_id, org_id, persona_id, fecha_nacimiento,
+    origen, fecha_cierre, activo, saldo_actual, monto_moroso, dias_atraso,
+    whatsapp_opt_in, whatsapp_no_molestar, whatsapp_consent_source, whatsapp_consented_at
+  )
+  values (
+    v_lead.nombre, v_lead.apellido, v_lead.email, v_lead.telefono, v_lead.direccion, v_lead.ciudad, v_lead.estado_region, v_lead.codigo_postal, v_lead.apartamento,
+    v_lead.vendedor_id, v_lead.org_id, v_lead.persona_id, v_lead.fecha_nacimiento,
+    'lead_convertido', current_date, true, 0, 0, 0,
+    v_lead.whatsapp_opt_in, v_lead.whatsapp_no_molestar, v_lead.whatsapp_consent_source, v_lead.whatsapp_consented_at
+  )
+  returning id into v_cliente_id;
+
+  update leads
+     set estado_pipeline = 'cierre',
+         updated_at = now(),
+         updated_by = coalesce(p_actor_id, updated_by)
+   where id = p_lead_id;
+
+  return jsonb_build_object('cliente_id', v_cliente_id, 'lead_id', p_lead_id);
+end;
+$function$;
