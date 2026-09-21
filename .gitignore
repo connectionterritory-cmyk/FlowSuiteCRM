@@ -32,6 +32,7 @@ backup.sql
 !supabase/migrations/*.sql
 !flowsuitecrm/supabase/migrations/*.sql
 outputs/*.csv
+reports/*.csv
 skills/
 tmp-workflow*.json
 *.pdf

@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionHeader } from '../../components/SectionHeader'
 import { DataTable, type DataTableColumn, type DataTableRow } from '../../components/DataTable'
@@ -197,6 +197,10 @@ export function VentasPage() {
   const [selectedVentaTransacciones, setSelectedVentaTransacciones] = useState<VentaTransaccion[]>([])
   const [detailTab, setDetailTab] = useState<'resumen' | 'articulos' | 'transacciones'>('resumen')
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
+  const ventasRequest = useRef(0)
+  const optionsRequest = useRef(0)
+  const detailsRequest = useRef(0)
+  const selectedVentaId = useRef<string | null>(null)
   const configured = isSupabaseConfigured
   const sessionUserId = session?.user.id ?? null
   const sessionOrgId = useMemo(() => {
@@ -226,6 +230,7 @@ export function VentasPage() {
   const [leadDropdownOpen, setLeadDropdownOpen] = useState(false)
 
   const loadVentas = useCallback(async ({ preserveOnError = false } = {}) => {
+    const request = ++ventasRequest.current
     if (!configured) return
     setLoading(true)
     setError(null)
@@ -245,6 +250,7 @@ export function VentasPage() {
       query = query.in('vendedor_id', distributionUserIds)
     }
     const { data, error: fetchError } = await query
+    if (request !== ventasRequest.current) return
     if (fetchError) {
       setError(fetchError.message)
       if (!preserveOnError) setVentas([])
@@ -256,6 +262,7 @@ export function VentasPage() {
   }, [configured, currentRole, sessionUserId, distributionUserIds, hasDistribuidorScope, viewMode])
 
   const loadOptions = useCallback(async () => {
+    const request = ++optionsRequest.current
     if (!configured) return
     setLoadingOptions(true)
     let clientesQuery = supabase.from('clientes').select('id, nombre, apellido').order('nombre')
@@ -288,6 +295,7 @@ export function VentasPage() {
       supabase.from('v_productos_publicos').select('id, nombre, codigo, precio').order('nombre'),
       leadsQuery,
     ])
+    if (request !== optionsRequest.current) return
     setClientes(clientesResult.data ?? [])
     setProductos(productosResult.data ?? [])
     setLeads((leadsResult.data as LeadOption[]) ?? [])
@@ -296,22 +304,35 @@ export function VentasPage() {
   }, [configured, currentOrgId, currentRole, sessionUserId, hasDistribuidorScope, viewMode, distributionUserIds])
 
   const loadVentaDetails = useCallback(async (ventaId: string) => {
+    if (selectedVentaId.current !== ventaId) return
+    const request = ++detailsRequest.current
     const [itemsResult, transaccionesResult] = await Promise.all([
       supabase.from('venta_items').select('*').eq('venta_id', ventaId).order('linea'),
       supabase.from('venta_transacciones').select('*').eq('venta_id', ventaId).order('fecha', { ascending: false }),
     ])
+    if (request !== detailsRequest.current || selectedVentaId.current !== ventaId) return
     setSelectedVentaItems(itemsResult.data ?? [])
     setSelectedVentaTransacciones(transaccionesResult.data ?? [])
     return itemsResult.error ?? transaccionesResult.error
   }, [])
 
+  const activeLoaders = useRef<{ loadVentas: typeof loadVentas; loadOptions: typeof loadOptions } | null>(null)
+
   useEffect(() => {
     if (!configured) return
+    activeLoaders.current = { loadVentas, loadOptions }
     const handle = window.setTimeout(() => {
       void loadVentas()
       void loadOptions()
     }, 0)
-    return () => window.clearTimeout(handle)
+    return () => {
+      window.clearTimeout(handle)
+      activeLoaders.current = null
+      // Invalidate in-flight reads before a scope change or unmount.
+      ventasRequest.current += 1
+      optionsRequest.current += 1
+      detailsRequest.current += 1
+    }
   }, [configured, loadVentas, loadOptions])
 
   useEffect(() => {
@@ -615,9 +636,21 @@ export function VentasPage() {
     if (decisionSubmitting) return
     const venta = ventas.find((v) => v.id === row.id)
     if (venta) {
+      selectedVentaId.current = venta.id
+      setSelectedVentaItems([])
+      setSelectedVentaTransacciones([])
       setSelectedVenta(venta)
       await loadVentaDetails(venta.id)
     }
+  }
+
+  const closeVentaDetails = () => {
+    if (decisionSubmitting) return
+    selectedVentaId.current = null
+    detailsRequest.current++
+    setSelectedVenta(null)
+    setSelectedVentaItems([])
+    setSelectedVentaTransacciones([])
   }
 
   const canDecideAprobacion = currentRole === 'admin' || currentRole === 'distribuidor'
@@ -639,16 +672,22 @@ export function VentasPage() {
         : venta
       setVentas((prev) => prev.map(actualizarDecision))
       setSelectedVenta((prev) => prev ? actualizarDecision(prev) : prev)
-      const refreshErrors = await Promise.all([loadVentas({ preserveOnError: true }), loadOptions(), loadVentaDetails(ventaId)])
+      // The scope may have changed while the decision RPC was in flight.
+      const loaders = activeLoaders.current
+      if (!loaders) return
+      const refreshErrors = await Promise.all([loaders.loadVentas({ preserveOnError: true }), loaders.loadOptions(), loadVentaDetails(ventaId)])
       const refreshError = refreshErrors.find(Boolean)
       if (refreshError) throw refreshError
+      const detailRequest = detailsRequest.current
       const { data: refreshedVenta, error: detailError } = await supabase
         .from('ventas')
         .select('id, numero_nota_pedido, cliente_id, lead_id, estado_aprobacion, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
         .eq('id', ventaId)
         .maybeSingle()
       if (detailError || !refreshedVenta) throw detailError ?? new Error('Orden no disponible')
-      setSelectedVenta((prev) => prev?.id === ventaId ? refreshedVenta as VentaRecord : prev)
+      if (detailRequest === detailsRequest.current && selectedVentaId.current === ventaId) {
+        setSelectedVenta((prev) => prev?.id === ventaId ? refreshedVenta as VentaRecord : prev)
+      }
       showToast(decision === 'aprobada' ? 'Orden aprobada.' : 'Orden rechazada.', 'success')
     } catch (error) {
       const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Error de conexión'
@@ -1084,7 +1123,7 @@ export function VentasPage() {
           { label: t('ventas.fields.total'), value: numberFormat.format(selectedVenta.total ?? selectedVenta.monto ?? 0) },
           { label: t('ventas.fields.fechaVenta'), value: selectedVenta.fecha_venta ?? '-' },
         ] : []}
-        onClose={() => { if (!decisionSubmitting) setSelectedVenta(null) }}
+        onClose={closeVentaDetails}
       />
 
       <Modal
@@ -1408,7 +1447,7 @@ export function VentasPage() {
       <Modal
         open={Boolean(selectedVenta)}
         title={selectedVenta ? `Venta ${selectedVenta.numero_nota_pedido || selectedVenta.id.slice(0, 8)}` : ''}
-        onClose={() => { if (!decisionSubmitting) setSelectedVenta(null) }}
+        onClose={closeVentaDetails}
         size="lg"
         actions={
           canDecideAprobacion && selectedVenta?.estado_aprobacion === 'pendiente_aprobacion' ? (

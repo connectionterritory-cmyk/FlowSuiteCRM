@@ -1,4 +1,4 @@
-// Unit tests of the real page's decision handler and sales loader, with an isolated API/state adapter.
+// Unit tests of the real page's handlers/loaders, with an isolated API/state adapter.
 // No browser, credentials, network requests, or database writes.
 // Run: node scripts/tests/rp-approval-ui.mjs
 import assert from 'node:assert/strict'
@@ -11,7 +11,16 @@ const source = readFileSync(new URL('../../src/modules/ventas/VentasPage.tsx', i
 const ast = ts.createSourceFile('VentasPage.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 let handler
 let loader
+let refreshEffect
+const functions = {}
 function visit(node) {
+  if (ts.isCallExpression(node) && node.expression.getText(ast) === 'useEffect' && node.arguments[0].getText(ast).includes('void loadVentas()')) {
+    refreshEffect = node.arguments[0].getText(ast)
+  }
+  if (ts.isVariableDeclaration(node) && ['loadVentas', 'loadOptions', 'loadVentaDetails', 'handleRowClick', 'closeVentaDetails'].includes(node.name.getText(ast))) {
+    const initializer = node.initializer
+    functions[node.name.getText(ast)] = (ts.isCallExpression(initializer) ? initializer.arguments[0] : initializer).getText(ast)
+  }
   if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'decidirAprobacionVenta') handler = node.initializer.getText(ast)
   if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'loadVentas') loader = node.initializer.arguments[0].getText(ast)
   ts.forEachChild(node, visit)
@@ -33,6 +42,11 @@ function setup({ rpcError, thrownError, refreshError, detailError, missingDetail
     viewMode: 'seller',
     sessionUserId: 'user',
     distributionUserIds: [],
+    ventasRequest: { current: 0 },
+    optionsRequest: { current: 0 },
+    detailsRequest: { current: 0 },
+    selectedVentaId: { current: 'order' },
+    activeLoaders: { current: null },
     setLoading: value => { state.loading = value },
     setError: value => { state.error = value },
     setDecisionSubmitting: value => { state.busy = value },
@@ -68,6 +82,7 @@ function setup({ rpcError, thrownError, refreshError, detailError, missingDetail
     },
   })
   vm.runInContext(javascript, context)
+  context.activeLoaders.current = { loadVentas: vm.runInContext('loadVentas', context), loadOptions: context.loadOptions }
   return { state, context, decide: vm.runInContext('decide', context), loadVentas: vm.runInContext('loadVentas', context) }
 }
 
@@ -138,4 +153,185 @@ test('an empty distributor scope still clears rows even when preserving on error
   await loadVentas({ preserveOnError: true })
   assert.equal(state.ventas.length, 0)
   assert.equal(state.loading, false)
+})
+
+// Deferred queries exercise the actual component functions, including selection and
+// close handlers. Each batch can finish independently, without timers or network.
+function setupRaces() {
+  const state = { ventas: [{ id: 'A' }, { id: 'B' }], items: [], transactions: [] }
+  const requests = []
+  const context = vm.createContext({
+    configured: true, currentRole: 'admin', currentOrgId: 'org',
+    activeLoaders: { current: null },
+    window: { setTimeout: () => 1, clearTimeout: () => {} },
+    hasDistribuidorScope: false, viewMode: 'seller', sessionUserId: 'user',
+    distributionUserIds: [], decisionSubmitting: false,
+    ventas: state.ventas,
+    ventasRequest: { current: 0 }, optionsRequest: { current: 0 },
+    detailsRequest: { current: 0 }, selectedVentaId: { current: null },
+    supabase: {
+      from: table => {
+        let resolve
+        const promise = new Promise(done => { resolve = done })
+        const request = { table, filters: [], resolve }
+        requests.push(request)
+        const query = {
+          select: () => query, order: () => query, is: () => query,
+          eq: (...filter) => { request.filters.push(filter); return query },
+          in: (...filter) => { request.filters.push(filter); return query },
+          or: () => query,
+          then: (yes, no) => promise.then(yes, no),
+        }
+        return query
+      },
+    },
+  })
+  for (const [setter, key] of Object.entries({
+    setVentas: 'ventas', setSelectedVenta: 'selected',
+    setSelectedVentaItems: 'items', setSelectedVentaTransacciones: 'transactions',
+    setClientes: 'clientes', setProductos: 'productos', setLeads: 'leads',
+    setLoading: 'loading', setLoadingOptions: 'loadingOptions', setError: 'error',
+  })) context[setter] = value => { state[key] = typeof value === 'function' ? value(state[key]) : value }
+  vm.runInContext(ts.transpile(Object.entries(functions).map(([name, body]) => `const ${name} = ${body}`).join('\n'), {
+    target: ts.ScriptTarget.ES2022,
+  }), context)
+  const api = Object.fromEntries(Object.keys(functions).map(name => [name, vm.runInContext(name, context)]))
+  api.refreshEffect = vm.runInContext(ts.transpile(`(${refreshEffect})`, { target: ts.ScriptTarget.ES2022 }), context)
+  const finish = (batch, label, error = null) => batch.forEach(request => request.resolve({
+    data: error ? null : [{ id: `${label}:${request.table}` }], error,
+  }))
+  return { state, context, requests, finish, ...api }
+}
+
+test('A: selecting B clears A details; late A results cannot overwrite B', async () => {
+  const h = setupRaces()
+  h.state.items = [{ id: 'previous' }]
+  h.state.transactions = [{ id: 'previous' }]
+  const a = h.handleRowClick({ id: 'A' })
+  const old = h.requests.splice(0)
+  const b = h.handleRowClick({ id: 'B' })
+  assert.equal(h.state.selected.id, 'B')
+  assert.equal(h.state.items.length, 0)
+  assert.equal(h.state.transactions.length, 0)
+  h.finish(h.requests.splice(0), 'B')
+  await b
+  h.finish(old, 'A')
+  await a
+  assert.equal(h.state.items[0].id, 'B:venta_items')
+  assert.equal(h.state.transactions[0].id, 'B:venta_transacciones')
+})
+
+test('closing/reopening the same order invalidates old details and ignores unrelated refreshes', async () => {
+  const h = setupRaces()
+  const old = h.handleRowClick({ id: 'A' })
+  const batch = h.requests.splice(0)
+  h.closeVentaDetails()
+  h.finish(batch, 'closed')
+  await old
+  assert.equal(h.state.selected, null)
+  assert.equal(h.state.items.length, 0)
+  const reopened = h.handleRowClick({ id: 'A' })
+  const first = h.requests.splice(0)
+  const latest = h.loadVentaDetails('A')
+  await h.loadVentaDetails('B')
+  h.finish(h.requests.splice(0), 'latest')
+  await latest
+  h.finish(first, 'obsolete')
+  await reopened
+  assert.equal(h.state.items[0].id, 'latest:venta_items')
+  assert.equal(h.state.transactions[0].id, 'latest:venta_transacciones')
+})
+
+for (const loaderName of ['loadVentas', 'loadOptions']) {
+  for (const oldError of [null, { message: 'obsolete failure' }]) {
+    test(`B: ${loaderName} ignores late results/errors: ${JSON.stringify(oldError)}`, async () => {
+      const h = setupRaces()
+      const old = h[loaderName]()
+      const batch = h.requests.splice(0)
+      const latest = h[loaderName]()
+      h.finish(h.requests.splice(0), 'latest')
+      await latest
+      const expected = JSON.stringify(h.state)
+      h.finish(batch, 'obsolete', oldError)
+      assert.equal(await old, undefined, 'stale errors must not escape into decision handler')
+      assert.equal(JSON.stringify(h.state), expected)
+    })
+  }
+
+  test(`${loaderName}: stale completion cannot release current loading state`, async () => {
+    const h = setupRaces()
+    const old = h[loaderName]()
+    const batch = h.requests.splice(0)
+    const latest = h[loaderName]()
+    h.finish(batch, 'obsolete')
+    await old
+    assert.equal(h.state[loaderName === 'loadVentas' ? 'loading' : 'loadingOptions'], true)
+    h.finish(h.requests.splice(0), 'latest')
+    await latest
+    assert.equal(h.state[loaderName === 'loadVentas' ? 'loading' : 'loadingOptions'], false)
+  })
+
+  test(`${loaderName}: an empty new scope invalidates an older populated response`, async () => {
+    const h = setupRaces()
+    const old = h[loaderName]()
+    const batch = h.requests.splice(0)
+    h.context.hasDistribuidorScope = true
+    h.context.viewMode = 'distributor'
+    await h[loaderName]()
+    h.finish(batch, 'obsolete')
+    await old
+    for (const key of loaderName === 'loadVentas' ? ['ventas'] : ['clientes', 'productos', 'leads']) {
+      assert.equal(h.state[key].length, 0)
+    }
+  })
+}
+
+test('C: late pre-approval read cannot undo RPC confirmation after refresh failure', async () => {
+  const h = setup({ refreshError: { message: 'Refresh failed' } })
+  const normalFrom = h.context.supabase.from
+  let resolveOld
+  const oldResponse = new Promise(resolve => { resolveOld = resolve })
+  h.context.supabase.from = () => {
+    const query = { select: () => query, order: () => oldResponse }
+    return query
+  }
+  const old = h.loadVentas()
+  h.context.supabase.from = normalFrom
+  await h.decide('order', 'aprobada', 'ACCOUNT')
+  resolveOld({ data: [{ id: 'order', estado_aprobacion: 'pendiente_aprobacion' }], error: null })
+  await old
+  assert.equal(h.state.ventas.length, 2)
+  assert.equal(h.state.ventas[0].estado_aprobacion, 'aprobada')
+  assert.equal(h.state.selected.estado_aprobacion, 'aprobada')
+  assert.equal(h.state.error, 'Refresh failed')
+  assert.ok(h.state.refreshed.includes('clientes'))
+})
+
+test('decision refresh uses the current scope loaders after an in-flight RPC', async () => {
+  const h = setup()
+  const called = []
+  const rpc = h.context.supabase.rpc
+  h.context.supabase.rpc = async (...args) => {
+    h.context.activeLoaders.current = {
+      loadVentas: async options => { assert.equal(options.preserveOnError, true); called.push('ventas') },
+      loadOptions: async () => { called.push('clientes') },
+    }
+    return rpc(...args)
+  }
+  await h.decide('order', 'aprobada', 'ACCOUNT')
+  assert.deepEqual(called, ['ventas', 'clientes'])
+  assert.equal(h.state.selected.estado_aprobacion, 'aprobada')
+})
+
+test('effect cleanup invalidates all pending reads before the next scope refresh or unmount', async () => {
+  const h = setupRaces()
+  const cleanup = h.refreshEffect()
+  assert.ok(h.context.activeLoaders.current)
+  const reads = [h.loadVentas(), h.loadOptions(), h.handleRowClick({ id: 'A' })]
+  const expected = JSON.stringify(h.state)
+  cleanup()
+  assert.equal(h.context.activeLoaders.current, null)
+  h.finish(h.requests, 'obsolete')
+  await Promise.all(reads)
+  assert.equal(JSON.stringify(h.state), expected)
 })
