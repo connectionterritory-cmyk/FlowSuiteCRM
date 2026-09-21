@@ -1,4 +1,4 @@
-// Unit tests of the real page's decision handler, with an isolated API/state adapter.
+// Unit tests of the real page's decision handler and sales loader, with an isolated API/state adapter.
 // No browser, credentials, network requests, or database writes.
 // Run: node scripts/tests/rp-approval-ui.mjs
 import assert from 'node:assert/strict'
@@ -10,24 +10,35 @@ import ts from 'typescript'
 const source = readFileSync(new URL('../../src/modules/ventas/VentasPage.tsx', import.meta.url), 'utf8')
 const ast = ts.createSourceFile('VentasPage.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 let handler
+let loader
 function visit(node) {
   if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'decidirAprobacionVenta') handler = node.initializer.getText(ast)
+  if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'loadVentas') loader = node.initializer.arguments[0].getText(ast)
   ts.forEachChild(node, visit)
 }
 visit(ast)
 assert.ok(handler, 'Decision handler must exist in VentasPage')
-const javascript = ts.transpile(`const decide = ${handler}`, { target: ts.ScriptTarget.ES2022 })
+assert.ok(loader, 'Sales loader must exist in VentasPage')
+const javascript = ts.transpile(`const loadVentas = ${loader}; const decide = ${handler}`, { target: ts.ScriptTarget.ES2022 })
 
 function setup({ rpcError, thrownError, refreshError, detailError, missingDetail, beforeDetail } = {}) {
   const pending = { id: 'order', estado_aprobacion: 'pendiente_aprobacion', cliente_id: null }
-  const state = { ventas: [pending], selected: pending, busy: false, calls: [], toasts: [], refreshed: [] }
+  const other = { id: 'other', estado_aprobacion: 'no_aplica', cliente_id: 'existing-client' }
+  const state = { ventas: [pending, other], selected: pending, busy: false, calls: [], toasts: [], refreshed: [] }
   let result
   const context = vm.createContext({
+    configured: true,
+    currentRole: 'admin',
+    hasDistribuidorScope: false,
+    viewMode: 'seller',
+    sessionUserId: 'user',
+    distributionUserIds: [],
+    setLoading: value => { state.loading = value },
+    setError: value => { state.error = value },
     setDecisionSubmitting: value => { state.busy = value },
-    setVentas: update => { state.ventas = update(state.ventas) },
+    setVentas: update => { state.ventas = typeof update === 'function' ? update(state.ventas) : update },
     setSelectedVenta: update => { state.selected = typeof update === 'function' ? update(state.selected) : update },
     showToast: (message, type) => state.toasts.push({ message, type }),
-    loadVentas: async () => { state.refreshed.push('ventas'); return refreshError },
     loadOptions: async () => { state.refreshed.push('clientes') },
     loadVentaDetails: async id => { assert.equal(id, 'order'); state.refreshed.push('detalle') },
     supabase: {
@@ -41,6 +52,11 @@ function setup({ rpcError, thrownError, refreshError, detailError, missingDetail
         assert.equal(table, 'ventas')
         const query = {
           select: () => query,
+          order: () => query,
+          then: resolve => {
+            state.refreshed.push('ventas')
+            return Promise.resolve({ data: refreshError ? null : [result ?? pending, other], error: refreshError }).then(resolve)
+          },
           eq: (column, id) => { assert.equal(column, 'id'); assert.equal(id, 'order'); return query },
           maybeSingle: async () => {
             beforeDetail?.(state)
@@ -52,7 +68,7 @@ function setup({ rpcError, thrownError, refreshError, detailError, missingDetail
     },
   })
   vm.runInContext(javascript, context)
-  return { state, decide: vm.runInContext('decide', context) }
+  return { state, context, decide: vm.runInContext('decide', context), loadVentas: vm.runInContext('loadVentas', context) }
 }
 
 for (const decision of ['aprobada', 'rechazada']) {
@@ -89,6 +105,10 @@ for (const options of [{ refreshError: { message: 'Refresh failed' } }, { detail
     await decide('order', 'aprobada', 'ACCOUNT')
     assert.equal(state.selected.estado_aprobacion, 'aprobada')
     assert.equal(state.selected.cliente_id, 'new-client')
+    assert.equal(state.ventas.length, 2, 'a failed refresh must preserve the complete list')
+    assert.equal(state.ventas[0].estado_aprobacion, 'aprobada')
+    assert.equal(state.ventas[0].cliente_id, 'new-client')
+    assert.equal(state.ventas[1].cliente_id, 'existing-client')
     assert.equal(state.busy, false)
     assert.match(state.toasts.at(-1).message, /Decisión guardada.*Recarga/)
     assert.equal(state.toasts.at(-1).type, 'error')
@@ -101,4 +121,21 @@ test('a delayed response does not reopen a closed order or replace another selec
     await decide('order', 'rechazada', null)
     assert.equal(state.selected, selection)
   }
+})
+
+test('normal loading errors still clear rows and release loading state', async () => {
+  const { state, loadVentas } = setup({ refreshError: { message: 'Read failed' } })
+  await loadVentas()
+  assert.equal(state.ventas.length, 0)
+  assert.equal(state.loading, false)
+  assert.equal(state.error, 'Read failed')
+})
+
+test('an empty distributor scope still clears rows even when preserving on errors', async () => {
+  const { state, context, loadVentas } = setup()
+  context.hasDistribuidorScope = true
+  context.viewMode = 'distributor'
+  await loadVentas({ preserveOnError: true })
+  assert.equal(state.ventas.length, 0)
+  assert.equal(state.loading, false)
 })

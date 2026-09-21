@@ -225,7 +225,7 @@ export function VentasPage() {
   const [leadSearch, setLeadSearch] = useState('')
   const [leadDropdownOpen, setLeadDropdownOpen] = useState(false)
 
-  const loadVentas = useCallback(async () => {
+  const loadVentas = useCallback(async ({ preserveOnError = false } = {}) => {
     if (!configured) return
     setLoading(true)
     setError(null)
@@ -247,7 +247,7 @@ export function VentasPage() {
     const { data, error: fetchError } = await query
     if (fetchError) {
       setError(fetchError.message)
-      setVentas([])
+      if (!preserveOnError) setVentas([])
     } else {
       setVentas(data ?? [])
     }
@@ -639,7 +639,7 @@ export function VentasPage() {
         : venta
       setVentas((prev) => prev.map(actualizarDecision))
       setSelectedVenta((prev) => prev ? actualizarDecision(prev) : prev)
-      const refreshErrors = await Promise.all([loadVentas(), loadOptions(), loadVentaDetails(ventaId)])
+      const refreshErrors = await Promise.all([loadVentas({ preserveOnError: true }), loadOptions(), loadVentaDetails(ventaId)])
       const refreshError = refreshErrors.find(Boolean)
       if (refreshError) throw refreshError
       const { data: refreshedVenta, error: detailError } = await supabase
