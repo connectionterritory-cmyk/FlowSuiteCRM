@@ -146,14 +146,19 @@ function setupDeferredDecisions() {
   const state = { ventas: [a, b, other], selected: a, busy: false, toasts: [], refreshes: [], details: [] }
   const rpcCalls = []
   const context = vm.createContext({
+    configured: true,
+    ventasRequest: { current: 0 },
+    optionsRequest: { current: 0 },
     decisionRequest: { current: 0 },
     detailsRequest: { current: 0 },
     selectedVentaId: { current: 'A' },
     activeLoaders: { current: null },
+    window: { setTimeout: () => 1, clearTimeout: () => {} },
     setDecisionSubmitting: value => { state.busy = value },
     setVentas: update => { state.ventas = typeof update === 'function' ? update(state.ventas) : update },
     setSelectedVenta: update => { state.selected = typeof update === 'function' ? update(state.selected) : update },
     showToast: (message, type) => state.toasts.push({ message, type }),
+    loadOptions: async () => { state.refreshes.push('options') },
     loadVentaDetails: async id => { state.details.push(id) },
     supabase: {
       rpc: (_name, args) => new Promise(resolve => rpcCalls.push({ args, resolve })),
@@ -173,10 +178,11 @@ function setupDeferredDecisions() {
   })
   context.activeLoaders.current = {
     loadVentas: async () => { state.refreshes.push('ventas') },
-    loadOptions: async () => { state.refreshes.push('options') },
+    loadOptions: context.loadOptions,
   }
   vm.runInContext(javascript, context)
-  return { state, context, rpcCalls, decide: vm.runInContext('decide', context) }
+  const effect = vm.runInContext(ts.transpile(`(${refreshEffect})`, { target: ts.ScriptTarget.ES2022 }), context)
+  return { state, context, rpcCalls, decide: vm.runInContext('decide', context), refreshEffect: effect }
 }
 
 test('a stale decision finishing after a newer one has no UI effects', async () => {
@@ -196,20 +202,49 @@ test('a stale decision finishing after a newer one has no UI effects', async () 
   assert.equal(JSON.stringify(h.state), expected)
 })
 
-test('a context change makes an in-flight decision completely inert', async () => {
+test('a real scope-effect cleanup makes an in-flight decision inert while a new scope decision completes', async () => {
   const h = setupDeferredDecisions()
+  const cleanupA = h.refreshEffect()
   const old = h.decide('A', 'aprobada', 'ACCOUNT')
   assert.equal(h.state.busy, true)
-  // This models the scope effect cleanup: it invalidates outstanding decisions,
-  // while the replacement scope owns its own loading state.
-  h.context.decisionRequest.current += 1
-  h.context.selectedVentaId.current = 'other'
-  h.state.selected = h.state.ventas[2]
-  h.state.busy = false
+  cleanupA()
+  h.context.selectedVentaId.current = 'B'
+  h.state.selected = h.state.ventas[1]
+  const cleanupB = h.refreshEffect()
+  const current = h.decide('B', 'aprobada', 'ACCOUNT')
+  h.rpcCalls[1].resolve({ data: { ...h.state.ventas[1], estado_aprobacion: 'aprobada', cliente_id: 'new-client' }, error: null })
+  await current
   const expected = JSON.stringify(h.state)
   h.rpcCalls[0].resolve({ data: { ...h.state.ventas[0], estado_aprobacion: 'aprobada', cliente_id: 'new-client' }, error: null })
   await old
   assert.equal(JSON.stringify(h.state), expected)
+  cleanupB()
+})
+
+test('a real effect cleanup on unmount ignores a late decision error from the old scope', async () => {
+  const h = setupDeferredDecisions()
+  const cleanup = h.refreshEffect()
+  const old = h.decide('A', 'aprobada', 'ACCOUNT')
+  cleanup()
+  const expected = JSON.stringify(h.state)
+  h.rpcCalls[0].resolve({ data: null, error: { message: 'late old-scope failure' } })
+  await old
+  assert.equal(JSON.stringify(h.state), expected)
+})
+
+test('a late decision error from scope A cannot contaminate scope B after real cleanup', async () => {
+  const h = setupDeferredDecisions()
+  const cleanupA = h.refreshEffect()
+  const old = h.decide('A', 'aprobada', 'ACCOUNT')
+  cleanupA()
+  h.context.selectedVentaId.current = 'B'
+  h.state.selected = h.state.ventas[1]
+  const cleanupB = h.refreshEffect()
+  const expected = JSON.stringify(h.state)
+  h.rpcCalls[0].resolve({ data: null, error: { message: 'late old-scope failure' } })
+  await old
+  assert.equal(JSON.stringify(h.state), expected)
+  cleanupB()
 })
 
 test('normal loading errors still clear rows and release loading state', async () => {
