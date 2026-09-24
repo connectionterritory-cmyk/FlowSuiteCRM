@@ -43,6 +43,8 @@ Construir el módulo de cartera/cobranza priorizando operación real, reutilizac
 - falta PTP como entidad formal
 
 ## Estilo de trabajo
+- Para trabajo Royal Prestige, leer primero `docs/rp/FLOW-MAESTRO-RP.md`;
+  trabajar únicamente la fase autorizada y auditar/reutilizar antes de crear.
 - no inventes tablas ni archivos existentes
 - cita rutas exactas
 - haz primero auditoría rápida antes de cambiar
