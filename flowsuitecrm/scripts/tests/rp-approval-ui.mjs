@@ -45,6 +45,7 @@ function setup({ rpcError, thrownError, refreshError, detailError, missingDetail
     ventasRequest: { current: 0 },
     optionsRequest: { current: 0 },
     detailsRequest: { current: 0 },
+    decisionRequest: { current: 0 },
     selectedVentaId: { current: 'order' },
     activeLoaders: { current: null },
     setLoading: value => { state.loading = value },
@@ -138,6 +139,79 @@ test('a delayed response does not reopen a closed order or replace another selec
   }
 })
 
+function setupDeferredDecisions() {
+  const a = { id: 'A', estado_aprobacion: 'pendiente_aprobacion', cliente_id: null }
+  const b = { id: 'B', estado_aprobacion: 'pendiente_aprobacion', cliente_id: null }
+  const other = { id: 'other', estado_aprobacion: 'no_aplica', cliente_id: 'existing-client' }
+  const state = { ventas: [a, b, other], selected: a, busy: false, toasts: [], refreshes: [], details: [] }
+  const rpcCalls = []
+  const context = vm.createContext({
+    decisionRequest: { current: 0 },
+    detailsRequest: { current: 0 },
+    selectedVentaId: { current: 'A' },
+    activeLoaders: { current: null },
+    setDecisionSubmitting: value => { state.busy = value },
+    setVentas: update => { state.ventas = typeof update === 'function' ? update(state.ventas) : update },
+    setSelectedVenta: update => { state.selected = typeof update === 'function' ? update(state.selected) : update },
+    showToast: (message, type) => state.toasts.push({ message, type }),
+    loadVentaDetails: async id => { state.details.push(id) },
+    supabase: {
+      rpc: (_name, args) => new Promise(resolve => rpcCalls.push({ args, resolve })),
+      from: table => {
+        assert.equal(table, 'ventas')
+        let ventaId
+        const query = {
+          select: () => query,
+          eq: (column, id) => { assert.equal(column, 'id'); ventaId = id; return query },
+          maybeSingle: async () => ({
+            data: state.ventas.find(venta => venta.id === ventaId), error: null,
+          }),
+        }
+        return query
+      },
+    },
+  })
+  context.activeLoaders.current = {
+    loadVentas: async () => { state.refreshes.push('ventas') },
+    loadOptions: async () => { state.refreshes.push('options') },
+  }
+  vm.runInContext(javascript, context)
+  return { state, context, rpcCalls, decide: vm.runInContext('decide', context) }
+}
+
+test('a stale decision finishing after a newer one has no UI effects', async () => {
+  const h = setupDeferredDecisions()
+  const old = h.decide('A', 'rechazada', null)
+  const current = h.decide('B', 'aprobada', 'ACCOUNT')
+  assert.equal(h.rpcCalls.length, 2)
+  h.context.selectedVentaId.current = 'B'
+  h.state.selected = h.state.ventas[1]
+  h.rpcCalls[1].resolve({ data: { ...h.state.ventas[1], estado_aprobacion: 'aprobada', cliente_id: 'new-client' }, error: null })
+  await current
+  const expected = JSON.stringify(h.state)
+  assert.equal(h.state.busy, false)
+  assert.equal(h.state.toasts.length, 1)
+  h.rpcCalls[0].resolve({ data: { ...h.state.ventas[0], estado_aprobacion: 'rechazada' }, error: null })
+  await old
+  assert.equal(JSON.stringify(h.state), expected)
+})
+
+test('a context change makes an in-flight decision completely inert', async () => {
+  const h = setupDeferredDecisions()
+  const old = h.decide('A', 'aprobada', 'ACCOUNT')
+  assert.equal(h.state.busy, true)
+  // This models the scope effect cleanup: it invalidates outstanding decisions,
+  // while the replacement scope owns its own loading state.
+  h.context.decisionRequest.current += 1
+  h.context.selectedVentaId.current = 'other'
+  h.state.selected = h.state.ventas[2]
+  h.state.busy = false
+  const expected = JSON.stringify(h.state)
+  h.rpcCalls[0].resolve({ data: { ...h.state.ventas[0], estado_aprobacion: 'aprobada', cliente_id: 'new-client' }, error: null })
+  await old
+  assert.equal(JSON.stringify(h.state), expected)
+})
+
 test('normal loading errors still clear rows and release loading state', async () => {
   const { state, loadVentas } = setup({ refreshError: { message: 'Read failed' } })
   await loadVentas()
@@ -168,7 +242,7 @@ function setupRaces() {
     distributionUserIds: [], decisionSubmitting: false,
     ventas: state.ventas,
     ventasRequest: { current: 0 }, optionsRequest: { current: 0 },
-    detailsRequest: { current: 0 }, selectedVentaId: { current: null },
+    detailsRequest: { current: 0 }, decisionRequest: { current: 0 }, selectedVentaId: { current: null },
     supabase: {
       from: table => {
         let resolve
@@ -191,6 +265,7 @@ function setupRaces() {
     setSelectedVentaItems: 'items', setSelectedVentaTransacciones: 'transactions',
     setClientes: 'clientes', setProductos: 'productos', setLeads: 'leads',
     setLoading: 'loading', setLoadingOptions: 'loadingOptions', setError: 'error',
+    setDecisionSubmitting: 'decisionSubmitting',
   })) context[setter] = value => { state[key] = typeof value === 'function' ? value(state[key]) : value }
   vm.runInContext(ts.transpile(Object.entries(functions).map(([name, body]) => `const ${name} = ${body}`).join('\n'), {
     target: ts.ScriptTarget.ES2022,

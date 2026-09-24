@@ -200,6 +200,7 @@ export function VentasPage() {
   const ventasRequest = useRef(0)
   const optionsRequest = useRef(0)
   const detailsRequest = useRef(0)
+  const decisionRequest = useRef(0)
   const selectedVentaId = useRef<string | null>(null)
   const configured = isSupabaseConfigured
   const sessionUserId = session?.user.id ?? null
@@ -320,6 +321,8 @@ export function VentasPage() {
 
   useEffect(() => {
     if (!configured) return
+    // A decision belongs to the scope that started it. A new scope gets its own UI state.
+    setDecisionSubmitting(false)
     activeLoaders.current = { loadVentas, loadOptions }
     const handle = window.setTimeout(() => {
       void loadVentas()
@@ -332,6 +335,7 @@ export function VentasPage() {
       ventasRequest.current += 1
       optionsRequest.current += 1
       detailsRequest.current += 1
+      decisionRequest.current += 1
     }
   }, [configured, loadVentas, loadOptions])
 
@@ -656,6 +660,8 @@ export function VentasPage() {
   const canDecideAprobacion = currentRole === 'admin' || currentRole === 'distribuidor'
 
   const decidirAprobacionVenta = async (ventaId: string, decision: 'aprobada' | 'rechazada', cuenta: string | null) => {
+    const request = ++decisionRequest.current
+    const isCurrentRequest = () => request === decisionRequest.current
     setDecisionSubmitting(true)
     let decisionGuardada = false
     try {
@@ -664,6 +670,7 @@ export function VentasPage() {
         p_estado_aprobacion: decision,
         p_numero_cuenta_financiera: cuenta,
       })
+      if (!isCurrentRequest()) return
       if (rpcError) throw rpcError
       decisionGuardada = true
       // La decisión confirmada sigue visible aunque falle el refresco posterior.
@@ -676,6 +683,7 @@ export function VentasPage() {
       const loaders = activeLoaders.current
       if (!loaders) return
       const refreshErrors = await Promise.all([loaders.loadVentas({ preserveOnError: true }), loaders.loadOptions(), loadVentaDetails(ventaId)])
+      if (!isCurrentRequest()) return
       const refreshError = refreshErrors.find(Boolean)
       if (refreshError) throw refreshError
       const detailRequest = detailsRequest.current
@@ -684,16 +692,18 @@ export function VentasPage() {
         .select('id, numero_nota_pedido, cliente_id, lead_id, estado_aprobacion, vendedor_id, producto_id, tipo_movimiento, monto, fecha_venta, estado, subtotal, impuesto, cargo_envio, descuento, total, pago_inicial, saldo_pendiente, created_at')
         .eq('id', ventaId)
         .maybeSingle()
+      if (!isCurrentRequest()) return
       if (detailError || !refreshedVenta) throw detailError ?? new Error('Orden no disponible')
       if (detailRequest === detailsRequest.current && selectedVentaId.current === ventaId) {
         setSelectedVenta((prev) => prev?.id === ventaId ? refreshedVenta as VentaRecord : prev)
       }
       showToast(decision === 'aprobada' ? 'Orden aprobada.' : 'Orden rechazada.', 'success')
     } catch (error) {
+      if (!isCurrentRequest()) return
       const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Error de conexión'
       showToast(decisionGuardada ? `Decisión guardada, pero no se pudo actualizar la vista. Recarga la página. ${message}` : message, 'error')
     } finally {
-      setDecisionSubmitting(false)
+      if (isCurrentRequest()) setDecisionSubmitting(false)
     }
   }
 
