@@ -1,3 +1,4 @@
+import { getSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts'
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 
@@ -48,7 +49,7 @@ type N8nResponse = {
 }
 
 const supabaseUrl = Deno.env.get('CUSTOM_SUPABASE_URL') ?? ''
-const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
+const serviceRoleKey = getSupabaseAdminKey()
 const workerSecret = Deno.env.get('OUTBOX_N8N_WORKER_SECRET') ?? ''
 const n8nWebhookUrl = Deno.env.get('N8N_OUTBOX_WEBHOOK_URL') ?? ''
 const n8nSecret = Deno.env.get('N8N_OUTBOX_SECRET') ?? ''

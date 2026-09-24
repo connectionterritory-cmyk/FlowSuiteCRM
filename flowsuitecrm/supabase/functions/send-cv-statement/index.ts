@@ -1,3 +1,4 @@
+import { getSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 import { createElement } from 'https://esm.sh/react@18.3.1'
 import { renderToBuffer } from 'https://esm.sh/@react-pdf/renderer@4.5.1?deps=react@18.3.1'
@@ -6,7 +7,7 @@ import { StatementPdfTemplate } from './_lib/StatementPdfTemplate.js'
 const WORKER_SECRET = 'c93f0788596c831e23020e23971924b84d91b1fe4ade27c0bb8a2cb4243bd1ea'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const serviceRoleKey = getSupabaseAdminKey()
 const resendKey = Deno.env.get('RESEND_API_KEY') ?? ''
 const resendFrom = Deno.env.get('RESEND_FROM_EMAIL') ?? 'Royal Prestige <cobranza@flowiadigital.com>'
 
