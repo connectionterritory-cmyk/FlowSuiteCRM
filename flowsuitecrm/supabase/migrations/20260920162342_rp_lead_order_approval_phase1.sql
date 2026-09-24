@@ -185,6 +185,30 @@ REVOKE ALL ON FUNCTION public.guard_venta_aprobacion() FROM PUBLIC, anon, authen
 CREATE TRIGGER guard_venta_aprobacion BEFORE INSERT OR UPDATE OR DELETE ON public.ventas
 FOR EACH ROW EXECUTE FUNCTION public.guard_venta_aprobacion();
 
+-- La sustitución legacy es intencional, pero solo contra la definición auditada.
+-- Fallar antes de reemplazar la función ante ausencia o drift de schema/función.
+DO $$
+DECLARE
+  actual_hash text;
+BEGIN
+  SELECT md5(prosrc) INTO actual_hash
+  FROM pg_proc
+  WHERE oid = to_regprocedure('public.fn_crear_venta_completa(jsonb)');
+
+  IF actual_hash IS NULL THEN
+    RAISE EXCEPTION
+      'fn_crear_venta_completa no existe; expected hash %, actual hash unavailable; possible schema/function drift',
+      'fbf0d3bb12e7d4d041a8c46b5911a204';
+  END IF;
+
+  IF actual_hash <> 'fbf0d3bb12e7d4d041a8c46b5911a204' THEN
+    RAISE EXCEPTION
+      'fn_crear_venta_completa differs from audited definition; expected hash %, actual hash %; possible schema/function drift',
+      'fbf0d3bb12e7d4d041a8c46b5911a204', actual_hash;
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.fn_crear_venta_completa(payload jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
