@@ -148,7 +148,7 @@ type CrmTaskRow = {
   tipo: string
   descripcion: string | null
   asignado_a: string
-  created_by: string
+  created_by: string | null
   fecha_vencimiento: string
   hora_vencimiento: string | null
   prioridad: 'baja' | 'media' | 'alta'
