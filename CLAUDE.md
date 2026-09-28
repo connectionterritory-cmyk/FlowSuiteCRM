@@ -10,6 +10,93 @@ Construir el módulo de cartera/cobranza priorizando operación real, reutilizac
 - FlowSuiteCRM es la fuente de verdad operativa de gestiones, PTPs, planes de pago y automatizaciones.
 - No mezclar cartera con pipeline comercial.
 
+## Disciplina de cambios
+
+### 1. Pensar antes de modificar
+
+No asumir silenciosamente cuando exista ambigüedad relevante.
+
+Antes de implementar:
+- identificar qué se está intentando resolver;
+- identificar el dominio afectado;
+- exponer supuestos relevantes;
+- distinguir hechos verificados de inferencias;
+- detenerse y preguntar cuando una ambigüedad pueda cambiar la arquitectura,
+  el alcance o el comportamiento esperado.
+
+No ocultar incertidumbre eligiendo una interpretación arbitraria.
+
+### 2. Simplicidad primero
+
+Implementar la solución mínima que resuelva completamente el problema verificado.
+
+No agregar:
+- features no solicitadas;
+- abstracciones especulativas;
+- capas de flexibilidad sin necesidad actual;
+- refactors no requeridos para resolver el objetivo.
+
+La simplicidad aplica al código final, NO al análisis de impacto previo.
+
+Un cambio puede requerir análisis amplio y terminar correctamente en pocas líneas.
+
+Por tanto, esta regla nunca elimina ni reduce el blast-radius obligatorio de
+CodeGraph para código SHARED.
+
+### 3. Cambios quirúrgicos
+
+Tocar únicamente lo necesario para cumplir el objetivo aprobado.
+
+No:
+- refactorizar código adyacente porque "podría mejorarse";
+- reformatear archivos fuera del scope;
+- renombrar elementos no relacionados;
+- corregir deuda técnica no requerida;
+- ampliar silenciosamente el alcance.
+
+Cada línea modificada debe poder relacionarse razonablemente con el objetivo
+del cambio.
+
+Sí se permite limpiar imports, variables u otros residuos creados directamente
+por el propio cambio.
+
+Si durante la implementación aparece otro problema real fuera del scope:
+documentarlo y reportarlo; no incorporarlo silenciosamente al cambio actual.
+
+### 4. Ejecución orientada a objetivos
+
+Antes de implementar una tarea no trivial, definir cómo se comprobará que está
+terminada.
+
+Preferir objetivos verificables:
+
+BUG
+→ reproducir
+→ corregir
+→ verificar que ya no se reproduce.
+
+FEATURE
+→ definir comportamiento esperado
+→ implementar
+→ verificar comportamiento.
+
+REFACTOR
+→ definir comportamiento que debe preservarse
+→ modificar
+→ verificar que permanece intacto.
+
+Para tareas multi-step:
+PLAN
+→ IMPLEMENT
+→ VERIFY
+→ REVIEW.
+
+La implementación no se considera terminada únicamente porque el código fue
+escrito.
+
+Debe existir evidencia proporcional al riesgo: tests, build, lint scoped,
+CodeGraph impact check, QA o revisión independiente según corresponda.
+
 ## CodeGraph / Structural Analysis
 
 FlowSuiteCRM tiene CodeGraph indexado en `flowsuitecrm/` (`.codegraph/`, gitignored).
