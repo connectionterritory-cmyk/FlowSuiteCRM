@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../../lib/supabase/client'
 import { useUsers } from '../../data/useUsers'
@@ -650,6 +650,9 @@ function PTPModal({ open, caseId, onClose, onSaved }: PTPModalProps) {
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const errorId = useId()
+  const montoInvalid = error === 'El monto debe ser mayor a 0'
+  const fechaInvalid = error === 'La fecha compromiso es obligatoria'
 
   useEffect(() => {
     if (open) { setMonto(''); setFecha(''); setCanal('telefono'); setNotas(''); setError(null) }
@@ -693,14 +696,14 @@ function PTPModal({ open, caseId, onClose, onSaved }: PTPModalProps) {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {error && <p id={errorId} role="alert" style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Monto comprometido *</span>
-          <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
+          <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" aria-invalid={montoInvalid || undefined} aria-describedby={montoInvalid ? errorId : undefined} style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Fecha compromiso *</span>
-          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={INPUT_STYLE} />
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} aria-invalid={fechaInvalid || undefined} aria-describedby={fechaInvalid ? errorId : undefined} style={INPUT_STYLE} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Canal *</span>
@@ -745,6 +748,10 @@ function PagoModal({ open, caseId, ptps, dfpAccountId, onClose, onSaved, tutoria
   const [ptpId, setPtpId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const errorId = useId()
+  const montoInvalid = error === 'El monto debe ser mayor a 0'
+  const fechaInvalid = error === 'La fecha de pago es obligatoria'
+  const metodoInvalid = error === 'Método de pago inválido'
 
   const ptpsPendientes = useMemo(() => ptps.filter(p => p.estado === 'pendiente' || p.estado === 'vencido'), [ptps])
 
@@ -817,19 +824,19 @@ function PagoModal({ open, caseId, ptps, dfpAccountId, onClose, onSaved, tutoria
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {error && <p id={errorId} role="alert" style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
         <div data-tour-id={tutorialActive && tutorialStepId === 'modal_pago_core_fields' ? 'modal-pago-core-fields' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <span style={LABEL_STYLE}>Monto recibido *</span>
-            <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={INPUT_STYLE} />
+            <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" aria-invalid={montoInvalid || undefined} aria-describedby={montoInvalid ? errorId : undefined} style={INPUT_STYLE} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <span style={LABEL_STYLE}>Fecha pago *</span>
-            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={INPUT_STYLE} />
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} aria-invalid={fechaInvalid || undefined} aria-describedby={fechaInvalid ? errorId : undefined} style={INPUT_STYLE} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <span style={LABEL_STYLE}>Método de pago</span>
-            <select value={metodo} onChange={e => setMetodo(e.target.value)} style={INPUT_STYLE}>
+            <select value={metodo} onChange={e => setMetodo(e.target.value)} aria-invalid={metodoInvalid || undefined} aria-describedby={metodoInvalid ? errorId : undefined} style={INPUT_STYLE}>
               <option value="cash">Cash</option>
               <option value="check">Check</option>
               <option value="zelle">Zelle</option>
@@ -1147,7 +1154,7 @@ export function PlanModal({ open, caseId, clienteId, orgId, currentUserId, onClo
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {error && <p role="alert" style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
         {preview.error && <p style={{ color: '#f59e0b', fontSize: '0.78rem', margin: 0 }}>{preview.error}</p>}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
           <span style={LABEL_STYLE}>Balance inicial *</span>
@@ -1306,6 +1313,8 @@ function CapturarMontoModal({ open, clienteId, saldoHycite, onClose, onSaved }: 
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const errorId = useId()
+  const montoInvalid = error === 'El monto cargo de vuelta debe ser mayor a 0'
 
   useEffect(() => {
     if (open) { setMonto(''); setFecha(''); setDias(''); setNotas(''); setError(null) }
@@ -1343,7 +1352,7 @@ function CapturarMontoModal({ open, clienteId, saldoHycite, onClose, onSaved }: 
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {error && <p id={errorId} role="alert" style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
         {saldoHycite !== null && (
           <p style={{ margin: 0, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
             Saldo Hy-Cite (referencia): <strong>${saldoHycite.toFixed(2)}</strong> — puede ser $0.00. El monto cargo de vuelta es el monto real que el cliente debe al distribuidor.
@@ -1351,7 +1360,7 @@ function CapturarMontoModal({ open, clienteId, saldoHycite, onClose, onSaved }: 
         )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Monto cargo de vuelta *</span>
-          <input type="text" inputMode="decimal" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box' }} />
+          <input type="text" inputMode="decimal" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" aria-invalid={montoInvalid || undefined} aria-describedby={montoInvalid ? errorId : undefined} style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', boxSizing: 'border-box' }} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Fecha cargo de vuelta</span>
@@ -3459,7 +3468,7 @@ function CrearAcuerdoRevolvingModal({
       )}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {error && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
+        {error && <p role="alert" style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
         <div data-tour-id={tutorialActive && tutorialStepId === 'modal_revolving_terms' ? 'modal-revolving-terms' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <span style={LABEL_STYLE}>APR (%) *</span>
@@ -5824,10 +5833,8 @@ export function CarteraPage() {
                 }
               })()
               return (
-                <button
+                <div
                   key={c.id}
-                  type="button"
-                  onClick={() => handleSelectCase(c)}
                   data-tour-id={tutorialPendingCase?.id === c.id ? 'workspace-case-pending' : undefined}
                   style={{
                     width: '100%',
@@ -5836,11 +5843,16 @@ export function CarteraPage() {
                     border: 'none',
                     borderBottom: '1px solid var(--color-border)',
                     background: isSelected ? 'rgba(14,165,233,0.07)' : 'transparent',
-                    cursor: 'pointer',
                     borderLeft: isSelected ? `3px solid ${tone.color}` : '3px solid transparent',
                   }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectCase(c)}
+                    aria-label={`Abrir caso de ${nombreCliente(c.clientes)}`}
+                    style={{ width: '100%', padding: 0, border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
@@ -5881,7 +5893,8 @@ export function CarteraPage() {
                         </p>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  </button>
 
                   <div style={{ marginTop: '0.05rem', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <QuickActionBtn
@@ -5954,7 +5967,7 @@ export function CarteraPage() {
                       }}
                     />
                   </div>
-                </button>
+                </div>
               )
             })
           )}
