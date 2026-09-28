@@ -1,0 +1,10 @@
+{
+  "exclude": [
+    "supabase/migrations-archive/",
+    "supabase/.temp/"
+  ],
+  "deprioritize": [
+    "scripts/",
+    "tests/"
+  ]
+}
