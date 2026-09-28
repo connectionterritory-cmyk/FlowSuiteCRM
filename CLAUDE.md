@@ -10,6 +10,67 @@ Construir el módulo de cartera/cobranza priorizando operación real, reutilizac
 - FlowSuiteCRM es la fuente de verdad operativa de gestiones, PTPs, planes de pago y automatizaciones.
 - No mezclar cartera con pipeline comercial.
 
+## CodeGraph / Structural Analysis
+
+FlowSuiteCRM tiene CodeGraph indexado en `flowsuitecrm/` (`.codegraph/`, gitignored).
+
+Antes de modificar un símbolo compartido — especialmente en
+`src/components/`, `src/hooks/`, `src/lib/`, `src/modals/`, `src/data/`
+o `src/app/` — consultar CodeGraph para revisar callers, dependencias y
+blast radius ANTES de editar.
+
+También es obligatorio consultar CodeGraph antes de:
+- cambiar la firma de una función o componente exportado;
+- eliminar o renombrar un archivo, componente, hook o export;
+- realizar cambios que puedan cruzar los dominios RP, CARTERA o SHARED.
+
+Usar `codegraph_explore` vía MCP o `codegraph explore "<símbolo>"` vía CLI.
+
+Antes de confiar en el grafo:
+- ejecutar `codegraph status`;
+- si el índice está stale, ejecutar `codegraph sync`.
+
+Si el blast radius revela una dependencia cross-domain inesperada entre
+RP, CARTERA o SHARED, detenerse y reportarla antes de ampliar el alcance
+del cambio.
+
+CodeGraph NO reemplaza:
+- revisión de SQL o Supabase migrations;
+- RLS;
+- contratos RPC;
+- comportamiento runtime de Edge Functions;
+- tests;
+- lógica de negocio documentada;
+- revisión independiente;
+- aprobación humana.
+
+Taxonomía de dominio previa a cualquier cambio:
+RP / CARTERA / SHARED / INFRA / UNKNOWN.
+
+Si el cambio toca SHARED, el blast-radius de CodeGraph es obligatorio.
+
+Flujo recomendado:
+
+REQUEST
+→ DOMAIN IDENTIFICATION
+→ CODEGRAPH EXPLORE
+→ BLAST RADIUS
+→ SCOPE DEFINITION
+→ IMPLEMENTATION
+→ TESTS
+→ CODEGRAPH IMPACT RECHECK
+→ INDEPENDENT REVIEW
+→ HUMAN APPROVAL
+→ COMMIT
+→ PRODUCTION APPROVAL
+→ PUSH MAIN
+→ VERCEL AUTO-DEPLOY
+→ PRODUCTION SMOKE
+
+Importante: `git push origin main` puede disparar automáticamente un
+deployment de producción en Vercel. Por tanto, push a `main` requiere
+aprobación explícita de producción.
+
 ## Decisiones de arquitectura tomadas
 
 ### llamadas_telemercadeo vs cob_gestiones (2026-04-25)
