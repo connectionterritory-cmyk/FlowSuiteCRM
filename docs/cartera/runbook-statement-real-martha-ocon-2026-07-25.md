@@ -10,7 +10,26 @@
 - `acuerdo_id` (pago mínimo $100/mes, borrador): `469dce1d-a27d-434a-8dfb-f3ce4e3a35a4`
 - Ciclo: `2026-07-04` → `2026-07-25`, corte `2026-07-25`
 - Usuario para `set_config` / `auth.uid()` en llamadas RPC: `df37164a-0306-4183-85cf-38074059afec` (Moisés)
-- `x-worker-secret` de los Edge Functions: `c93f0788596c831e23020e23971924b84d91b1fe4ade27c0bb8a2cb4243bd1ea`
+- `x-worker-secret` de los Edge Functions: `[REDACTED — compromised worker secret retired 2026-09-29]`
+
+## Nota de seguridad (2026-09-29)
+
+El valor de `x-worker-secret` que aparecía originalmente en este documento quedó
+comprometido por haber sido almacenado en texto plano en un archivo versionado
+en Git, y fue retirado de producción. **Ese valor nunca debe reutilizarse.**
+
+La autenticación de worker actual en las cuatro Edge Functions (incluida
+`send-cv-statement`, usada en el paso 4 de este runbook) usa la variable de
+entorno `OUTBOX_WORKER_SECRET`. Del lado de la base de datos, el productor
+(`public.fn_cob_trigger_recibo_pago()`) obtiene su credencial desde el secreto
+de Supabase Vault `outbox_worker_secret`, no desde ningún valor embebido en
+código o documentación.
+
+**Regla permanente:** ningún valor de secreto (worker secret, API key,
+service-role key, etc.) debe almacenarse en documentación ni comitearse a
+Git, en este ni en ningún otro runbook. Si se necesita el valor actual para
+ejecutar un paso manual, obtenerlo directamente del Dashboard de Supabase o
+del gestor de secretos correspondiente en el momento de la ejecución.
 
 ## Nota crítica antes de empezar
 
@@ -90,7 +109,7 @@ Si algo no cuadra, no continuar al paso 4.
 ```bash
 curl -X POST 'https://rxiarmbosgivaplygqug.supabase.co/functions/v1/send-cv-statement' \
   -H 'Content-Type: application/json' \
-  -H 'x-worker-secret: c93f0788596c831e23020e23971924b84d91b1fe4ade27c0bb8a2cb4243bd1ea' \
+  -H 'x-worker-secret: [REDACTED — compromised worker secret retired 2026-09-29]' \
   -d '{"statement_id":"<statement_id del paso 2>"}'
 ```
 
