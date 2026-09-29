@@ -345,11 +345,6 @@ type HistorialEvent = {
   actor: string | null
 }
 
-const MARTHA_OCON_CASE_ID = '0bea0f30-a593-419b-8bfa-4f5f49996621'
-const MARTHA_OCON_REVOLVING_ACCOUNT_ID = 'b94f97c5-a1a1-4597-8d56-7eb36fff9eab'
-const MARTHA_STATEMENT_GUARD_UNTIL = '2026-07-25'
-const MARTHA_STATEMENT_GUARD_MESSAGE = 'Bloqueado hasta el cierre de ciclo real (25 de julio de 2026) - ver runbook en docs/cartera/. No generar manualmente antes de esa fecha.'
-
 type CarteraClassification =
   | 'financiamiento_activo'
   | 'pendiente_acuerdo'
@@ -366,16 +361,6 @@ function pad2(n: number) {
 function todayYmd() {
   const now = new Date()
   return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
-}
-
-function getMarthaStatementGuard(caseId: string, revolvingAccountId: string | null | undefined) {
-  const matchesMartha = caseId === MARTHA_OCON_CASE_ID || revolvingAccountId === MARTHA_OCON_REVOLVING_ACCOUNT_ID
-  if (!matchesMartha) return { active: false, message: null as string | null }
-  // TODO: remover este guard después del 2026-07-25, ver runbook en docs/cartera/
-  if (new Date().toISOString().slice(0, 10) < MARTHA_STATEMENT_GUARD_UNTIL) {
-    return { active: true, message: MARTHA_STATEMENT_GUARD_MESSAGE }
-  }
-  return { active: false, message: null as string | null }
 }
 
 function parseYmdLocal(ymd: string) {
@@ -2682,7 +2667,7 @@ function lastCompleteMonth(): { inicio: string; fin: string } {
   }
 }
 
-function GenerarStatementButton({ account, caseId, tutorialStepId, tutorialActive }: { account: DfpAccount; caseId: string; tutorialStepId?: TutorialStepId | null; tutorialActive?: boolean }) {
+function GenerarStatementButton({ account, tutorialStepId, tutorialActive }: { account: DfpAccount; tutorialStepId?: TutorialStepId | null; tutorialActive?: boolean }) {
   const defaults = lastCompleteMonth()
   const [open, setOpen] = useState(false)
   const [periodoInicio, setPeriodoInicio] = useState(defaults.inicio)
@@ -2690,7 +2675,6 @@ function GenerarStatementButton({ account, caseId, tutorialStepId, tutorialActiv
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successId, setSuccessId] = useState<string | null>(null)
-  const statementGuard = useMemo(() => getMarthaStatementGuard(caseId, account.id), [account.id, caseId])
 
   useEffect(() => {
     if (!tutorialActive) {
@@ -2706,14 +2690,12 @@ function GenerarStatementButton({ account, caseId, tutorialStepId, tutorialActiv
   }, [tutorialActive, tutorialStepId])
 
   function handleOpen() {
-    if (statementGuard.active) return
     setOpen(true)
     setError(null)
     setSuccessId(null)
   }
 
   async function handleGenerar() {
-    if (statementGuard.active) return
     setLoading(true)
     setError(null)
     setSuccessId(null)
@@ -2734,19 +2716,13 @@ function GenerarStatementButton({ account, caseId, tutorialStepId, tutorialActiv
 
   if (!open) {
     return (
-      <div data-tour-id={tutorialActive && tutorialStepId === 'detail_generar_statement_cta' ? 'detail-generar-statement-cta' : undefined} title={statementGuard.message ?? undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
+      <div data-tour-id={tutorialActive && tutorialStepId === 'detail_generar_statement_cta' ? 'detail-generar-statement-cta' : undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
         <button
           onClick={handleOpen}
-          disabled={statementGuard.active}
-          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb18', color: '#2563eb', cursor: statementGuard.active ? 'not-allowed' : 'pointer', opacity: statementGuard.active ? 0.5 : 1 }}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #2563eb44', background: '#2563eb18', color: '#2563eb', cursor: 'pointer' }}
         >
           Generar statement
         </button>
-        {statementGuard.active && (
-          <span style={{ fontSize: '0.66rem', color: '#b45309', maxWidth: '18rem', lineHeight: 1.35 }}>
-            {statementGuard.message}
-          </span>
-        )}
       </div>
     )
   }
@@ -2838,10 +2814,6 @@ function EnviarStatementButton({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const latestStatement = useMemo(() => getLatestStatement(statements), [statements])
-  const statementGuard = useMemo(
-    () => getMarthaStatementGuard(caseId, latestStatement?.revolving_account_id ?? null),
-    [caseId, latestStatement?.revolving_account_id],
-  )
 
   useEffect(() => {
     if (!tutorialActive) {
@@ -2867,10 +2839,6 @@ function EnviarStatementButton({
   }, [caseId, clienteId, currentUserId, orgId])
 
   const handleConfirmSend = useCallback(async () => {
-    if (statementGuard.active) {
-      window.alert(statementGuard.message)
-      return
-    }
     if (!latestStatement) {
       window.alert('Primero genera un estado de cuenta.')
       return
@@ -2918,16 +2886,14 @@ function EnviarStatementButton({
     } finally {
       setSaving(false)
     }
-  }, [cliente, latestStatement, onSaved, registerStatementGestion, statementGuard.active, statementGuard.message])
+  }, [cliente, latestStatement, onSaved, registerStatementGestion])
 
   if (!open) {
     return (
-      <div data-tour-id={tutorialActive && tutorialStepId === 'detail_enviar_statement_cta' ? 'detail-enviar-statement-cta' : undefined} title={statementGuard.message ?? undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
+      <div data-tour-id={tutorialActive && tutorialStepId === 'detail_enviar_statement_cta' ? 'detail-enviar-statement-cta' : undefined} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.18rem' }}>
         <button
           type="button"
-          disabled={statementGuard.active}
           onClick={() => {
-            if (statementGuard.active) return
             if (!latestStatement) {
               window.alert('Primero genera un estado de cuenta.')
               return
@@ -2935,15 +2901,10 @@ function EnviarStatementButton({
             setResult(null)
             setOpen(true)
           }}
-          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #0f766e44', background: '#0f766e18', color: '#0f766e', cursor: statementGuard.active ? 'not-allowed' : 'pointer', opacity: statementGuard.active ? 0.5 : 1 }}
+          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem', border: '1px solid #0f766e44', background: '#0f766e18', color: '#0f766e', cursor: 'pointer' }}
         >
           Enviar estado de cuenta
         </button>
-        {statementGuard.active && (
-          <span style={{ fontSize: '0.66rem', color: '#b45309', maxWidth: '18rem', lineHeight: 1.35 }}>
-            {statementGuard.message}
-          </span>
-        )}
       </div>
     )
   }
@@ -3703,7 +3664,7 @@ function EstadoCuentaList({
             tutorialStepId={tutorialStepId}
             tutorialActive={tutorialActive}
           />
-          <GenerarStatementButton account={account} caseId={caseId} tutorialStepId={tutorialStepId} tutorialActive={tutorialActive} />
+          <GenerarStatementButton account={account} tutorialStepId={tutorialStepId} tutorialActive={tutorialActive} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
           <DfpMetric label="Principal" value={fmtMonto(account.saldo_principal_actual)} color="#2563eb" />
