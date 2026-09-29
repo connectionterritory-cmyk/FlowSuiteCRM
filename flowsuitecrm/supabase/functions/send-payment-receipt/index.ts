@@ -1,10 +1,15 @@
 import { getSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 
-// Secreto compartido: solo lo conocen este archivo y la funcion SQL/trigger que lo invoca.
-// No es env var porque no hubo tooling disponible para provisionarla remotamente en esta sesion.
-// Si se rota, actualizar tambien en la base de datos (setting app.receipt_worker_secret).
-const WORKER_SECRET = 'c93f0788596c831e23020e23971924b84d91b1fe4ade27c0bb8a2cb4243bd1ea'
+const currentWorkerSecret = Deno.env.get('OUTBOX_WORKER_SECRET') ?? ''
+const previousWorkerSecret = Deno.env.get('OUTBOX_WORKER_SECRET_PREVIOUS') ?? ''
+
+function isAuthorizedWorker(providedSecret: string): boolean {
+  if (!currentWorkerSecret) return false
+  if (providedSecret === currentWorkerSecret) return true
+  if (previousWorkerSecret && providedSecret === previousWorkerSecret) return true
+  return false
+}
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = getSupabaseAdminKey()
@@ -44,7 +49,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
   const secretHeader = req.headers.get('x-worker-secret') ?? ''
-  if (secretHeader !== WORKER_SECRET) return jsonResponse({ error: 'Unauthorized' }, 401)
+  if (!isAuthorizedWorker(secretHeader)) return jsonResponse({ error: 'Unauthorized' }, 401)
 
   if (!supabaseUrl || !serviceRoleKey) return jsonResponse({ error: 'Missing service role configuration' }, 500)
   if (!resendKey) return jsonResponse({ error: 'Missing Resend API key' }, 500)

@@ -1,7 +1,15 @@
 import { getSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
 
-const WORKER_SECRET = 'c93f0788596c831e23020e23971924b84d91b1fe4ade27c0bb8a2cb4243bd1ea'
+const currentWorkerSecret = Deno.env.get('OUTBOX_WORKER_SECRET') ?? ''
+const previousWorkerSecret = Deno.env.get('OUTBOX_WORKER_SECRET_PREVIOUS') ?? ''
+
+function isAuthorizedWorker(providedSecret: string): boolean {
+  if (!currentWorkerSecret) return false
+  if (providedSecret === currentWorkerSecret) return true
+  if (previousWorkerSecret && providedSecret === previousWorkerSecret) return true
+  return false
+}
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = getSupabaseAdminKey()
@@ -60,7 +68,7 @@ function normalizeToken(header: string | null): string | null {
 
 async function authorizeRequest(req: Request): Promise<AuthorizedRequester | Response> {
   const secretHeader = req.headers.get('x-worker-secret') ?? ''
-  if (secretHeader === WORKER_SECRET) return { mode: 'worker' }
+  if (isAuthorizedWorker(secretHeader)) return { mode: 'worker' }
 
   const token = normalizeToken(req.headers.get('Authorization'))
   if (!token) {
