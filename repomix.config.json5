@@ -1,0 +1,63 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "tmp/repomix-audit/repomix-output.xml",
+    "style": "xml",
+    "git": {
+      "includeDiffs": false,
+      "includeLogs": false
+    }
+  },
+  "include": [
+    "**REPOMIX_EXPLICIT_ALLOWLIST_REQUIRED**"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "**/.env",
+      "**/.env.*",
+      "**/.mcp.json",
+      "**/.mcp-secrets.env",
+      "**/.ssh/**",
+      "**/.aws/**",
+      "**/.npmrc",
+      "**/.netrc",
+      "**/.claude/**",
+      "**/.supabase/**",
+      "**/supabase/.temp/**",
+      "**/.vercel/**",
+      "**/.kilo/worktrees/**",
+      "**/.venv/**",
+      "**/.venv-xlsx/**",
+      "**/private-data/**",
+      "**/tmp/**",
+      "**/outputs/**",
+      "**/logs/**",
+      "**/dumps/**",
+      "**/backups/**",
+      "**/reports/**",
+      "**/playwright-report/**",
+      "**/test-results/**",
+      "supabase/**",
+      "**/*.csv",
+      "**/*.xls",
+      "**/*.xlsx",
+      "**/*.pem",
+      "**/*.key",
+      "**/*.p12",
+      "**/*.pfx",
+      "**/*.crt",
+      "**/*.cer",
+      "**/*.p8",
+      "**/*.jks",
+      "**/*.keystore",
+      "**/*secret*",
+      "**/*token*",
+      "**/*credential*"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  }
+}

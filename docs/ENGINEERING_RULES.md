@@ -18,6 +18,7 @@
 4. [Orden recomendado de implementación](#4-orden-recomendado-de-implementación)
 5. [Reglas para PRs pequeños y seguros](#5-reglas-para-prs-pequeños-y-seguros)
 6. [Checklist de validación antes de merge](#6-checklist-de-validación-antes-de-merge)
+7. [Repomix — Scoped Audit Snapshots](#7-repomix--scoped-audit-snapshots)
 
 ---
 
@@ -361,6 +362,33 @@ Si cualquiera de estos patrones aparece en el diff, detener y pedir revisión:
 - contacto_actividades ADD COLUMN ← BLK-004
 - vendedor_telemercadeo  ← CON-006 abierta, no escribir en esta tabla
 ```
+
+---
+
+## 7. Repomix — Scoped Audit Snapshots
+
+Repomix solo está permitido para snapshots locales, allowlisted y limitados a
+un dominio. Es un artefacto de contexto/auditoría y una entrada común para
+Claude y Codex; no reemplaza Git/GitHub, las reglas de ingeniería, las
+consultas de catálogo de Supabase ni lecturas de producción.
+
+- Cada ejecución usa una versión temporal fijada y su propio allowlist
+  explícito; la comprobación de seguridad permanece habilitada y los diffs y
+  logs de Git están deshabilitados por defecto.
+- La salida solo se escribe en `tmp/repomix-audit/`. Archivos inesperados o
+  hallazgos de seguridad invalidan el snapshot.
+- Los packs de Royal Prestige incluyen `docs/rp/FLOW-MAESTRO-RP.md`; los de
+  seguros/reclutamiento no heredan reglas de negocio RP. Infraestructura
+  compartida requiere autorización cross-domain explícita y `supabase/**` en
+  la raíz queda excluido salvo autorización expresa.
+- Cuando Claude y Codex revisan el mismo asunto, ambos usan el mismo archivo
+  inmutable. La verdad de producción requiere checks live read-only
+  autorizados por separado.
+
+El fingerprint histórico `676731b486adaac6656fff9b02cfcddb` sigue siendo no
+comparable porque no se recuperó su receta original. La receta futura
+`flowsuite.fn_cob_trigger_recibo_pago.source.v1` se documentará en un loop de
+auditoría/fingerprint dedicado, no en la configuración de Repomix.
 
 ---
 
