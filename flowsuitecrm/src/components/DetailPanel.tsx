@@ -7,15 +7,17 @@ type DetailPanelProps = {
   tabs?: { key: string; label: string }[]
   activeTab?: string
   onTabChange?: (key: string) => void
+  /** Modificador opcional de ancho: añade `drawer--{size}` al contenedor. Sin valor conserva el ancho base. */
+  size?: 'md'
 }
 
-export function DetailPanel({ open, title, items, onClose, action, tabs, activeTab, onTabChange }: DetailPanelProps) {
+export function DetailPanel({ open, title, items, onClose, action, tabs, activeTab, onTabChange, size }: DetailPanelProps) {
   if (!open) return null
 
   return (
     <div className="drawer-backdrop" onClick={onClose} role="presentation">
       <aside
-        className="drawer"
+        className={size ? `drawer drawer--${size}` : 'drawer'}
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawer-title"

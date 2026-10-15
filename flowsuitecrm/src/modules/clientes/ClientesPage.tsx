@@ -2468,6 +2468,7 @@ export function ClientesPage() {
 
       <DetailPanel
         open={Boolean(selectedRow)}
+        size="md"
         title="Detalle del cliente"
         items={(() => {
           if (!selectedClienteDetail) return selectedRow?.detail ?? []
@@ -2654,7 +2655,7 @@ export function ClientesPage() {
                   </div>
 
                   {/* ── GRID 2 columnas ── */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem 1.5rem' }}>
+                  <div className="cliente-detail-grid">
 
                     {/* CONTACTO */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>

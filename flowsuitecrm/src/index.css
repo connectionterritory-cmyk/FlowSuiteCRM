@@ -5809,6 +5809,38 @@ body.theme-light .hoy-action-card-icon-wrapper {
   }
 }
 
+/* Variante de ancho medio para DetailPanel (size="md"); .drawer base no cambia. */
+.drawer--md {
+  width: min(520px, 90vw);
+}
+
+@media (max-width: 720px) {
+  .drawer--md {
+    width: 100vw;
+  }
+}
+
+/* Detalle de cliente: dos columnas estables sin permitir que contenido largo ensanche el drawer. */
+.cliente-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+}
+
+.cliente-detail-grid > * {
+  min-width: 0;
+}
+
+.cliente-detail-grid :where(span, a) {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .cliente-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ── ActivacionReferidosPanel (ARP) ─────────────────────────── */
 .drawer--wide {
   width: min(680px, 95vw);
