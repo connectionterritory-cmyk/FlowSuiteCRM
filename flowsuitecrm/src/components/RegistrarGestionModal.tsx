@@ -520,6 +520,8 @@ export function RegistrarGestionModal({
   const requiresResultado = draft.tipo !== 'nota'
   const showMontoPrometido = draft.resultado === 'promesa_pago'
   const canSubmit = Boolean(draft.contactoId && (!requiresResultado || draft.resultado))
+  // Solo se muestra la ayuda cuando Resultado es el único bloqueo (hay contacto y no se está guardando).
+  const missingResultadoOnly = Boolean(draft.contactoId) && requiresResultado && !draft.resultado && !submitting
 
   const handleSelectContacto = (nextContacto: GestionContactoRef) => {
     setSelectedContacto(nextContacto)
@@ -560,6 +562,7 @@ export function RegistrarGestionModal({
       title="Registrar gestión"
       description={contacto ? `${contacto.nombre}${contacto.subtitle ? ` · ${contacto.subtitle}` : ''}` : 'Registrar acción comercial o de seguimiento'}
       size="lg"
+      className="modal-gestion"
       actions={
         showCitaPrompt ? (
           <>
@@ -580,6 +583,14 @@ export function RegistrarGestionModal({
           </>
         ) : (
           <>
+            {missingResultadoOnly && (
+              <span
+                role="status"
+                style={{ marginRight: 'auto', alignSelf: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}
+              >
+                Selecciona un resultado para registrar la gestión.
+              </span>
+            )}
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancelar
             </Button>

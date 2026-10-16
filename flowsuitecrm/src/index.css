@@ -1439,6 +1439,22 @@ body.theme-light .pipeline-card {
 .modal-lg { width: min(900px, 92vw); }
 .modal-xl { width: min(1100px, 96vw); }
 
+/* Registrar gestión: modal más ancho y opciones legibles en el popup nativo (Chrome/Windows).
+   El fondo del select es translúcido, así que el popup nativo se pinta blanco; se fuerzan colores
+   opacos del tema para que el texto de las opciones tenga contraste en dark y light. */
+.modal.modal-gestion {
+  width: min(1200px, 72vw);
+  max-height: 90vh;
+}
+.modal-gestion select option,
+.modal-gestion select optgroup {
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+}
+@media (max-width: 720px) {
+  .modal.modal-gestion { width: 96vw; }
+}
+
 /* ─────────────────────────────────────────────
    Premium Message Modal (PremiumMessageModal)
 ───────────────────────────────────────────── */
@@ -5811,13 +5827,57 @@ body.theme-light .hoy-action-card-icon-wrapper {
 
 /* Variante de ancho medio para DetailPanel (size="md"); .drawer base no cambia. */
 .drawer--md {
-  width: min(520px, 90vw);
+  width: clamp(560px, 40vw, 800px);
+  max-width: 96vw;
+}
+
+@media (max-width: 1100px) {
+  .drawer--md {
+    width: 60vw;
+  }
+}
+
+@media (max-width: 900px) {
+  .drawer--md {
+    width: 80vw;
+  }
 }
 
 @media (max-width: 720px) {
   .drawer--md {
     width: 100vw;
+    max-width: 100vw;
   }
+}
+
+/* Header de .drawer--md: título en una línea con prioridad; las acciones pasan a una segunda línea.
+   `display: contents` aplana el contenedor de acciones para que el botón cerrar se quede junto al título. */
+.drawer--md .drawer-header {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.drawer--md .drawer-header h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer--md .drawer-header > div {
+  display: contents;
+}
+
+.drawer--md .drawer-header > div > .icon-button {
+  order: 1;
+  flex: 0 0 auto;
+}
+
+.drawer--md .drawer-header > div > :not(.icon-button) {
+  order: 2;
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
 /* Detalle de cliente: dos columnas estables sin permitir que contenido largo ensanche el drawer. */

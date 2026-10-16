@@ -11,7 +11,7 @@ import { PersonaPerfilPanel } from '../../components/PersonaPerfilPanel'
 import { ContactoTimeline } from '../../components/ContactoTimeline'
 import { ClienteOpportunityCard } from '../../components/ClienteOpportunityCard'
 import { EmptyState } from '../../components/EmptyState'
-import { IconWhatsapp, IconTrash } from '../../components/icons'
+import { IconWhatsapp, IconMoreHorizontal, IconTrash } from '../../components/icons'
 import { useToast } from '../../components/useToast'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client'
 import { getCarteraOpportunityGuard, type CarteraOpportunityGuard } from '../../lib/carteraOpportunityGuard'
@@ -494,6 +494,19 @@ export function ClientesPage() {
   const [casoDias, setCasoDias] = useState('')
   const [casoNotas, setCasoNotas] = useState('')
   const [casoError, setCasoError] = useState<string | null>(null)
+  // Preserved for a future contextual entry point; no longer rendered in the detail header.
+  const openCasoModal = useCallback(() => {
+    if (!(canManageClientes || currentRole === 'supervisor_telemercadeo')) return
+    setTipoCasoSeleccionado('cargo_vuelta')
+    setCasoMonto('')
+    setCasoFecha('')
+    setCasoDias('')
+    setCasoNotas('')
+    setCasoError(null)
+    setAbrirCasoOpen(true)
+  }, [canManageClientes, currentRole])
+  // Keep the callback compiled until a contextual entry point is approved.
+  void openCasoModal
 
   const loadClientes = useCallback(async () => {
     if (!configured || !sessionUserId || !currentRole) return
@@ -1380,6 +1393,20 @@ export function ClientesPage() {
     borderRadius: '9999px', border: `1px solid ${color}44`, background: `${color}11`,
     color, cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, textDecoration: 'none',
   })
+  const moreMenuItemStyle: React.CSSProperties = {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0.5rem 0.65rem',
+    border: 'none',
+    borderRadius: '0.35rem',
+    background: 'transparent',
+    color: 'var(--color-text)',
+    cursor: 'pointer',
+    font: 'inherit',
+    fontSize: '0.875rem',
+    textAlign: 'left',
+  }
 
   const serviciosContent = serviciosLoading ? (
     <span style={{ color: 'var(--color-text-muted, #6b7280)' }}>Cargando...</span>
@@ -2852,37 +2879,6 @@ export function ClientesPage() {
           selectedClienteDetail ? (
             <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <Button
-                variant="ghost"
-                type="button"
-                style={{ minHeight: '40px' }}
-                onClick={() =>
-                  openCitaModal({
-                    initialData: {
-                      contacto_tipo: 'cliente',
-                      contacto_id: selectedClienteDetail.id,
-                      contacto_nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'Cliente',
-                      contacto_telefono: selectedClienteDetail.telefono ?? selectedClienteDetail.telefono_casa ?? '',
-                      direccion: selectedClienteDetail.direccion ?? '',
-                      ciudad: selectedClienteDetail.ciudad ?? '',
-                      estado_region: selectedClienteDetail.estado_region ?? '',
-                      zip: selectedClienteDetail.codigo_postal ?? '',
-                      assigned_to: selectedClienteDetail.vendedor_id ?? '',
-                    },
-                    assignedOptions:
-                      citaAssignedOptions.length > 0
-                        ? citaAssignedOptions
-                        : [{ id: selectedClienteDetail.vendedor_id ?? sessionUserId ?? '', label: 'Responsable actual' }].filter(
-                            (option): option is { id: string; label: string } => Boolean(option.id),
-                          ),
-                    onSaved: () => showToast('Cita creada'),
-                  })
-                }
-                disabled={detailLoading}
-              >
-                Agendar cita
-              </Button>
-
-              <Button
                 type="button"
                 style={{ minHeight: '40px' }}
                 onClick={() =>
@@ -2969,48 +2965,126 @@ export function ClientesPage() {
                 Registrar gestión
               </Button>
 
-              {canEditClientes && (
-                <Button variant="ghost" type="button" style={{ minHeight: '40px' }} onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
-                  Editar
-                </Button>
-              )}
-              {selectedClienteDetail.persona_id && (
-                <Button variant="ghost" type="button" style={{ minHeight: '40px' }} onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}>
-                  Ver perfil
-                </Button>
-              )}
-              {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
+              <Button
+                variant="ghost"
+                type="button"
+                style={{ minHeight: '40px' }}
+                onClick={() =>
+                  openCitaModal({
+                    initialData: {
+                      contacto_tipo: 'cliente',
+                      contacto_id: selectedClienteDetail.id,
+                      contacto_nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'Cliente',
+                      contacto_telefono: selectedClienteDetail.telefono ?? selectedClienteDetail.telefono_casa ?? '',
+                      direccion: selectedClienteDetail.direccion ?? '',
+                      ciudad: selectedClienteDetail.ciudad ?? '',
+                      estado_region: selectedClienteDetail.estado_region ?? '',
+                      zip: selectedClienteDetail.codigo_postal ?? '',
+                      assigned_to: selectedClienteDetail.vendedor_id ?? '',
+                    },
+                    assignedOptions:
+                      citaAssignedOptions.length > 0
+                        ? citaAssignedOptions
+                        : [{ id: selectedClienteDetail.vendedor_id ?? sessionUserId ?? '', label: 'Responsable actual' }].filter(
+                            (option): option is { id: string; label: string } => Boolean(option.id),
+                          ),
+                    onSaved: () => showToast('Cita creada'),
+                  })
+                }
+                disabled={detailLoading}
+              >
+                Agendar cita
+              </Button>
+
+              {(selectedClienteDetail.telefono || selectedClienteDetail.telefono_casa) && (
                 <Button
                   variant="ghost"
                   type="button"
                   style={{ minHeight: '40px' }}
-                  onClick={() => {
-                    setTipoCasoSeleccionado('cargo_vuelta')
-                    setCasoMonto(''); setCasoFecha(''); setCasoDias(''); setCasoNotas(''); setCasoError(null)
-                    setAbrirCasoOpen(true)
-                  }}
-                  disabled={detailLoading}
+                  onClick={() =>
+                    openWhatsapp({
+                      nombre: [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' '),
+                      telefono: selectedClienteDetail.telefono || selectedClienteDetail.telefono_casa || '',
+                      email: selectedClienteDetail.email ?? '',
+                      vendedor: selectedClienteDetail.vendedor_id ? (usersById[selectedClienteDetail.vendedor_id] ?? '') : '',
+                      cuentaHycite: selectedClienteDetail.hycite_id ?? selectedClienteDetail.numero_cuenta_financiera ?? '',
+                      saldoActual: selectedClienteDetail.saldo_actual,
+                      montoMoroso: selectedClienteDetail.monto_moroso,
+                      diasAtraso: selectedClienteDetail.dias_atraso,
+                      estadoMorosidad: selectedClienteDetail.estado_morosidad,
+                      clienteId: selectedClienteDetail.id,
+                    })
+                  }
                 >
-                  Abrir caso
+                  Mensaje
                 </Button>
               )}
-              {canDelete && (
-                <Button
-                  variant="ghost"
-                  type="button"
-                  style={{ minHeight: '40px', color: '#dc2626', borderColor: '#fca5a5' }}
-                  disabled={deletingId === selectedClienteDetail.id}
-                  onClick={() => {
-                    const name = [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'este cliente'
-                    if (window.confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer.`)) {
-                      void handleDeleteCliente(selectedClienteDetail.id).then(() => setSelectedRow(null))
-                    }
+
+              <details style={{ position: 'relative' }}>
+                <summary
+                  style={{
+                    minHeight: '40px',
+                    boxSizing: 'border-box',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.45rem 0.75rem',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '0.45rem',
+                    cursor: 'pointer',
+                    listStyle: 'none',
+                    userSelect: 'none',
                   }}
                 >
-                  <IconTrash style={{ width: '1rem', height: '1rem', marginRight: '0.35rem' }} />
-                  {deletingId === selectedClienteDetail.id ? 'Eliminando…' : 'Eliminar'}
-                </Button>
-              )}
+                  <IconMoreHorizontal style={{ width: '1rem', height: '1rem' }} /> Más
+                </summary>
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 'calc(100% + 0.35rem)',
+                    zIndex: 2,
+                    minWidth: '11rem',
+                    padding: '0.35rem',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '0.5rem',
+                    background: 'var(--color-surface)',
+                    boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)',
+                  }}
+                >
+                  {canEditClientes && (
+                    <button type="button" style={moreMenuItemStyle} onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
+                      Editar cliente
+                    </button>
+                  )}
+                  {selectedClienteDetail.persona_id && (
+                    <button type="button" style={moreMenuItemStyle} onClick={() => setPerfilPersonaId(selectedClienteDetail.persona_id ?? null)}>
+                      Ver perfil
+                    </button>
+                  )}
+                  {canDelete && (
+                    <>
+                      {(canEditClientes || selectedClienteDetail.persona_id) && <div style={{ height: 1, background: 'var(--color-border)', margin: '0.35rem 0' }} />}
+                      <button
+                        type="button"
+                        style={{ ...moreMenuItemStyle, color: '#dc2626' }}
+                        disabled={deletingId === selectedClienteDetail.id}
+                        onClick={() => {
+                          const name = [selectedClienteDetail.nombre, selectedClienteDetail.apellido].filter(Boolean).join(' ') || 'este cliente'
+                          if (window.confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer.`)) {
+                            void handleDeleteCliente(selectedClienteDetail.id).then(() => setSelectedRow(null))
+                          }
+                        }}
+                      >
+                        <IconTrash style={{ width: '1rem', height: '1rem', marginRight: '0.35rem' }} />
+                        {deletingId === selectedClienteDetail.id ? 'Eliminando…' : 'Eliminar cliente'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </details>
+
+              {/* Abrir caso is preserved for a future contextual entry point. */}
             </div>
           ) : null
         }
