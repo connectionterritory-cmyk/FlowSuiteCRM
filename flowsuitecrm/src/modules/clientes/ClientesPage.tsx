@@ -2877,7 +2877,7 @@ export function ClientesPage() {
         onClose={() => setSelectedRow(null)}
         action={
           selectedClienteDetail ? (
-            <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="cliente-detail-actions" style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <Button
                 type="button"
                 style={{ minHeight: '40px' }}
@@ -3020,7 +3020,7 @@ export function ClientesPage() {
                 </Button>
               )}
 
-              <details style={{ position: 'relative' }}>
+              <details className="cliente-detail-more-menu">
                 <summary
                   style={{
                     minHeight: '40px',
@@ -3039,16 +3039,14 @@ export function ClientesPage() {
                   <IconMoreHorizontal style={{ width: '1rem', height: '1rem' }} /> Más
                 </summary>
                 <div
+                  className="cliente-detail-more-menu-popover"
                   style={{
-                    position: 'absolute',
                     right: 0,
                     top: 'calc(100% + 0.35rem)',
-                    zIndex: 2,
                     minWidth: '11rem',
                     padding: '0.35rem',
                     border: '1px solid var(--color-border)',
                     borderRadius: '0.5rem',
-                    background: 'var(--color-surface)',
                     boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)',
                   }}
                 >

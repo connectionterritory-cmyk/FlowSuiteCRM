@@ -5880,6 +5880,28 @@ body.theme-light .hoy-action-card-icon-wrapper {
   min-width: 0;
 }
 
+/* Customer-detail actions need a paint layer above the later drawer body.
+   Scoped to this menu so other drawer headers and popovers keep their existing behavior. */
+.cliente-detail-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.cliente-detail-more-menu {
+  position: relative;
+}
+
+.cliente-detail-more-menu[open] {
+  z-index: 2;
+}
+
+.cliente-detail-more-menu-popover {
+  position: absolute;
+  z-index: 1;
+  background: var(--card-bg);
+  isolation: isolate;
+}
+
 /* Detalle de cliente: dos columnas estables sin permitir que contenido largo ensanche el drawer. */
 .cliente-detail-grid {
   display: grid;
