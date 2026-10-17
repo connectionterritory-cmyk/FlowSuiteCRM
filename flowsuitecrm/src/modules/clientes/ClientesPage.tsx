@@ -3120,8 +3120,22 @@ export function ClientesPage() {
                 </p>
               )}
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={lbl}>Monto {tipoCasoSeleccionado === 'dfp' ? 'financiado' : 'cargo de vuelta'}</span>
-                <input type="text" inputMode="decimal" value={casoMonto} onChange={e => setCasoMonto(e.target.value)} placeholder="0.00 (dejar vacío si aún no se conoce)" style={inp} />
+                <span style={lbl}>Estado contractual</span>
+                <select value={casoJurisdiccion} onChange={(e) => setCasoJurisdiccion(e.target.value)} style={inp}>
+                  <option value="">Seleccione…</option>
+                  <option value="FL">Florida · 18% APR</option>
+                  <option value="CA">California · 24% APR</option>
+                </select>
+              </label>
+              {casoJurisdiccion && (
+                <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--color-text-muted)' }}>
+                  APR aplicado: <strong style={{ color: 'var(--color-text)' }}>{casoJurisdiccion === 'FL' ? '18.00%' : '24.00%'}</strong>
+                  {' · '}tasa diaria aproximada: <strong style={{ color: 'var(--color-text)' }}>{casoJurisdiccion === 'FL' ? '0.049315%' : '0.065753%'}</strong>
+                </p>
+              )}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Principal inicial / Cargo de vuelta *</span>
+                <input type="text" inputMode="decimal" value={casoMonto} onChange={e => setCasoMonto(e.target.value)} placeholder="0.00" style={inp} />
               </label>
               {tipoCasoSeleccionado === 'cargo_vuelta' && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
