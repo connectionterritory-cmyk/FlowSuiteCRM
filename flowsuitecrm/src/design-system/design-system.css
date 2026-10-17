@@ -1,0 +1,52 @@
+/*
+ * FlowSuite Design System — entrada CSS (Phase 0)
+ *
+ * Aislamiento respecto de las páginas existentes:
+ *  - NO se importa el preflight de Tailwind (sin reset global).
+ *  - Solo theme + utilities, con prefijo `tw:` (p. ej. `tw:flex`), de modo que
+ *    ninguna clase existente (.btn, .badge, .card, ...) pueda coincidir.
+ *  - source(none) + @source explícito: Tailwind solo escanea src/design-system.
+ *  - Los tokens viven en --fs-* (ver tokens.css).
+ */
+@import "./tokens.css";
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw) source(none);
+@source "./";
+
+@theme inline {
+  --color-fs-bg: var(--fs-bg);
+  --color-fs-surface: var(--fs-surface);
+  --color-fs-surface-muted: var(--fs-surface-muted);
+  --color-fs-fg: var(--fs-fg);
+  --color-fs-muted: var(--fs-fg-muted);
+  --color-fs-border: var(--fs-border);
+  --color-fs-primary: var(--fs-primary);
+  --color-fs-primary-hover: var(--fs-primary-hover);
+  --color-fs-primary-fg: var(--fs-primary-fg);
+  --color-fs-link: var(--fs-link);
+  --color-fs-neutral-soft: var(--fs-neutral-soft);
+  --color-fs-neutral-fg: var(--fs-neutral-fg);
+  --color-fs-info-soft: var(--fs-info-soft);
+  --color-fs-info-fg: var(--fs-info-fg);
+  --color-fs-success-soft: var(--fs-success-soft);
+  --color-fs-success-fg: var(--fs-success-fg);
+  --color-fs-warning-soft: var(--fs-warning-soft);
+  --color-fs-warning-fg: var(--fs-warning-fg);
+  --color-fs-danger: var(--fs-danger);
+  --color-fs-danger-hover: var(--fs-danger-hover);
+  --color-fs-danger-fg: var(--fs-danger-fg);
+  --color-fs-danger-soft: var(--fs-danger-soft);
+  --color-fs-danger-soft-fg: var(--fs-danger-soft-fg);
+
+  --text-fs-xs: var(--fs-text-xs);
+  --text-fs-sm: var(--fs-text-sm);
+  --text-fs-base: var(--fs-text-base);
+  --text-fs-lg: var(--fs-text-lg);
+  --text-fs-xl: var(--fs-text-xl);
+  --text-fs-2xl: var(--fs-text-2xl);
+
+  --radius-fs-sm: var(--fs-radius-sm);
+  --radius-fs-md: var(--fs-radius-md);
+  --radius-fs-lg: var(--fs-radius-lg);
+  --radius-fs-full: var(--fs-radius-full);
+}

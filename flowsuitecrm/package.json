@@ -10,16 +10,26 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:unit": "node --test tests/unit/*.test.ts",
+    "check:design-system": "node scripts/check-design-system-isolation.mjs",
+    "test:design-system": "playwright test -c playwright.design-system.config.ts"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.5.0",
+    "@radix-ui/react-tabs": "^1.2.1",
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/supabase-js": "^2.57.2",
+    "@tailwindcss/vite": "^4.3.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "i18next": "^25.2.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-i18next": "^15.6.2",
     "react-router-dom": "^7.9.2",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
