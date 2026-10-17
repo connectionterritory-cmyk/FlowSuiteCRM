@@ -476,6 +476,7 @@ export function ClientesPage() {
     setCasoFecha('')
     setCasoDias('')
     setCasoNotas('')
+    setCasoJurisdiccion('')
     setCasoError(null)
     setAbrirCasoOpen(true)
   }, [canManageClientes, currentRole])
