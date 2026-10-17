@@ -3001,6 +3001,18 @@ export function ClientesPage() {
                 </Button>
               )}
 
+              {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  style={{ minHeight: '40px' }}
+                  onClick={openCasoModal}
+                  disabled={detailLoading}
+                >
+                  Agregar a IZZY Finance
+                </Button>
+              )}
+
               <details className="cliente-detail-more-menu">
                 <summary
                   style={{
