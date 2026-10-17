@@ -138,35 +138,8 @@ type ClienteOpportunitySummary = {
   motivo_bloqueo: string | null
 }
 
-function isMissingOpportunityColumnError(message: string | undefined) {
-  return Boolean(message && /column .* does not exist/i.test(message))
-}
-
 async function fetchClienteOpportunitySummary(clienteId: string) {
-  const extended = await supabase
-    .from('oportunidades')
-    .select('id, cliente_id, owner_id, etapa, estado, producto_recomendado, categoria_producto, next_action, next_action_date, blocked_by_cartera, motivo_bloqueo')
-    .eq('cliente_id', clienteId)
-    .not('etapa', 'in', '("cerrado_ganado","cerrado_perdido","cerrado")')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (!extended.error) {
-    return {
-      data: (extended.data as ClienteOpportunitySummary | null) ?? null,
-      error: null,
-    }
-  }
-
-  if (!isMissingOpportunityColumnError(extended.error.message)) {
-    return {
-      data: null,
-      error: extended.error,
-    }
-  }
-
-  const fallback = await supabase
+  const legacy = await supabase
     .from('oportunidades')
     .select('id, cliente_id, owner_id, etapa')
     .eq('cliente_id', clienteId)
@@ -176,9 +149,9 @@ async function fetchClienteOpportunitySummary(clienteId: string) {
     .maybeSingle()
 
   return {
-    data: fallback.data
+    data: legacy.data
       ? {
-          ...(fallback.data as { id: string; cliente_id: string | null; owner_id: string | null; etapa: string | null }),
+          ...(legacy.data as { id: string; cliente_id: string | null; owner_id: string | null; etapa: string | null }),
           estado: 'abierta',
           producto_recomendado: null,
           categoria_producto: null,
@@ -188,7 +161,7 @@ async function fetchClienteOpportunitySummary(clienteId: string) {
           motivo_bloqueo: null,
         }
       : null,
-    error: fallback.error,
+    error: legacy.error,
   }
 }
 
