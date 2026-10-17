@@ -3111,13 +3111,9 @@ export function ClientesPage() {
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {casoError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{casoError}</p>}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={lbl}>Tipo de caso</span>
-                <select value={tipoCasoSeleccionado} onChange={(e) => setTipoCasoSeleccionado(e.target.value as 'cargo_vuelta' | 'dfp')} style={inp}>
-                  <option value="cargo_vuelta">Cargo de vuelta</option>
-                  <option value="dfp">Financiamiento directo (DFP)</option>
-                </select>
-              </label>
+              <div style={{ padding: '0.55rem 0.7rem', borderRadius: '0.45rem', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', fontSize: '0.8rem' }}>
+                <strong>Producto:</strong> Cargo de Vuelta · cuenta revolving · interés diario / 365
+              </div>
               {selectedClienteDetail?.saldo_actual != null && tipoCasoSeleccionado === 'cargo_vuelta' && (
                 <p style={{ margin: 0, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
                   Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text)' }}>${selectedClienteDetail.saldo_actual.toFixed(2)}</strong>
