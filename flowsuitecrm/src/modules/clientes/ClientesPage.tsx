@@ -3051,7 +3051,16 @@ export function ClientesPage() {
                   }}
                 >
                   {canEditClientes && (
-                    <button type="button" style={moreMenuItemStyle} onClick={() => handleOpenEditForm(selectedClienteDetail)} disabled={detailLoading}>
+                    <button
+                      type="button"
+                      style={moreMenuItemStyle}
+                      onClick={() => {
+                        const cliente = selectedClienteDetail
+                        setSelectedRow(null)
+                        handleOpenEditForm(cliente)
+                      }}
+                      disabled={detailLoading}
+                    >
                       Editar cliente
                     </button>
                   )}
