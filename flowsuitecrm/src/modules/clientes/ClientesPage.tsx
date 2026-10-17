@@ -468,6 +468,8 @@ export function ClientesPage() {
   const [casoNotas, setCasoNotas] = useState('')
   const [casoError, setCasoError] = useState<string | null>(null)
   const [casoJurisdiccion, setCasoJurisdiccion] = useState('')
+  const [casoApr, setCasoApr] = useState('')
+  const [casoLateFee, setCasoLateFee] = useState('0')
   // Preserved for a future contextual entry point; no longer rendered in the detail header.
   const openCasoModal = useCallback(() => {
     if (!(canManageClientes || currentRole === 'supervisor_telemercadeo')) return
@@ -477,6 +479,8 @@ export function ClientesPage() {
     setCasoDias('')
     setCasoNotas('')
     setCasoJurisdiccion('')
+    setCasoApr('')
+    setCasoLateFee('0')
     setCasoError(null)
     setAbrirCasoOpen(true)
   }, [canManageClientes, currentRole])
@@ -1322,15 +1326,26 @@ export function ClientesPage() {
     if (parsedMonto === null || Number.isNaN(parsedMonto) || parsedMonto <= 0) {
       setCasoError('El principal inicial debe ser mayor a 0.'); return
     }
-    if (!['FL', 'CA'].includes(casoJurisdiccion)) {
-      setCasoError('Seleccione el estado contractual: Florida o California.'); return
+    const state = casoJurisdiccion.trim().toUpperCase()
+    if (!/^[A-Z]{2}$/.test(state)) {
+      setCasoError('Ingrese el estado contractual con 2 letras, por ejemplo CA o FL.'); return
+    }
+    const aprPct = Number(casoApr)
+    if (!Number.isFinite(aprPct) || aprPct < 0 || aprPct > 24) {
+      setCasoError('El APR debe estar entre 0% y 24%.'); return
+    }
+    const lateFee = Number(casoLateFee || 0)
+    if (!Number.isFinite(lateFee) || lateFee < 0) {
+      setCasoError('El late fee debe ser 0 o mayor.'); return
     }
     setAbriendoCaso(true)
     setCasoError(null)
     const { error: rpcErr } = await supabase.rpc('fn_abrir_izzy_finance_cargo_vuelta', {
       p_cliente_id: selectedClienteDetail.id,
       p_monto: parsedMonto,
-      p_jurisdiction_state: casoJurisdiccion,
+      p_jurisdiction_state: state,
+      p_apr: aprPct / 100,
+      p_late_fee_fijo: lateFee,
       p_fecha_cargo_vuelta: casoFecha || null,
       p_dias_vencido: casoDias ? parseInt(casoDias) : null,
       p_numero_cuenta_hycite: selectedClienteDetail.hycite_id || null,
@@ -1339,10 +1354,9 @@ export function ClientesPage() {
     })
     setAbriendoCaso(false)
     if (rpcErr) { setCasoError(rpcErr.message); return }
-    const aprLabel = casoJurisdiccion === 'FL' ? '18%' : '24%'
-    showToast(`Cliente agregado a IZZY Finance · APR ${aprLabel}.`)
+    showToast(`Cliente agregado a IZZY Finance · APR ${aprPct.toFixed(2)}% · Late fee ${lateFee.toFixed(2)}.`)
     setAbrirCasoOpen(false)
-  }, [abriendoCaso, casoFecha, casoDias, casoJurisdiccion, casoMonto, casoNotas, selectedClienteDetail, showToast])
+  }, [abriendoCaso, casoApr, casoFecha, casoDias, casoJurisdiccion, casoLateFee, casoMonto, casoNotas, selectedClienteDetail, showToast])
 
   const riskChip = (diasAtraso: number | null, montoMoroso: number | null) => {
     if (!montoMoroso || montoMoroso === 0) return { color: '#10b981', bg: '#d1fae5', label: 'Al día' }
@@ -3120,19 +3134,49 @@ export function ClientesPage() {
                 </p>
               )}
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={lbl}>Estado contractual</span>
-                <select value={casoJurisdiccion} onChange={(e) => setCasoJurisdiccion(e.target.value)} style={inp}>
-                  <option value="">Seleccione…</option>
-                  <option value="FL">Florida · 18% APR</option>
-                  <option value="CA">California · 24% APR</option>
-                </select>
+                <span style={lbl}>Estado contractual *</span>
+                <input
+                  value={casoJurisdiccion}
+                  onChange={(e) => setCasoJurisdiccion(e.target.value.toUpperCase().slice(0, 2))}
+                  placeholder="CA"
+                  maxLength={2}
+                  style={inp}
+                />
               </label>
-              {casoJurisdiccion && (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>APR negociado (%) *</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.01"
+                  value={casoApr}
+                  onChange={(e) => setCasoApr(e.target.value)}
+                  placeholder="Ej. 0, 10, 18, 24"
+                  style={inp}
+                />
+              </label>
+              {casoApr !== '' && Number.isFinite(Number(casoApr)) && (
                 <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--color-text-muted)' }}>
-                  APR aplicado: <strong style={{ color: 'var(--color-text)' }}>{casoJurisdiccion === 'FL' ? '18.00%' : '24.00%'}</strong>
-                  {' · '}tasa diaria aproximada: <strong style={{ color: 'var(--color-text)' }}>{casoJurisdiccion === 'FL' ? '0.049315%' : '0.065753%'}</strong>
+                  APR aplicado: <strong style={{ color: 'var(--color-text)' }}>{Number(casoApr).toFixed(2)}%</strong>
+                  {' · '}tasa diaria aproximada: <strong style={{ color: 'var(--color-text)' }}>{(Number(casoApr) / 365).toFixed(6)}%</strong>
                 </p>
               )}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Late fee fijo ($)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={casoLateFee}
+                  onChange={(e) => setCasoLateFee(e.target.value)}
+                  placeholder="0.00"
+                  style={inp}
+                />
+                <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                  Puede ser $0, $5, $10, $15 u otro valor acordado, sujeto a las reglas aplicables.
+                </span>
+              </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <span style={lbl}>Principal inicial / Cargo de vuelta *</span>
                 <input type="text" inputMode="decimal" value={casoMonto} onChange={e => setCasoMonto(e.target.value)} placeholder="0.00" style={inp} />
