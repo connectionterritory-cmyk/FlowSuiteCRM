@@ -220,27 +220,22 @@ comment on function public.fn_crear_revolving_account_cargo_vuelta(uuid, numeric
 revoke all on function public.fn_crear_revolving_account_cargo_vuelta(uuid, numeric, text)
   from public;
 
+revoke execute on function public.fn_crear_revolving_account_cargo_vuelta(uuid, numeric, text)
+  from anon;
+
 grant execute on function public.fn_crear_revolving_account_cargo_vuelta(uuid, numeric, text)
   to authenticated;
 
 -- 3. cob_statements.tasa_diaria
-do $$
-declare
-  r record;
-begin
-  for r in
-    select c.conname
-    from pg_constraint c
-    where c.conrelid = 'public.cob_statements'::regclass
-      and c.contype = 'c'
-      and pg_get_constraintdef(c.oid) ilike '%tasa_diaria%'
-      and pg_get_constraintdef(c.oid) ilike '%> 0%'
-      and pg_get_constraintdef(c.oid) not ilike '%cargos_interes_periodo%'
-  loop
-    execute format('alter table public.cob_statements drop constraint %I', r.conname);
-  end loop;
-end
-$$;
+-- Drop the known legacy positive-only constraint explicitly. The previous
+-- pg_get_constraintdef text matcher was not reliable across PostgreSQL's
+-- normalized constraint rendering and left this constraint behind in staging.
+alter table public.cob_statements
+  drop constraint if exists cob_statements_tasa_diaria_check;
+
+-- Keep the migration idempotent if the non-negative constraint already exists.
+alter table public.cob_statements
+  drop constraint if exists cob_statements_tasa_diaria_nonneg_chk;
 
 alter table public.cob_statements
   add constraint cob_statements_tasa_diaria_nonneg_chk
