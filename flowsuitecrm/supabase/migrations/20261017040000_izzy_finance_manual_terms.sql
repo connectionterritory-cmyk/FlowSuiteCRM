@@ -74,7 +74,7 @@ begin
     raise exception 'IZZY_FINANCE_ACCOUNT_EXISTS: ya existe una cuenta financiera para este caso (%)', v_account_id;
   end if;
 
-  v_account_id := public.fn_crear_revolving_account(
+  v_account_id := public.fn_crear_revolving_account_cargo_vuelta(
     v_case_id,
     v_apr,
     coalesce(p_notas, 'Cuenta IZZY Finance abierta desde Cargo de Vuelta')

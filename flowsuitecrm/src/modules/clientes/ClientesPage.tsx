@@ -1330,7 +1330,7 @@ export function ClientesPage() {
     if (!/^[A-Z]{2}$/.test(state)) {
       setCasoError('Ingrese el estado contractual con 2 letras, por ejemplo CA o FL.'); return
     }
-    const aprPct = Number(casoApr)
+    const aprPct = casoApr.trim() === '' ? Number.NaN : Number(casoApr)
     if (!Number.isFinite(aprPct) || aprPct < 0 || aprPct > 24) {
       setCasoError('El APR debe estar entre 0% y 24%.'); return
     }
@@ -3105,7 +3105,7 @@ export function ClientesPage() {
       />
       <Modal
         open={abrirCasoOpen}
-        title="Abrir caso"
+        title="Agregar a IZZY Finance"
         onClose={() => { setAbrirCasoOpen(false); setCasoError(null) }}
         size="sm"
         actions={
@@ -3114,7 +3114,7 @@ export function ClientesPage() {
               Cancelar
             </Button>
             <Button type="button" onClick={() => void handleAbrirCasoCliente()} disabled={abriendoCaso}>
-              {abriendoCaso ? 'Abriendo…' : 'Abrir caso'}
+              {abriendoCaso ? 'Guardando…' : 'Agregar'}
             </Button>
           </div>
         }
