@@ -1348,7 +1348,7 @@ export function ClientesPage() {
       p_late_fee_fijo: lateFee,
       p_fecha_cargo_vuelta: casoFecha || null,
       p_dias_vencido: casoDias ? parseInt(casoDias) : null,
-      p_numero_cuenta_hycite: selectedClienteDetail.hycite_id || null,
+      p_numero_cuenta_hycite: null,
       p_numero_orden_hycite: null,
       p_notas: casoNotas.trim() || null,
     })
