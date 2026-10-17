@@ -1319,24 +1319,30 @@ export function ClientesPage() {
   const handleAbrirCasoCliente = useCallback(async () => {
     if (!selectedClienteDetail || abriendoCaso) return
     const parsedMonto = parseMontoCargoVueltaInput(casoMonto)
-    if (parsedMonto !== null && Number.isNaN(parsedMonto)) {
-      setCasoError('Monto inválido'); return
+    if (parsedMonto === null || Number.isNaN(parsedMonto) || parsedMonto <= 0) {
+      setCasoError('El principal inicial debe ser mayor a 0.'); return
+    }
+    if (!['FL', 'CA'].includes(casoJurisdiccion)) {
+      setCasoError('Seleccione el estado contractual: Florida o California.'); return
     }
     setAbriendoCaso(true)
     setCasoError(null)
-    const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
+    const { error: rpcErr } = await supabase.rpc('fn_abrir_izzy_finance_cargo_vuelta', {
       p_cliente_id: selectedClienteDetail.id,
-      p_tipo_caso: tipoCasoSeleccionado,
-      p_monto_cargo_vuelta: parsedMonto ?? null,
+      p_monto: parsedMonto,
+      p_jurisdiction_state: casoJurisdiccion,
       p_fecha_cargo_vuelta: casoFecha || null,
       p_dias_vencido: casoDias ? parseInt(casoDias) : null,
+      p_numero_cuenta_hycite: selectedClienteDetail.hycite_id || null,
+      p_numero_orden_hycite: null,
       p_notas: casoNotas.trim() || null,
     })
     setAbriendoCaso(false)
     if (rpcErr) { setCasoError(rpcErr.message); return }
-    showToast(tipoCasoSeleccionado === 'dfp' ? 'Caso DFP abierto.' : 'Caso abierto.')
+    const aprLabel = casoJurisdiccion === 'FL' ? '18%' : '24%'
+    showToast(`Cliente agregado a IZZY Finance · APR ${aprLabel}.`)
     setAbrirCasoOpen(false)
-  }, [abriendoCaso, casoFecha, casoDias, casoMonto, casoNotas, selectedClienteDetail, showToast, tipoCasoSeleccionado])
+  }, [abriendoCaso, casoFecha, casoDias, casoJurisdiccion, casoMonto, casoNotas, selectedClienteDetail, showToast])
 
   const riskChip = (diasAtraso: number | null, montoMoroso: number | null) => {
     if (!montoMoroso || montoMoroso === 0) return { color: '#10b981', bg: '#d1fae5', label: 'Al día' }
