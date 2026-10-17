@@ -467,6 +467,9 @@ export function ClientesPage() {
   const [casoDias, setCasoDias] = useState('')
   const [casoNotas, setCasoNotas] = useState('')
   const [casoError, setCasoError] = useState<string | null>(null)
+  const [casoJurisdiccion, setCasoJurisdiccion] = useState('')
+  const [casoApr, setCasoApr] = useState('')
+  const [casoLateFee, setCasoLateFee] = useState('0')
   // Preserved for a future contextual entry point; no longer rendered in the detail header.
   const openCasoModal = useCallback(() => {
     if (!(canManageClientes || currentRole === 'supervisor_telemercadeo')) return
@@ -475,6 +478,9 @@ export function ClientesPage() {
     setCasoFecha('')
     setCasoDias('')
     setCasoNotas('')
+    setCasoJurisdiccion('')
+    setCasoApr('')
+    setCasoLateFee('0')
     setCasoError(null)
     setAbrirCasoOpen(true)
   }, [canManageClientes, currentRole])
@@ -1317,24 +1323,40 @@ export function ClientesPage() {
   const handleAbrirCasoCliente = useCallback(async () => {
     if (!selectedClienteDetail || abriendoCaso) return
     const parsedMonto = parseMontoCargoVueltaInput(casoMonto)
-    if (parsedMonto !== null && Number.isNaN(parsedMonto)) {
-      setCasoError('Monto inválido'); return
+    if (parsedMonto === null || Number.isNaN(parsedMonto) || parsedMonto <= 0) {
+      setCasoError('El principal inicial debe ser mayor a 0.'); return
+    }
+    const state = casoJurisdiccion.trim().toUpperCase()
+    if (!/^[A-Z]{2}$/.test(state)) {
+      setCasoError('Ingrese el estado contractual con 2 letras, por ejemplo CA o FL.'); return
+    }
+    const aprPct = casoApr.trim() === '' ? Number.NaN : Number(casoApr)
+    if (!Number.isFinite(aprPct) || aprPct < 0 || aprPct > 24) {
+      setCasoError('El APR debe estar entre 0% y 24%.'); return
+    }
+    const lateFee = Number(casoLateFee || 0)
+    if (!Number.isFinite(lateFee) || lateFee < 0) {
+      setCasoError('El late fee debe ser 0 o mayor.'); return
     }
     setAbriendoCaso(true)
     setCasoError(null)
-    const { error: rpcErr } = await supabase.rpc('fn_abrir_o_actualizar_cargo_vuelta_case', {
+    const { error: rpcErr } = await supabase.rpc('fn_abrir_izzy_finance_cargo_vuelta', {
       p_cliente_id: selectedClienteDetail.id,
-      p_tipo_caso: tipoCasoSeleccionado,
-      p_monto_cargo_vuelta: parsedMonto ?? null,
+      p_monto: parsedMonto,
+      p_jurisdiction_state: state,
+      p_apr: aprPct / 100,
+      p_late_fee_fijo: lateFee,
       p_fecha_cargo_vuelta: casoFecha || null,
       p_dias_vencido: casoDias ? parseInt(casoDias) : null,
+      p_numero_cuenta_hycite: null,
+      p_numero_orden_hycite: null,
       p_notas: casoNotas.trim() || null,
     })
     setAbriendoCaso(false)
     if (rpcErr) { setCasoError(rpcErr.message); return }
-    showToast(tipoCasoSeleccionado === 'dfp' ? 'Caso DFP abierto.' : 'Caso abierto.')
+    showToast(`Cliente agregado a IZZY Finance · APR ${aprPct.toFixed(2)}% · Late fee ${lateFee.toFixed(2)}.`)
     setAbrirCasoOpen(false)
-  }, [abriendoCaso, casoFecha, casoDias, casoMonto, casoNotas, selectedClienteDetail, showToast, tipoCasoSeleccionado])
+  }, [abriendoCaso, casoApr, casoFecha, casoDias, casoJurisdiccion, casoLateFee, casoMonto, casoNotas, selectedClienteDetail, showToast])
 
   const riskChip = (diasAtraso: number | null, montoMoroso: number | null) => {
     if (!montoMoroso || montoMoroso === 0) return { color: '#10b981', bg: '#d1fae5', label: 'Al día' }
@@ -2993,6 +3015,18 @@ export function ClientesPage() {
                 </Button>
               )}
 
+              {(canManageClientes || currentRole === 'supervisor_telemercadeo') && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  style={{ minHeight: '40px' }}
+                  onClick={openCasoModal}
+                  disabled={detailLoading}
+                >
+                  Agregar a IZZY Finance
+                </Button>
+              )}
+
               <details className="cliente-detail-more-menu">
                 <summary
                   style={{
@@ -3071,7 +3105,7 @@ export function ClientesPage() {
       />
       <Modal
         open={abrirCasoOpen}
-        title="Abrir caso"
+        title="Agregar a IZZY Finance"
         onClose={() => { setAbrirCasoOpen(false); setCasoError(null) }}
         size="sm"
         actions={
@@ -3080,7 +3114,7 @@ export function ClientesPage() {
               Cancelar
             </Button>
             <Button type="button" onClick={() => void handleAbrirCasoCliente()} disabled={abriendoCaso}>
-              {abriendoCaso ? 'Abriendo…' : 'Abrir caso'}
+              {abriendoCaso ? 'Guardando…' : 'Agregar'}
             </Button>
           </div>
         }
@@ -3091,21 +3125,61 @@ export function ClientesPage() {
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {casoError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: 0 }}>{casoError}</p>}
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={lbl}>Tipo de caso</span>
-                <select value={tipoCasoSeleccionado} onChange={(e) => setTipoCasoSeleccionado(e.target.value as 'cargo_vuelta' | 'dfp')} style={inp}>
-                  <option value="cargo_vuelta">Cargo de vuelta</option>
-                  <option value="dfp">Financiamiento directo (DFP)</option>
-                </select>
-              </label>
+              <div style={{ padding: '0.55rem 0.7rem', borderRadius: '0.45rem', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', fontSize: '0.8rem' }}>
+                <strong>Producto:</strong> Cargo de Vuelta · cuenta revolving · interés diario / 365
+              </div>
               {selectedClienteDetail?.saldo_actual != null && tipoCasoSeleccionado === 'cargo_vuelta' && (
                 <p style={{ margin: 0, padding: '0.5rem 0.65rem', borderRadius: '0.4rem', background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
                   Saldo Hy-Cite (ref.): <strong style={{ color: 'var(--color-text)' }}>${selectedClienteDetail.saldo_actual.toFixed(2)}</strong>
                 </p>
               )}
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={lbl}>Monto {tipoCasoSeleccionado === 'dfp' ? 'financiado' : 'cargo de vuelta'}</span>
-                <input type="text" inputMode="decimal" value={casoMonto} onChange={e => setCasoMonto(e.target.value)} placeholder="0.00 (dejar vacío si aún no se conoce)" style={inp} />
+                <span style={lbl}>Estado contractual *</span>
+                <input
+                  value={casoJurisdiccion}
+                  onChange={(e) => setCasoJurisdiccion(e.target.value.toUpperCase().slice(0, 2))}
+                  placeholder="CA"
+                  maxLength={2}
+                  style={inp}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>APR negociado (%) *</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.01"
+                  value={casoApr}
+                  onChange={(e) => setCasoApr(e.target.value)}
+                  placeholder="Ej. 0, 10, 18, 24"
+                  style={inp}
+                />
+              </label>
+              {casoApr !== '' && Number.isFinite(Number(casoApr)) && (
+                <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--color-text-muted)' }}>
+                  APR aplicado: <strong style={{ color: 'var(--color-text)' }}>{Number(casoApr).toFixed(2)}%</strong>
+                  {' · '}tasa diaria aproximada: <strong style={{ color: 'var(--color-text)' }}>{(Number(casoApr) / 365).toFixed(6)}%</strong>
+                </p>
+              )}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Late fee fijo ($)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={casoLateFee}
+                  onChange={(e) => setCasoLateFee(e.target.value)}
+                  placeholder="0.00"
+                  style={inp}
+                />
+                <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                  Puede ser $0, $5, $10, $15 u otro valor acordado, sujeto a las reglas aplicables.
+                </span>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={lbl}>Principal inicial / Cargo de vuelta *</span>
+                <input type="text" inputMode="decimal" value={casoMonto} onChange={e => setCasoMonto(e.target.value)} placeholder="0.00" style={inp} />
               </label>
               {tipoCasoSeleccionado === 'cargo_vuelta' && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
