@@ -467,6 +467,7 @@ export function ClientesPage() {
   const [casoDias, setCasoDias] = useState('')
   const [casoNotas, setCasoNotas] = useState('')
   const [casoError, setCasoError] = useState<string | null>(null)
+  const [casoJurisdiccion, setCasoJurisdiccion] = useState('')
   // Preserved for a future contextual entry point; no longer rendered in the detail header.
   const openCasoModal = useCallback(() => {
     if (!(canManageClientes || currentRole === 'supervisor_telemercadeo')) return
